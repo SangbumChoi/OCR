@@ -1,0 +1,13 @@
+[project]
+name = "ocr-ft"
+version = "0.1.0"
+description = "DeepSeek OCR finetuning scaffold (LoRA, dataset loader, W&B logging, eval, compare, merge, crawler, vLLM client)."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
