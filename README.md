@@ -96,6 +96,39 @@ python scripts/vllm_client_infer.py \
   --prompt "Extract all text from the image."
 ```
 
+## Inference 예시(로컬)
+
+DeepSeek-OCR HF 모델 카드의 예시를 그대로 따라가는 로컬 inference 2종을 제공합니다.  
+참고: [`deepseek-ai/DeepSeek-OCR` 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-OCR)
+
+### A) HuggingFace 방식(`model.infer`)
+
+```bash
+python scripts/hf_infer.py \
+  --model_id deepseek-ai/DeepSeek-OCR \
+  --image_file "your_image.jpg" \
+  --prompt "<image>\n<|grounding|>Convert the document to markdown. "
+```
+
+### B) vLLM Python API(로컬 실행)
+
+```bash
+python scripts/vllm_local_infer.py \
+  --model_id deepseek-ai/DeepSeek-OCR \
+  --image_file "your_image.jpg" \
+  --prompt "<image>\nFree OCR."
+```
+
+### C) `examples/` 폴더 배치 inference → `results/` 저장
+
+```bash
+python scripts/run_examples_hf_infer.py \
+  --model_id deepseek-ai/DeepSeek-OCR \
+  --examples_dir examples \
+  --results_dir results \
+  --prompt "<image>\n<|grounding|>Convert the document to markdown. "
+```
+
 ## 중요 메모
 - DeepSeek-OCR의 **정확한 프롬프트/특수 토큰 규약**은 모델/서빙 방식에 따라 달라질 수 있어, 이 스캐폴딩은 기본적으로 “image → text” 형태의 일반 VLM OCR 파이프라인을 제공합니다.
 - 다음 정보 2가지만 주시면, DeepSeek-OCR에 맞춘 프롬프트/입력 포맷을 즉시 반영해 드릴게요:
