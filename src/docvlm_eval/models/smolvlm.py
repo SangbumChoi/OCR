@@ -23,13 +23,17 @@ class _SmolVLM(ModelAdapter):
 
     def load(self) -> None:
         import torch
-        from transformers import AutoModelForVision2Seq, AutoProcessor
+        from transformers import AutoProcessor
+
+        # transformers>=5 renamed AutoModelForVision2Seq -> AutoModelForImageTextToText
+        try:
+            from transformers import AutoModelForImageTextToText as _AutoVLM
+        except ImportError:  # older transformers
+            from transformers import AutoModelForVision2Seq as _AutoVLM
 
         self.processor = AutoProcessor.from_pretrained(self.hf_id)
         self.model = (
-            AutoModelForVision2Seq.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype)
-            )
+            _AutoVLM.from_pretrained(self.hf_id, torch_dtype=getattr(torch, self.dtype))
             .eval()
             .to(self.device)
         )
