@@ -1,0 +1,18 @@
+{
+  "benchmark": "robustness",
+  "category": "10. Reliability / robustness / calibration",
+  "metric": "ANLS retention + ECE",
+  "metric_note": "score(degraded)/score(clean) per perturbation; ECE for confidence calibration.",
+  "source": "DERIVED from data/benchmarks/docvqa (downscale+blur+JPEG q18); see scripts/build_robustness_set.py",
+  "ground_truth": {
+    "question": "What is the ‘actual’ value per 1000, during the year 1975?",
+    "answers": [
+      "0.28"
+    ],
+    "perturbations": [
+      "downscale",
+      "blur",
+      "jpeg"
+    ]
+  }
+}

@@ -49,7 +49,9 @@ robustness probe. The full landscape of OCR/document benchmark *types and metric
 formulas, end-to-end parsing) — lives under
 [`data/benchmarks/`](data/benchmarks/README.md), fetched with:
 ```bash
-python scripts/fetch_benchmark_samples.py        # one sample image + sample.json each
+python scripts/fetch_benchmark_samples.py        # real samples via HF streaming
+python scripts/make_synthetic_samples.py         # attach samples for categories not on HF
+                                                 # (full-page recognition, scene text, robustness)
 ```
 
 ---

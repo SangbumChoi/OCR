@@ -1,0 +1,10 @@
+{
+  "benchmark": "recognition_fullpage",
+  "category": "1. Full-page / printed text recognition",
+  "metric": "CER / WER / NED",
+  "metric_note": "Character/word error rate or normalized edit distance vs transcript.",
+  "source": "SYNTHETIC illustrative sample (rendered locally; not an official benchmark)",
+  "ground_truth": {
+    "text": "QUARTERLY FINANCIAL SUMMARY\nRevenue for Q3 2025 reached $4,820,000, a 12.4% increase\nyear over year. Operating expenses totalled $3,110,500,\nleaving an operating margin of 35.5%. The board approved\na dividend of $0.28 per share, payable on 15 December 2025.\nContact: investor.relations@example.com   Ref: FIN-2025-Q3-007"
+  }
+}
