@@ -1,9 +1,12 @@
 [project]
-name = "ocr-ft"
+name = "docvlm-eval"
 version = "0.1.0"
-description = "DeepSeek OCR finetuning scaffold (LoRA, dataset loader, W&B logging, eval, compare, merge, crawler, vLLM client)."
+description = "Evaluation harness + improvement-strategy PoC for sub-1B document-understanding VLMs (and a LoRA fine-tuning scaffold)."
 readme = "README.md"
 requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

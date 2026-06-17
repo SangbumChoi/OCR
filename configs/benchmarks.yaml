@@ -1,0 +1,28 @@
+# Benchmark suite for document understanding. Each maps to a builder in
+# src/docvlm_eval/benchmarks/hf_builders.py and a primary metric.
+
+benchmarks:
+  - name: docvqa
+    source: lmms-lab/DocVQA (config DocVQA, split validation)
+    metric: anls
+    probes: [printed text, layout, key-value extraction on scanned business docs]
+
+  - name: infovqa
+    source: lmms-lab/DocVQA (config InfographicVQA, split validation)
+    metric: anls
+    probes: [multi-element layout, charts+text fusion, numeric reasoning on infographics]
+
+  - name: chartqa
+    source: lmms-lab/ChartQA (split test; human vs augmented slices kept)
+    metric: relaxed_acc
+    probes: [chart value reading, comparison, arithmetic over plotted data]
+
+  - name: ocrbench
+    source: echo840/OCRBench
+    metric: ocrbench
+    probes: [regular/irregular/handwritten/artistic text, KIE, handwritten math]
+
+  - name: robustness
+    source: derived from docvqa via scripts/build_robustness_set.py
+    metric: anls
+    probes: [downscale, jpeg, blur, rotate, noise, terminology paraphrase]

@@ -1,16 +1,31 @@
+# ---- core inference / evaluation ----
 torch>=2.3.0
-transformers>=4.45.0
+torchvision>=0.18.0
+transformers>=4.49.0          # >=4.49 ships GOT-OCR2 + LLaVA-OneVision + Florence-2 classes
 tokenizers>=0.20.0
 accelerate>=0.33.0
-peft>=0.12.0
 datasets>=2.20.0
 pillow>=10.4.0
 numpy>=1.26.0
 tqdm>=4.66.0
+einops>=0.8.0
+sentencepiece>=0.2.0          # tokenizers for several VLMs
+timm>=1.0.0                   # InternViT / DaViT vision backbones
+pyyaml>=6.0
+
+# ---- Part-2 fine-tuning PoC (LoRA scaffold in src/ocr_ft) ----
+peft>=0.12.0
+
+# ---- data collection / serving clients (optional, used by legacy scripts) ----
 requests>=2.32.0
 beautifulsoup4>=4.12.3
 wandb>=0.17.0
-einops>=0.8.0
 addict>=2.4.0
 easydict>=1.13
 
+# ---- report rendering (optional: scripts/build_report.py) ----
+markdown>=3.6
+weasyprint>=62.0
+
+# ---- tests ----
+pytest>=8.0

@@ -1,0 +1,52 @@
+# Candidate sub-1B document VLMs.
+# `key` is what you pass to scripts/evaluate.py --model. Profiles are documented in the
+# technical report; param counts are approximate totals (vision encoder + LM + projector).
+
+models:
+  - key: internvl2_5-1b
+    hf_id: OpenGVLab/InternVL2_5-1B
+    params_m: 938
+    family: InternVL
+    role: document generalist (vision-encoder + 0.5B LM, dynamic tiling)
+
+  - key: internvl3-1b
+    hf_id: OpenGVLab/InternVL3-1B
+    params_m: 938
+    family: InternVL
+    role: document generalist (native multimodal pretraining)
+
+  - key: smolvlm-256m
+    hf_id: HuggingFaceTB/SmolVLM-256M-Instruct
+    params_m: 256
+    family: SmolVLM
+    role: extreme-edge baseline
+
+  - key: smolvlm-500m
+    hf_id: HuggingFaceTB/SmolVLM-500M-Instruct
+    params_m: 500
+    family: SmolVLM
+    role: edge baseline
+
+  - key: llava-ov-0.5b
+    hf_id: llava-hf/llava-onevision-qwen2-0.5b-ov-hf
+    params_m: 894
+    family: LLaVA-OneVision
+    role: general-purpose small VLM baseline
+
+  - key: got-ocr2
+    hf_id: stepfun-ai/GOT-OCR-2.0-hf
+    params_m: 580
+    family: GOT-OCR2.0
+    role: OCR-transcription specialist (no VQA reasoning)
+
+  - key: florence2-large
+    hf_id: microsoft/Florence-2-large
+    params_m: 770
+    family: Florence-2
+    role: task-token OCR/detection specialist (no free-form VQA)
+
+  - key: paddleocr-vl
+    hf_id: PaddlePaddle/PaddleOCR-VL
+    params_m: 900
+    family: PaddleOCR-VL
+    role: document-parsing specialist (NaViT + ERNIE-4.5-0.3B)

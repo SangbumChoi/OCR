@@ -1,136 +1,132 @@
-# OCR (DeepSeek OCR Finetune Scaffold)
+# Small VLMs for Document Understanding — Evaluation & Improvement PoC
 
-DeepSeek OCR(VLM) 파인튜닝을 위한 **엔드투엔드 스캐폴딩**입니다.
+A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Language Models
+(<1B) for Document Understanding"*:
 
-포함 기능
-- **파인튜닝 로직**: LoRA(PEFT) 기반 `transformers` `Seq2SeqTrainer` 파이프라인
-- **커스텀 데이터셋 로더**: JSONL 기반 이미지+정답 텍스트 로딩
-- **W&B 로깅**: 학습/평가 손실 및 CER/WER 로깅(옵션)
-- **평가 메트릭 로깅**: CER/WER 계산 및 리포트 저장
-- **바닐라 vs 파인튜닝 비교**: 동일 eval set에서 비교 스크립트 제공
-- **LoRA 적용 및 merge**: 어댑터 merge 후 단일 모델로 export
-- **데이터셋 수집(크롤러)**: URL seed 기반 파일 다운로드/메타 기록(기본형)
-- **vLLM 클라이언트 추론**: OpenAI-compatible `/v1/chat/completions` 호출 스크립트
+- **Part 1 — Evaluation:** survey sub-1B VLMs, run them on a document-understanding benchmark
+  suite, and compare them with metrics that go **beyond accuracy** (calibration + robustness).
+- **Part 2 — Improvement strategy:** turn the gap analysis into a concrete, literature-grounded
+  fine-tuning plan, backed by the LoRA scaffold in this repo.
 
-## 빠른 시작
+> 📄 **Technical report:** [`report/technical_report.pdf`](report/technical_report.pdf)
+> (source: [`report/technical_report.md`](report/technical_report.md))
+> 🧭 **Benchmark & metric taxonomy:** [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md)
+> 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
 
-### 1) 환경 준비
+---
 
+## What's here
+
+```
+src/docvlm_eval/        # the evaluation harness (Part 1)
+  models/               #   adapter per VLM + registry  (add a model = 1 small file + 1 line)
+  benchmarks/           #   HF dataset builders + custom robustness probe
+  metrics/              #   ANLS / relaxed-acc / OCRBench + ECE calibration + aggregation
+  pipeline.py           #   model x benchmark -> predictions + scores
+scripts/
+  evaluate.py           #   ⭐ single entrypoint: load ANY model, run benchmark, emit scores
+  build_benchmarks.py   #   DocVQA / InfoVQA / ChartQA / OCRBench -> normalised JSONL
+  build_robustness_set.py  # paired clean/perturbed probe (capture quality + terminology)
+  make_comparison_table.py # all runs -> comparison table (md/csv/json)
+  run_all.sh            #   full reproduction (Colab/Kaggle T4)
+  build_report.py       #   technical_report.md -> PDF
+  finetune_lora.py ...  #   Part-2 LoRA fine-tuning scaffold (improvement PoC)
+configs/                # models.yaml, benchmarks.yaml (documented choices)
+tests/                  # metric unit tests (the numbers must be exactly right)
+report/ results/ data/  # report, taxonomy, comparison table, benchmark/probe data
+```
+
+**Candidate models** (`scripts/evaluate.py --list-models`): `internvl2_5-1b`, `internvl3-1b`,
+`smolvlm-256m`, `smolvlm-500m`, `llava-ov-0.5b`, `got-ocr2`, `florence2-large`, `paddleocr-vl`
+(+ `dummy-echo` for CPU smoke tests). See the report Appendix A for profiles.
+
+**Benchmark suite:** DocVQA, InfoVQA, ChartQA, OCRBench (from VLMEvalKit/HF) + a custom
+robustness probe. The full landscape of OCR/document benchmark *types and metrics* is in
+[`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md).
+
+---
+
+## Quick start
+
+### 0) Install
 ```bash
-cd /Users/sangbumchoi/Documents/OCR
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -U pip && pip install -r requirements.txt
 ```
 
-### 2) 데이터셋 포맷
-
-`data/my_dataset/train.jsonl`, `data/my_dataset/val.jsonl` 형태를 기대합니다.
-
-각 라인은 다음 필드를 가집니다:
-- `image_path`: 이미지 파일 경로(절대/상대 모두 가능)
-- `text`: 정답 텍스트
-
-예시:
-
-```json
-{"image_path":"data/my_dataset/images/0001.png","text":"Hello world"}
-```
-
-### 3) LoRA 파인튜닝
-
+### 1) Smoke test (CPU, no weights, ~seconds)
+Proves the whole pipeline works end-to-end before spending GPU time:
 ```bash
-python scripts/finetune_lora.py \
-  --model_id deepseek-ai/DeepSeek-OCR \
-  --train_jsonl data/my_dataset/train.jsonl \
-  --val_jsonl data/my_dataset/val.jsonl \
-  --output_dir outputs/exp1 \
-  --use_wandb 0
+python scripts/evaluate.py --model dummy-echo \
+  --benchmark data/benchmarks/smoke.jsonl --benchmark-name smoke \
+  --out /tmp/smoke --device cpu
+python -m pytest tests/ -q          # metric unit tests
 ```
 
-### 4) 평가
-
+### 2) Full evaluation (free Colab/Kaggle T4)
 ```bash
-python scripts/eval.py \
-  --model_id outputs/exp1 \
-  --val_jsonl data/my_dataset/val.jsonl \
-  --report_path outputs/exp1/eval_report.json
+# build benchmarks (use --limit for a fast subset)
+python scripts/build_benchmarks.py --benchmark all --limit 300
+python scripts/build_robustness_set.py --base data/benchmarks/docvqa.jsonl \
+  --out-dir data/robustness/docvqa --limit 100
+
+# evaluate one model on one benchmark
+python scripts/evaluate.py --model internvl2_5-1b \
+  --benchmark data/benchmarks/docvqa.jsonl --benchmark-name docvqa \
+  --out results/internvl2_5-1b/docvqa --limit 300
+
+# ...or run everything and build the comparison table
+bash scripts/run_all.sh                  # LIMIT=20 bash scripts/run_all.sh  for a quick pass
+python scripts/make_comparison_table.py  # -> results/comparison_table.{md,csv,json}
 ```
 
-### 5) 바닐라 vs 파인튜닝 비교
+### 3) Add a new model (the "minimal modification" requirement)
+Create `src/docvlm_eval/models/mymodel.py`:
+```python
+from dataclasses import dataclass
+from .base import ModelAdapter
+from .registry import register
 
+@register("my-model")
+@dataclass
+class MyModel(ModelAdapter):
+    hf_id: str = "org/my-model"
+    param_count_m: float = 800.0
+    def load(self):
+        ...  # build self.model / self.processor
+    def generate(self, image_path, question):
+        ...  # return (answer_text, confidence_or_None)
+```
+…then add it to the lazy imports in `registry.build_model` (one line). No change to
+`evaluate.py`.
+
+### 4) Rebuild the report PDF
 ```bash
-python scripts/compare.py \
-  --base_model_id deepseek-ai/DeepSeek-OCR \
-  --finetuned_model_id outputs/exp1 \
-  --val_jsonl data/my_dataset/val.jsonl \
-  --report_path outputs/compare_report.json
+python scripts/build_report.py     # report/technical_report.md -> .pdf
 ```
 
-### 6) LoRA merge(export)
+---
 
-```bash
-python scripts/merge_lora.py \
-  --base_model_id deepseek-ai/DeepSeek-OCR \
-  --adapter_dir outputs/exp1 \
-  --merged_out_dir outputs/exp1-merged
-```
+## Design notes
 
-### 7) 데이터 수집(크롤러)
+- **One sample schema** (`docvlm_eval.schema.Sample`) normalises every benchmark, so the same
+  loop evaluates any model on any dataset.
+- **Beyond accuracy.** Besides the official ANLS / relaxed-accuracy / OCRBench scores, the
+  pipeline computes **ECE calibration** (does the model know when it's wrong?) and
+  **robustness retention** on a paired clean/perturbed probe (does it survive phone-photo /
+  fax / jargon conditions?) — the columns public leaderboards omit. See report §I.3.
+- **Reproducibility.** Greedy decoding, fixed seeds, pinned versions, cached
+  `predictions.jsonl` (resumable + re-scorable without re-running the model).
+- **Why a custom harness alongside VLMEvalKit:** VLMEvalKit is the standard for headline
+  accuracy (and we mirror its dataset/metric choices), but it does not report calibration or
+  our robustness probe — which are central to the document *deployment* story.
 
-```bash
-python scripts/crawl.py \
-  --seed_url "https://example.com" \
-  --out_dir data/crawled \
-  --max_pages 50
-```
+---
 
-### 8) vLLM(OpenAI-compatible) 클라이언트 추론
+## Part 2 — Fine-tuning scaffold (improvement PoC)
 
-```bash
-python scripts/vllm_client_infer.py \
-  --base_url "http://localhost:8000/v1" \
-  --model "deepseek-ocr" \
-  --image_path "data/my_dataset/images/0001.png" \
-  --prompt "Extract all text from the image."
-```
-
-## Inference 예시(로컬)
-
-DeepSeek-OCR HF 모델 카드의 예시를 그대로 따라가는 로컬 inference 2종을 제공합니다.  
-참고: [`deepseek-ai/DeepSeek-OCR` 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-OCR)
-
-### A) HuggingFace 방식(`model.infer`)
-
-```bash
-python scripts/hf_infer.py \
-  --model_id deepseek-ai/DeepSeek-OCR \
-  --image_file "your_image.jpg" \
-  --prompt "<image>\n<|grounding|>Convert the document to markdown. "
-```
-
-### B) vLLM Python API(로컬 실행)
-
-```bash
-python scripts/vllm_local_infer.py \
-  --model_id deepseek-ai/DeepSeek-OCR \
-  --image_file "your_image.jpg" \
-  --prompt "<image>\nFree OCR."
-```
-
-### C) `examples/` 폴더 배치 inference → `results/` 저장
-
-```bash
-python scripts/run_examples_hf_infer.py \
-  --model_id deepseek-ai/DeepSeek-OCR \
-  --examples_dir examples \
-  --results_dir results \
-  --prompt "<image>\n<|grounding|>Convert the document to markdown. "
-```
-
-## 중요 메모
-- DeepSeek-OCR의 **정확한 프롬프트/특수 토큰 규약**은 모델/서빙 방식에 따라 달라질 수 있어, 이 스캐폴딩은 기본적으로 “image → text” 형태의 일반 VLM OCR 파이프라인을 제공합니다.
-- 다음 정보 2가지만 주시면, DeepSeek-OCR에 맞춘 프롬프트/입력 포맷을 즉시 반영해 드릴게요:
-  - (A) 사용할 **베이스 모델 ID**(HF repo 또는 로컬 경로)
-  - (B) 학습 라벨이 **plain text**인지, 아니면 **markdown/html/JSON** 같은 구조인지
+The improvement strategy (report §II.2) is backed by a LoRA fine-tuning scaffold under
+`src/ocr_ft` + `scripts/finetune_lora.py | eval.py | compare.py | merge_lora.py`. It expects
+JSONL of `{"image_path", "text"}` and supports LoRA(PEFT) SFT, CER/WER eval, vanilla-vs-tuned
+comparison, and adapter merge — the machinery for Steps 1–4 of the plan. Full scaffold docs:
+[`docs/finetune_scaffold.md`](docs/finetune_scaffold.md).
