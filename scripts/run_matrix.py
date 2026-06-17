@@ -40,6 +40,7 @@ def main() -> None:
     p.add_argument("--dtype", default="bfloat16")
     p.add_argument("--max-new-tokens", type=int, default=64)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--no-resume", action="store_true", help="ignore cached predictions")
     a = p.parse_args()
 
     models = list_models() if a.all else a.models
@@ -55,7 +56,7 @@ def main() -> None:
             run_evaluation(
                 model_key=m, samples=samples, out_dir=str(out), device=a.device,
                 dtype=a.dtype, max_new_tokens=a.max_new_tokens, limit=a.limit,
-                benchmark_name=bench_name, resume=True,
+                benchmark_name=bench_name, resume=not a.no_resume,
             )
             ps = json.loads((out / "per_sample.json").read_text())
             per_model_scores[m] = {r["answer_type"]: r["score"] for r in ps}

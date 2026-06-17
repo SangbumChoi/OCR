@@ -22,6 +22,9 @@ from docvlm_eval.schema import Sample  # noqa: E402
 
 BENCH = Path("data/benchmarks")
 TRANSCRIBE_Q = "Read and transcribe all the text in the image."
+# Small VLMs are verbose; short-answer benchmarks are run (e.g. in VLMEvalKit) with an explicit
+# brevity instruction so the answer can be matched. Transcription tasks get no such suffix.
+CONCISE = " Answer concisely with only the value, no explanation."
 
 
 def _extract(key: str, gt: dict, metric: str):
@@ -51,14 +54,18 @@ def _extract(key: str, gt: dict, metric: str):
     answers = [str(a) for a in answers if a is not None and str(a) != ""]
     if not answers:
         return None
-    # include MCQ options in the prompt
-    if gt.get("options"):
-        opts = gt["options"]
-        if isinstance(opts, list):
-            q = q + "  Options: " + " | ".join(str(o) for o in opts)
-    elif gt.get("choices"):
-        q = q + "  Options: " + " | ".join(str(o) for o in gt["choices"])
-    return q, answers, metric
+    # MCQ: AI2D's 'answer' is an INDEX into 'options' (not the text) -> map it to the option.
+    opts = gt.get("options") or gt.get("choices")
+    if isinstance(opts, list) and opts:
+        mapped = []
+        for a in answers:
+            if a.isdigit() and int(a) < len(opts):
+                mapped.append(str(opts[int(a)]))
+            else:
+                mapped.append(a)
+        answers = mapped
+        q = q + "  Options: " + " | ".join(str(o) for o in opts)
+    return q + CONCISE, answers, metric
 
 
 def main() -> None:
