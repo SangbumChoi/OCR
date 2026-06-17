@@ -1,0 +1,71 @@
+# Prompt plan for the capability axes (see report/capability_axes.md).
+#
+# Two ideas:
+#  (1) For each capability we use a prompt that ELICITS that capability and constrains the
+#      output so it is scorable (concise value, or a [x1,y1,x2,y2] box).
+#  (2) For LOCATION/grounding, models differ: some have a native "spotting" task (Florence-2
+#      task tokens, GOT region OCR, PaddleOCR-VL spotting), others are general chat VLMs with
+#      no spotting head. For a FAIR comparison we give every model the same normalised
+#      grounding instruction and map native-spotting outputs back into [x1,y1,x2,y2] pixels.
+
+capabilities:
+  text-recognition:
+    goal: "Read an exact printed string."
+    prompt: "Read the {field}. Answer concisely with only the value, no explanation."
+    output: short string ; metric: anls
+
+  kie-localized:
+    goal: "Extract one field value from a single region (clear KIE answer)."
+    prompt: "What is the {field}? Answer concisely with only the value, no explanation."
+    output: short string ; metric: anls
+
+  integrative-sum:
+    goal: "Combine several regions into one computed value."
+    prompt: "Add up {what} and give the result. Answer concisely with only the value."
+    output: number ; metric: relaxed_acc
+
+  integrative-rel:
+    goal: "Reason over relationships between regions."
+    prompt: "{question} Answer concisely with only the value, no explanation."
+    output: short string ; metric: exact
+
+  chart-dependent:
+    goal: "Read a value off a chart (not answerable from text alone)."
+    prompt: "{question} Answer concisely with only the value, no explanation."
+    output: number ; metric: relaxed_acc
+
+  location-grounding:
+    goal: "Return the location (bounding box) of a named element."
+    # normalised instruction given to ALL models for fairness:
+    prompt: >-
+      Return the bounding box of the {target} as [x1, y1, x2, y2] in pixel coordinates.
+      The image is {W}x{H} pixels.
+    output: "[x1,y1,x2,y2]" ; metric: grounding (IoU)
+
+# How to elicit LOCATION from each model family (fair-comparison plan).
+grounding_by_family:
+  general_chat_vlm:        # SmolVLM, InternVL, LLaVA-OneVision, Ovis, H2OVL
+    has_native_spotting: false
+    method: "text-prompted box; rely on grounding pretraining if any. Expect weak/empty boxes
+             for the smallest models -> a real capability gap, not a harness bug."
+    output_normalisation: "parse first 4 numbers; rescale if 0-1 or 0-1000 (handled in
+                           metrics.grounding.parse_pred_box)."
+  florence2:
+    has_native_spotting: true
+    method: "use task tokens: <OD> (objects), <OCR_WITH_REGION> (text+boxes),
+             <CAPTION_TO_PHRASE_GROUNDING> with the target phrase."
+    output_normalisation: "Florence returns quad/box pixel coords + labels -> take the box of
+                           the matching label; already pixels."
+  got_ocr2:
+    has_native_spotting: true
+    method: "region/fine-grained OCR: provide a box to read, or read-with-coordinates mode."
+    output_normalisation: "maps text<->box; convert its coords to [x1,y1,x2,y2]."
+  paddleocr_vl:
+    has_native_spotting: true
+    method: "spotting / layout task prompt already emits elements with polygons/boxes."
+    output_normalisation: "take polygon -> axis-aligned bbox of the matching element."
+
+# Why this matters: location understanding is a distinct axis from text understanding. Scoring
+# only text answers would unfairly credit spotting-capable models nothing and ignore a
+# capability that production document parsing depends on (reading order, field localisation,
+# table cells). The normalisation layer makes "give me the box" comparable across all models.

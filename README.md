@@ -13,6 +13,10 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > 🧭 **Benchmark & metric taxonomy:** [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md)
 > 🗺️ **Benchmark patterns & priority map:** [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
 > (what each benchmark collects · visual-class diversity · VQA answer-natures · grouping/priority)
+> 🧩 **Capability axes & custom probe:** [`report/capability_axes.md`](report/capability_axes.md)
+> (text vs location understanding · KIE/integrative/chart output natures · grounding fair-comparison)
+> 🔎 **Results analysis & flaws:** [`report/results_analysis.md`](report/results_analysis.md)
+> (real CPU runs · inference bugs fixed · scoring flaws · per-model capability vector)
 > 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
 
 ---

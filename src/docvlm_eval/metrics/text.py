@@ -108,11 +108,18 @@ def ocrbench_score(pred: str, golds: list[str]) -> float:
     return 1.0 if any(normalize_text(g) in np_ for g in golds if g) else 0.0
 
 
+def _grounding(pred: str, golds: list[str]) -> float:
+    from .grounding import grounding_score  # local import to avoid a cycle
+
+    return grounding_score(pred, golds)
+
+
 _SCORERS = {
     "anls": anls,
     "relaxed_acc": relaxed_accuracy,
     "exact": exact_match,
     "ocrbench": ocrbench_score,
+    "grounding": _grounding,
 }
 
 

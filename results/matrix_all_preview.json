@@ -1,0 +1,81 @@
+{
+  "status": {
+    "smolvlm-256m": "ok",
+    "smolvlm-500m": "ok",
+    "dummy-echo": "ok (cached)"
+  },
+  "scores": {
+    "dummy-echo": {
+      "ai2d": 0.0,
+      "chartqa": 0.0,
+      "docvqa": 0.0,
+      "iam": 0.0,
+      "im2latex": 0.0,
+      "infovqa": 0.0,
+      "latexocr": 0.0,
+      "mathvista": 0.0,
+      "ocrbench": 0.0,
+      "ocrbench_v2": 0.0,
+      "ocrvqa": 0.0,
+      "pope": 0.0,
+      "recognition_fullpage": 0.0,
+      "robustness": 0.0,
+      "sroie": 0.0,
+      "textvqa": 0.0
+    },
+    "smolvlm-256m": {
+      "ai2d": 0.0,
+      "chartqa": 0.0,
+      "docvqa": 0.75,
+      "iam": 0.5591,
+      "im2latex": 0.0,
+      "infovqa": 0.0,
+      "latexocr": 0.0,
+      "mathvista": 0.0,
+      "ocrbench": 0.0,
+      "ocrbench_v2": 0.0,
+      "ocrvqa": 0.0,
+      "pope": 0.0,
+      "recognition_fullpage": 0.0,
+      "robustness": 0.0,
+      "sroie": 1.0,
+      "textvqa": 0.0
+    },
+    "smolvlm-500m": {
+      "ai2d": 0.0,
+      "chartqa": 0.0,
+      "docvqa": 0.6,
+      "iam": 0.7957,
+      "im2latex": 0.0,
+      "infovqa": 0.9,
+      "latexocr": 0.0,
+      "mathvista": 0.0,
+      "ocrbench": 0.0,
+      "ocrbench_v2": 0.0,
+      "ocrvqa": 0.0,
+      "pope": 0.0,
+      "recognition_fullpage": 0.0,
+      "robustness": 0.6,
+      "sroie": 1.0,
+      "textvqa": 0.0
+    }
+  },
+  "benchmarks": [
+    "ai2d",
+    "chartqa",
+    "docvqa",
+    "iam",
+    "im2latex",
+    "infovqa",
+    "latexocr",
+    "mathvista",
+    "ocrbench",
+    "ocrbench_v2",
+    "ocrvqa",
+    "pope",
+    "recognition_fullpage",
+    "robustness",
+    "sroie",
+    "textvqa"
+  ]
+}

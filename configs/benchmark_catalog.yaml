@@ -154,3 +154,12 @@ benchmarks:
   - {key: kie_hvqa, name: KIE-HVQA, category: "10. OCR hallucination", metric: "hallucination-free acc",
      purpose: "Penalize confident wrong field values on degraded ID/invoice docs; reward correct-or-abstain.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2506.20168"}
+
+  # ---------- 11. Custom capability axes (our probe; rendered, exact GT incl. boxes) ----------
+  - {key: capability_probe, name: "Custom capability probe", category: "11. Custom capability axes",
+     metric: "anls / relaxed_acc / exact / grounding",
+     purpose: "Isolate the document-VLM capability axes on controlled renders: text recognition,
+               localized KIE, integrative reasoning (sum & relations), chart reading, and spatial
+               grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT.",
+     hf_id: null, config: null, split: null,
+     source: "SYNTHETIC (scripts/make_capability_probe.py)"}

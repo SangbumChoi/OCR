@@ -32,7 +32,8 @@ def test_all_ten_categories_covered():
     nums = set()
     for e in load_catalog():
         nums.add(int(str(e["category"]).split(".")[0]))
-    assert nums == set(range(1, 11)), f"categories present: {sorted(nums)}"
+    # the 10 taxonomy categories must all be present (plus optional custom axes, e.g. 11)
+    assert set(range(1, 11)).issubset(nums), f"categories present: {sorted(nums)}"
 
 
 def test_metric_names_recognisable():

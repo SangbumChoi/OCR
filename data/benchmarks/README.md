@@ -1,14 +1,15 @@
 # Benchmark catalog & sample previews
 
-Every benchmark across the **10 capability categories** of
-[`../../report/benchmark_taxonomy.md`](../../report/benchmark_taxonomy.md), annotated with **what each
-one measures** (`purpose`). Source of truth: [`../../configs/benchmark_catalog.yaml`](../../configs/benchmark_catalog.yaml).
+Every benchmark across the capability categories of
+[`../../report/benchmark_taxonomy.md`](../../report/benchmark_taxonomy.md) and
+[`../../report/capability_axes.md`](../../report/capability_axes.md), annotated with **what
+each one measures** (`purpose`). Source of truth:
+[`../../configs/benchmark_catalog.yaml`](../../configs/benchmark_catalog.yaml).
 
-- 🖼️ **sample** = image + `sample.json` (GT + metric + purpose) in `<key>/` — fetched via
-  `scripts/fetch_benchmark_samples.py` (HF streaming) or attached via `scripts/make_synthetic_samples.py`.
-- 📝 **documented** = not cleanly streamable from HF (script-based / gated / eval-server); catalogued with purpose + source.
+- 🖼️ **sample** = image + `sample.json` (GT + metric + purpose) in `<key>/`.
+- 📝 **documented** = not cleanly streamable from HF; catalogued with purpose + source.
 
-**Coverage: 24 image samples across 42 catalogued benchmarks, all 10 categories.**
+**Coverage: 25 image samples across 43 catalogued benchmarks.**
 
 ### 1. Text recognition (full-page / line / word)
 
@@ -101,4 +102,10 @@ one measures** (`purpose`). Source of truth: [`../../configs/benchmark_catalog.y
 | [`pope`](pope/) | 🖼️ sample (HF) | F1 / accuracy | Object-existence polling (yes/no) to quantify hallucination; precision/recall/F1. |
 | [`hallusionbench`](hallusionbench/) | 🖼️ sample (HF) | acc + consistency | Visual-illusion vs knowledge-hallucination yes/no pairs; consistency-aware scoring. |
 | [`kie_hvqa`](kie_hvqa/) | 📝 documented | hallucination-free acc | Penalize confident wrong field values on degraded ID/invoice docs; reward correct-or-abstain. |
+
+### 11. Custom capability axes (our probe)
+
+| Benchmark | Status | Metric | Purpose (what it measures) |
+|---|---|---|---|
+| [`capability_probe`](capability_probe/) | 🖼️ sample (synthetic) | anls / relaxed_acc / exact / grounding | Isolate the document-VLM capability axes on controlled renders: text recognition, localized KIE, integrative reasoning (sum & relations), chart reading, and spatial grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT. |
 
