@@ -11,6 +11,8 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > 📄 **Technical report:** [`report/technical_report.pdf`](report/technical_report.pdf)
 > (source: [`report/technical_report.md`](report/technical_report.md))
 > 🧭 **Benchmark & metric taxonomy:** [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md)
+> 🗺️ **Benchmark patterns & priority map:** [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
+> (what each benchmark collects · visual-class diversity · VQA answer-natures · grouping/priority)
 > 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
 
 ---
