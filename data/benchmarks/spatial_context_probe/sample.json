@@ -1,0 +1,20 @@
+{
+  "benchmark": "spatial_context_probe",
+  "name": "Spatial & context understanding probe",
+  "category": "11. Custom capability axes",
+  "metric": "exact / relaxed_acc / grounding",
+  "purpose": "Falsifiable hypothesis tests for spatial (quadrant, relative position, box tracking) and context (consistency, absence/anti-hallucination, distractor, cross-reference) understanding, each paired with a control that rules out a shortcut.",
+  "source": "SYNTHETIC (scripts/make_spatial_context_probe.py)",
+  "ground_truth": {
+    "n_samples": 15,
+    "axes": [
+      "context-absence",
+      "context-consistency",
+      "context-distractor",
+      "context-xref",
+      "spatial-box-tracking",
+      "spatial-quadrant",
+      "spatial-relative"
+    ]
+  }
+}
