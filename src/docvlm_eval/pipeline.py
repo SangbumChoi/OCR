@@ -51,6 +51,9 @@ def run_evaluation(
             if line.strip():
                 d = json.loads(line)
                 done[d["sample_id"]] = Prediction(**d)
+    elif pred_path.exists():
+        # not resuming -> start fresh so we don't append duplicates to a stale file
+        pred_path.unlink()
 
     from .models.base import GenConfig
 

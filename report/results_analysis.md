@@ -26,8 +26,45 @@ capability probe. Outcome:
 | H2OVL-0.8B | ❌ | InternVL-style remote code, same transformers-5.x drift |
 
 The matrix runner stores per-model results + a **run-status**, so failures are captured as data.
-**Five models produced real CPU results** (`results/matrix_capability.md`); the rest are
-blocked by one of two causes below.
+
+### Dependency fix & recovery (re-running the previously-failed models)
+
+The failures were a **library/version problem**, so we fixed the dependencies and re-ran:
+pinned **transformers 4.49** (`<5`, the version their `trust_remote_code` expects) and installed
+**`peft`** and **`protobuf`**. Result — **11 models now produce real CPU results**:
+
+| Newly recovered | Fix | Status |
+|---|---|---|
+| **InternVL2-1B / 2.5-1B / 3-1B** | transformers<5 | ✅ run (the headline doc models) |
+| **Florence-2 base / large** | transformers<5 | ✅ run |
+| **H2OVL-0.8B** | `pip install peft` | ⚠ loads but emits empty output (remote-code chat returns "") |
+| Ovis2-1B | — | ❌ remote code hard-requires CUDA `flash_attn` → GPU-only |
+| PaddleOCR-VL 1.0 / 1.5 | — | ❌ need *newer* transformers (`masking_utils`/`use_kernel_forward_from_hub`) which conflicts with the `<5` pin → separate env |
+| LLaVA-OV-0.5B | — | ⏳ loads but ~8 min/sample on CPU → too slow |
+
+**Final capability matrix** (`results/matrix_capability.md`, real CPU runs):
+
+| model | text | kie | integ-sum | integ-rel | chart | grounding |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| internvl3-1b | 0.00¹ | 1.00 | **1.00** | **1.00** | 1.00 | 0.00 |
+| internvl2_5-1b | 0.00¹ | 1.00 | **1.00** | **1.00** | 1.00 | 0.00 |
+| internvl2-1b | 0.00¹ | 1.00 | 1.00 | 0.00 | 1.00 | 0.00 |
+| smolvlm-500m | 0.93 | 0.94 | 1.00 | 0.00 | 1.00 | 0.00 |
+| smolvlm-256m | 0.93 | 0.94 | 0.00 | 0.00 | 1.00 | 0.00 |
+| smoldocling-256m | 0.00² | 0.94 | 0.00 | 0.00 | 0.00 | 0.02 |
+| florence2-large | 0.00² | 0.00² | 0.00 | 0.00 | 1.00 | 0.00 |
+| got-ocr2 | 0.00² | 0.00² | 0.00 | 0.00 | 1.00 | 0.00 |
+| h2ovl-0.8b | 0.00³ | 0.00³ | 0.00³ | 0.00³ | 0.00³ | 0.00³ |
+
+¹ InternVL answered partially ("2025" for the invoice no.) → low ANLS, not a reasoning failure.
+² OCR/transcription specialists output the whole page / task-token format → low on the
+short-answer cells (interface mismatch), but read the chart number. ³ H2OVL emits empty text.
+
+**Headline finding:** **InternVL2.5-1B / 3-1B clear the integrative-reasoning axis (sum AND
+relational = 1.00)** that *no* SmolVLM model reaches — concrete evidence that multi-region
+reasoning emerges around 1B, while ≤0.5B models stay at sum-only (500M) or neither (256M). All
+models still score 0 on grounding (no spotting head). This is exactly the gap the report's
+Part-2 improvement plan targets.
 
 ## A. Inference bugs (the "인퍼런스 안 되는 부분" — found via real runs)
 

@@ -37,6 +37,16 @@ def test_resume_does_not_duplicate(tiny_benchmark, tmp_path):
     assert n_first == n_second == 3
 
 
+def test_no_resume_truncates_not_appends(tiny_benchmark, tmp_path):
+    samples, _ = tiny_benchmark
+    out = tmp_path / "run"
+    run_evaluation("dummy-echo", samples, str(out), device="cpu")
+    # a second run WITHOUT resume must rewrite, not append duplicate lines
+    run_evaluation("dummy-echo", samples, str(out), device="cpu", resume=False)
+    n = len((out / "predictions.jsonl").read_text().strip().splitlines())
+    assert n == 3  # not 6
+
+
 def test_predictions_jsonl_schema(tiny_benchmark, tmp_path):
     samples, _ = tiny_benchmark
     out = tmp_path / "run"

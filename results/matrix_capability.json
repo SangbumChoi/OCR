@@ -1,12 +1,26 @@
 {
   "status": {
-    "smolvlm-256m": "ok",
-    "smolvlm-500m": "ok",
-    "dummy-echo": "ok (cached)",
+    "dummy-echo": "ok",
+    "florence2-large": "ok (cached)",
     "got-ocr2": "ok (cached)",
-    "smoldocling-256m": "ok (cached)"
+    "smolvlm-256m": "ok (cached)",
+    "smoldocling-256m": "ok (cached)",
+    "internvl3-1b": "ok (cached)",
+    "internvl2-1b": "ok (cached)",
+    "internvl2_5-1b": "ok (cached)",
+    "h2ovl-0.8b": "ok (cached)",
+    "florence2-base": "ok (cached)",
+    "smolvlm-500m": "ok (cached)"
   },
   "scores": {
+    "florence2-large": {
+      "cap_text": 0.0,
+      "cap_kie": 0.0,
+      "cap_integ_sum": 0.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 1.0,
+      "cap_ground": 0.0
+    },
     "dummy-echo": {
       "cap_text": 0.0,
       "cap_kie": 0.0,
@@ -38,6 +52,46 @@
       "cap_integ_rel": 0.0,
       "cap_chart": 0.0,
       "cap_ground": 0.0221
+    },
+    "internvl3-1b": {
+      "cap_text": 0.0,
+      "cap_kie": 1.0,
+      "cap_integ_sum": 1.0,
+      "cap_integ_rel": 1.0,
+      "cap_chart": 1.0,
+      "cap_ground": 0.0
+    },
+    "internvl2-1b": {
+      "cap_text": 0.0,
+      "cap_kie": 1.0,
+      "cap_integ_sum": 1.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 1.0,
+      "cap_ground": 0.0
+    },
+    "internvl2_5-1b": {
+      "cap_text": 0.0,
+      "cap_kie": 1.0,
+      "cap_integ_sum": 1.0,
+      "cap_integ_rel": 1.0,
+      "cap_chart": 1.0,
+      "cap_ground": 0.0
+    },
+    "h2ovl-0.8b": {
+      "cap_text": 0.0,
+      "cap_kie": 0.0,
+      "cap_integ_sum": 0.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 0.0,
+      "cap_ground": 0.0
+    },
+    "florence2-base": {
+      "cap_text": 0.0,
+      "cap_kie": 0.0,
+      "cap_integ_sum": 0.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 0.0,
+      "cap_ground": 0.0
     },
     "smolvlm-500m": {
       "cap_text": 0.9286,
