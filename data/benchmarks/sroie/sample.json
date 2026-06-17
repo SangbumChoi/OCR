@@ -1,0 +1,14 @@
+{
+  "benchmark": "sroie",
+  "category": "4. Key Information Extraction (receipts)",
+  "metric": "field-level F1",
+  "metric_note": "Exact match per field (company/date/address/total), micro-F1.",
+  "hf_id": "priyank-m/SROIE_2019_text_recognition",
+  "config": null,
+  "split": "train",
+  "source": "https://rrc.cvc.uab.es/?ch=13",
+  "ground_truth": {
+    "image": "<JpegImageFile>",
+    "text": "TAN WOON YANN"
+  }
+}

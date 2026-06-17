@@ -1,0 +1,13 @@
+{
+  "benchmark": "omnidocbench",
+  "category": "9. End-to-end page parsing",
+  "metric": "edit distance / TEDS / CDM",
+  "metric_note": "Per-element NED (text), TEDS (tables), CDM (formulas), reading-order edit dist.",
+  "hf_id": "opendatalab/OmniDocBench",
+  "config": null,
+  "split": "train",
+  "source": "https://arxiv.org/abs/2412.07626",
+  "ground_truth": {
+    "image": "<PngImageFile>"
+  }
+}

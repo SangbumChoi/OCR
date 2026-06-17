@@ -1,0 +1,14 @@
+{
+  "benchmark": "cord",
+  "category": "4. Key Information Extraction (receipts)",
+  "metric": "entity-level F1",
+  "metric_note": "Field/entity F1 over ~30 fine-grained receipt fields.",
+  "hf_id": "naver-clova-ix/cord-v2",
+  "config": null,
+  "split": "test",
+  "source": "https://github.com/clovaai/cord",
+  "ground_truth": {
+    "image": "<PngImageFile>",
+    "ground_truth": "{\"gt_parse\": {\"menu\": {\"nm\": \"-TICKET CP\", \"num\": \"901016\", \"cnt\": \"2\", \"price\": \"60.000\", \"itemsubtotal\": \"60.000\"}, \"sub_total\": {\"subtotal_price\": \"60.000\", \"discount_price\": \"-60.000\", \"tax_price\": \"5.455\"}, \"total\": {\"total_price\": \"60.000\", \"creditcardprice\": \"60.000\", \"menuqty_cnt\": \"2.00\"}}, \"meta\": {\"version\": \"2.0.0\", \"split\": \"test\", \"image_id\": 0, \"image_size\": {\"width\": 432, \"height\": 648}}, \"valid_line\": [{\"words\": [{\"quad\": {\"x2\": 92, \"y3\": 412, \"x3\": 92, \"y4\": 412, \"x1\": 42, \"y1\": 392, \"x4\": 42, \"y2\": 392}, \"is_key\": 0, \"row_id\": 2028655, \"text\": \"901016\"}], \"category\": \"menu.num\", \"group_id\": 11, \"sub_group_id\": 0}, {\"words\": [{\"quad\": {\"x2\": 200, \"y3\": 406, \"x3\": 200, \"y4\": 406, \"x1\": 146, \"y1\": 386, \"x4\": 146, \"y2\": 386}, \"is_key\": 0, \"row_id\": 2028655, \"text\": \"-TICKET\"}, {\"quad\": {\"x2\": 222, \"y3\": 406, \"x3\": 222, \"y4\": 406, \"x1\": 202, \"y1\": 386, \"x4\": 202, \"y2\": 386}, \"is_key\": 0, \"row_id\": 2028655, \"text\": \"CP\"}], \"category\": \"menu.nm\", \"group_id\": 11, \"sub_group_id\": 0}, {\"words\": [{\"quad\": {\"x2\": 100, \"y3\": 434, \"x3\": 100, \"y4\": 434, \"x1\": 90, \"y1\": 416, \"x4\": 90, \"y2\": 416}, \"is_key\": 0, \"row_id\": 2028657, \"text\": \"2\"}], \"category\": \"menu.cnt\", \"group_id\": 11, \"sub_group_id\": 0}, {\"words\": [{\"quad\": {\"x2\": 224, \"y3\": 430, \"x3\": 224, \"y4\": 430, \"x1\": 174, \"y1\": 410, \"x4\": 174, \"y2\": 410}, \"is_key\": 0, \"row_id\": 2028657, \"text\": \"60.000\"}], \"category\": \"menu.price\", \"group_id\": 11, \"sub_group_id\": 0}, {\"words\": [{\"quad\": {\"x2\": 352, \"y3\": 430, \"x3\": 352, \"y4\": 430, \"x1\": 304, \"y1\": 410, \"x4\": 304, \"y2\": 410}, \"is_key\": 0, \"row_id\": 2028657, \"text\": \"60.000\"}], \"category\": \"menu.itemsubtotal\", \"group_id\": 11, \"sub_group_id\": 0}, {\"words\": [{\"quad\": {\"x2\": 188, \"y3\": 480, \"x3\": 188, \"y4\": 480, \"x1\": 146, \"y1\": 460, \"x4\": 146, \"y2\": 460}, \"is_key\": 1, \"row_id\": 2028660, \"text\": \"TOTAL\"}, {\"quad\": {\"x2\": 223, \"y3\": 477, \"x3\": 225, \"y4\": 480, \"x1\": 188, \"y1\": 460, \"x4\": 190, \"y2\": 457}, \"is_key\": 1, \"row_id\": 2028660, \"text\": \"DISC\"}, {\"quad\": {\"x2"
+  }
+}

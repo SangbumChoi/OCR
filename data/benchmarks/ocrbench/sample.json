@@ -1,0 +1,19 @@
+{
+  "benchmark": "ocrbench",
+  "category": "8. LMM OCR capability suite",
+  "metric": "OCRBench (/1000)",
+  "metric_note": "1 pt/item if gold substring of prediction; 5 sub-skills, score out of 1000.",
+  "hf_id": "echo840/OCRBench",
+  "config": null,
+  "split": "test",
+  "source": "https://arxiv.org/abs/2305.07895",
+  "ground_truth": {
+    "dataset": "IIIT5K",
+    "question": "what is written in the image?",
+    "question_type": "Regular Text Recognition",
+    "answer": [
+      "CENTRE"
+    ],
+    "image": "<JpegImageFile>"
+  }
+}

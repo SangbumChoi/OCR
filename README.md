@@ -44,6 +44,14 @@ report/ results/ data/  # report, taxonomy, comparison table, benchmark/probe da
 robustness probe. The full landscape of OCR/document benchmark *types and metrics* is in
 [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md).
 
+**Inspect the benchmarks at a glance.** One representative sample (image + ground-truth label
++ metric note) per benchmark — across all taxonomy categories (VQA, KIE, tables, charts,
+formulas, end-to-end parsing) — lives under
+[`data/benchmarks/`](data/benchmarks/README.md), fetched with:
+```bash
+python scripts/fetch_benchmark_samples.py        # one sample image + sample.json each
+```
+
 ---
 
 ## Quick start
@@ -58,8 +66,8 @@ pip install -U pip && pip install -r requirements.txt
 Proves the whole pipeline works end-to-end before spending GPU time:
 ```bash
 python scripts/evaluate.py --model dummy-echo \
-  --benchmark data/benchmarks/smoke.jsonl --benchmark-name smoke \
-  --out /tmp/smoke --device cpu
+  --benchmark data/custom/custom.jsonl --benchmark-name custom \
+  --out /tmp/custom --device cpu
 python -m pytest tests/ -q          # metric unit tests
 ```
 

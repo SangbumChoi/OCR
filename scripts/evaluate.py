@@ -14,10 +14,10 @@ Evaluate one model on one benchmark:
         --benchmark data/benchmarks/docvqa.jsonl --benchmark-name docvqa \
         --out results/internvl3-1b/docvqa --limit 200
 
-Smoke test on CPU with the bundled toy benchmark + the dummy model:
+Smoke test on CPU with the bundled custom benchmark + the dummy model:
     python scripts/evaluate.py --model dummy-echo \
-        --benchmark data/benchmarks/smoke.jsonl --benchmark-name smoke \
-        --out /tmp/smoke --device cpu
+        --benchmark data/custom/custom.jsonl --benchmark-name custom \
+        --out /tmp/custom --device cpu
 """
 
 from __future__ import annotations

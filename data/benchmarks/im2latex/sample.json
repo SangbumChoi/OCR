@@ -1,0 +1,14 @@
+{
+  "benchmark": "im2latex",
+  "category": "7. Formula recognition",
+  "metric": "edit distance / BLEU / exact",
+  "metric_note": "Image->LaTeX; token accuracy, BLEU, normalized edit distance.",
+  "hf_id": "OleehyO/latex-formulas",
+  "config": "cleaned_formulas",
+  "split": "train",
+  "source": "https://github.com/OleehyO/TexTeller",
+  "ground_truth": {
+    "image": "<JpegImageFile>",
+    "latex_formula": "\\begin{align*}-\\div (y^{1-2m}\\nabla w)=0\\mbox{in}\\mathbb R^n\\times\\mathbb R_+;w\\big|_{y=0}=|u|\\end{align*}"
+  }
+}

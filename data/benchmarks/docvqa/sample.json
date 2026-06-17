@@ -1,0 +1,25 @@
+{
+  "benchmark": "docvqa",
+  "category": "3. Document VQA",
+  "metric": "ANLS",
+  "metric_note": "Average Normalized Levenshtein Similarity vs best gold; 0 below 0.5 similarity.",
+  "hf_id": "lmms-lab/DocVQA",
+  "config": "DocVQA",
+  "split": "validation",
+  "source": "https://arxiv.org/abs/2007.00398",
+  "ground_truth": {
+    "questionId": "49153",
+    "question": "What is the ‘actual’ value per 1000, during the year 1975?",
+    "question_types": [
+      "figure/diagram"
+    ],
+    "image": "<PngImageFile>",
+    "docId": 14465,
+    "ucsf_document_id": "pybv0228",
+    "ucsf_document_page_no": "81",
+    "answers": [
+      "0.28"
+    ],
+    "data_split": "val"
+  }
+}

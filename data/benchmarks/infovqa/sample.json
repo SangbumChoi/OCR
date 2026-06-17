@@ -1,0 +1,25 @@
+{
+  "benchmark": "infovqa",
+  "category": "3. Document VQA (infographics)",
+  "metric": "ANLS",
+  "metric_note": "ANLS; infographics need layout + numeric reasoning.",
+  "hf_id": "lmms-lab/DocVQA",
+  "config": "InfographicVQA",
+  "split": "validation",
+  "source": "https://arxiv.org/abs/2104.12756",
+  "ground_truth": {
+    "questionId": "98313",
+    "question": "Which social platform has heavy female audience?",
+    "answers": [
+      "pinterest"
+    ],
+    "answer_type": [
+      "single span"
+    ],
+    "image": "<JpegImageFile>",
+    "image_url": "https://blogs.constantcontact.com/wp-content/uploads/2019/03/Social-Media-Infographic.png",
+    "operation/reasoning": [],
+    "ocr": "['{\"PAGE\": [{\"BlockType\": \"PAGE\", \"Geometry\": {\"BoundingBox\": {\"Width\": 0.9994840025901794, \"Height\": 0.9997748732566833, \"Left\": 0.0, \"Top\": 0.0}, \"Polygon\": [{\"X\": 0.0, \"Y\": 0.0}, {\"X\": 0.9994840025901794, \"Y\": 0.0}, {\"X\": 0.9994840025901794, \"Y\": 0.9997748732566833}, {\"X\": 0.0, \"Y\": 0.9997748732566833}]}, \"Id\": \"fbb5849e-dd3e-4754-babd-db37239daac5\", \"Relationships\": [{\"Type\": \"CHILD\", \"Ids\": [\"8bac4655-0134-4152-8e4d-a2823cbf1567\", \"47bdf868-a54f-4a02-97d8-6e681552e6af\", \"00fa1f70-1974-459d-9001-0de1d872069c\", \"fb4cbbd6-7d70-41b1-98df-d1b16db1086f\", \"536a2068-668d-4e93-b664-3ad3f267430b\", \"0ebad1ac-d644-4a7f-852d-1af55ca9aaf4\", \"8a4b1f66-24c3-4b6b-bcb9-06647e18675d\", \"02bf98bc-5503-42fa-8b0b-35a91f8f94df\", \"e341e974-5237-44f1-b268-46e23871b5a0\", \"1ccc4165-49aa-4d18-927c-b4ac563f1fb8\", \"af8e2d5a-a49f-47e3-a806-dc4e69570136\", \"cf129412-5347-4007-8962-f489a69129de\", \"3a808e32-8f71-4065-b9e5-a58c6fb063cf\", \"2b880e9b-5d4c-4c0b-80be-13f385bf4017\", \"a5de903c-070a-4e61-ad03-77264a45a1ed\", \"f63ab67f-f4fb-488b-8612-3f812d5bfbd7\", \"d29b1ec2-1331-44be-b031-faf297586902\", \"f15a98fc-c8fa-4adc-87b3-e36de4925547\", \"8d4ae3a0-3827-4b27-93fe-6db1b1e3be40\", \"d89dd2c7-e20e-4bec-9976-b634213e3866\", \"14475c08-59b4-4fe6-a140-8d078e198c82\", \"d9022190-ce5b-41b4-a686-90c849405a07\", \"c94c23ed-9ead-4586-baf9-54e9e2aa2955\", \"1880768a-a31d-455c-9a2f-01ed15ffa3e1\", \"ddf976cc-9a95-4725-abbe-03b517c11701\", \"69effbea-d7e2-4dfa-92b9-7d7b08762322\", \"fac9bee6-0d20-42ef-b328-1803d9649c2e\", \"1912fffe-bb67-45f5-bb13-276038f7d103\", \"10d5b50b-658f-40f6-9467-bdea793de54e\", \"28071d89-f254-41dd-a90e-247d27aad64f\", \"67020968-8dcf-43cb-9e62-ada5d2d6ea87\", \"fc49f69d-62ce-406f-b428-445dabaf8512\", \"3a8db660-35dc-4899-963b-a0362dff3550\", \"4396dda4-7e61-4f20-b7e2-43fea10bf35a\", \"d48ba033-ab6a-46c3-b7ff-53c2f2561ea6\", \"e7a7f7db-4b73-4f8f-9797-0c7b3320cf2e\", \"9deaa308-4e37-4b64-94bb-0b653b94522d\", \"297de9ab-3188-49f8-8786-3ff778397c89\", \"c6988404-2758-4e78-b2bc-2cd88ab2fa43\", \"b078283f-3ed0-427b-b7c1-578b755e4cd5\", ",
+    "data_split": "val"
+  }
+}
