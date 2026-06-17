@@ -22,6 +22,34 @@ from .base import ModelAdapter
 from .registry import register
 
 
+def _patch_create_causal_mask_kwarg() -> None:
+    """PaddleOCR-VL's remote code calls ``create_causal_mask(inputs_embeds=...)`` but recent
+    transformers renamed the parameter to ``input_embeds``. Wrap it so both names work; applied
+    before the remote module is imported so its ``from ... import create_causal_mask`` binds the
+    shim. No-op if the installed transformers already accepts ``inputs_embeds``.
+    """
+    try:
+        import inspect
+
+        import transformers.masking_utils as mu
+
+        if getattr(mu.create_causal_mask, "_kwarg_shim", False):
+            return
+        if "inputs_embeds" in inspect.signature(mu.create_causal_mask).parameters:
+            return  # already compatible
+        _orig = mu.create_causal_mask
+
+        def _shim(*args, **kw):
+            if "inputs_embeds" in kw and "input_embeds" not in kw:
+                kw["input_embeds"] = kw.pop("inputs_embeds")
+            return _orig(*args, **kw)
+
+        _shim._kwarg_shim = True
+        mu.create_causal_mask = _shim
+    except Exception:
+        pass
+
+
 @dataclass
 class _PaddleOCRVL(ModelAdapter):
     family: str = "PaddleOCR-VL"
@@ -31,6 +59,8 @@ class _PaddleOCRVL(ModelAdapter):
     def load(self) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor
+
+        _patch_create_causal_mask_kwarg()  # remote code uses inputs_embeds=; tf renamed it
 
         self.processor = AutoProcessor.from_pretrained(
             self.hf_id, trust_remote_code=True
