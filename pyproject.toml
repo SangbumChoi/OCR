@@ -27,7 +27,10 @@ dependencies = [
 models = [
     "torch>=2.3.0",
     "torchvision>=0.18.0",
-    "transformers>=4.49.0",
+    # remote-code models (InternVL/Ovis/PaddleOCR-VL/H2OVL/Florence-2) ship code written for
+    # transformers 4.x; transformers 5.x breaks them (all_tied_weights_keys / forced_bos_token_id).
+    # 4.49 also covers GOT-OCR2 + SmolVLM(ImageTextToText). Pin <5 for a working remote-code sweep.
+    "transformers>=4.49,<5",
     "tokenizers>=0.20.0",
     "accelerate>=0.33.0",
     "datasets>=2.20.0",
