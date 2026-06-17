@@ -82,3 +82,14 @@ class SmolVLM256M(_SmolVLM):
 class SmolVLM500M(_SmolVLM):
     hf_id: str = "HuggingFaceTB/SmolVLM-500M-Instruct"
     param_count_m: float = 500.0
+
+
+@register("smoldocling-256m")
+@dataclass
+class SmolDocling256M(_SmolVLM):
+    # SmolVLM-256M fine-tuned for document conversion (emits structured "DocTags": layout,
+    # OCR, tables, formulas, charts). The smallest true document specialist in the pool;
+    # same Idefics3/AutoModelForVision2Seq interface as SmolVLM.
+    family: str = "SmolDocling"
+    hf_id: str = "ds4sd/SmolDocling-256M-preview"
+    param_count_m: float = 256.0

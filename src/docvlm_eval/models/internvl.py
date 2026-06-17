@@ -154,3 +154,11 @@ class InternVL2_5_1B(_InternVL):
 class InternVL3_1B(_InternVL):
     hf_id: str = "OpenGVLab/InternVL3-1B"
     param_count_m: float = 938.0
+
+
+@register("internvl2-1b")
+@dataclass
+class InternVL2_1B(_InternVL):
+    # older 1B (InternViT-300M + Qwen2-0.5B); good doc/OCR baseline within the family
+    hf_id: str = "OpenGVLab/InternVL2-1B"
+    param_count_m: float = 938.0

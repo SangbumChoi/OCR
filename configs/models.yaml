@@ -49,4 +49,47 @@ models:
     hf_id: PaddlePaddle/PaddleOCR-VL
     params_m: 900
     family: PaddleOCR-VL
-    role: document-parsing specialist (NaViT + ERNIE-4.5-0.3B)
+    role: document-parsing specialist (NaViT + ERNIE-4.5-0.3B), the "1.0" release
+
+  # ---- extended candidate pool (added per review) ----
+  - key: paddleocr-vl-1.5
+    hf_id: PaddlePaddle/PaddleOCR-VL-1.5
+    params_m: 900
+    family: PaddleOCR-VL
+    role: doc-parsing SOTA-tiny; +polygon localization/text-spotting/seal; OmniDocBench v1.5 ~94.5
+
+  - key: internvl2-1b
+    hf_id: OpenGVLab/InternVL2-1B
+    params_m: 938
+    family: InternVL
+    role: older 1B (InternViT-300M + Qwen2-0.5B); DocVQA 81.7 / OCRBench 754
+
+  - key: ovis2-1b
+    hf_id: AIDC-AI/Ovis2-1B
+    params_m: 1000
+    family: Ovis2
+    role: AIMv2-large + Qwen2.5-0.5B; strong OCR + table/chart extraction for size
+
+  - key: h2ovl-0.8b
+    hf_id: h2oai/h2ovl-mississippi-800m
+    params_m: 800
+    family: H2OVL-Mississippi
+    role: OCR/document specialist (InternVL-style); OCRBench 751
+
+  - key: smoldocling-256m
+    hf_id: ds4sd/SmolDocling-256M-preview
+    params_m: 256
+    family: SmolDocling
+    role: smallest true document specialist; emits structured DocTags (layout/OCR/tables/formulas)
+
+  - key: florence2-base
+    hf_id: microsoft/Florence-2-base
+    params_m: 230
+    family: Florence-2
+    role: task-token OCR/detection specialist (smaller Florence-2)
+
+# Notable ≤1B models documented in the report but not registered as adapters:
+#   InternVL3.5-1B (~1.1B, borderline), Moondream-0.5B (license unconfirmed),
+#   Donut ~0.2B / Pix2Struct-base ~0.3B / TrOCR ~0.3-0.6B (seq2seq, not chat VLMs).
+# Out of scope (>1B): MonkeyOCR-pro-1.2B, Kosmos-2.5 ~1.3B, dots.ocr ~1.7B,
+#   Janus-Pro-1B (~1.5B), Qwen2-VL-2B, Ovis2-2B, InternVL2.5/3.5-2B, H2OVL-2B.

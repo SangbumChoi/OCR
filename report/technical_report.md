@@ -72,6 +72,26 @@ I select for **architectural diversity within the <1B budget**, so the compariso
   them makes the **"recognition vs. reasoning" gap measurable** rather than asserted, and
   PaddleOCR-VL tests whether a parsing-first design transfers to QA.
 
+**Extended candidate pool (added after review).** The harness also registers six further
+sub-1B open-weight models so the comparison spans the current field, including a *version
+ablation* of the leading document specialist:
+
+| Model | Params | Components | Note |
+|-------|-------:|------------|------|
+| **PaddleOCR-VL-1.5** | ~0.9B | NaViT + ERNIE-4.5-0.3B | v1.5: +polygon localization / text-spotting / seal; OmniDocBench v1.5 ≈ **94.5** (SOTA-tiny) |
+| **InternVL2-1B** | ~0.94B | InternViT-300M + Qwen2-0.5B | older 1B; DocVQA 81.7 / OCRBench 754 — recipe baseline vs 2.5/3 |
+| **Ovis2-1B** | ~1.0B | AIMv2-large + Qwen2.5-0.5B | structural visual-text embedding; strong OCR (OCRBench ≈ 89/100) |
+| **H2OVL-Mississippi-0.8B** | 0.8B | InternVL-style + H2O-Danube | OCR/doc specialist (19M pairs); OCRBench 751 |
+| **SmolDocling-256M** | 0.26B | SmolVLM-256M base | smallest true *document* specialist; emits structured DocTags |
+| **Florence-2-base** | 0.23B | DaViT + BART enc-dec | smaller task-token sibling of Florence-2-large |
+
+Models documented but **not registered**: *InternVL3.5-1B* (~1.1B, borderline over budget),
+*Moondream-0.5B* (license unconfirmed via gated card), and the seq2seq specialists *Donut*
+(~0.2B), *Pix2Struct-base* (~0.3B), *TrOCR* (~0.3–0.6B) — strong but non-conversational, so
+they need task-specific harnessing rather than the shared VQA loop. **Out of <1B scope**
+(flagged for completeness): MonkeyOCR-pro-1.2B, Kosmos-2.5 (~1.3B), dots.ocr (~1.7B),
+Janus-Pro-1B (~1.5B, non-permissive license), Qwen2-VL-2B, Ovis2-2B, InternVL2.5/3.5-2B.
+
 > Architecture / pretraining / capability profiles for each model are in **Appendix A**.
 
 ### 2. Benchmark selection & design

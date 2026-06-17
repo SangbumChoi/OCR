@@ -17,9 +17,8 @@ from .base import ModelAdapter
 from .registry import register
 
 
-@register("florence2-large")
 @dataclass
-class Florence2Large(ModelAdapter):
+class _Florence2(ModelAdapter):
     family: str = "Florence-2"
     hf_id: str = "microsoft/Florence-2-large"
     param_count_m: float = 770.0
@@ -59,3 +58,17 @@ class Florence2Large(ModelAdapter):
             )
         text = self.processor.batch_decode(ids, skip_special_tokens=True)[0]
         return text.strip(), None
+
+
+@register("florence2-large")
+@dataclass
+class Florence2Large(_Florence2):
+    hf_id: str = "microsoft/Florence-2-large"
+    param_count_m: float = 770.0
+
+
+@register("florence2-base")
+@dataclass
+class Florence2Base(_Florence2):
+    hf_id: str = "microsoft/Florence-2-base"
+    param_count_m: float = 230.0

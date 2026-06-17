@@ -28,7 +28,16 @@ def register(key: str) -> Callable[[Type[ModelAdapter]], Type[ModelAdapter]]:
 def build_model(key: str, **kwargs) -> ModelAdapter:
     # Import adapters lazily so a missing optional dep (e.g. one model's custom code)
     # doesn't break the whole registry.
-    from . import internvl, smolvlm, llava_ov, got_ocr, florence2, paddleocr_vl  # noqa: F401
+    from . import (  # noqa: F401
+        internvl,
+        smolvlm,
+        llava_ov,
+        got_ocr,
+        florence2,
+        paddleocr_vl,
+        h2ovl,
+        ovis,
+    )
 
     if key not in _REGISTRY:
         raise KeyError(f"Unknown model '{key}'. Registered: {sorted(_REGISTRY)}")
@@ -36,6 +45,15 @@ def build_model(key: str, **kwargs) -> ModelAdapter:
 
 
 def list_models() -> list[str]:
-    from . import internvl, smolvlm, llava_ov, got_ocr, florence2, paddleocr_vl  # noqa: F401
+    from . import (  # noqa: F401
+        internvl,
+        smolvlm,
+        llava_ov,
+        got_ocr,
+        florence2,
+        paddleocr_vl,
+        h2ovl,
+        ovis,
+    )
 
     return sorted(_REGISTRY)

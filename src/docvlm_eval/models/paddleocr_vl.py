@@ -22,9 +22,8 @@ from .base import ModelAdapter
 from .registry import register
 
 
-@register("paddleocr-vl")
 @dataclass
-class PaddleOCRVL(ModelAdapter):
+class _PaddleOCRVL(ModelAdapter):
     family: str = "PaddleOCR-VL"
     hf_id: str = "PaddlePaddle/PaddleOCR-VL"
     param_count_m: float = 900.0
@@ -83,3 +82,20 @@ class PaddleOCRVL(ModelAdapter):
         )[0]
         conf = self._confidence_from_scores(out.scores, out.sequences, input_len)
         return text.strip(), conf
+
+
+@register("paddleocr-vl")
+@dataclass
+class PaddleOCRVL(_PaddleOCRVL):
+    # the 0.9B "1.0" release (NaViT encoder + ERNIE-4.5-0.3B)
+    hf_id: str = "PaddlePaddle/PaddleOCR-VL"
+    param_count_m: float = 900.0
+
+
+@register("paddleocr-vl-1.5")
+@dataclass
+class PaddleOCRVL15(_PaddleOCRVL):
+    # v1.5: adds irregular-shape (polygonal) localization, text spotting, seal recognition;
+    # SOTA on OmniDocBench v1.5 (~94.5 overall). Same backbone family as 1.0.
+    hf_id: str = "PaddlePaddle/PaddleOCR-VL-1.5"
+    param_count_m: float = 900.0
