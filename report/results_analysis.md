@@ -7,32 +7,47 @@ the flaws ("흠") found — split into **inference bugs**, **harness/scoring fla
 
 ## What actually ran (and what couldn't)
 
-This environment has **no GPU**. To get *real* numbers (and to surface real inference bugs) we
-installed CPU torch/transformers and ran the smallest models for real:
+This environment has **no GPU**. We installed CPU torch/transformers and attempted **every
+registered model** on CPU (`scripts/run_all_cpu.sh`, per-model 1500s budget) over the
+capability probe. Outcome:
 
-| Model | all_preview (16) | capability probe (6) | Note |
-|---|:---:|:---:|---|
-| dummy-echo | ✅ | ✅ | plumbing baseline (scores 0) |
-| **SmolVLM-256M** | ✅ real | ✅ real | runs on CPU |
-| **SmolVLM-500M** | ✅ real | ✅ real | runs on CPU |
-| Florence-2-base | ❌ | ❌ | **inference blocked** (see below) |
-| InternVL2/2.5/3-1B, Ovis2-1B, H2OVL, LLaVA-OV, GOT, PaddleOCR-VL(1.0/1.5), SmolDocling, Florence-2-large | ⏳ GPU | ⏳ GPU | too slow/large for this CPU box; run via `scripts/run_all.sh` on Colab/Kaggle |
+| Model | CPU result | Why |
+|---|:---:|---|
+| dummy-echo | ✅ | plumbing baseline |
+| **SmolVLM-256M** | ✅ real | runs (~5–10 s/sample) |
+| **SmolVLM-500M** | ✅ real | runs |
+| **SmolDocling-256M** | ✅ real | runs, but emits **DocTags** not answers → ~0 on VQA cells (interface mismatch, not incapacity) |
+| **GOT-OCR2.0** | ✅ real | runs (transcription; scores on read-off cells like the chart number) |
+| LLaVA-OneVision-0.5B | ⏳ **timeout** | works but **~8 min/sample** on CPU → exceeded budget at 3/6. Not broken — too slow |
+| InternVL2-1B / 2.5-1B / 3-1B | ❌ | `AttributeError: 'InternVLChatModel' has no attribute 'all_tied_weights_keys'` — remote code vs transformers 5.x |
+| Ovis2-1B | ❌ | remote-code (AIMv2) incompatible with transformers 5.x |
+| PaddleOCR-VL / -1.5 | ❌ | remote-code incompatible with transformers 5.x (`check_model_inputs` deprecation path) |
+| Florence-2-base / -large | ❌ | `Florence2LanguageConfig has no attribute 'forced_bos_token_id'` (remote code vs transformers 5.x) |
+| H2OVL-0.8B | ❌ | InternVL-style remote code, same transformers-5.x drift |
 
-The matrix runner stores per-model results and records a **run-status per model**, so failures
-are captured as data instead of aborting the sweep.
+The matrix runner stores per-model results + a **run-status**, so failures are captured as data.
+**Five models produced real CPU results** (`results/matrix_capability.md`); the rest are
+blocked by one of two causes below.
 
 ## A. Inference bugs (the "인퍼런스 안 되는 부분" — found via real runs)
 
 1. **`AutoModelForVision2Seq` removed in transformers 5.x** → SmolVLM/SmolDocling failed to
    load. **Fixed**: adapter now falls back to `AutoModelForImageTextToText`. (SmolVLM then ran
    16/16.)
-2. **Florence-2 remote code incompatible with transformers 5.x**:
-   `Florence2LanguageConfig object has no attribute 'forced_bos_token_id'` at generate.
-   **Not yet fixed** — it is upstream remote-code drift; options: pin `transformers<5` for
-   Florence, or patch the generation config. Recorded as a known-blocked model.
-3. **`run_matrix` matrix keyed by `answer_type` not `sample_id`** → NaN cells on the capability
-   probe (where axis≠id). **Fixed** (key by `sample_id`; aggregation now also cumulative across
-   separate runs).
+2. **`run_matrix` matrix keyed by `answer_type` not `sample_id`** → NaN cells on the capability
+   probe (where axis≠id). **Fixed** (key by `sample_id`; aggregation now cumulative across runs).
+3. **The big root cause — `trust_remote_code` models vs transformers 5.x.** The InternVL,
+   Ovis, PaddleOCR-VL, H2OVL and Florence-2 adapters all fail *inside the models' own
+   downloaded code*, which was written for transformers ≤4.x and breaks on the installed
+   5.12 (`all_tied_weights_keys`, `forced_bos_token_id`, `check_model_inputs`). This is not a
+   bug in our adapters (their class imports are clean on 5.x — verified) but a version drift.
+   **Fix (recommended, not applied here to keep SmolVLM's 5.x path):** pin
+   `pip install "transformers>=4.49,<5"` for these families — `requirements.txt`/`[models]`
+   already allow it; `scripts/run_all.sh` on a GPU box should use that pin. We did **not**
+   downgrade in this container because (a) it would not help the *other* blocker — CPU is far
+   too slow for 1B models (LLaVA-OV = 8 min/sample → a full sweep is many hours), and (b) the
+   SmolVLM family already runs on 5.x. So the correct environment for the 1B models is
+   **GPU + transformers 4.x**, documented for reproduction.
 
 ## B. Harness / scoring flaws (zeros that were NOT the model's fault)
 
