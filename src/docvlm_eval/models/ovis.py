@@ -36,6 +36,8 @@ class Ovis2_1B(ModelAdapter):
                 torch_dtype=getattr(torch, self.dtype),
                 multimodal_max_length=8192,
                 trust_remote_code=True,
+                # default is flash_attention_2 (CUDA-only); eager runs on CPU/any backend
+                attn_implementation="eager",
             )
             .eval()
             .to(self.device)
