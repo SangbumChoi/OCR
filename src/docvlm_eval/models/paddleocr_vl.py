@@ -99,3 +99,12 @@ class PaddleOCRVL15(_PaddleOCRVL):
     # SOTA on OmniDocBench v1.5 (~94.5 overall). Same backbone family as 1.0.
     hf_id: str = "PaddlePaddle/PaddleOCR-VL-1.5"
     param_count_m: float = 900.0
+
+
+@register("paddleocr-vl-1.6")
+@dataclass
+class PaddleOCRVL16(_PaddleOCRVL):
+    # v1.6: latest PaddleOCR-VL release. Needs a recent transformers
+    # (use_kernel_forward_from_hub) -> run in the separate env (scripts/run_paddleocr_env.sh).
+    hf_id: str = "PaddlePaddle/PaddleOCR-VL-1.6"
+    param_count_m: float = 900.0
