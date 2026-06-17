@@ -34,6 +34,9 @@ def normalize_text(s: str) -> str:
     s = re.sub(r"[^\w\s.%/-]", " ", s)
     s = re.sub(r"\b(a|an|the)\b", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
+    # strip surrounding punctuation (e.g. a trailing period from "Top-right.") while keeping
+    # internal decimals intact ("0.28" stays "0.28")
+    s = s.strip(" .,;:!?")
     return s
 
 

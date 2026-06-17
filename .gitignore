@@ -14,6 +14,9 @@ results/*
 !results/matrix_all_preview.json
 !results/matrix_capability.md
 !results/matrix_capability.json
+!results/matrix_probe.md
+!results/matrix_probe.json
+!results/probe_signals.json
 data/crawled/
 wandb/
 

@@ -63,7 +63,41 @@ This converts a vague question into measurable, falsifiable signals.
 
 ## Results (SmolVLM, CPU) — interpretation
 
-<!-- RESULTS -->
+Signal table (✅ = clears the shortcut control), from `scripts/analyze_probe_signals.py`:
+
+| model | S1 absolute | S2 relative | S3 tracking | C1 consistency | C2 anti-halluc | C3 disambig | C4 context-sens |
+|-------|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| SmolVLM-256M | ❌ (acc .25, bias) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| SmolVLM-500M | ✅ (acc .75) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+**What the *controls* exposed (the whole point):**
+
+- **S2 — the constant-answer trap.** Both models answer *"above"* for **every** layout, so they
+  score **correct on the counterfactual** (total-at-top) and **wrong on the normal** one →
+  `prior_reliance_gap = −1.0`. A naive test using only the counterfactual would have *falsely*
+  certified "relative-position understanding". The control proves the model isn't perceiving
+  position at all — it emits a fixed token. **This single result justifies the whole
+  control-paired methodology.**
+- **S1 — absolute spatial emerges with size.** 256M answers *"top-left"* for all four quadrants
+  (position bias, acc .25 = chance); **500M reaches acc .75 with 3 distinct answers → PASS.**
+  (A trailing-period scoring bug initially masked 500M's success — fixed; see results_analysis.)
+- **C1 — rubber-stamping caught.** Both say *"Yes, it's consistent"* even when the total is
+  deliberately wrong → the **inconsistent control** flips it to FAIL. No real cross-region
+  arithmetic verification.
+- **C2 — hallucination caught.** Asked for a non-existent discount, 256M invents *"$20.50"*,
+  500M invents *"0"* — neither abstains with *"none"* → both FAIL (honesty-under-absence gap).
+- **C4 — no context sensitivity.** Each model anchors to one table row regardless of the
+  *"Bill to"* name (256M always Bob's $45; 500M doesn't flip correctly either) → the answer
+  does **not** track the only relevant token → not using context.
+- **C3 — the one real pass.** Both correctly return the **Total** (not the look-alike
+  Subtotal): local field disambiguation works.
+
+**Bottom line:** at ≤0.5B, document VLMs are **literal readers with local disambiguation** but
+lack **spatial reasoning (relative position, grounding), cross-region verification, honesty
+under absence, and context sensitivity**. Crucially, **most of these gaps are invisible to
+single-example accuracy** and only surface under the paired controls — which is exactly the
+signal framework this probe provides. The same probe + analyzer will rank the 1B / spotting
+models on a GPU run with no code change.
 
 ## Extending to all models
 Run any model with `python scripts/run_matrix.py --models <m> --benchmark

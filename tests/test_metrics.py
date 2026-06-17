@@ -58,7 +58,7 @@ def test_exact_and_ocrbench():
 
 
 def test_normalize_text():
-    assert normalize_text("The Total: $1,200.") == "total 1200."  # articles/$/commas stripped
+    assert normalize_text("The Total: $1,200.") == "total 1200"  # articles/$/commas/trailing-dot stripped
 
 
 def test_ece_perfectly_calibrated():

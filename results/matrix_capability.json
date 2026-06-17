@@ -1,11 +1,10 @@
 {
   "status": {
-    "internvl2-1b": "FAIL: AttributeError: 'InternVLChatModel' object has no attribute 'all_tied_weights_keys'",
+    "smolvlm-256m": "ok",
+    "smolvlm-500m": "ok",
     "dummy-echo": "ok (cached)",
     "got-ocr2": "ok (cached)",
-    "smolvlm-256m": "ok (cached)",
-    "smoldocling-256m": "ok (cached)",
-    "smolvlm-500m": "ok (cached)"
+    "smoldocling-256m": "ok (cached)"
   },
   "scores": {
     "dummy-echo": {
