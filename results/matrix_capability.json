@@ -1,9 +1,19 @@
 {
   "status": {
-    "smolvlm-256m": "ok",
-    "smolvlm-500m": "ok"
+    "smolvlm-500m": "ok",
+    "dummy-echo": "ok (cached)",
+    "smolvlm-256m": "ok (cached)",
+    "smoldocling-256m": "ok (cached)"
   },
   "scores": {
+    "dummy-echo": {
+      "cap_text": 0.0,
+      "cap_kie": 0.0,
+      "cap_integ_sum": 0.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 0.0,
+      "cap_ground": 0.0
+    },
     "smolvlm-256m": {
       "cap_text": 0.9286,
       "cap_kie": 0.9412,
@@ -11,6 +21,14 @@
       "cap_integ_rel": 0.0,
       "cap_chart": 1.0,
       "cap_ground": 0.0
+    },
+    "smoldocling-256m": {
+      "cap_text": 0.0,
+      "cap_kie": 0.9412,
+      "cap_integ_sum": 0.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 0.0,
+      "cap_ground": 0.0221
     },
     "smolvlm-500m": {
       "cap_text": 0.9286,
