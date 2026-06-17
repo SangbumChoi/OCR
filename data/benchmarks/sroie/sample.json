@@ -1,8 +1,9 @@
 {
   "benchmark": "sroie",
+  "name": "SROIE",
   "category": "4. Key Information Extraction (receipts)",
-  "metric": "field-level F1",
-  "metric_note": "Exact match per field (company/date/address/total), micro-F1.",
+  "metric": "field F1",
+  "purpose": "Extract 4 fields (company/date/address/total) from receipts; exact field match.",
   "hf_id": "priyank-m/SROIE_2019_text_recognition",
   "config": null,
   "split": "train",

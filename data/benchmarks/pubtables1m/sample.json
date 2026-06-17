@@ -1,0 +1,16 @@
+{
+  "benchmark": "pubtables1m",
+  "name": "PubTables-1M",
+  "category": "5. Table recognition + detection",
+  "metric": "GriTS / mAP",
+  "purpose": "Large-scale table detection + structure recognition; GriTS over cell grids (topology).",
+  "hf_id": "bsmock/pubtables-1m",
+  "config": null,
+  "split": "train",
+  "source": "https://github.com/microsoft/table-transformer",
+  "ground_truth": {
+    "xml": "<bytes>",
+    "__key__": "PMC1064082_1",
+    "__url__": "hf://datasets/bsmock/pubtables-1m@35b1c097807e0b07ec5313879b85956b7b3890db/PubTables-1M-Detection_Annotations_Test.tar.gz"
+  }
+}

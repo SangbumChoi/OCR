@@ -1,0 +1,20 @@
+{
+  "benchmark": "pope",
+  "name": "POPE",
+  "category": "10. Hallucination",
+  "metric": "F1 / accuracy",
+  "purpose": "Object-existence polling (yes/no) to quantify hallucination; precision/recall/F1.",
+  "hf_id": "lmms-lab/POPE",
+  "config": null,
+  "split": "test",
+  "source": "https://arxiv.org/abs/2305.10355",
+  "ground_truth": {
+    "id": "0",
+    "question_id": "1",
+    "question": "Is there a snowboard in the image?",
+    "answer": "yes",
+    "image_source": "COCO_val2014_000000310196",
+    "image": "<JpegImageFile>",
+    "category": "adversarial"
+  }
+}

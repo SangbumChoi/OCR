@@ -1,8 +1,9 @@
 {
   "benchmark": "docvqa",
+  "name": "DocVQA",
   "category": "3. Document VQA",
-  "metric": "ANLS",
-  "metric_note": "Average Normalized Levenshtein Similarity vs best gold; 0 below 0.5 similarity.",
+  "metric": "anls",
+  "purpose": "Answer questions about scanned business documents; reading + layout + key-value extraction.",
   "hf_id": "lmms-lab/DocVQA",
   "config": "DocVQA",
   "split": "validation",

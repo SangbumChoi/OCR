@@ -1,7 +1,9 @@
 {
   "benchmark": "recognition_fullpage",
+  "name": "Printed full-page (illustrative)",
   "category": "1. Full-page / printed text recognition",
   "metric": "CER / WER / NED",
+  "purpose": "Transcribe a full printed page exactly; measures end-to-end OCR fidelity / typo rate.",
   "metric_note": "Character/word error rate or normalized edit distance vs transcript.",
   "source": "SYNTHETIC illustrative sample (rendered locally; not an official benchmark)",
   "ground_truth": {

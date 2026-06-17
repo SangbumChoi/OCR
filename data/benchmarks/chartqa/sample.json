@@ -1,8 +1,9 @@
 {
   "benchmark": "chartqa",
+  "name": "ChartQA",
   "category": "6. Chart understanding",
   "metric": "relaxed_acc",
-  "metric_note": "Relaxed accuracy: numeric within 5% rel. error, else exact match.",
+  "purpose": "Read + reason (compare/arithmetic) over bar/line/pie charts; relaxed numeric accuracy.",
   "hf_id": "lmms-lab/ChartQA",
   "config": null,
   "split": "test",

@@ -1,8 +1,9 @@
 {
   "benchmark": "im2latex",
+  "name": "im2latex (latex-formulas)",
   "category": "7. Formula recognition",
-  "metric": "edit distance / BLEU / exact",
-  "metric_note": "Image->LaTeX; token accuracy, BLEU, normalized edit distance.",
+  "metric": "edit dist / BLEU",
+  "purpose": "Image -> LaTeX for printed formulas; token accuracy / normalized edit distance.",
   "hf_id": "OleehyO/latex-formulas",
   "config": "cleaned_formulas",
   "split": "train",

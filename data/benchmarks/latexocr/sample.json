@@ -1,0 +1,15 @@
+{
+  "benchmark": "latexocr",
+  "name": "LaTeX_OCR",
+  "category": "7. Formula recognition",
+  "metric": "edit dist / BLEU / exact",
+  "purpose": "Image -> LaTeX rendering; exact-match + edit-distance on the token sequence.",
+  "hf_id": "linxy/LaTeX_OCR",
+  "config": "default",
+  "split": "train",
+  "source": "https://huggingface.co/datasets/linxy/LaTeX_OCR",
+  "ground_truth": {
+    "image": "<PngImageFile>",
+    "text": "d s ^ { 2 } = ( 1 - { \\frac { q c o s \\theta } { r } } ) ^ { \\frac { 2 } { 1 + \\alpha ^ { 2 } } } \\lbrace d r ^ { 2 } + r ^ { 2 } d \\theta ^ { 2 } + r ^ { 2 } s i n ^ { 2 } \\theta d \\varphi ^ { 2 } \\rbrace - { \\frac { d t ^ { 2 } } { ( 1 - { \\frac { q c o s \\theta } { r } } ) ^ { \\frac { 2 } { 1 + \\alpha ^ { 2 } } } } } ."
+  }
+}

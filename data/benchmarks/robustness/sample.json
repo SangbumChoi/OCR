@@ -1,7 +1,9 @@
 {
   "benchmark": "robustness",
+  "name": "Robustness probe (derived)",
   "category": "10. Reliability / robustness / calibration",
   "metric": "ANLS retention + ECE",
+  "purpose": "Stability under capture degradations + terminology paraphrase; confidence calibration.",
   "metric_note": "score(degraded)/score(clean) per perturbation; ECE for confidence calibration.",
   "source": "DERIVED from data/benchmarks/docvqa (downscale+blur+JPEG q18); see scripts/build_robustness_set.py",
   "ground_truth": {

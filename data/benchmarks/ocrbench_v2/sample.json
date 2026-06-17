@@ -1,0 +1,26 @@
+{
+  "benchmark": "ocrbench_v2",
+  "name": "OCRBench v2",
+  "category": "8. LMM OCR suite",
+  "metric": "per-task acc",
+  "purpose": "Extended OCR suite (~10k items, 31 scenarios) incl. fine-grained spotting & structure.",
+  "hf_id": "ling99/OCRBench_v2",
+  "config": null,
+  "split": "test",
+  "source": "https://github.com/Yuliang-Liu/MultimodalOCR",
+  "ground_truth": {
+    "id": 0,
+    "dataset_name": "rico",
+    "question": "What is the wrong answer 2?",
+    "type": "APP agent en",
+    "answers": [
+      "enabled",
+      "on"
+    ],
+    "image": "<JpegImageFile>",
+    "eval": "None",
+    "bbox": null,
+    "bbox_list": null,
+    "content": null
+  }
+}

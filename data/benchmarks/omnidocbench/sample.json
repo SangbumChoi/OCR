@@ -1,8 +1,9 @@
 {
   "benchmark": "omnidocbench",
-  "category": "9. End-to-end page parsing",
-  "metric": "edit distance / TEDS / CDM",
-  "metric_note": "Per-element NED (text), TEDS (tables), CDM (formulas), reading-order edit dist.",
+  "name": "OmniDocBench",
+  "category": "9. End-to-end parsing",
+  "metric": "edit dist / TEDS / CDM",
+  "purpose": "Whole-page -> structured output across text/formula/table/reading-order; per-element scoring.",
   "hf_id": "opendatalab/OmniDocBench",
   "config": null,
   "split": "train",

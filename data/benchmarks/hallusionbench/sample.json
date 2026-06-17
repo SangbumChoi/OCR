@@ -1,0 +1,25 @@
+{
+  "benchmark": "hallusionbench",
+  "name": "HallusionBench",
+  "category": "10. Hallucination",
+  "metric": "acc + consistency",
+  "purpose": "Visual-illusion vs knowledge-hallucination yes/no pairs; consistency-aware scoring.",
+  "hf_id": "lmms-lab/HallusionBench",
+  "config": null,
+  "split": "image",
+  "source": "https://arxiv.org/abs/2310.14566",
+  "ground_truth": {
+    "category": "VS",
+    "subcategory": "chart",
+    "visual_input": "1",
+    "set_id": "0",
+    "figure_id": "1",
+    "sample_note": "import",
+    "question_id": "0",
+    "question": "Is China, Hongkong SAR, the leading importing country of gold, silverware, and jewelry with the highest import value in 2018?",
+    "gt_answer_details": "Switzerland is the leading importing country of gold, silverware, and jewelry with the highest import value in 2018?",
+    "gt_answer": "0",
+    "filename": "./VS/chart/0_1.png",
+    "image": "<PngImageFile>"
+  }
+}

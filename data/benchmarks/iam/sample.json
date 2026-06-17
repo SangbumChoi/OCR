@@ -1,0 +1,15 @@
+{
+  "benchmark": "iam",
+  "name": "IAM-line",
+  "category": "1. Text recognition",
+  "metric": "CER / WER / NED",
+  "purpose": "Recognize handwritten English text lines; the classic handwriting-recognition fidelity test.",
+  "hf_id": "Teklia/IAM-line",
+  "config": null,
+  "split": "test",
+  "source": "https://fki.tic.heia-fr.ch/databases/iam-handwriting-database",
+  "ground_truth": {
+    "image": "<JpegImageFile>",
+    "text": "assuredness \" Bella Bella Marie \" ( Parlophone ) , a lively song that changes tempo mid-way ."
+  }
+}

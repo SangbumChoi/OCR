@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Download ONE representative sample (image + ground-truth label + metric note) for each
-document-understanding benchmark in the taxonomy, so the suite is inspectable at a glance.
+"""Download ONE representative sample (image + ground-truth + metric + PURPOSE) for every
+benchmark in configs/benchmark_catalog.yaml, so the whole suite is inspectable at a glance.
 
-For every benchmark it writes:
-    data/benchmarks/<key>/sample.png     # the image
-    data/benchmarks/<key>/sample.json    # GT label + metric + source ("what & how it's scored")
+For each benchmark with an `hf_id` it writes:
+    data/benchmarks/<key>/sample.png     # the image (if the record has one)
+    data/benchmarks/<key>/sample.json    # GT + metric + PURPOSE ("what it measures") + source
 
-Uses HF `datasets` streaming, so it pulls a single example without downloading the full set.
-Network-dependent datasets that fail (gated/moved) are skipped with a warning; re-run later.
+Catalog entries without an `hf_id` are documented-only (not cleanly streamable from HF); they
+are listed in data/benchmarks/README.md and, where relevant, realised by
+scripts/make_synthetic_samples.py.
+
+Uses HF `datasets` streaming (one example, no full download). Failures are skipped + reported.
 
     python scripts/fetch_benchmark_samples.py
     python scripts/fetch_benchmark_samples.py --only docvqa chartqa
+    python scripts/fetch_benchmark_samples.py --refresh-meta   # update purpose/labels, no re-download
 """
 
 from __future__ import annotations
@@ -21,60 +25,18 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "benchmarks"
+CATALOG = ROOT / "configs" / "benchmark_catalog.yaml"
 
-# (key, hf_repo, config, split, category, metric, metric_note, source_url)
-REGISTRY = [
-    ("docvqa", "lmms-lab/DocVQA", "DocVQA", "validation",
-     "3. Document VQA", "ANLS",
-     "Average Normalized Levenshtein Similarity vs best gold; 0 below 0.5 similarity.",
-     "https://arxiv.org/abs/2007.00398"),
-    ("infovqa", "lmms-lab/DocVQA", "InfographicVQA", "validation",
-     "3. Document VQA (infographics)", "ANLS",
-     "ANLS; infographics need layout + numeric reasoning.",
-     "https://arxiv.org/abs/2104.12756"),
-    ("textvqa", "lmms-lab/textvqa", None, "validation",
-     "3. Scene-text VQA", "VQA accuracy",
-     "VQA acc = min(#humans_agree/3, 1) over 10 answers.",
-     "https://arxiv.org/abs/1904.08920"),
-    ("chartqa", "lmms-lab/ChartQA", None, "test",
-     "6. Chart understanding", "relaxed_acc",
-     "Relaxed accuracy: numeric within 5% rel. error, else exact match.",
-     "https://arxiv.org/abs/2203.10244"),
-    ("ocrbench", "echo840/OCRBench", None, "test",
-     "8. LMM OCR capability suite", "OCRBench (/1000)",
-     "1 pt/item if gold substring of prediction; 5 sub-skills, score out of 1000.",
-     "https://arxiv.org/abs/2305.07895"),
-    ("funsd", "nielsr/funsd-layoutlmv3", None, "test",
-     "4. Key Information Extraction (forms)", "entity-level F1",
-     "Entity F1 (type+value exact match) + relation/linking F1 for key->value.",
-     "https://arxiv.org/abs/1905.13538"),
-    ("cord", "naver-clova-ix/cord-v2", None, "test",
-     "4. Key Information Extraction (receipts)", "entity-level F1",
-     "Field/entity F1 over ~30 fine-grained receipt fields.",
-     "https://github.com/clovaai/cord"),
-    ("sroie", "priyank-m/SROIE_2019_text_recognition", None, "train",
-     "4. Key Information Extraction (receipts)", "field-level F1",
-     "Exact match per field (company/date/address/total), micro-F1.",
-     "https://rrc.cvc.uab.es/?ch=13"),
-    ("pubtabnet", "apoidea/pubtabnet-html", None, "validation",
-     "5. Table recognition", "TEDS / GriTS",
-     "Tree-Edit-Distance Similarity on HTML table tree (structure + cells).",
-     "https://github.com/ibm-aur-nlp/PubTabNet"),
-    ("im2latex", "OleehyO/latex-formulas", "cleaned_formulas", "train",
-     "7. Formula recognition", "edit distance / BLEU / exact",
-     "Image->LaTeX; token accuracy, BLEU, normalized edit distance.",
-     "https://github.com/OleehyO/TexTeller"),
-    ("omnidocbench", "opendatalab/OmniDocBench", None, "train",
-     "9. End-to-end page parsing", "edit distance / TEDS / CDM",
-     "Per-element NED (text), TEDS (tables), CDM (formulas), reading-order edit dist.",
-     "https://arxiv.org/abs/2412.07626"),
-]
+
+def load_catalog() -> list[dict]:
+    return yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["benchmarks"]
 
 
 def _find_image(ex: dict):
-    """Return the first PIL image found in a record (under 'image' or any image-like value)."""
     from PIL import Image
 
     if "image" in ex and isinstance(ex["image"], Image.Image):
@@ -88,7 +50,6 @@ def _find_image(ex: dict):
 
 
 def _json_safe(ex: dict) -> dict:
-    """Drop the image, keep the rest as a JSON-serialisable GT label (truncated)."""
     out = {}
     for k, v in ex.items():
         try:
@@ -99,56 +60,77 @@ def _json_safe(ex: dict) -> dict:
     return out
 
 
-def fetch_one(entry, force: bool = False) -> bool:
-    from datasets import load_dataset
+def _meta(e: dict, ground_truth: dict | None = None) -> dict:
+    label = {
+        "benchmark": e["key"],
+        "name": e.get("name", e["key"]),
+        "category": e.get("category", "-"),
+        "metric": e.get("metric", "-"),
+        "purpose": e.get("purpose", "-"),
+        "hf_id": e.get("hf_id"),
+        "config": e.get("config"),
+        "split": e.get("split"),
+        "source": e.get("source", "-"),
+    }
+    if ground_truth is not None:
+        label["ground_truth"] = ground_truth
+    return label
 
-    key, repo, cfg, split, cat, metric, note, src = entry
+
+def fetch_one(e: dict, force: bool = False, refresh_meta: bool = False) -> str:
+    key = e["key"]
+    if not e.get("hf_id"):
+        return "documented"  # no HF source; handled by catalog / synthetic generator
     folder = OUT / key
     img_path = folder / "sample.png"
+    json_path = folder / "sample.json"
+
+    # refresh metadata (purpose/category/...) without re-downloading
     if img_path.exists() and not force:
-        print(f"[skip] {key}: already present")
-        return True
+        if json_path.exists():
+            try:
+                old = json.loads(json_path.read_text(encoding="utf-8"))
+                gt = old.get("ground_truth")
+            except Exception:
+                gt = None
+        else:
+            gt = None
+        json_path.write_text(json.dumps(_meta(e, gt), indent=2, ensure_ascii=False), encoding="utf-8")
+        return "refreshed" if refresh_meta else "skip"
+
+    from datasets import load_dataset
+
     try:
-        ds = load_dataset(repo, cfg, split=split, streaming=True)
+        ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
         ex = dict(next(iter(ds)))
     except Exception as exc:
-        print(f"[fail] {key}: {type(exc).__name__}: {str(exc)[:140]}")
-        return False
+        print(f"[fail] {key}: {type(exc).__name__}: {str(exc)[:120]}")
+        return "fail"
 
     img = _find_image(ex)
     folder.mkdir(parents=True, exist_ok=True)
     if img is not None:
         img.convert("RGB").save(img_path)
-    label = {
-        "benchmark": key,
-        "category": cat,
-        "metric": metric,
-        "metric_note": note,
-        "hf_id": repo,
-        "config": cfg,
-        "split": split,
-        "source": src,
-        "ground_truth": _json_safe(ex),
-    }
-    (folder / "sample.json").write_text(
-        json.dumps(label, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    json_path.write_text(json.dumps(_meta(e, _json_safe(ex)), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[ok]   {key}: image={'yes' if img is not None else 'NONE'} -> {folder}")
-    return True
+    return "ok"
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--only", nargs="+", help="subset of benchmark keys")
     p.add_argument("--force", action="store_true", help="re-download even if present")
+    p.add_argument("--refresh-meta", action="store_true", help="rewrite purpose/labels without re-download")
     args = p.parse_args()
 
-    entries = [e for e in REGISTRY if not args.only or e[0] in args.only]
-    ok = sum(fetch_one(e, force=args.force) for e in entries)
-    print(f"\n[done] {ok}/{len(entries)} benchmarks fetched -> {OUT}")
-    # avoid a known pyarrow/threading teardown abort by exiting hard after flush
+    entries = [e for e in load_catalog() if not args.only or e["key"] in args.only]
+    stats: dict[str, int] = {}
+    for e in entries:
+        r = fetch_one(e, force=args.force, refresh_meta=args.refresh_meta)
+        stats[r] = stats.get(r, 0) + 1
+    print(f"\n[done] {stats} over {len(entries)} catalog entries -> {OUT}")
     sys.stdout.flush()
-    os._exit(0)
+    os._exit(0)  # avoid pyarrow/threading teardown abort
 
 
 if __name__ == "__main__":

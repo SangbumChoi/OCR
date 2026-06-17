@@ -1,0 +1,160 @@
+{
+  "benchmark": "ocrvqa",
+  "name": "OCR-VQA",
+  "category": "3. Document VQA",
+  "metric": "exact",
+  "purpose": "QA over book-cover images; reading titles/authors/edition from text-heavy images.",
+  "hf_id": "howard-hou/OCR-VQA",
+  "config": null,
+  "split": "test",
+  "source": "https://ocr-vqa.github.io/",
+  "ground_truth": {
+    "image": "<JpegImageFile>",
+    "image_id": "000731969X",
+    "questions": [
+      "Who wrote this book?",
+      "What is the title of this book?",
+      "What type of book is this?",
+      "Is this book related to Humor & Entertainment?",
+      "Is this book related to Travel?"
+    ],
+    "answers": [
+      "The Times Mind Games",
+      "The Times Killer Su Doku 6",
+      "Humor & Entertainment",
+      "Yes",
+      "No"
+    ],
+    "ocr_tokens": [
+      "the",
+      "",
+      "times",
+      "book",
+      "sul",
+      "doku",
+      "the",
+      "doku",
+      "bestselling",
+      "deadliest",
+      "killer",
+      "iseries"
+    ],
+    "ocr_info": [
+      {
+        "word": "the",
+        "bounding_box": {
+          "width": 0.1303,
+          "height": 0.036,
+          "top_left_x": 0.0758,
+          "top_left_y": 0.036
+        }
+      },
+      {
+        "word": "",
+        "bounding_box": {
+          "width": 0.1091,
+          "height": 0.028,
+          "top_left_x": 0.2273,
+          "top_left_y": 0.04
+        }
+      },
+      {
+        "word": "times",
+        "bounding_box": {
+          "width": 0.1788,
+          "height": 0.032,
+          "top_left_x": 0.3424,
+          "top_left_y": 0.04
+        }
+      },
+      {
+        "word": "book",
+        "bounding_box": {
+          "width": 0.1455,
+          "height": 0.036,
+          "top_left_x": 0.6848,
+          "top_left_y": 0.04
+        }
+      },
+      {
+        "word": "sul",
+        "bounding_box": {
+          "width": 0.297,
+          "height": 0.132,
+          "top_left_x": 0.0606,
+          "top_left_y": 0.242
+        }
+      },
+      {
+        "word": "doku",
+        "bounding_box": {
+          "width": 0.5939,
+          "height": 0.126,
+          "top_left_x": 0.3303,
+          "top_left_y": 0.244
+        }
+      },
+      {
+        "word": "the",
+        "bounding_box": {
+          "width": 0.0758,
+          "height": 0.022,
+          "top_left_x": 0.0333,
+          "top_left_y": 0.882
+        }
+      },
+      {
+        "word": "doku",
+        "bounding_box": {
+          "width": 0.1,
+          "height": 0.026,
+          "top_left_x": 0.7273,
+          "top_left_y": 0.882
+        }
+      },
+      {
+        "word": "bestselling",
+        "bounding_box": {
+          "width": 0.2303,
+          "height": 0.034,
+          "top_left_x": 0.1121,
+          "top_left_y": 0.878
+        }
+      },
+      {
+        "word": "deadliest",
+        "bounding_box": {
+          "width": 0.1788,
+          "height": 0.026,
+          "top_left_x": 0.3545,
+          "top_left_y": 0.882
+        }
+      },
+      {
+        "word": "killer",
+        "bounding_box": {
+          "width": 0.0909,
+          "height": 0.026,
+          "top_left_x": 0.5606,
+          "top_left_y": 0.882
+        }
+      },
+      {
+        "word": "iseries",
+        "bounding_box": {
+          "width": 0.1212,
+          "height": 0.026,
+          "top_left_x": 0.8364,
+          "top_left_y": 0.882
+        }
+      }
+    ],
+    "title": "The Times Killer Su Doku 6",
+    "authorName": "The Times Mind Games",
+    "genre": "Humor & Entertainment",
+    "image_width": 330,
+    "image_height": 500,
+    "image_url": "http://ecx.images-amazon.com/images/I/41hXJ1W0l7L.jpg",
+    "set_name": "test"
+  }
+}

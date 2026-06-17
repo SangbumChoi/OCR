@@ -1,0 +1,23 @@
+{
+  "benchmark": "stvqa",
+  "name": "ST-VQA",
+  "category": "3. Scene-text VQA",
+  "metric": "anls",
+  "purpose": "VQA requiring reading scene text; origin of the ANLS metric.",
+  "hf_id": "lmms-lab/ST-VQA",
+  "config": null,
+  "split": "test",
+  "source": "https://arxiv.org/abs/1905.13648",
+  "ground_truth": {
+    "set_name": "test",
+    "file_name": "2346109.jpg",
+    "question": "What is printed on the top line of the hoodie?",
+    "image_width": "500",
+    "dataset": "VisualGenome/1",
+    "question_tokens": "['What', 'is', 'printed', 'on', 'the', 'top', 'line', 'of', 'the', 'hoodie', '?']",
+    "image_height": "329",
+    "file_path": "VisualGenome/1/2346109.jpg",
+    "question_id": "3",
+    "image": "<JpegImageFile>"
+  }
+}

@@ -1,8 +1,9 @@
 {
   "benchmark": "infovqa",
-  "category": "3. Document VQA (infographics)",
-  "metric": "ANLS",
-  "metric_note": "ANLS; infographics need layout + numeric reasoning.",
+  "name": "InfographicVQA",
+  "category": "3. Document VQA",
+  "metric": "anls",
+  "purpose": "QA over infographics; joint layout + graphics + text + basic arithmetic reasoning.",
   "hf_id": "lmms-lab/DocVQA",
   "config": "InfographicVQA",
   "split": "validation",

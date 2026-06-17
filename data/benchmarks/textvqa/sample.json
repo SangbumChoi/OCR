@@ -1,8 +1,9 @@
 {
   "benchmark": "textvqa",
+  "name": "TextVQA",
   "category": "3. Scene-text VQA",
-  "metric": "VQA accuracy",
-  "metric_note": "VQA acc = min(#humans_agree/3, 1) over 10 answers.",
+  "metric": "exact",
+  "purpose": "Answer questions that require reading text in natural images.",
   "hf_id": "lmms-lab/textvqa",
   "config": null,
   "split": "validation",

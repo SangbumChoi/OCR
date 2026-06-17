@@ -1,8 +1,9 @@
 {
   "benchmark": "ocrbench",
-  "category": "8. LMM OCR capability suite",
-  "metric": "OCRBench (/1000)",
-  "metric_note": "1 pt/item if gold substring of prediction; 5 sub-skills, score out of 1000.",
+  "name": "OCRBench",
+  "category": "8. LMM OCR suite",
+  "metric": "ocrbench",
+  "purpose": "1000-item OCR capability probe across 5 sub-skills (recog / scene-VQA / doc-VQA / KIE / HME).",
   "hf_id": "echo840/OCRBench",
   "config": null,
   "split": "test",
