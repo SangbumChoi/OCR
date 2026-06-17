@@ -13,3 +13,8 @@ results/*
 data/crawled/
 wandb/
 
+
+# pip editable-install build metadata
+*.egg-info/
+build/
+dist/

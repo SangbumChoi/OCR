@@ -19,6 +19,7 @@ def register(key: str) -> Callable[[Type[ModelAdapter]], Type[ModelAdapter]]:
         if key in _REGISTRY:
             raise ValueError(f"Duplicate model key: {key}")
         cls.key = key
+        cls._registry_key = key  # read back in ModelAdapter.__post_init__ (field default shadows cls.key)
         _REGISTRY[key] = cls
         return cls
 

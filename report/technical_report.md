@@ -217,8 +217,8 @@ axis — **InfoVQA / layout-grounded numeric reasoning** (Gap A) — while harde
 ### 2. Improvement strategy (concrete, justified)
 
 A staged plan, each step tied to a gap and to literature, all runnable on a single T4 — and
-backed by the **LoRA fine-tuning scaffold already in this repo** (`src/ocr_ft`, `scripts/
-finetune_lora.py`).
+backed by the **LoRA fine-tuning subpackage already in this repo**
+(`src/docvlm_eval/finetune`, `scripts/finetune_lora.py`).
 
 **Step 1 — Targeted LoRA SFT on layout-reasoning data (attacks Gap A).**
 Parameter-efficient **LoRA** (Hu et al., 2021) / **QLoRA** (Dettmers et al., 2023) on the LM +

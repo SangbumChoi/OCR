@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import argparse
 import json
 from pathlib import Path
@@ -8,7 +12,7 @@ from typing import Dict, List
 import torch
 from tqdm import tqdm
 
-from ocr_ft.modeling import ModelLoadConfig, infer_one_deepseek_ocr, load_deepseek_ocr_model_and_tokenizer
+from docvlm_eval.finetune.modeling import ModelLoadConfig, infer_one_deepseek_ocr, load_deepseek_ocr_model_and_tokenizer
 
 
 def _iter_images(examples_dir: Path) -> List[Path]:

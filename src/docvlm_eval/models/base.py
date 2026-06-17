@@ -45,6 +45,13 @@ class ModelAdapter(abc.ABC):
     param_count_m: float = 0.0  # millions of parameters
     family: str = ""
 
+    def __post_init__(self) -> None:
+        # ``register("key")`` stores the registry key on the class; copy it onto the instance
+        # so it isn't shadowed by the dataclass field default ("base").
+        rk = getattr(type(self), "_registry_key", None)
+        if rk:
+            self.key = rk
+
     @abc.abstractmethod
     def load(self) -> None:
         """Download/instantiate weights. Heavy imports happen here, not at import time."""

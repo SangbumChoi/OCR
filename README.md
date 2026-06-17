@@ -19,23 +19,24 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 
 ## What's here
 
+One installable package, `docvlm_eval` (src layout):
+
 ```
-src/docvlm_eval/        # the evaluation harness (Part 1)
-  models/               #   adapter per VLM + registry  (add a model = 1 small file + 1 line)
-  benchmarks/           #   HF dataset builders + custom robustness probe
-  metrics/              #   ANLS / relaxed-acc / OCRBench + ECE calibration + aggregation
+src/docvlm_eval/        # the unified package  (pip install -e .)
+  schema.py             #   Sample / Prediction
   pipeline.py           #   model x benchmark -> predictions + scores
-scripts/
-  evaluate.py           #   ⭐ single entrypoint: load ANY model, run benchmark, emit scores
-  build_benchmarks.py   #   DocVQA / InfoVQA / ChartQA / OCRBench -> normalised JSONL
-  build_robustness_set.py  # paired clean/perturbed probe (capture quality + terminology)
-  make_comparison_table.py # all runs -> comparison table (md/csv/json)
-  run_all.sh            #   full reproduction (Colab/Kaggle T4)
-  build_report.py       #   technical_report.md -> PDF
-  finetune_lora.py ...  #   Part-2 LoRA fine-tuning scaffold (improvement PoC)
-configs/                # models.yaml, benchmarks.yaml (documented choices)
-tests/                  # metric unit tests (the numbers must be exactly right)
-report/ results/ data/  # report, taxonomy, comparison table, benchmark/probe data
+  cli.py                #   console entry points (docvlm-eval / -fetch / -table / ...)
+  comparison.py         #   runs -> comparison table (md/csv/json)
+  models/               #   adapter per VLM + registry  (add a model = 1 small file + 1 line)
+  benchmarks/           #   HF builders + catalog + custom robustness probe
+  metrics/              #   ANLS / relaxed-acc / OCRBench + ECE calibration + aggregation
+  finetune/             #   Part-2 LoRA fine-tuning subpackage (was src/ocr_ft)
+scripts/                # thin shims over docvlm_eval.cli + run_all.sh / build_report.py /
+                        #   fetch_benchmark_samples.py / make_synthetic_samples.py / plot_*
+configs/                # models.yaml, benchmarks.yaml, benchmark_catalog.yaml
+tests/                  # pytest suite (metrics, schema, loaders, registry, robustness,
+                        #   pipeline, catalog, comparison, cli, finetune)  -> 60+ tests
+report/ results/ data/  # report+figures, comparison table, benchmark/probe samples
 ```
 
 **Candidate models** (`scripts/evaluate.py --list-models`): `internvl2_5-1b`, `internvl3-1b`,
@@ -60,19 +61,24 @@ python scripts/make_synthetic_samples.py         # attach samples for categories
 
 ## Quick start
 
-### 0) Install
+### 0) Install (pip-installable; pick the extras you need)
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -U pip && pip install -r requirements.txt
+pip install -U pip
+pip install -e .                      # core: pipeline + metrics + catalog + dummy model + tests
+pip install -e ".[models]"            # + torch/transformers/datasets to run real VLMs
+pip install -e ".[models,finetune,report,dev]"   # everything (Part-2 LoRA, report, tests)
 ```
+This installs console commands: `docvlm-eval`, `docvlm-build-bench`, `docvlm-fetch`,
+`docvlm-robustness`, `docvlm-table`. (`scripts/*.py` remain as thin shims for `python scripts/…`.)
 
 ### 1) Smoke test (CPU, no weights, ~seconds)
 Proves the whole pipeline works end-to-end before spending GPU time:
 ```bash
-python scripts/evaluate.py --model dummy-echo \
+docvlm-eval --model dummy-echo \
   --benchmark data/custom/custom.jsonl --benchmark-name custom \
   --out /tmp/custom --device cpu
-python -m pytest tests/ -q          # metric unit tests
+pytest -q                            # 60+ tests: metrics, registry, pipeline, robustness, …
 ```
 
 ### 2) Full evaluation (free Colab/Kaggle T4)
@@ -137,8 +143,8 @@ python scripts/build_report.py     # report/technical_report.md -> .pdf
 
 ## Part 2 — Fine-tuning scaffold (improvement PoC)
 
-The improvement strategy (report §II.2) is backed by a LoRA fine-tuning scaffold under
-`src/ocr_ft` + `scripts/finetune_lora.py | eval.py | compare.py | merge_lora.py`. It expects
+The improvement strategy (report §II.2) is backed by a LoRA fine-tuning subpackage at
+`src/docvlm_eval/finetune` + `scripts/finetune_lora.py | eval.py | compare.py | merge_lora.py`. It expects
 JSONL of `{"image_path", "text"}` and supports LoRA(PEFT) SFT, CER/WER eval, vanilla-vs-tuned
 comparison, and adapter merge — the machinery for Steps 1–4 of the plan. Full scaffold docs:
 [`docs/finetune_scaffold.md`](docs/finetune_scaffold.md).

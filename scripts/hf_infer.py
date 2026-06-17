@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import argparse
 from pathlib import Path
 
 import torch
 
-from ocr_ft.modeling import ModelLoadConfig, infer_one_deepseek_ocr, load_deepseek_ocr_model_and_tokenizer
+from docvlm_eval.finetune.modeling import ModelLoadConfig, infer_one_deepseek_ocr, load_deepseek_ocr_model_and_tokenizer
 
 
 def build_parser() -> argparse.ArgumentParser:
