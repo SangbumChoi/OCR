@@ -1,0 +1,19 @@
+{
+  "status": {
+    "dummy-echo": "ok"
+  },
+  "scores": {
+    "dummy-echo": {
+      "oov_nolegend": 0.3333,
+      "oov_legend": 0.1429,
+      "oov_runic": 0.2,
+      "oov_7seg": 0.0
+    }
+  },
+  "benchmarks": [
+    "oov_nolegend",
+    "oov_legend",
+    "oov_runic",
+    "oov_7seg"
+  ]
+}

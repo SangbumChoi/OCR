@@ -171,3 +171,14 @@ benchmarks:
                with a class-appropriate metric. See data/benchmarks/custom_eval/README.md.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_custom_eval.py)"}
+  - {key: oov_probe, name: "Out-of-vocabulary script probe", category: "11. Custom capability axes",
+     metric: "ned / exact",
+     purpose: "Un-tokenizable glyphs (invented / runic / 7-segment): measure the FALLBACK pattern
+               (abstain / transliterate / hallucinate / copy) and whether an in-image legend enables
+               decoding by in-context visual reasoning.",
+     hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_oov_probe.py)"}
+  - {key: webui_probe, name: "Web UI/UX (agent) probe", category: "11. Custom capability axes",
+     metric: "grounding / exact / ned",
+     purpose: "Web-agent UI understanding: locate interactive elements (button/search/cart), identify
+               the primary CTA, read the nav, and reason about affordances (what to click to act).",
+     hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_webui_probe.py)"}

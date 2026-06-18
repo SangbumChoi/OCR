@@ -1,0 +1,21 @@
+{
+  "status": {
+    "dummy-echo": "ok"
+  },
+  "scores": {
+    "dummy-echo": {
+      "ui_login_box": 0.0,
+      "ui_cta_text": 0.0,
+      "ui_nav_list": 0.1333,
+      "ui_checkout_box": 0.0,
+      "ui_search_box": 0.0
+    }
+  },
+  "benchmarks": [
+    "ui_login_box",
+    "ui_cta_text",
+    "ui_nav_list",
+    "ui_checkout_box",
+    "ui_search_box"
+  ]
+}

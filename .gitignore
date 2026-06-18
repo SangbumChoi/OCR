@@ -21,6 +21,10 @@ results/*
 !results/custom_eval_breakdown.md
 !results/matrix_custom_eval.json
 !results/matrix_custom_eval.md
+!results/matrix_oov.md
+!results/matrix_oov.json
+!results/matrix_webui.md
+!results/matrix_webui.json
 data/crawled/
 wandb/
 

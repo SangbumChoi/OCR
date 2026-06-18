@@ -9,7 +9,7 @@ each one measures** (`purpose`). Source of truth:
 - 🖼️ **sample** = image + `sample.json` (GT + metric + purpose) in `<key>/`.
 - 📝 **documented** = not cleanly streamable from HF; catalogued with purpose + source.
 
-**Coverage: 27 image samples across 44 catalogued benchmarks.**
+**Coverage: 29 image samples across 46 catalogued benchmarks.**
 
 ### 1. Text recognition (full-page / line / word)
 
@@ -109,4 +109,6 @@ each one measures** (`purpose`). Source of truth:
 |---|---|---|---|
 | [`capability_probe`](capability_probe/) | 🖼️ sample (synthetic) | anls / relaxed_acc / exact / grounding | Isolate the document-VLM capability axes on controlled renders: text recognition, localized KIE, integrative reasoning (sum & relations), chart reading, and spatial grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT. |
 | [`custom_eval`](custom_eval/) | 🖼️ sample (synthetic) | ned / teds / exact / relaxed_acc / grounding | Our proposed real-world eval format: per content-class (text/table/formula/chart/ qr/barcode/stamp/logo), per-language (en/ko/ja/zh), rotation robustness (0/15/90/180/ 270), reading-direction (vertical CJK), and spotting (basis-of-extraction), each scored with a class-appropriate metric. See data/benchmarks/custom_eval/README.md. |
+| [`oov_probe`](oov_probe/) | 🖼️ sample (synthetic) | ned / exact | Un-tokenizable glyphs (invented / runic / 7-segment): measure the FALLBACK pattern (abstain / transliterate / hallucinate / copy) and whether an in-image legend enables decoding by in-context visual reasoning. |
+| [`webui_probe`](webui_probe/) | 🖼️ sample (synthetic) | grounding / exact / ned | Web-agent UI understanding: locate interactive elements (button/search/cart), identify the primary CTA, read the nav, and reason about affordances (what to click to act). |
 
