@@ -12,21 +12,19 @@ data). Deterministic (fixed seed) -> reproducible.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "benchmarks"
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+sys.path.insert(0, str(ROOT / "src"))
+from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 
 
 def _font(size: int, bold: bool = False):
-    try:
-        return ImageFont.truetype(FONT_BOLD if bold else FONT, size)
-    except Exception:
-        return ImageFont.load_default()
+    return load_font(size, bold)
 
 
 def _save(key: str, img: Image.Image, label: dict) -> None:

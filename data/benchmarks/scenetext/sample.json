@@ -1,9 +1,7 @@
 {
   "benchmark": "scenetext",
-  "name": "Scene text (illustrative)",
   "category": "2. Scene-text detection & recognition",
   "metric": "detection H-mean / word accuracy / 1-NED",
-  "purpose": "Detect + read text 'in the wild' (signs, products); irregular fonts/orientations.",
   "metric_note": "F-measure on detected boxes; case-insensitive word accuracy for recognition.",
   "source": "SYNTHETIC illustrative sample (rendered locally; not ICDAR/Total-Text)",
   "ground_truth": {

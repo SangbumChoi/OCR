@@ -28,16 +28,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
+from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
 OUT = Path("data/benchmarks/capability_probe")
 IMG = OUT / "images"
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def font(sz, bold=False):
-    return ImageFont.truetype(FONT_B if bold else FONT, sz)
+    return load_font(sz, bold)
 
 
 def render_invoice():

@@ -18,17 +18,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
+from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
 OUT = Path("data/benchmarks/spatial_context_probe")
 IMG = OUT / "images"
-F = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FB = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 CONCISE = " Answer concisely, no explanation."
 
 
 def fnt(s, b=False):
-    return ImageFont.truetype(FB if b else F, s)
+    return load_font(s, b)
 
 
 def blank(w=800, h=600):
