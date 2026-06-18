@@ -30,7 +30,9 @@ def main():
     p.add_argument("--benchmark", default=DEFAULT_BENCH)
     p.add_argument("--device", default="cuda")
     p.add_argument("--dtype", default="bfloat16")
-    p.add_argument("--attns", nargs="+", default=["eager", "sdpa", "flash_attention_2"])
+    # flash_attention_2 needs the flash-attn package AND Ampere+ (unavailable on T4/Turing), so
+    # the default compares the universally-available backends; add it explicitly to try flash.
+    p.add_argument("--attns", nargs="+", default=["eager", "sdpa"])
     p.add_argument("--max-new-tokens", type=int, default=64)
     p.add_argument("--out", default="results/attention_benchmark.md")
     a = p.parse_args()

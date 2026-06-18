@@ -93,20 +93,15 @@ class ModelAdapter(abc.ABC):
             return None
 
     def resolve_attn(self) -> str:
-        """Resolve ``attn='auto'`` to a concrete backend for this device.
+        """Resolve ``attn='auto'`` to a concrete backend.
 
-        Default is conservative — **sdpa on CUDA, eager on CPU** — so every model loads even
-        without flash-attn installed (this also unblocks Ovis, whose default flash_attention_2
-        is CUDA-only). Pass ``attn='flash_attention_2'`` to opt in (see the flash-attn benchmark)."""
+        Default is **eager** — the only backend every model here supports (InternVL's remote code
+        rejects ``sdpa`` with a ValueError; flash_attention_2 needs the flash-attn package AND an
+        Ampere+ GPU, so it is unavailable on a T4/Turing). Pass ``attn='sdpa'`` or
+        ``'flash_attention_2'`` explicitly (e.g. the flash-attn benchmark) to opt in. The
+        benchmark records a per-(model, backend) status so unsupported combinations are visible."""
         if self.attn != "auto":
             return self.attn
-        try:
-            import torch
-
-            if "cuda" in str(self.device) and torch.cuda.is_available():
-                return "sdpa"
-        except Exception:
-            pass
         return "eager"
 
     def profile(self) -> dict[str, Any]:
