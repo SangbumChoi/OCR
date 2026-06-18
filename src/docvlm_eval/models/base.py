@@ -96,3 +96,40 @@ class ModelAdapter(abc.ABC):
             "param_count_m": self.param_count_m,
             "family": self.family,
         }
+
+    # ---- resource measurement (declared on the wrapper so every model is measured the same) --
+    def reset_peak_memory(self) -> None:
+        """Reset the GPU peak-memory counter before a run (no-op on CPU)."""
+        try:
+            import torch
+
+            if "cuda" in str(self.device) and torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+
+    def peak_gpu_mb(self) -> float | None:
+        """Peak GPU memory (MB) since the last reset, or None on CPU/unavailable."""
+        try:
+            import torch
+
+            if "cuda" in str(self.device) and torch.cuda.is_available():
+                return round(torch.cuda.max_memory_allocated() / 1e6, 1)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def peak_cpu_mb() -> float | None:
+        """Peak resident set size (MB) of this process. With one-model-per-subprocess runs this
+        is effectively the model's peak CPU memory."""
+        try:
+            import resource
+
+            # ru_maxrss is KB on Linux, bytes on macOS
+            import sys
+
+            rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            return round(rss / (1024 if sys.platform != "darwin" else 1024 * 1024), 1)
+        except Exception:
+            return None

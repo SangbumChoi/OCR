@@ -71,6 +71,15 @@ def main() -> None:
         per_model_scores[m] = {r["sample_id"]: r["score"] for r in rows}
         status.setdefault(m, "ok (cached)")
 
+    # efficiency (time + memory) from each model's summary.json
+    eff: dict[str, dict] = {}
+    for sm_file in results_dir.glob(f"*/{bench_name}/summary.json"):
+        m = sm_file.parent.parent.name
+        try:
+            eff[m] = json.loads(sm_file.read_text())
+        except Exception:
+            pass
+
     benches = [s.sample_id for s in samples]
     models = sorted(set(models) | set(per_model_scores))
     lines = ["# Cross-benchmark result matrix (preview set)\n",
@@ -86,6 +95,21 @@ def main() -> None:
             continue
         row = [m] + [f"{per_model_scores[m].get(b, float('nan')):.2f}" for b in benches]
         lines.append("| " + " | ".join(row) + " |")
+    # ---- efficiency table: CPU/GPU inference time + memory, measured by the model wrapper ----
+    lines.append("\n## Efficiency (load / latency / memory)\n")
+    eh = ["model", "device", "params(M)", "load(s)", "avg lat(s)", "p90(s)", "peak CPU(MB)", "peak GPU(MB)"]
+    lines.append("| " + " | ".join(eh) + " |")
+    lines.append("|" + "|".join(["---"] * len(eh)) + "|")
+    for m in models:
+        s = eff.get(m)
+        if not s:
+            continue
+        lines.append("| " + " | ".join(str(x) for x in [
+            m, s.get("device", "-"), f"{s.get('param_count_m') or 0:.0f}",
+            s.get("load_seconds", "-"), s.get("avg_latency_s", "-"), s.get("p90_latency_s", "-"),
+            s.get("peak_cpu_mb", "-"), s.get("peak_gpu_mb", "-"),
+        ]) + " |")
+
     lines.append("\n## Run status\n")
     for m in models:
         lines.append(f"- **{m}**: {status.get(m, '?')}")

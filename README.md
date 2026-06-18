@@ -102,6 +102,15 @@ bash scripts/run_all.sh                  # LIMIT=20 bash scripts/run_all.sh  for
 python scripts/make_comparison_table.py  # -> results/comparison_table.{md,csv,json}
 ```
 
+### 2b) Full comparison on a GPU (Colab T4) — incl. PaddleOCR-VL 1.0/1.5/1.6 + efficiency
+Open [`notebooks/colab_full_comparison.ipynb`](notebooks/colab_full_comparison.ipynb) in Colab
+(GPU runtime). It only clones + installs + runs repo scripts (`scripts/run_full_comparison.sh`),
+which handles the two transformers passes (4.49 for the chat VLMs, 4.57 for PaddleOCR-VL) and
+runs every model on the capability + spatial/context probes. Each run records **score +
+inference time + peak CPU/GPU memory** (measured by the model wrapper) into `summary.json`, and
+`results/matrix_*.md` includes an **Efficiency** table (load / avg latency / p90 / peak CPU MB /
+peak GPU MB) so models are compared on quality *and* cost.
+
 ### 3) Add a new model (the "minimal modification" requirement)
 Create `src/docvlm_eval/models/mymodel.py`:
 ```python

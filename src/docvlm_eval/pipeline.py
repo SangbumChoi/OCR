@@ -60,6 +60,7 @@ def run_evaluation(
     model = build_model(
         model_key, device=device, dtype=dtype, gen=GenConfig(max_new_tokens=max_new_tokens)
     )
+    model.reset_peak_memory()
     t_load = time.time()
     model.load()
     load_s = time.time() - t_load
@@ -80,6 +81,8 @@ def run_evaluation(
             fout.write(json.dumps(pred.__dict__, ensure_ascii=False) + "\n")
             fout.flush()
 
+    lat_sorted = sorted(latencies)
+    p90 = lat_sorted[int(0.9 * (len(lat_sorted) - 1))] if lat_sorted else None
     result = aggregate(samples, done)
     result["summary"].update(
         {
@@ -89,8 +92,13 @@ def run_evaluation(
             "benchmark": benchmark_name,
             "device": device,
             "dtype": dtype,
+            # --- efficiency: time + memory, measured via the model wrapper ---
             "load_seconds": round(load_s, 2),
             "avg_latency_s": round(sum(latencies) / len(latencies), 3) if latencies else None,
+            "p90_latency_s": round(p90, 3) if p90 is not None else None,
+            "total_infer_s": round(sum(latencies), 1) if latencies else None,
+            "peak_gpu_mb": model.peak_gpu_mb(),
+            "peak_cpu_mb": model.peak_cpu_mb(),
         }
     )
 

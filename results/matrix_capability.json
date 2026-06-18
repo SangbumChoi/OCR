@@ -1,9 +1,9 @@
 {
   "status": {
-    "dummy-echo": "ok",
+    "smolvlm-256m": "ok",
     "florence2-large": "ok (cached)",
+    "dummy-echo": "ok (cached)",
     "got-ocr2": "ok (cached)",
-    "smolvlm-256m": "ok (cached)",
     "smoldocling-256m": "ok (cached)",
     "internvl3-1b": "ok (cached)",
     "internvl2-1b": "ok (cached)",
