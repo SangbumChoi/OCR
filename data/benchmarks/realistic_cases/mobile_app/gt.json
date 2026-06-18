@@ -1,0 +1,32 @@
+{
+  "type": "mobile app / phone screenshot",
+  "stressors": [
+    "layout(mobile)",
+    "reflow(vertical)",
+    "read-order"
+  ],
+  "anchor_metric": "NED + read-order",
+  "fields": {
+    "n_messages": 5,
+    "messages": [
+      "Hi! Is my invoice ready?",
+      "Yes — INV-2025-0042, total $145.50.",
+      "Great, can you email it?",
+      "Sent to your inbox ✅",
+      "Thanks!"
+    ]
+  },
+  "reading_order": [
+    "Hi! Is my invoice ready?",
+    "Yes — INV-2025-0042, total $145.50.",
+    "Great, can you email it?",
+    "Sent to your inbox ✅",
+    "Thanks!"
+  ],
+  "task": "Transcribe the chat messages in order; mark which are incoming vs outgoing.",
+  "direction_probe": {
+    "question": "Which messages are from the user vs the agent?",
+    "expected": "right/blue bubbles = user (outgoing), left/grey = agent"
+  },
+  "degraded_preset": "screenshot"
+}

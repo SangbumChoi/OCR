@@ -42,6 +42,16 @@ robustness-retention metric directly.
 | `cheque`         | cheque / 수표             | handwriting · dual-amount · hallucination  | dual-amount F1 + sign detect |
 | `ancient`        | ancient manuscript / 고문서| direction(vertical) · classical · fade/stain| NED + robustness            |
 | `lcd_7seg`       | LCD / meter / 7-seg      | non-font digits · glare                    | exact + IoU                  |
+| `website`        | website / desktop screenshot | web layout · reflow · icons/links · spotting | NED + spotting          |
+| `mobile_app`     | mobile app / phone screenshot| mobile layout · vertical reflow · read-order | NED + read-order        |
+| `pdf_paper`      | PDF research paper (2-col) | multi-column · read-order · figure · header/footer | read-order + NED + TEDS |
+
+The last three are **digital-native media surfaces** (not paper). Same WeasyPrint pipeline, only
+the `@page` size changes — desktop `1280px`, phone `390×844`, paper `A4` (multi-page with running
+header + `counter(page)`). They use the lighter **`screenshot`** degradation preset (compression
++ subtle noise, no paper texture); the paper uses `scan`. Caveat: WeasyPrint is a *print* engine
+(no JS / media-queries) — fine for static mockups; use a real browser (Playwright) if true web
+rendering fidelity is required.
 
 `gt.json` carries the fields, spotting boxes, the per-case task, and (where relevant) an
 **`abstain_probe`** / **`consistency_probe`** / **`direction_probe`** — the control questions

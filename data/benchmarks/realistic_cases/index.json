@@ -1,113 +1,34 @@
 [
   {
-    "key": "invoice",
-    "type": "invoice/receipt",
+    "key": "website",
+    "type": "website / desktop screenshot",
     "stressors": [
-      "layout",
-      "table",
-      "spotting",
-      "hallucination"
-    ],
-    "anchor_metric": "KIE F1 + spotting IoU"
-  },
-  {
-    "key": "id_card",
-    "type": "ID / passport",
-    "stressors": [
-      "language",
-      "MRZ",
-      "hallucination",
+      "layout(web)",
+      "reflow",
+      "icons/links",
       "spotting"
     ],
-    "anchor_metric": "KIE F1 + abstain + IoU"
+    "anchor_metric": "NED + spotting"
   },
   {
-    "key": "checkbox_form",
-    "type": "checkbox form",
+    "key": "mobile_app",
+    "type": "mobile app / phone screenshot",
     "stressors": [
-      "selection-marks",
-      "layout",
-      "hallucination"
+      "layout(mobile)",
+      "reflow(vertical)",
+      "read-order"
     ],
-    "anchor_metric": "selection-mark accuracy + F1"
+    "anchor_metric": "NED + read-order"
   },
   {
-    "key": "redacted",
-    "type": "redacted document",
+    "key": "pdf_paper",
+    "type": "PDF research paper (2-column)",
     "stressors": [
-      "hallucination",
-      "spotting"
-    ],
-    "anchor_metric": "abstain (no-hallucination)"
-  },
-  {
-    "key": "bank_statement",
-    "type": "bank statement",
-    "stressors": [
-      "layout",
-      "table",
-      "spotting"
-    ],
-    "anchor_metric": "TEDS + F1"
-  },
-  {
-    "key": "rtl_arabic",
-    "type": "RTL doc (Arabic)",
-    "stressors": [
-      "read-direction(RTL)",
-      "language",
-      "script"
-    ],
-    "anchor_metric": "direction + per-lang NED"
-  },
-  {
-    "key": "webtoon",
-    "type": "webtoon / manga",
-    "stressors": [
+      "layout(multi-column)",
       "read-order",
-      "direction(vertical)",
-      "SFX/art-text"
+      "figure",
+      "header/footer"
     ],
-    "anchor_metric": "read-order + direction + NED"
-  },
-  {
-    "key": "prescription",
-    "type": "prescription",
-    "stressors": [
-      "handwriting",
-      "hallucination",
-      "degradation"
-    ],
-    "anchor_metric": "CER(hand) + abstain"
-  },
-  {
-    "key": "cheque",
-    "type": "cheque / 수표",
-    "stressors": [
-      "handwriting",
-      "dual-amount",
-      "hallucination",
-      "spotting"
-    ],
-    "anchor_metric": "dual-amount F1 + sign detect"
-  },
-  {
-    "key": "ancient",
-    "type": "ancient manuscript / 고문서",
-    "stressors": [
-      "direction(vertical)",
-      "language(classical)",
-      "degradation(fade/stain)"
-    ],
-    "anchor_metric": "NED + robustness"
-  },
-  {
-    "key": "lcd_7seg",
-    "type": "LCD / meter / 7-seg",
-    "stressors": [
-      "non-font digits",
-      "glare"
-    ],
-    "anchor_metric": "exact + IoU"
+    "anchor_metric": "read-order + NED + TEDS"
   }
 ]

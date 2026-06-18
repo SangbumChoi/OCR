@@ -1,0 +1,42 @@
+{
+  "type": "website / desktop screenshot",
+  "stressors": [
+    "layout(web)",
+    "reflow",
+    "icons/links",
+    "spotting"
+  ],
+  "anchor_metric": "NED + spotting",
+  "fields": {
+    "brand": "Gould-Foster",
+    "nav_items": [
+      "Product",
+      "Pricing",
+      "Docs",
+      "Sign in"
+    ],
+    "headline": "Ship documents, not paperwork.",
+    "cta": "Start free trial"
+  },
+  "spotting": {
+    "cta_button": [
+      1673,
+      98,
+      1825,
+      125
+    ]
+  },
+  "reading_order": [
+    "nav",
+    "headline",
+    "subtext",
+    "feature cards (L→R)",
+    "footer"
+  ],
+  "task": "List the navigation menu items in order, then the main headline.",
+  "abstain_probe": {
+    "question": "What is the user's logged-in email?",
+    "expected": "not shown (logged-out marketing page) — abstain"
+  },
+  "degraded_preset": "screenshot"
+}

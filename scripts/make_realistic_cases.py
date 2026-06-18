@@ -97,6 +97,9 @@ def degrade(img: Image.Image, preset: str) -> Image.Image | None:
         "fax": ([],
                 [safe(DirtyDrum, p=0.7)],
                 [safe(BadPhotoCopy, p=0.9), safe(Jpeg, quality_range=(20, 40))]),
+        # digital-native surfaces (web/app screenshots): no paper texture, light compression only
+        "screenshot": ([], [],
+                       [safe(SubtleNoise, p=0.4), safe(Jpeg, quality_range=(55, 80))]),
     }
     ink, paper, post = presets[preset]
     from augraphy import AugraphyPipeline
@@ -446,11 +449,161 @@ def _seg7(d, digits, x0, y0, on, off, w=60, h=58, t=10, gap=34):
         seg("c", [(x + w, y0 + h + t), (x + w + t, y0 + h + 2 * t), (x + w + t, y0 + 2 * h - t), (x + w, y0 + 2 * h)])
 
 
+def case_website(do_degrade):
+    # desktop web-page screenshot: browser chrome + nav + hero + feature cards + footer
+    brand = fake.company()
+    nav = ["Product", "Pricing", "Docs", "Sign in"]
+    cta = "Start free trial"
+    headline = "Ship documents, not paperwork."
+    cards = [("⚡", "Fast", "Parse a page in milliseconds."),
+             ("🔒", "Secure", "SOC-2 encrypted storage."),
+             ("🌐", "Global", "40+ languages out of the box.")]
+    navhtml = "".join(f"<a>{n}</a>" for n in nav)
+    cardhtml = "".join(
+        f"<div class=card><div class=ic>{i}</div><h3>{t}</h3><p>{p}</p></div>" for i, t, p in cards)
+    css = """
+    @page { size: 1280px 900px; margin: 0; }
+    body { font-family:'Liberation Sans',sans-serif; margin:0; color:#1c2433; }
+    .chrome { background:#e7eaef; height:38px; display:flex; align-items:center; padding:0 12px; gap:7px;}
+    .dot{ width:11px;height:11px;border-radius:50%;}
+    .url{ flex:1; margin-left:14px; background:#fff; border-radius:7px; padding:5px 12px;
+        color:#667; font-size:12px; max-width:520px;}
+    nav{ display:flex; align-items:center; padding:16px 48px; border-bottom:1px solid #eef0f4;}
+    .logo{ font-weight:bold; font-size:20px; color:#2a5bd7;}
+    nav .sp{ flex:1;} nav a{ margin:0 14px; color:#445; font-size:15px;}
+    .btn{ background:#2a5bd7; color:#fff!important; padding:9px 18px; border-radius:8px; font-weight:bold;}
+    .hero{ text-align:center; padding:64px 40px 36px;}
+    .hero h1{ font-size:46px; margin:0 0 14px;}
+    .hero p{ color:#5a6675; font-size:19px;}
+    .heroβ{ margin-top:24px;}
+    .cards{ display:flex; gap:22px; padding:20px 64px 40px; justify-content:center;}
+    .card{ flex:1; max-width:300px; border:1px solid #e7eaf0; border-radius:14px; padding:22px;
+        box-shadow:0 6px 18px rgba(30,50,90,.06);}
+    .ic{ font-size:30px;} .card h3{ margin:10px 0 6px;}
+    .card p{ color:#5a6675; font-size:14px;}
+    footer{ background:#0f1830; color:#aeb8cc; padding:22px 48px; font-size:13px; margin-top:18px;}
+    """
+    html = f"""
+    <div class=chrome><span class=dot style="background:#f55"></span>
+      <span class=dot style="background:#fb5"></span><span class=dot style="background:#5c5"></span>
+      <span class=url>https://{brand.split()[0].lower()}.example/app</span></div>
+    <nav><span class=logo>◆ {brand.split()[0]}</span><span class=sp></span>{navhtml}
+      <a class=btn>{cta}</a></nav>
+    <div class=hero><h1>{headline}</h1>
+      <p>The document API for small teams. No setup, no servers.</p>
+      <div class=heroβ><a class=btn>{cta}</a></div></div>
+    <div class=cards>{cardhtml}</div>
+    <footer>© 2025 {brand} · Terms · Privacy · Status</footer>
+    """
+    img, page, doc = render(html, css)
+    gt = {"type": "website / desktop screenshot",
+          "stressors": ["layout(web)", "reflow", "icons/links", "spotting"],
+          "anchor_metric": "NED + spotting",
+          "fields": {"brand": brand.split()[0], "nav_items": nav, "headline": headline, "cta": cta},
+          "spotting": {"cta_button": box_of(page, cta)},
+          "reading_order": ["nav", "headline", "subtext", "feature cards (L→R)", "footer"],
+          "task": "List the navigation menu items in order, then the main headline.",
+          "abstain_probe": {"question": "What is the user's logged-in email?",
+                            "expected": "not shown (logged-out marketing page) — abstain"}}
+    emit("website", img, page, gt, "screenshot", do_degrade); doc.close()
+
+
+def case_mobile_app(do_degrade):
+    # phone-viewport chat app: status bar + header + chat bubbles + input bar
+    msgs = [("in", "Hi! Is my invoice ready?"),
+            ("out", "Yes — INV-2025-0042, total $145.50."),
+            ("in", "Great, can you email it?"),
+            ("out", "Sent to your inbox ✅"),
+            ("in", "Thanks!")]
+    bub = "".join(
+        f'<div class="row {s}"><div class="bub {s}">{t}</div></div>' for s, t in msgs)
+    css = """
+    @page { size: 390px 844px; margin: 0; }
+    body{ font-family:'Liberation Sans',sans-serif; margin:0; background:#f2f4f8;}
+    .status{ height:30px; background:#fff; display:flex; align-items:center; justify-content:space-between;
+        padding:0 16px; font-size:13px; font-weight:bold;}
+    .hdr{ background:#2a5bd7; color:#fff; padding:12px 16px; font-size:17px; font-weight:bold;
+        display:flex; align-items:center; gap:10px;}
+    .chat{ padding:14px 12px;}
+    .row{ display:flex; margin:8px 0;}
+    .row.out{ justify-content:flex-end;}
+    .bub{ max-width:74%; padding:9px 13px; border-radius:16px; font-size:15px; line-height:1.3;}
+    .bub.in{ background:#fff; border:1px solid #e2e6ee;}
+    .bub.out{ background:#2a5bd7; color:#fff;}
+    .input{ position:fixed; bottom:0; width:100%; background:#fff; border-top:1px solid #e2e6ee;
+        padding:10px 14px; color:#889; font-size:14px;}
+    """
+    html = f"""
+    <div class=status><span>9:41</span><span>▮▮▮ 5G  87%</span></div>
+    <div class=hdr><span>‹</span> Support Chat</div>
+    <div class=chat>{bub}</div>
+    <div class=input>Type a message…</div>
+    """
+    img, page, doc = render(html, css)
+    gt = {"type": "mobile app / phone screenshot",
+          "stressors": ["layout(mobile)", "reflow(vertical)", "read-order"],
+          "anchor_metric": "NED + read-order",
+          "fields": {"n_messages": len(msgs), "messages": [t for _, t in msgs]},
+          "reading_order": [t for _, t in msgs],
+          "task": "Transcribe the chat messages in order; mark which are incoming vs outgoing.",
+          "direction_probe": {"question": "Which messages are from the user vs the agent?",
+                              "expected": "right/blue bubbles = user (outgoing), left/grey = agent"}}
+    emit("mobile_app", img, page, gt, "screenshot", do_degrade); doc.close()
+
+
+def case_pdf_paper(do_degrade):
+    # two-column academic PDF: running header + page number + abstract + sections + figure caption
+    title = "Sub-1B Vision-Language Models for Document Understanding"
+    authors = f"{fake.name()}, {fake.name()}"
+    secs = ["1. Introduction", "2. Related Work", "3. Method", "4. Experiments", "5. Conclusion"]
+    para = (" ".join(fake.sentence() for _ in range(6)) + " ")
+    body = ""
+    for s in secs:
+        body += f"<h3>{s}</h3><p>{para}{para}</p>"
+        if s == "3. Method":
+            body += ('<div class=fig><div class=ph></div>'
+                     '<div class=cap>Figure 1: The proposed evaluation pipeline.</div></div>')
+    css = """
+    @page { size:A4; margin:18mm 15mm;
+      @top-center{ content:"Proc. of the Synthetic Document Workshop, 2025"; font-size:8px; color:#999;}
+      @bottom-center{ content:counter(page); font-size:9px; color:#555;}
+    }
+    body{ font-family:'EB Garamond','Liberation Serif',serif; font-size:9.5px; color:#111;}
+    h1{ font-size:17px; text-align:center; margin:0 0 4px;}
+    .auth{ text-align:center; color:#333; margin-bottom:8px; font-size:10px;}
+    .abs{ font-style:italic; margin:0 8mm 8px; font-size:9px; border-top:1px solid #ccc;
+        border-bottom:1px solid #ccc; padding:6px 0;}
+    .cols{ column-count:2; column-gap:7mm; text-align:justify;}
+    h3{ font-size:10.5px; margin:8px 0 3px;}
+    .fig{ break-inside:avoid; border:1px solid #bbb; padding:5px; margin:6px 0; text-align:center;}
+    .ph{ height:60px; background:repeating-linear-gradient(45deg,#eef,#eef 6px,#dde 6px,#dde 12px);}
+    .cap{ font-size:8px; color:#444; margin-top:4px;}
+    """
+    html = f"""
+    <h1>{title}</h1><div class=auth>{authors}</div>
+    <div class=abs><b>Abstract.</b> {para}</div>
+    <div class=cols>{body}</div>
+    """
+    img, page, doc = render(html, css)
+    gt = {"type": "PDF research paper (2-column)",
+          "stressors": ["layout(multi-column)", "read-order", "figure", "header/footer"],
+          "anchor_metric": "read-order + NED + TEDS",
+          "fields": {"title": title, "authors": authors, "sections": secs,
+                     "n_pages": doc.page_count},
+          "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",
+          "spotting": {"figure_caption": box_of(page, "Figure 1: The proposed evaluation pipeline.")},
+          "task": "Extract the title, author list, and section headings in reading order.",
+          "order_probe": {"question": "Does text read across both columns row-by-row?",
+                          "expected": "no — each column reads top-to-bottom independently"}}
+    emit("pdf_paper", img, page, gt, "scan", do_degrade); doc.close()
+
+
 CASES = {
     "invoice": case_invoice, "id_card": case_id_card, "checkbox_form": case_checkbox_form,
     "redacted": case_redacted, "bank_statement": case_bank_statement, "rtl_arabic": case_rtl_arabic,
     "webtoon": case_webtoon, "prescription": case_prescription, "cheque": case_cheque,
     "ancient": case_ancient, "lcd_7seg": case_lcd,
+    "website": case_website, "mobile_app": case_mobile_app, "pdf_paper": case_pdf_paper,
 }
 
 
