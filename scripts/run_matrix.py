@@ -38,6 +38,7 @@ def main() -> None:
     p.add_argument("--results-dir", default="results")
     p.add_argument("--device", default="cuda")
     p.add_argument("--dtype", default="bfloat16")
+    p.add_argument("--attn", default="auto", help="auto | eager | sdpa | flash_attention_2")
     p.add_argument("--max-new-tokens", type=int, default=64)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-resume", action="store_true", help="ignore cached predictions")
@@ -56,7 +57,7 @@ def main() -> None:
             run_evaluation(
                 model_key=m, samples=samples, out_dir=str(out), device=a.device,
                 dtype=a.dtype, max_new_tokens=a.max_new_tokens, limit=a.limit,
-                benchmark_name=bench_name, resume=not a.no_resume,
+                benchmark_name=bench_name, resume=not a.no_resume, attn=a.attn,
             )
             status[m] = "ok"
         except Exception as exc:  # capture inference failures per model, keep going
@@ -114,9 +115,10 @@ def main() -> None:
     for m in models:
         lines.append(f"- **{m}**: {status.get(m, '?')}")
 
+    from docvlm_eval.report_md import prettify_tables
     results_dir.mkdir(parents=True, exist_ok=True)
     md_path = results_dir / f"matrix_{bench_name}.md"
-    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    md_path.write_text(prettify_tables("\n".join(lines)) + "\n", encoding="utf-8")
     (results_dir / f"matrix_{bench_name}.json").write_text(
         json.dumps({"status": status, "scores": per_model_scores, "benchmarks": benches}, indent=2),
         encoding="utf-8",

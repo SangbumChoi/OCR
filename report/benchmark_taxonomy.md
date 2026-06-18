@@ -12,16 +12,16 @@
 
 The capability axes, and which metric answers which question:
 
-| If the question is… | Use this metric | On benchmarks like |
-|---|---|---|
-| "Did it read the text correctly, character by character?" | **CER / WER / NED** | full-page OCR, CROHME |
-| "Did it answer the document question?" | **ANLS** | DocVQA, InfoVQA |
-| "Did it extract the right *value* for this field?" | **entity-level F1** (+ field exact-match) | FUNSD, CORD, SROIE, DocILE |
-| "Did it get the table *structure / cell relationships*?" | **TEDS / TEDS-Struct, GriTS** | PubTabNet, PubTables-1M |
-| "Did it read the *chart value* right?" | **relaxed accuracy** (±5%) | ChartQA, PlotQA |
-| "How good is its OCR *overall* across many sub-skills?" | **OCRBench** (/1000) | OCRBench (v1/v2) |
-| "Can it parse a *whole page* end to end?" | **normalized edit distance** per element | OmniDocBench |
-| "Does it know when it's wrong / does it hold up on bad scans?" | **ECE calibration, robustness retention** | (our custom probe) |
+| If the question is…                                            | Use this metric                           | On benchmarks like         |
+| -------------------------------------------------------------- | ----------------------------------------- | -------------------------- |
+| "Did it read the text correctly, character by character?"      | **CER / WER / NED**                       | full-page OCR, CROHME      |
+| "Did it answer the document question?"                         | **ANLS**                                  | DocVQA, InfoVQA            |
+| "Did it extract the right *value* for this field?"             | **entity-level F1** (+ field exact-match) | FUNSD, CORD, SROIE, DocILE |
+| "Did it get the table *structure / cell relationships*?"       | **TEDS / TEDS-Struct, GriTS**             | PubTabNet, PubTables-1M    |
+| "Did it read the *chart value* right?"                         | **relaxed accuracy** (±5%)                | ChartQA, PlotQA            |
+| "How good is its OCR *overall* across many sub-skills?"        | **OCRBench** (/1000)                      | OCRBench (v1/v2)           |
+| "Can it parse a *whole page* end to end?"                      | **normalized edit distance** per element  | OmniDocBench               |
+| "Does it know when it's wrong / does it hold up on bad scans?" | **ECE calibration, robustness retention** | (our custom probe)         |
 
 ---
 
@@ -169,15 +169,15 @@ directly to your "오타/할루시네이션 없는지" concern:
 
 ## How this PoC instantiates the taxonomy
 
-| Capability (above) | In this PoC |
-|---|---|
-| 3 Document VQA | **DocVQA, InfoVQA** — ANLS (implemented) |
-| 6 Chart | **ChartQA** — relaxed accuracy (implemented) |
-| 8 LMM OCR suite | **OCRBench** — /1000 scoring (implemented) |
-| 1 Recognition fidelity | **CER/WER/NED** — defined here; metric hooks in `metrics/text.py` |
-| 4 KIE | **entity F1** — defined here; add CORD/SROIE loader to extend (see README §3) |
-| 5 Tables | **TEDS/GriTS** — defined here; add PubTabNet loader to extend |
-| 10 Reliability | **ECE + robustness retention** — implemented (the "beyond accuracy" core) |
+| Capability (above)     | In this PoC                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| 3 Document VQA         | **DocVQA, InfoVQA** — ANLS (implemented)                                      |
+| 6 Chart                | **ChartQA** — relaxed accuracy (implemented)                                  |
+| 8 LMM OCR suite        | **OCRBench** — /1000 scoring (implemented)                                    |
+| 1 Recognition fidelity | **CER/WER/NED** — defined here; metric hooks in `metrics/text.py`             |
+| 4 KIE                  | **entity F1** — defined here; add CORD/SROIE loader to extend (see README §3) |
+| 5 Tables               | **TEDS/GriTS** — defined here; add PubTabNet loader to extend                 |
+| 10 Reliability         | **ECE + robustness retention** — implemented (the "beyond accuracy" core)     |
 
 The evaluation harness already covers axes 3/6/8/10 end-to-end; axes 1/4/5 are documented with
 exact metric definitions and are a drop-in extension (new loader + the metric, registered the

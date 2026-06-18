@@ -75,7 +75,8 @@ def main() -> None:
         for e in items:
             L.append(f"| [`{e['key']}`]({e['key']}/) | {status(e)} | {e.get('metric','-')} | {e.get('purpose','-')} |")
         L.append("")
-    (BENCH / "README.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    from docvlm_eval.report_md import prettify_tables
+    (BENCH / "README.md").write_text(prettify_tables("\n".join(L)) + "\n", encoding="utf-8")
     print(f"[done] index: {withimg} image samples / {len(cat)} benchmarks / {len(groups)} categories")
 
 

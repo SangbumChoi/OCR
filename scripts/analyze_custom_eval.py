@@ -93,7 +93,8 @@ def main():
         lines.append("| " + m + " | " + " | ".join(str(r["rotation_retention"].get(a, "–")) for a in angs)
                      + f" | {r['reading_direction_acc']} | {r['spotting_mean_iou']} |")
 
-    (RESULTS / "custom_eval_breakdown.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    from docvlm_eval.report_md import prettify_tables
+    (RESULTS / "custom_eval_breakdown.md").write_text(prettify_tables("\n".join(lines)) + "\n", encoding="utf-8")
     (RESULTS / "custom_eval_breakdown.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
     print("\n".join(lines))
     print(f"\n[done] -> {RESULTS/'custom_eval_breakdown.md'}")

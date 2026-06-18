@@ -29,7 +29,8 @@ class LlavaOneVision05B(ModelAdapter):
         self.processor = AutoProcessor.from_pretrained(self.hf_id)
         self.model = (
             LlavaOnevisionForConditionalGeneration.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype), low_cpu_mem_usage=True
+                self.hf_id, torch_dtype=getattr(torch, self.dtype), low_cpu_mem_usage=True,
+                attn_implementation=self.resolve_attn(),
             )
             .eval()
             .to(self.device)

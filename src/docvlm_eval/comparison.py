@@ -84,8 +84,9 @@ def build_tables(results_dir: str | Path, out_dir: str | Path) -> str:
             worst = min(r.values()) if r else float("nan")
             lines.append("| " + " | ".join([m] + vals + [f"{worst:.2f}"]) + " |")
 
+    from .report_md import prettify_tables
     out_dir.mkdir(parents=True, exist_ok=True)
-    md = "\n".join(lines) + "\n"
+    md = prettify_tables("\n".join(lines)) + "\n"
     (out_dir / "comparison_table.md").write_text(md, encoding="utf-8")
 
     with open(out_dir / "comparison_table.csv", "w", newline="", encoding="utf-8") as f:

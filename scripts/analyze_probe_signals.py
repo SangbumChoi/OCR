@@ -136,8 +136,16 @@ def main() -> None:
         row = [m] + ["✅" if res.get(c, {}).get("PASS") else ("—" if c not in res else "❌") for c in crits]
         print("| " + " | ".join(row) + " |")
 
+    from docvlm_eval.report_md import prettify_tables
     (results_dir / "probe_signals.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"\n[done] details -> {results_dir/'probe_signals.json'}")
+    (results_dir / "probe_signals.md").write_text(prettify_tables("\n".join(
+        ["# Spatial/context shortcut-robust signals\n"] + [l for l in [
+            "| " + " | ".join(["model"] + [c.split('_', 1)[0] for c in crits]) + " |",
+            "|" + "|".join(["---"] * (len(crits) + 1)) + "|",
+        ]] + ["| " + " | ".join([m] + ["PASS" if out[m].get(c, {}).get("PASS") else
+              ("-" if c not in out[m] else "FAIL") for c in crits]) + " |" for m in out])) + "\n",
+        encoding="utf-8")
+    print(f"\n[done] details -> {results_dir/'probe_signals.json'} (+ .md)")
 
 
 if __name__ == "__main__":

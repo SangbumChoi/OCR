@@ -45,16 +45,16 @@ improvement strategy in Part 2.
 I select for **architectural diversity within the <1B budget**, so the comparison explains
 *why* one design wins, not just *which* wins. Three archetypes are represented:
 
-| # | Model | Params | Vision encoder + LM | Archetype | Why included |
-|---|-------|-------:|---------------------|-----------|--------------|
-| 1 | **InternVL2.5-1B** | ~0.94B | InternViT-300M + Qwen2.5-0.5B, dynamic tiling | Document generalist | SoTA-for-size doc/OCR; first-class in VLMEvalKit |
-| 2 | **InternVL3-1B** | ~0.94B | InternViT-300M + Qwen2.5-0.5B, native multimodal pretrain | Document generalist | Newer pretraining recipe; head-to-head with 2.5 |
-| 3 | **SmolVLM-500M** | 0.5B | SigLIP + SmolLM2, Idefics3, heavy token compression | Edge | Edge-deployment anchor; trained incl. Docmatix |
-| 4 | **SmolVLM-256M** | 0.26B | SigLIP + SmolLM2 | Extreme edge | Smallest serious VLM; floor of the size/quality curve |
-| 5 | **LLaVA-OneVision-0.5B** | ~0.9B | SigLIP-SO400M + Qwen2-0.5B, AnyRes | General VLM | "General-purpose small VLM" baseline (not doc-specialised) |
-| 6 | **GOT-OCR2.0** | ~0.58B | ~80M ViT + Qwen-0.5B decoder | OCR specialist | Pure transcription; tests "OCR ≠ document QA" |
-| 7 | **Florence-2-large** | ~0.77B | DaViT + BART enc-dec, task tokens | OCR/detection specialist | Unified task-token model; no free-form VQA |
-| 8 | **PaddleOCR-VL-0.9B** | ~0.9B | NaViT-style encoder + ERNIE-4.5-0.3B | Doc-parsing specialist | Newest, most document-specialised release |
+| #   | Model                    | Params | Vision encoder + LM                                       | Archetype                | Why included                                               |
+| --- | ------------------------ | -----: | --------------------------------------------------------- | ------------------------ | ---------------------------------------------------------- |
+| 1   | **InternVL2.5-1B**       | ~0.94B | InternViT-300M + Qwen2.5-0.5B, dynamic tiling             | Document generalist      | SoTA-for-size doc/OCR; first-class in VLMEvalKit           |
+| 2   | **InternVL3-1B**         | ~0.94B | InternViT-300M + Qwen2.5-0.5B, native multimodal pretrain | Document generalist      | Newer pretraining recipe; head-to-head with 2.5            |
+| 3   | **SmolVLM-500M**         | 0.5B   | SigLIP + SmolLM2, Idefics3, heavy token compression       | Edge                     | Edge-deployment anchor; trained incl. Docmatix             |
+| 4   | **SmolVLM-256M**         | 0.26B  | SigLIP + SmolLM2                                          | Extreme edge             | Smallest serious VLM; floor of the size/quality curve      |
+| 5   | **LLaVA-OneVision-0.5B** | ~0.9B  | SigLIP-SO400M + Qwen2-0.5B, AnyRes                        | General VLM              | "General-purpose small VLM" baseline (not doc-specialised) |
+| 6   | **GOT-OCR2.0**           | ~0.58B | ~80M ViT + Qwen-0.5B decoder                              | OCR specialist           | Pure transcription; tests "OCR ≠ document QA"              |
+| 7   | **Florence-2-large**     | ~0.77B | DaViT + BART enc-dec, task tokens                         | OCR/detection specialist | Unified task-token model; no free-form VQA                 |
+| 8   | **PaddleOCR-VL-0.9B**    | ~0.9B  | NaViT-style encoder + ERNIE-4.5-0.3B                      | Doc-parsing specialist   | Newest, most document-specialised release                  |
 
 **Rationale highlights**
 
@@ -76,14 +76,14 @@ I select for **architectural diversity within the <1B budget**, so the compariso
 sub-1B open-weight models so the comparison spans the current field, including a *version
 ablation* of the leading document specialist:
 
-| Model | Params | Components | Note |
-|-------|-------:|------------|------|
-| **PaddleOCR-VL-1.5** | ~0.9B | NaViT + ERNIE-4.5-0.3B | v1.5: +polygon localization / text-spotting / seal; OmniDocBench v1.5 ≈ **94.5** (SOTA-tiny) |
-| **InternVL2-1B** | ~0.94B | InternViT-300M + Qwen2-0.5B | older 1B; DocVQA 81.7 / OCRBench 754 — recipe baseline vs 2.5/3 |
-| **Ovis2-1B** | ~1.0B | AIMv2-large + Qwen2.5-0.5B | structural visual-text embedding; strong OCR (OCRBench ≈ 89/100) |
-| **H2OVL-Mississippi-0.8B** | 0.8B | InternVL-style + H2O-Danube | OCR/doc specialist (19M pairs); OCRBench 751 |
-| **SmolDocling-256M** | 0.26B | SmolVLM-256M base | smallest true *document* specialist; emits structured DocTags |
-| **Florence-2-base** | 0.23B | DaViT + BART enc-dec | smaller task-token sibling of Florence-2-large |
+| Model                      | Params | Components                  | Note                                                                                         |
+| -------------------------- | -----: | --------------------------- | -------------------------------------------------------------------------------------------- |
+| **PaddleOCR-VL-1.5**       | ~0.9B  | NaViT + ERNIE-4.5-0.3B      | v1.5: +polygon localization / text-spotting / seal; OmniDocBench v1.5 ≈ **94.5** (SOTA-tiny) |
+| **InternVL2-1B**           | ~0.94B | InternViT-300M + Qwen2-0.5B | older 1B; DocVQA 81.7 / OCRBench 754 — recipe baseline vs 2.5/3                              |
+| **Ovis2-1B**               | ~1.0B  | AIMv2-large + Qwen2.5-0.5B  | structural visual-text embedding; strong OCR (OCRBench ≈ 89/100)                             |
+| **H2OVL-Mississippi-0.8B** | 0.8B   | InternVL-style + H2O-Danube | OCR/doc specialist (19M pairs); OCRBench 751                                                 |
+| **SmolDocling-256M**       | 0.26B  | SmolVLM-256M base           | smallest true *document* specialist; emits structured DocTags                                |
+| **Florence-2-base**        | 0.23B  | DaViT + BART enc-dec        | smaller task-token sibling of Florence-2-large                                               |
 
 Models documented but **not registered**: *InternVL3.5-1B* (~1.1B, borderline over budget),
 *Moondream-0.5B* (license unconfirmed via gated card), and the seq2seq specialists *Donut*
@@ -100,13 +100,13 @@ Document understanding spans *recognition* (read the pixels), *layout* (where th
 and *reasoning* (combine fields, do arithmetic). No single dataset covers all three, so I use
 a **suite** plus a **custom probe**:
 
-| Benchmark | Source (VLMEvalKit / HF) | Primary metric | What it probes | Why it's here |
-|-----------|--------------------------|----------------|----------------|---------------|
-| **DocVQA** | `lmms-lab/DocVQA` (DocVQA, val) | ANLS | Printed text + layout + KIE on scanned business docs | The canonical document-QA benchmark |
-| **InfoVQA** | `lmms-lab/DocVQA` (InfographicVQA, val) | ANLS | Dense multi-element layout, text+chart fusion, numeric reasoning | Hardest layout/reasoning; complements DocVQA |
-| **ChartQA** | `lmms-lab/ChartQA` (test; human/aug slices) | Relaxed acc | Reading + arithmetic over plotted data | Structured-visual reasoning |
-| **OCRBench** | `echo840/OCRBench` | OCRBench (/1000) | Regular/irregular/handwritten/artistic text, KIE, handwritten math | Fine-grained *recognition* capability |
-| **Robustness probe** | derived from DocVQA (ours) | ANLS retention | Capture-quality + terminology stability | The "beyond accuracy" deployment axis |
+| Benchmark            | Source (VLMEvalKit / HF)                    | Primary metric   | What it probes                                                     | Why it's here                                |
+| -------------------- | ------------------------------------------- | ---------------- | ------------------------------------------------------------------ | -------------------------------------------- |
+| **DocVQA**           | `lmms-lab/DocVQA` (DocVQA, val)             | ANLS             | Printed text + layout + KIE on scanned business docs               | The canonical document-QA benchmark          |
+| **InfoVQA**          | `lmms-lab/DocVQA` (InfographicVQA, val)     | ANLS             | Dense multi-element layout, text+chart fusion, numeric reasoning   | Hardest layout/reasoning; complements DocVQA |
+| **ChartQA**          | `lmms-lab/ChartQA` (test; human/aug slices) | Relaxed acc      | Reading + arithmetic over plotted data                             | Structured-visual reasoning                  |
+| **OCRBench**         | `echo840/OCRBench`                          | OCRBench (/1000) | Regular/irregular/handwritten/artistic text, KIE, handwritten math | Fine-grained *recognition* capability        |
+| **Robustness probe** | derived from DocVQA (ours)                  | ANLS retention   | Capture-quality + terminology stability                            | The "beyond accuracy" deployment axis        |
 
 **Why validation splits.** DocVQA/InfoVQA **test** labels live behind an eval server; I use
 **val** so results are self-contained and reproducible. (Published model cards often quote
@@ -132,14 +132,14 @@ separates "accurate" from "accurate *and stable*".
 
 ### 3. Evaluation metrics — beyond accuracy
 
-| Metric | Definition | Why it matters for documents |
-|--------|------------|------------------------------|
-| **ANLS** | 1 − normalised edit distance to best gold; 0 below 0.5 | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses |
-| **Relaxed accuracy** | Numeric within 5% rel. error, else exact match | Official ChartQA metric; the right notion of "correct" for read-off numbers |
-| **OCRBench score** | Gold string ⊆ prediction, summed /1000 | Standard OCRBench scoring; isolates *recognition* from *reasoning* |
-| **Calibration — ECE** | Σ |acc(bin) − conf(bin)|·\|bin\|/N over 10 conf. bins | A deployable reader must *know when it is unsure* so low-confidence fields route to human review. Two models with equal accuracy but different ECE are **not** equally useful. (Guo et al., ICML'17) |
-| **Robustness retention** | score(perturbed)/score(clean) per family | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS |
-| **Operational** | answer-rate, load time, avg latency/sample | Edge viability: a model that's accurate but 10× slower may be unusable |
+| Metric                   | Definition                                             | Why it matters for documents                                                                                               |     |      |                       |                                                                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | --- | ---- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ANLS**                 | 1 − normalised edit distance to best gold; 0 below 0.5 | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses |     |      |                       |                                                                                                                                                                                                      |
+| **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match         | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                |     |      |                       |                                                                                                                                                                                                      |
+| **OCRBench score**       | Gold string ⊆ prediction, summed /1000                 | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                         |     |      |                       |                                                                                                                                                                                                      |
+| **Calibration — ECE**    | Σ                                                      | acc(bin) − conf(bin)                                                                                                       | ·\  | bin\ | /N over 10 conf. bins | A deployable reader must *know when it is unsure* so low-confidence fields route to human review. Two models with equal accuracy but different ECE are **not** equally useful. (Guo et al., ICML'17) |
+| **Robustness retention** | score(perturbed)/score(clean) per family               | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                              |     |      |                       |                                                                                                                                                                                                      |
+| **Operational**          | answer-rate, load time, avg latency/sample             | Edge viability: a model that's accurate but 10× slower may be unusable                                                     |     |      |                       |                                                                                                                                                                                                      |
 
 Confidence for ECE is the **mean token probability** of the generated answer, read from HF
 `generate(output_scores=True)`. Genuinely autoregressive backends (InternVL, SmolVLM,
@@ -165,13 +165,13 @@ reported as `ECE = n/a` rather than with a fabricated number.
 
 ### 5. Software stack
 
-| Tool | Role | Why |
-|------|------|-----|
-| **PyTorch + HF Transformers** | Model loading/inference | Every candidate ships HF weights; one API (`AutoModel*`, `generate`) covers them via thin adapters |
-| **HF Datasets** | Benchmark sourcing | Canonical hosting for DocVQA/InfoVQA/ChartQA/OCRBench |
-| **VLMEvalKit** | Cross-check / standard harness | The task's reference harness; we mirror its dataset choices & metrics, and provide a thin wrapper. We add a *self-contained* pipeline on top because VLMEvalKit reports accuracy/ANLS but **not calibration or our robustness retention** — the metrics that make this analysis "beyond accuracy" |
-| **PEFT (LoRA)** | Part-2 fine-tuning PoC | Parameter-efficient adaptation fits the sub-1B/edge story and a T4 budget |
-| **Pillow / NumPy / torchvision** | Image I/O + perturbations + tiling transforms | Lightweight, ubiquitous |
+| Tool                             | Role                                          | Why                                                                                                                                                                                                                                                                                               |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PyTorch + HF Transformers**    | Model loading/inference                       | Every candidate ships HF weights; one API (`AutoModel*`, `generate`) covers them via thin adapters                                                                                                                                                                                                |
+| **HF Datasets**                  | Benchmark sourcing                            | Canonical hosting for DocVQA/InfoVQA/ChartQA/OCRBench                                                                                                                                                                                                                                             |
+| **VLMEvalKit**                   | Cross-check / standard harness                | The task's reference harness; we mirror its dataset choices & metrics, and provide a thin wrapper. We add a *self-contained* pipeline on top because VLMEvalKit reports accuracy/ANLS but **not calibration or our robustness retention** — the metrics that make this analysis "beyond accuracy" |
+| **PEFT (LoRA)**                  | Part-2 fine-tuning PoC                        | Parameter-efficient adaptation fits the sub-1B/edge story and a T4 budget                                                                                                                                                                                                                         |
+| **Pillow / NumPy / torchvision** | Image I/O + perturbations + tiling transforms | Lightweight, ubiquitous                                                                                                                                                                                                                                                                           |
 
 **Why a custom pipeline *and* VLMEvalKit.** VLMEvalKit is the right standard for headline
 accuracy and is referenced for cross-checking. But calibration (ECE) and the paired robustness
@@ -255,13 +255,13 @@ evidence says is weak (InfoVQA/layout reasoning), not on already-saturated OCR.
 
 ### 3. Expected outcomes & measurement
 
-| Axis | Baseline (published ref.) | Target after plan | Measured by |
-|------|---------------------------:|------------------:|-------------|
-| InfoVQA (val ANLS) | ~56 | **+6–10 ANLS** | `evaluate.py` on InfoVQA |
-| ChartQA (relaxed) | ~76 | +2–4 | `evaluate.py` on ChartQA |
-| DocVQA (val ANLS) | ~85 | **no regression** (±1) | `evaluate.py` on DocVQA |
-| Robustness worst-case retention | TBD (pipeline) | **+0.1–0.2** | robustness probe retention |
-| Calibration (ECE) | TBD (pipeline) | **halved** | ECE in `summary.json` |
+| Axis                            | Baseline (published ref.) | Target after plan      | Measured by                |
+| ------------------------------- | ------------------------: | ---------------------: | -------------------------- |
+| InfoVQA (val ANLS)              | ~56                       | **+6–10 ANLS**         | `evaluate.py` on InfoVQA   |
+| ChartQA (relaxed)               | ~76                       | +2–4                   | `evaluate.py` on ChartQA   |
+| DocVQA (val ANLS)               | ~85                       | **no regression** (±1) | `evaluate.py` on DocVQA    |
+| Robustness worst-case retention | TBD (pipeline)            | **+0.1–0.2**           | robustness probe retention |
+| Calibration (ECE)               | TBD (pipeline)            | **halved**             | ECE in `summary.json`      |
 
 Expected magnitudes are deliberately modest and InfoVQA-focused because that is where the
 headroom is; the success criterion is **InfoVQA up materially with DocVQA/OCRBench held**,

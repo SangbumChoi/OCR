@@ -97,6 +97,7 @@ class _InternVL(ModelAdapter):
                 torch_dtype=dtype,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True,
+                attn_implementation=self.resolve_attn(),
             )
             .eval()
             .to(self.device)

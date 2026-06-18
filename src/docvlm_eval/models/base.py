@@ -37,6 +37,9 @@ class ModelAdapter(abc.ABC):
     device: str = "cuda"
     dtype: str = "bfloat16"
     gen: GenConfig = field(default_factory=GenConfig)
+    # attention backend: "auto" -> flash_attention_2 if installed (cuda), else sdpa (cuda) / eager (cpu).
+    # Set explicitly ("eager"/"sdpa"/"flash_attention_2") for the flash-attn benchmark.
+    attn: str = "auto"
     _loaded: bool = field(default=False, init=False, repr=False)
 
     # ---- descriptive metadata (filled by subclasses; surfaced in the report) ----
@@ -89,12 +92,30 @@ class ModelAdapter(abc.ABC):
         except Exception:
             return None
 
+    def resolve_attn(self) -> str:
+        """Resolve ``attn='auto'`` to a concrete backend for this device.
+
+        Default is conservative — **sdpa on CUDA, eager on CPU** — so every model loads even
+        without flash-attn installed (this also unblocks Ovis, whose default flash_attention_2
+        is CUDA-only). Pass ``attn='flash_attention_2'`` to opt in (see the flash-attn benchmark)."""
+        if self.attn != "auto":
+            return self.attn
+        try:
+            import torch
+
+            if "cuda" in str(self.device) and torch.cuda.is_available():
+                return "sdpa"
+        except Exception:
+            pass
+        return "eager"
+
     def profile(self) -> dict[str, Any]:
         return {
             "key": self.key,
             "hf_id": self.hf_id,
             "param_count_m": self.param_count_m,
             "family": self.family,
+            "attn": self.resolve_attn(),
         }
 
     # ---- resource measurement (declared on the wrapper so every model is measured the same) --

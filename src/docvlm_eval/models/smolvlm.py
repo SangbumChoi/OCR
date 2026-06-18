@@ -33,7 +33,8 @@ class _SmolVLM(ModelAdapter):
 
         self.processor = AutoProcessor.from_pretrained(self.hf_id)
         self.model = (
-            _AutoVLM.from_pretrained(self.hf_id, torch_dtype=getattr(torch, self.dtype))
+            _AutoVLM.from_pretrained(self.hf_id, torch_dtype=getattr(torch, self.dtype),
+                                     attn_implementation=self.resolve_attn())
             .eval()
             .to(self.device)
         )

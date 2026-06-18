@@ -42,7 +42,7 @@ for m in "${CHAT[@]}"; do echo "-> $m";
 
 echo "== pass 2: PaddleOCR-VL 1.0/1.5/1.6 (transformers 4.57) =="
 pip -q install "transformers==4.57.1" protobuf >/dev/null 2>&1 || true
-for m in "${PADDLE[@]}"; do echo "-> $m"; run "$m" "$CAP"; run "$m" "$CEV"; done
+for m in "${PADDLE[@]}"; do echo "-> $m"; run "$m" "$CAP"; run "$m" "$SCP"; run "$m" "$CEV"; done
 
 echo "== aggregate + analysis =="
 for b in "$CAP" "$SCP" "$CEV" "$OOV" "$WEB"; do

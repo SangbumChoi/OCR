@@ -22,15 +22,15 @@ OCR system actually asks about.
 
 ## 1. Per-content-class metrics (and why)
 
-| Class | Metric we use | Why this and not plain accuracy / CER |
-|---|---|---|
-| **text** | **NED (1−norm. edit dist)** + report **CER/WER**; **field‑F1** for KIE | CER alone over-penalises one-char slips on long strings and gives no credit structure; NED is bounded [0,1] and partial-credit-fair, and **field-level F1** (precision/recall) is what tells you *missed vs hallucinated* fields — the real KIE question. |
-| **table** | **TEDS / TEDS‑Struct** (+ cell‑content) | A table's value is its **structure + cell relationships**; a flat-text metric can't tell if rows/cols/spans are right. TEDS compares the HTML trees (structure *and* content); TEDS‑Struct isolates topology. |
-| **figure / layout** | **detection mAP / presence‑IoU** | For "is there a figure and where", the question is *localisation*, so an IoU/mAP over predicted vs gold regions is the right signal — not a text score. |
-| **formula** | **NED + exact** (token / LaTeX) | Different LaTeX can render identically, so exact-match is too harsh; NED on the token string (and exact as a ceiling) balances it. (CDM is the gold-standard if a renderer is available.) |
-| **chart** | **relaxed accuracy (±5%)** | Reading a plotted value needs numeric tolerance, exactly ChartQA's metric. |
-| **QR / barcode** | **exact decode match** | The payload is a discrete string; either it's decoded correctly or not — exact match on the decoded text. |
-| **stamp / logo** | **presence + IoU** (grounding) | These are *objects to locate* (compliance: is the seal present and where) → detection-style IoU, plus a yes/no presence check. |
+| Class               | Metric we use                                                          | Why this and not plain accuracy / CER                                                                                                                                                                                                                     |
+| ------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **text**            | **NED (1−norm. edit dist)** + report **CER/WER**; **field‑F1** for KIE | CER alone over-penalises one-char slips on long strings and gives no credit structure; NED is bounded [0,1] and partial-credit-fair, and **field-level F1** (precision/recall) is what tells you *missed vs hallucinated* fields — the real KIE question. |
+| **table**           | **TEDS / TEDS‑Struct** (+ cell‑content)                                | A table's value is its **structure + cell relationships**; a flat-text metric can't tell if rows/cols/spans are right. TEDS compares the HTML trees (structure *and* content); TEDS‑Struct isolates topology.                                             |
+| **figure / layout** | **detection mAP / presence‑IoU**                                       | For "is there a figure and where", the question is *localisation*, so an IoU/mAP over predicted vs gold regions is the right signal — not a text score.                                                                                                   |
+| **formula**         | **NED + exact** (token / LaTeX)                                        | Different LaTeX can render identically, so exact-match is too harsh; NED on the token string (and exact as a ceiling) balances it. (CDM is the gold-standard if a renderer is available.)                                                                 |
+| **chart**           | **relaxed accuracy (±5%)**                                             | Reading a plotted value needs numeric tolerance, exactly ChartQA's metric.                                                                                                                                                                                |
+| **QR / barcode**    | **exact decode match**                                                 | The payload is a discrete string; either it's decoded correctly or not — exact match on the decoded text.                                                                                                                                                 |
+| **stamp / logo**    | **presence + IoU** (grounding)                                         | These are *objects to locate* (compliance: is the seal present and where) → detection-style IoU, plus a yes/no presence check.                                                                                                                            |
 
 ## 2. Rotation robustness (why + metric)
 

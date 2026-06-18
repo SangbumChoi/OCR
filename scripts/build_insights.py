@@ -178,7 +178,8 @@ def main():
     # ---- top findings (heuristic synthesis) ----
     L.insert(2, _top_findings(capj, gnd, ce) + "\n")
 
-    (ROOT / "report" / "insights.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    from docvlm_eval.report_md import prettify_tables
+    (ROOT / "report" / "insights.md").write_text(prettify_tables("\n".join(L)) + "\n", encoding="utf-8")
     print("\n".join(L))
     print(f"\n[done] -> report/insights.md")
 

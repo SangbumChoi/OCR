@@ -29,6 +29,7 @@ def run_evaluation(
     limit: int | None = None,
     benchmark_name: str = "benchmark",
     resume: bool = True,
+    attn: str = "auto",
 ) -> dict[str, Any]:
     """Evaluate one model on one benchmark and write artefacts to ``out_dir``.
 
@@ -58,7 +59,8 @@ def run_evaluation(
     from .models.base import GenConfig
 
     model = build_model(
-        model_key, device=device, dtype=dtype, gen=GenConfig(max_new_tokens=max_new_tokens)
+        model_key, device=device, dtype=dtype, gen=GenConfig(max_new_tokens=max_new_tokens),
+        attn=attn,
     )
     model.reset_peak_memory()
     t_load = time.time()
@@ -92,6 +94,7 @@ def run_evaluation(
             "benchmark": benchmark_name,
             "device": device,
             "dtype": dtype,
+            "attn": model.resolve_attn(),
             # --- efficiency: time + memory, measured via the model wrapper ---
             "load_seconds": round(load_s, 2),
             "avg_latency_s": round(sum(latencies) / len(latencies), 3) if latencies else None,
