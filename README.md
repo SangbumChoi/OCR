@@ -21,6 +21,8 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > (capability leaders · reasoning-emergence · grounding gap · efficiency frontier · OOV fallback)
 > 🪜 **Part-2 ablation plan:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
 > (spotting/reasoning/multilingual/LoRA-placement/HPO/preprocessing ablations → cumulative staircase)
+> 🔬 **Research novelty & open questions:** [`report/research_novelty.md`](report/research_novelty.md)
+> (lit-grounded gaps the probes/ablations here can uniquely test at ≤1B)
 > 🔎 **Results analysis & flaws:** [`report/results_analysis.md`](report/results_analysis.md)
 > (real CPU runs · inference bugs fixed · scoring flaws · per-model capability vector)
 > 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
