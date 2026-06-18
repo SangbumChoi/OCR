@@ -1,0 +1,13 @@
+{
+  "type": "LCD / meter / 7-seg",
+  "stressors": [
+    "non-font digits",
+    "glare"
+  ],
+  "anchor_metric": "exact + IoU",
+  "fields": {
+    "reading": "01428"
+  },
+  "task": "What number is on the display?",
+  "degraded_preset": "photo"
+}

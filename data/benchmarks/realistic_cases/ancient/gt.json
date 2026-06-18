@@ -1,0 +1,16 @@
+{
+  "type": "ancient manuscript / 고문서",
+  "stressors": [
+    "direction(vertical)",
+    "language(classical)",
+    "degradation(fade/stain)"
+  ],
+  "anchor_metric": "NED + robustness",
+  "fields": {
+    "language": "zh-classical",
+    "reading_direction": "vertical-rtl"
+  },
+  "transcript": "山重水複疑無路",
+  "task": "Transcribe the characters in reading order (top-to-bottom, right-to-left).",
+  "degraded_preset": "historical"
+}

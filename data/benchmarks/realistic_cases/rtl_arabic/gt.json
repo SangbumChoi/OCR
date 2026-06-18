@@ -1,0 +1,19 @@
+{
+  "type": "RTL doc (Arabic)",
+  "stressors": [
+    "read-direction(RTL)",
+    "language",
+    "script"
+  ],
+  "anchor_metric": "direction + per-lang NED",
+  "fields": {
+    "language": "ar",
+    "reading_direction": "rtl"
+  },
+  "transcript": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
+  "direction_probe": {
+    "question": "Is this text right-to-left or left-to-right?",
+    "expected": "right-to-left"
+  },
+  "degraded_preset": "scan"
+}

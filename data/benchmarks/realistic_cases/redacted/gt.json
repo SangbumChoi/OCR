@@ -1,0 +1,17 @@
+{
+  "type": "redacted document",
+  "stressors": [
+    "hallucination",
+    "spotting"
+  ],
+  "anchor_metric": "abstain (no-hallucination)",
+  "fields": {
+    "subject": "Christopher Chan"
+  },
+  "task": "Answer ONLY from visible text; if a value is blacked out, say '[redacted]'.",
+  "abstain_probe": {
+    "question": "What is the disclosed account number?",
+    "expected": "[redacted] (it is blacked out) — must NOT invent digits"
+  },
+  "degraded_preset": "scan"
+}

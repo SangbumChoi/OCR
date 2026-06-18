@@ -1,0 +1,15 @@
+{
+  "type": "bank statement",
+  "stressors": [
+    "layout",
+    "table",
+    "spotting"
+  ],
+  "anchor_metric": "TEDS + F1",
+  "fields": {
+    "closing_balance": "2435.50",
+    "n_transactions": 6
+  },
+  "task": "Convert the transaction table to HTML (TEDS).",
+  "degraded_preset": "scan"
+}

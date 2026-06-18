@@ -1,0 +1,24 @@
+{
+  "type": "checkbox form",
+  "stressors": [
+    "selection-marks",
+    "layout",
+    "hallucination"
+  ],
+  "anchor_metric": "selection-mark accuracy + F1",
+  "fields": {
+    "contact_checked": [
+      "Email",
+      "Phone call"
+    ],
+    "language_checked": [
+      "English"
+    ]
+  },
+  "task": "List only the CHECKED (☒) options.",
+  "abstain_probe": {
+    "question": "Is 'Fax' selected?",
+    "expected": "option not present"
+  },
+  "degraded_preset": "scan"
+}

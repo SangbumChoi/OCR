@@ -69,6 +69,16 @@ python scripts/make_synthetic_samples.py         # attach samples for categories
                                                  # (full-page recognition, scene text, robustness)
 ```
 
+**Realistic synthetic special cases.** Genuinely document-*looking* renders of the hard document
+types (ID/passport, cheque, prescription, redacted, RTL, webtoon, ancient, LCD …) — realistic
+*and* GT-exact, usable as realistic eval **and** Part-2 fine-tuning data. Pipeline: HTML/CSS +
+Faker → WeasyPrint → PDF → PyMuPDF (rasterize + exact spotting boxes) → Augraphy degradation.
+See [`data/benchmarks/realistic_cases/`](data/benchmarks/realistic_cases/README.md):
+```bash
+pip install -e ".[synth]"
+python scripts/make_realistic_cases.py           # 11 cases, each clean.png + degraded.png + gt.json
+```
+
 ---
 
 ## Quick start

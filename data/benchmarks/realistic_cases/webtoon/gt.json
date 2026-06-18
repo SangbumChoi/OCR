@@ -1,0 +1,20 @@
+{
+  "type": "webtoon / manga",
+  "stressors": [
+    "read-order",
+    "direction(vertical)",
+    "SFX/art-text"
+  ],
+  "anchor_metric": "read-order + direction + NED",
+  "fields": {
+    "n_panels": 4
+  },
+  "reading_order": [
+    "Are you ready?",
+    "I think so...",
+    "Then let's begin!",
+    "Wait — look over there!"
+  ],
+  "task": "Transcribe the speech bubbles in correct reading order (top to bottom).",
+  "degraded_preset": "photo"
+}

@@ -1,0 +1,19 @@
+{
+  "type": "prescription",
+  "stressors": [
+    "handwriting",
+    "hallucination",
+    "degradation"
+  ],
+  "anchor_metric": "CER(hand) + abstain",
+  "fields": {
+    "patient": "Levi Snyder",
+    "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d"
+  },
+  "task": "Transcribe the handwritten medication line (CER).",
+  "abstain_probe": {
+    "question": "What is the refill count?",
+    "expected": "not legible / not present — abstain"
+  },
+  "degraded_preset": "fax"
+}

@@ -1,0 +1,28 @@
+{
+  "type": "cheque / 수표",
+  "stressors": [
+    "handwriting",
+    "dual-amount",
+    "hallucination",
+    "spotting"
+  ],
+  "anchor_metric": "dual-amount F1 + sign detect",
+  "fields": {
+    "payee": "Christopher Morales III",
+    "amount_numeric": "1,450.00",
+    "amount_words": "One thousand four hundred fifty and 00/100"
+  },
+  "spotting": {
+    "courtesy_amount": [
+      759,
+      104,
+      850,
+      130
+    ]
+  },
+  "consistency_probe": {
+    "question": "Do the numeric and written amounts agree?",
+    "expected": "yes (1450.00 == one thousand four hundred fifty)"
+  },
+  "degraded_preset": "scan"
+}

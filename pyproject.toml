@@ -42,6 +42,10 @@ models = [
 finetune = ["peft>=0.12.0", "wandb>=0.17.0", "accelerate>=0.33.0"]
 # Report rendering + figures.
 report = ["markdown>=3.6", "weasyprint>=62.0", "matplotlib>=3.8"]
+# Realistic synthetic data generator (scripts/make_realistic_cases.py): HTML/CSS -> WeasyPrint
+# -> PDF -> PyMuPDF (rasterize + exact GT boxes) -> Augraphy (scanner/photo degradation), with
+# Faker for deterministic field values. Reuses weasyprint from [report].
+synth = ["weasyprint>=62.0", "pymupdf>=1.24", "faker>=25.0", "augraphy>=8.2", "qrcode>=7.4"]
 # Tests + lint.
 dev = ["pytest>=8.0", "ruff>=0.5"]
 

@@ -1,0 +1,34 @@
+{
+  "type": "ID / passport",
+  "stressors": [
+    "language",
+    "MRZ",
+    "hallucination",
+    "spotting"
+  ],
+  "anchor_metric": "KIE F1 + abstain + IoU",
+  "fields": {
+    "name": "KRISTINA FLEMING",
+    "doc_no": "210655224",
+    "dob": "14 FEB 1985",
+    "expiry": "14 JUN 2031"
+  },
+  "mrz": [
+    "P<USAFLEMING<<KRISTINA<<<<<<<<<<<<<<<<<<<<<<",
+    "210655224<4USA351819M310614<<<<<<<<<<<<<<00<"
+  ],
+  "spotting": {
+    "photo_region": "top-right portrait box",
+    "doc_no": [
+      48,
+      178,
+      134,
+      197
+    ]
+  },
+  "abstain_probe": {
+    "question": "What is the cardholder's blood type?",
+    "expected": "not present / abstain"
+  },
+  "degraded_preset": "photo"
+}

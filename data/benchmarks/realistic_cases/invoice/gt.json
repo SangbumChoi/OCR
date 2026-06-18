@@ -1,0 +1,28 @@
+{
+  "type": "invoice/receipt",
+  "stressors": [
+    "layout",
+    "table",
+    "spotting",
+    "hallucination"
+  ],
+  "anchor_metric": "KIE F1 + spotting IoU",
+  "fields": {
+    "invoice_no": "INV-2025-1791",
+    "company": "Gould-Foster",
+    "total": "847.00"
+  },
+  "spotting": {
+    "total": [
+      658,
+      379,
+      714,
+      397
+    ]
+  },
+  "abstain_probe": {
+    "question": "What is the shipping tracking number?",
+    "expected": "not present / abstain"
+  },
+  "degraded_preset": "scan"
+}
