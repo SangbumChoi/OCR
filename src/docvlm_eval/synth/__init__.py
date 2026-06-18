@@ -14,7 +14,9 @@ faker) live in the ``[synth]`` extra and are imported lazily.
 from .degrade import PRESETS, degrade
 from .patterns import DocBuilder, esc
 from .render import RenderResult, render_html, resolve_boxes
+from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
 
 __all__ = [
     "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade", "PRESETS",
+    "case_to_samples", "load_case_dir", "load_realistic_samples",
 ]
