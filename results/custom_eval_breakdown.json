@@ -1,0 +1,38 @@
+{
+  "dummy-echo": {
+    "by_content_class": {
+      "barcode": 0.0,
+      "chart": 0.0,
+      "direction": 0.0,
+      "formula": 0.0,
+      "logo": 0.0,
+      "orientation": 0.0,
+      "qr": 0.0,
+      "stamp": 0.0,
+      "table": 0.0,
+      "text": 0.012
+    },
+    "by_language": {
+      "en": 0.028,
+      "ja": 0.0,
+      "ko": 0.0,
+      "zh": 0.0
+    },
+    "rotation_read_score": {
+      "0deg": 0.0,
+      "15deg": 0.0,
+      "90deg": 0.0,
+      "180deg": 0.0,
+      "270deg": 0.0
+    },
+    "rotation_retention": {
+      "0deg": null,
+      "15deg": null,
+      "90deg": null,
+      "180deg": null,
+      "270deg": null
+    },
+    "reading_direction_acc": 0.0,
+    "spotting_mean_iou": 0.0
+  }
+}

@@ -163,3 +163,11 @@ benchmarks:
                grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_capability_probe.py)"}
+  - {key: custom_eval, name: "Proposed custom evaluation set", category: "11. Custom capability axes",
+     metric: "ned / teds / exact / relaxed_acc / grounding",
+     purpose: "Our proposed real-world eval format: per content-class (text/table/formula/chart/
+               qr/barcode/stamp/logo), per-language (en/ko/ja/zh), rotation robustness (0/15/90/180/
+               270), reading-direction (vertical CJK), and spotting (basis-of-extraction), each scored
+               with a class-appropriate metric. See data/benchmarks/custom_eval/README.md.",
+     hf_id: null, config: null, split: null,
+     source: "SYNTHETIC (scripts/make_custom_eval.py)"}

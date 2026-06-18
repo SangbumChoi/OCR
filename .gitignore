@@ -17,6 +17,10 @@ results/*
 !results/matrix_probe.md
 !results/matrix_probe.json
 !results/probe_signals.json
+!results/custom_eval_breakdown.json
+!results/custom_eval_breakdown.md
+!results/matrix_custom_eval.json
+!results/matrix_custom_eval.md
 data/crawled/
 wandb/
 

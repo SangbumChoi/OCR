@@ -111,10 +111,47 @@ def ocrbench_score(pred: str, golds: list[str]) -> float:
     return 1.0 if any(normalize_text(g) in np_ for g in golds if g) else 0.0
 
 
+def cer(pred: str, gold: str) -> float:
+    """Character Error Rate = edit_distance / len(gold). Lower is better; can exceed 1."""
+    g = gold.strip()
+    if not g:
+        return 0.0 if not pred.strip() else 1.0
+    return levenshtein(pred.strip(), g) / len(g)
+
+
+def wer(pred: str, gold: str) -> float:
+    """Word Error Rate via word-level edit distance / #gold words."""
+    gw, pw = gold.split(), pred.split()
+    if not gw:
+        return 0.0 if not pw else 1.0
+    # word-level Levenshtein
+    prev = list(range(len(gw) + 1))
+    for i, a in enumerate(pw, 1):
+        cur = [i] + [0] * len(gw)
+        for j, b in enumerate(gw, 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a != b))
+        prev = cur
+    return prev[-1] / len(gw)
+
+
+def ned_similarity(pred: str, golds: list[str]) -> float:
+    """1 - normalized edit distance against the best gold (higher better). Unlike ANLS this has
+    no 0.5 cliff, so it rewards partially-correct long transcriptions."""
+    if not golds:
+        return 0.0
+    return max(_nls(pred, g) for g in golds)
+
+
 def _grounding(pred: str, golds: list[str]) -> float:
     from .grounding import grounding_score  # local import to avoid a cycle
 
     return grounding_score(pred, golds)
+
+
+def _teds(pred: str, golds: list[str]) -> float:
+    from .tables import teds_score  # local import to avoid a cycle
+
+    return teds_score(pred, golds)
 
 
 _SCORERS = {
@@ -123,6 +160,8 @@ _SCORERS = {
     "exact": exact_match,
     "ocrbench": ocrbench_score,
     "grounding": _grounding,
+    "ned": ned_similarity,
+    "teds": _teds,
 }
 
 

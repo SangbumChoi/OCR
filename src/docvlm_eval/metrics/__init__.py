@@ -9,17 +9,24 @@ hold up under realistic document noise / domain terms (robustness)?
 
 from .text import (
     anls,
+    cer,
     exact_match,
+    ned_similarity,
     normalize_text,
     relaxed_accuracy,
     ocrbench_score,
     score_sample,
+    wer,
 )
 from .calibration import expected_calibration_error, reliability_table
 from .aggregate import aggregate
+from .tables import teds, teds_struct
 
 __all__ = [
     "anls",
+    "cer",
+    "wer",
+    "ned_similarity",
     "exact_match",
     "normalize_text",
     "relaxed_accuracy",
@@ -28,4 +35,6 @@ __all__ = [
     "expected_calibration_error",
     "reliability_table",
     "aggregate",
+    "teds",
+    "teds_struct",
 ]

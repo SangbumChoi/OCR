@@ -60,3 +60,42 @@ def load_font(size: int, bold: bool = False):
         return ImageFont.load_default(size=size)
     except TypeError:
         return ImageFont.load_default()
+
+
+_CJK_GLOB = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK*.ttc",
+    "/usr/share/fonts/**/NotoSansCJK*.ttc",
+    "/usr/share/fonts/**/NotoSerifCJK*.ttc",
+    "/usr/share/fonts/**/ipag*.ttf",
+    "/usr/share/fonts/**/*gothic*.ttf",
+    "/usr/share/fonts/**/*CJK*.*",
+    "/usr/share/fonts/**/*Han*.*",
+]
+
+
+@lru_cache(maxsize=4)
+def _find_cjk() -> str | None:
+    for pat in _CJK_GLOB:
+        hits = glob.glob(pat, recursive=True)
+        if hits:
+            return sorted(hits)[0]
+    return None
+
+
+def load_cjk_font(size: int):
+    """A CJK-capable font (Korean/Japanese/Chinese). Falls back to the latin font if none —
+    in which case CJK glyphs render as tofu and the generator should skip/flag CJK samples."""
+    from PIL import ImageFont
+
+    path = _find_cjk()
+    if path:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return load_font(size)
+
+
+def have_cjk() -> bool:
+    return _find_cjk() is not None
+
