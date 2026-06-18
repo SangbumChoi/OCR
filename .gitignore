@@ -25,6 +25,7 @@ results/*
 !results/matrix_oov.json
 !results/matrix_webui.md
 !results/matrix_webui.json
+!results/ablation_results.json
 data/crawled/
 wandb/
 

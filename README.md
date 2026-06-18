@@ -19,6 +19,8 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > (type × stressor matrix — webtoon/ID/historical/LCD … → which metric/axis each needs)
 > 💡 **Cross-model insights (auto):** [`report/insights.md`](report/insights.md)
 > (capability leaders · reasoning-emergence · grounding gap · efficiency frontier · OOV fallback)
+> 🪜 **Part-2 ablation plan:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
+> (spotting/reasoning/multilingual/LoRA-placement/HPO/preprocessing ablations → cumulative staircase)
 > 🔎 **Results analysis & flaws:** [`report/results_analysis.md`](report/results_analysis.md)
 > (real CPU runs · inference bugs fixed · scoring flaws · per-model capability vector)
 > 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)

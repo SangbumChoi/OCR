@@ -1,0 +1,59 @@
+# Part-2 ablation registry (see report/part2_ablation_plan.md). Declarative so each ablation is
+# one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
+
+target_model: internvl2_5-1b
+base_task: document-generation (image -> structured text); per-ablation augmentation
+
+ablations:
+  - id: A1_spotting
+    question: "Does adding bbox (where) targets improve extraction + spatial grounding?"
+    factor: "target = value + [x1,y1,x2,y2]  vs  value only"
+    control: "same images/QA, same steps/optim"
+    metrics: [grounding_iou, kie_f1, infovqa_anls]
+    hypothesis: "spotting injects spatial grounding -> IoU and KIE up"
+
+  - id: A2_reasoning
+    question: "Does CoT/rationale supervision help integrative reasoning?"
+    factor: "target = rationale -> answer  vs  answer only"
+    control: "same data"
+    metrics: [cap_integ_sum, cap_integ_rel, infovqa_anls]
+    hypothesis: "rationale teaches multi-region procedure -> reasoning up"
+
+  - id: A3_signal_vs_combined
+    question: "Is it the structured signals (spot/reason) that help, or plain task combination?"
+    factor: "{answer} | {+spot} | {+reason} | {+spot+reason}"
+    control: "same data/steps"
+    metrics: [composite, grounding_iou, cap_integ_rel]
+    hypothesis: "spot & reason are complementary and beat plain combination"
+
+  - id: A4_multilingual
+    question: "Multi-language mix vs single; which language PAIRS transfer?"
+    factor: "train mix: {en} {en+es} {en+ja} {ko+en} {en+zh} {all}"
+    control: "equal total samples"
+    metrics: [per_language_ned]
+    hypothesis: "related scripts transfer (en-es, ko-en); distant (en-ja) help less/interfere"
+
+  - id: A5_lora_placement
+    question: "Which modules to LoRA-adapt for which capability?"
+    factor: "target_modules: vision_encoder | connector(mlp1) | llm_attn | llm_mlp | all"
+    control: "rank/alpha/lr/steps fixed"
+    metrics: [per_axis]
+    hypothesis: "spatial<-vision+connector ; reasoning/language<-llm_attn+mlp"
+
+  - id: A6_hpo
+    question: "Best LoRA rank/alpha/lr/epochs for the chosen placement?"
+    factor: "r in {8,16,32,64}; alpha; lr; epochs"
+    control: "placement = A5 winner"
+    metrics: [composite, overfit_gap]
+    hypothesis: "moderate r (16-32) best; high r overfits small data"
+
+  - id: A7_preprocessing
+    question: "Effect of resize/tiling logic on small-text + layout?"
+    factor: "dynamic tiling (n_max) vs fixed resize; max-resolution; keep-aspect"
+    control: "model/data fixed"
+    metrics: [infovqa_anls, ocrbench, smalltext_ned]
+    hypothesis: "higher-res dynamic tiling -> InfoVQA/OCRBench up"
+
+# Integration order for the cumulative staircase:
+integration_order: [baseline, A7_preprocessing, A1_spotting, A2_reasoning,
+                    A4_multilingual, A5_lora_placement, A6_hpo]

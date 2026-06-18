@@ -1,0 +1,38 @@
+{
+  "demo": true,
+  "metric": "InfoVQA ANLS (headline)",
+  "note": "ILLUSTRATIVE placeholder numbers so the figures render; replaced by real ablation runs.",
+  "staircase": [
+    {"step": "baseline", "score": 56.0},
+    {"step": "+A7 preprocessing", "score": 60.5},
+    {"step": "+A1 spotting", "score": 62.0},
+    {"step": "+A2 reasoning", "score": 65.5},
+    {"step": "+A4 multilingual", "score": 66.5},
+    {"step": "+A5 placement", "score": 68.0},
+    {"step": "+A6 HPO", "score": 69.5}
+  ],
+  "deltas": [
+    {"ablation": "A7 preprocessing", "axis": "InfoVQA/OCRBench", "delta": 4.5},
+    {"ablation": "A1 spotting", "axis": "grounding IoU", "delta": 1.5},
+    {"ablation": "A2 reasoning", "axis": "integrative", "delta": 3.5},
+    {"ablation": "A4 multilingual", "axis": "per-lang NED", "delta": 1.0},
+    {"ablation": "A5 placement", "axis": "composite", "delta": 1.5},
+    {"ablation": "A6 HPO", "axis": "composite", "delta": 1.5}
+  ],
+  "language_transfer": {
+    "langs": ["en", "es", "ko", "ja", "zh"],
+    "matrix": [
+      [0.0, 3.0, 1.0, 0.5, 1.0],
+      [3.5, 0.0, 0.5, 0.0, 0.5],
+      [2.0, 0.5, 0.0, 1.5, 2.5],
+      [0.5, 0.0, 1.5, 0.0, 2.0],
+      [1.5, 0.5, 2.0, 2.5, 0.0]
+    ]
+  },
+  "lora_placement": {
+    "groups": ["vision", "connector", "llm_attn", "llm_mlp", "all"],
+    "grounding": [2.0, 3.0, 0.5, 0.5, 3.2],
+    "reasoning": [0.5, 1.0, 3.0, 2.0, 3.5],
+    "language": [0.5, 0.5, 1.5, 3.0, 3.2]
+  }
+}
