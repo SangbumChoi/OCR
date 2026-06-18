@@ -36,7 +36,8 @@ class Ovis2_1B(ModelAdapter):
                 torch_dtype=getattr(torch, self.dtype),
                 multimodal_max_length=8192,
                 trust_remote_code=True,
-                # default is flash_attention_2 (CUDA-only); resolve to sdpa/eager unless opted in
+                # Ovis remote code defaults to flash_attention_2 (CUDA-only); resolve_attn() forces
+                # eager so it loads without flash-attn unless explicitly opted in.
                 attn_implementation=self.resolve_attn(),
             )
             .eval()

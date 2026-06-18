@@ -37,8 +37,10 @@ class ModelAdapter(abc.ABC):
     device: str = "cuda"
     dtype: str = "bfloat16"
     gen: GenConfig = field(default_factory=GenConfig)
-    # attention backend: "auto" -> flash_attention_2 if installed (cuda), else sdpa (cuda) / eager (cpu).
-    # Set explicitly ("eager"/"sdpa"/"flash_attention_2") for the flash-attn benchmark.
+    # attention backend. Default "auto" -> **eager** (the only backend every model here supports;
+    # see resolve_attn). flash_attention_2 is NOT used by default — it needs an Ampere+ GPU and
+    # gives no measurable win on a T4 (see notebooks/flash_attention_benchmark.ipynb, reference
+    # only). Opt in explicitly with "sdpa"/"flash_attention_2" if you want to benchmark them.
     attn: str = "auto"
     _loaded: bool = field(default=False, init=False, repr=False)
 
