@@ -15,6 +15,8 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > (what each benchmark collects · visual-class diversity · VQA answer-natures · grouping/priority)
 > 🧩 **Capability axes & custom probe:** [`report/capability_axes.md`](report/capability_axes.md)
 > (text vs location understanding · KIE/integrative/chart output natures · grounding fair-comparison)
+> 🗂️ **Document-type taxonomy:** [`report/document_type_taxonomy.md`](report/document_type_taxonomy.md)
+> (type × stressor matrix — webtoon/ID/historical/LCD … → which metric/axis each needs)
 > 🔎 **Results analysis & flaws:** [`report/results_analysis.md`](report/results_analysis.md)
 > (real CPU runs · inference bugs fixed · scoring flaws · per-model capability vector)
 > 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
