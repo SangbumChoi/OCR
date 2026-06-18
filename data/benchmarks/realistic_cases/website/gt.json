@@ -8,7 +8,7 @@
   ],
   "anchor_metric": "NED + spotting",
   "fields": {
-    "brand": "Gould-Foster",
+    "brand": "Ware-Fuentes",
     "nav_items": [
       "Product",
       "Pricing",
@@ -16,7 +16,17 @@
       "Sign in"
     ],
     "headline": "Ship documents, not paperwork.",
-    "cta": "Start free trial"
+    "cta": "Start free trial",
+    "_task": "List the navigation items in order, then the main headline."
+  },
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      2000,
+      1407
+    ],
+    "page_count": 1
   },
   "spotting": {
     "cta_button": [
@@ -33,10 +43,12 @@
     "feature cards (L→R)",
     "footer"
   ],
-  "task": "List the navigation menu items in order, then the main headline.",
-  "abstain_probe": {
-    "question": "What is the user's logged-in email?",
-    "expected": "not shown (logged-out marketing page) — abstain"
-  },
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "What is the user's logged-in email?",
+      "expected": "logged-out page — abstain"
+    }
+  ],
   "degraded_preset": "screenshot"
 }

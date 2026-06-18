@@ -1,5 +1,5 @@
 {
-  "type": "PDF research paper (2-column)",
+  "type": "PDF research paper (2-col)",
   "stressors": [
     "layout(multi-column)",
     "read-order",
@@ -9,7 +9,7 @@
   "anchor_metric": "read-order + NED + TEDS",
   "fields": {
     "title": "Sub-1B Vision-Language Models for Document Understanding",
-    "authors": "Roberto Davis, Susan Lewis",
+    "authors": "Diana Perry, Stephen Rosario",
     "sections": [
       "1. Introduction",
       "2. Related Work",
@@ -17,9 +17,17 @@
       "4. Experiments",
       "5. Conclusion"
     ],
-    "n_pages": 1
+    "_task": "Extract the title, authors and section headings in reading order."
   },
-  "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      1241,
+      1754
+    ],
+    "page_count": 1
+  },
   "spotting": {
     "figure_caption": [
       789,
@@ -28,10 +36,13 @@
       373
     ]
   },
-  "task": "Extract the title, author list, and section headings in reading order.",
-  "order_probe": {
-    "question": "Does text read across both columns row-by-row?",
-    "expected": "no — each column reads top-to-bottom independently"
-  },
+  "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",
+  "probes": [
+    {
+      "kind": "order",
+      "question": "Does text read across both columns row-by-row?",
+      "expected": "no — each column reads top-to-bottom independently"
+    }
+  ],
   "degraded_preset": "scan"
 }

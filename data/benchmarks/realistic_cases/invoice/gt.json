@@ -9,20 +9,41 @@
   "anchor_metric": "KIE F1 + spotting IoU",
   "fields": {
     "invoice_no": "INV-2025-1791",
-    "company": "Gould-Foster",
-    "total": "847.00"
+    "date": "1977-07-09",
+    "lines_rows": 4,
+    "total": "$847.00",
+    "_task": "Extract invoice number, date and total; convert the line-item table to HTML."
+  },
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
   },
   "spotting": {
+    "invoice_no": [
+      181,
+      195,
+      296,
+      214
+    ],
     "total": [
-      658,
-      379,
-      714,
-      397
+      174,
+      434,
+      258,
+      460
     ]
   },
-  "abstain_probe": {
-    "question": "What is the shipping tracking number?",
-    "expected": "not present / abstain"
-  },
+  "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "What is the shipping tracking number?",
+      "expected": "not present — abstain"
+    }
+  ],
   "degraded_preset": "scan"
 }

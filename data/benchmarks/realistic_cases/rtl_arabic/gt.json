@@ -7,13 +7,26 @@
   ],
   "anchor_metric": "direction + per-lang NED",
   "fields": {
+    "transcript": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
     "language": "ar",
-    "reading_direction": "rtl"
+    "reading_direction": "rtl",
+    "_task": "Transcribe the Arabic text and state the reading direction."
   },
-  "transcript": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
-  "direction_probe": {
-    "question": "Is this text right-to-left or left-to-right?",
-    "expected": "right-to-left"
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
   },
+  "probes": [
+    {
+      "kind": "direction",
+      "question": "Is this text right-to-left or left-to-right?",
+      "expected": "right-to-left"
+    }
+  ],
   "degraded_preset": "scan"
 }

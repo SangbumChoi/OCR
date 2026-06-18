@@ -8,21 +8,34 @@
   ],
   "anchor_metric": "dual-amount F1 + sign detect",
   "fields": {
-    "payee": "Christopher Morales III",
     "amount_numeric": "1,450.00",
-    "amount_words": "One thousand four hundred fifty and 00/100"
+    "payee": "Thomas Crawford",
+    "amount_words": "One thousand four hundred fifty and 00/100",
+    "_task": "Read the courtesy (numeric) and legal (written) amounts and check they agree."
+  },
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      945,
+      414
+    ],
+    "page_count": 1
   },
   "spotting": {
-    "courtesy_amount": [
+    "amount_numeric": [
       759,
       104,
       850,
       130
     ]
   },
-  "consistency_probe": {
-    "question": "Do the numeric and written amounts agree?",
-    "expected": "yes (1450.00 == one thousand four hundred fifty)"
-  },
+  "probes": [
+    {
+      "kind": "consistency",
+      "question": "Do the numeric and written amounts agree?",
+      "expected": "yes (1450.00 == one thousand four hundred fifty)"
+    }
+  ],
   "degraded_preset": "scan"
 }

@@ -8,27 +8,37 @@
   ],
   "anchor_metric": "KIE F1 + abstain + IoU",
   "fields": {
-    "name": "KRISTINA FLEMING",
-    "doc_no": "210655224",
-    "dob": "14 FEB 1985",
-    "expiry": "14 JUN 2031"
+    "name": "JOSHUA DUNCAN",
+    "doc_no": "701571670",
+    "dob": "30 JAN 1997",
+    "expiry": "14 JUN 2031",
+    "mrz1": "P<USADUNCAN<<JOSHUA<<<<<<<<<<<<<<<<<<<<<<<<<",
+    "mrz2": "701571670<4USA219935M310614<<<<<<<<<<<<<<00<",
+    "_task": "Extract name, document number, DOB and expiry; localise the MRZ and photo."
   },
-  "mrz": [
-    "P<USAFLEMING<<KRISTINA<<<<<<<<<<<<<<<<<<<<<<",
-    "210655224<4USA351819M310614<<<<<<<<<<<<<<00<"
-  ],
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      532,
+      343
+    ],
+    "page_count": 1
+  },
   "spotting": {
-    "photo_region": "top-right portrait box",
     "doc_no": [
-      48,
-      178,
-      134,
-      197
+      138,
+      111,
+      224,
+      130
     ]
   },
-  "abstain_probe": {
-    "question": "What is the cardholder's blood type?",
-    "expected": "not present / abstain"
-  },
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "What is the cardholder's blood type?",
+      "expected": "not present — abstain"
+    }
+  ],
   "degraded_preset": "photo"
 }

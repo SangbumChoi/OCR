@@ -6,8 +6,17 @@
   ],
   "anchor_metric": "exact + IoU",
   "fields": {
-    "reading": "01428"
+    "reading": "01428",
+    "_task": "Read the display."
   },
-  "task": "What number is on the display?",
+  "source": "SYNTHETIC (docvlm_eval.synth; PIL — no real 7-seg font)",
+  "render": {
+    "dpi": null,
+    "size_px": [
+      520,
+      200
+    ],
+    "page_count": 1
+  },
   "degraded_preset": "photo"
 }

@@ -6,12 +6,33 @@
   ],
   "anchor_metric": "abstain (no-hallucination)",
   "fields": {
-    "subject": "Christopher Chan"
+    "subject": "Kathleen Schmidt",
+    "_task": "Answer only from visible text; for blacked-out values output '[redacted]'."
   },
-  "task": "Answer ONLY from visible text; if a value is blacked out, say '[redacted]'.",
-  "abstain_probe": {
-    "question": "What is the disclosed account number?",
-    "expected": "[redacted] (it is blacked out) — must NOT invent digits"
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
   },
+  "redacted": {
+    "account_number": "57975432319",
+    "authorising_officer": "Jon Cooper"
+  },
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "What is the account number?",
+      "expected": "[redacted] — blacked out; must NOT invent a value"
+    },
+    {
+      "kind": "abstain",
+      "question": "What is the authorising officer?",
+      "expected": "[redacted] — blacked out; must NOT invent a value"
+    }
+  ],
   "degraded_preset": "scan"
 }

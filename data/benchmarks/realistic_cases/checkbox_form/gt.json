@@ -7,18 +7,77 @@
   ],
   "anchor_metric": "selection-mark accuracy + F1",
   "fields": {
-    "contact_checked": [
+    "applicant": "Michael Elliott",
+    "_task": "List ONLY the checked (☒) options per group."
+  },
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
+  },
+  "spotting": {
+    "contact:Email": [
+      119,
+      205,
+      170,
+      228
+    ],
+    "contact:SMS": [
+      119,
+      237,
+      163,
+      260
+    ],
+    "contact:Phone call": [
+      119,
+      270,
+      214,
+      293
+    ],
+    "contact:Postal mail": [
+      119,
+      302,
+      219,
+      325
+    ],
+    "language:English": [
+      119,
+      382,
+      186,
+      405
+    ],
+    "language:Korean": [
+      119,
+      415,
+      185,
+      437
+    ],
+    "language:Spanish": [
+      119,
+      447,
+      193,
+      470
+    ]
+  },
+  "selection": {
+    "contact": [
       "Email",
       "Phone call"
     ],
-    "language_checked": [
+    "language": [
       "English"
     ]
   },
-  "task": "List only the CHECKED (☒) options.",
-  "abstain_probe": {
-    "question": "Is 'Fax' selected?",
-    "expected": "option not present"
-  },
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "Is 'Fax' selected?",
+      "expected": "option not present"
+    }
+  ],
   "degraded_preset": "scan"
 }

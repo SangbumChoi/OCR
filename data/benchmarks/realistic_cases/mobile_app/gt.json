@@ -7,14 +7,23 @@
   ],
   "anchor_metric": "NED + read-order",
   "fields": {
-    "n_messages": 5,
     "messages": [
       "Hi! Is my invoice ready?",
       "Yes — INV-2025-0042, total $145.50.",
       "Great, can you email it?",
       "Sent to your inbox ✅",
       "Thanks!"
-    ]
+    ],
+    "_task": "Transcribe chat messages in order; mark incoming vs outgoing."
+  },
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      610,
+      1319
+    ],
+    "page_count": 1
   },
   "reading_order": [
     "Hi! Is my invoice ready?",
@@ -23,10 +32,12 @@
     "Sent to your inbox ✅",
     "Thanks!"
   ],
-  "task": "Transcribe the chat messages in order; mark which are incoming vs outgoing.",
-  "direction_probe": {
-    "question": "Which messages are from the user vs the agent?",
-    "expected": "right/blue bubbles = user (outgoing), left/grey = agent"
-  },
+  "probes": [
+    {
+      "kind": "direction",
+      "question": "Which messages are the user's?",
+      "expected": "right/blue bubbles = user (outgoing)"
+    }
+  ],
   "degraded_preset": "screenshot"
 }

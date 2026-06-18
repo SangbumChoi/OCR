@@ -1,5 +1,5 @@
 {
-  "type": "prescription",
+  "type": "prescription / 처방전",
   "stressors": [
     "handwriting",
     "hallucination",
@@ -8,12 +8,24 @@
   "anchor_metric": "CER(hand) + abstain",
   "fields": {
     "patient": "Levi Snyder",
-    "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d"
+    "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d",
+    "_task": "Transcribe the handwritten medication line (CER)."
   },
-  "task": "Transcribe the handwritten medication line (CER).",
-  "abstain_probe": {
-    "question": "What is the refill count?",
-    "expected": "not legible / not present — abstain"
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
   },
+  "probes": [
+    {
+      "kind": "abstain",
+      "question": "What is the refill count?",
+      "expected": "not legible / not present — abstain"
+    }
+  ],
   "degraded_preset": "fax"
 }

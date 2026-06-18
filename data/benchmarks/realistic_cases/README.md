@@ -27,6 +27,28 @@ for free. Degradation is **photometric only** (no geometry) so the boxes stay va
 `degraded.png` too. Each case emits a paired `clean.png` + `degraded.png` → feeds the
 robustness-retention metric directly.
 
+## GT patterns — declare a value once, get the label for free
+
+The cases are built with [`docvlm_eval.synth.DocBuilder`](../../../src/docvlm_eval/synth/patterns.py):
+every value is declared through **one primitive** that both renders the HTML *and* registers the
+ground truth, so the pixels and the labels can never disagree (no hand-typed GT to drift).
+
+| Primitive            | Renders                          | Ground truth it produces                                  |
+| -------------------- | -------------------------------- | -------------------------------------------------------- |
+| `field(l,v,spot=)`   | `label: value`                   | `fields[key]=v` (+ pixel `spotting[key]` if `spot`)      |
+| `transcript(t)`      | a text block                     | `fields[key]=t` (NED/CER target)                         |
+| `table(hdr,rows)`    | an HTML table                    | `table_html` (TEDS-gold, identical structure) + row count|
+| `checkboxes(g,opts)` | ☐/☒ list                         | `selection[g]=checked` + a box per option                |
+| `redaction(pre,val)` | `pre [black bar]`                | `redacted[key]=val` (GT-only, never drawn) + abstain probe|
+| `order(items)`       | (nothing — other primitives draw)| `reading_order` (sequence GT)                            |
+| `spot(key,text)`     | (nothing — text drawn via `raw`) | `spotting[key]` for raw/interpolated content             |
+| `probe(kind,q,exp)`  | (nothing)                        | a control question (abstain / consistency / direction…)  |
+
+The uniform GT schema (`gt.json`): `type · stressors · anchor_metric · fields · spotting ·
+table_html · selection · redacted · reading_order · probes · source · render{dpi,size_px,page_count}`.
+Tests in [`tests/test_synth_patterns.py`](../../../tests/test_synth_patterns.py) assert each
+contract (boxes land inside the image, redacted values never leak into visible GT, etc.).
+
 ## Cases (one folder each: `clean.png`, `degraded.png`, `gt.json`)
 
 | Folder           | Document type            | Dominant stressors                         | Anchor metric                |

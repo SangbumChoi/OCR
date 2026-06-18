@@ -7,10 +7,18 @@
   ],
   "anchor_metric": "NED + robustness",
   "fields": {
-    "language": "zh-classical",
-    "reading_direction": "vertical-rtl"
+    "transcript": "山重水複疑無路",
+    "reading_direction": "vertical-rtl",
+    "_task": "Transcribe characters in reading order (top→bottom, right→left)."
   },
-  "transcript": "山重水複疑無路",
-  "task": "Transcribe the characters in reading order (top-to-bottom, right-to-left).",
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      709,
+      886
+    ],
+    "page_count": 1
+  },
   "degraded_preset": "historical"
 }

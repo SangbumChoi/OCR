@@ -3,18 +3,30 @@
   "stressors": [
     "read-order",
     "direction(vertical)",
-    "SFX/art-text"
+    "art-text"
   ],
   "anchor_metric": "read-order + direction + NED",
   "fields": {
-    "n_panels": 4
+    "n_panels": 4,
+    "_task": "Transcribe speech bubbles in reading order (top to bottom)."
   },
-  "reading_order": [
-    "Are you ready?",
-    "I think so...",
-    "Then let's begin!",
-    "Wait — look over there!"
-  ],
-  "task": "Transcribe the speech bubbles in correct reading order (top to bottom).",
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      473,
+      1182
+    ],
+    "page_count": 1
+  },
+  "reading_order": {
+    "order": [
+      "Are you ready?",
+      "I think so...",
+      "Then let's begin!",
+      "Wait — look over there!"
+    ],
+    "note": "top-to-bottom scroll"
+  },
   "degraded_preset": "photo"
 }

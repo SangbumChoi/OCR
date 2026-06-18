@@ -1,0 +1,104 @@
+"""Synth pattern library: ground truth is produced by the render, consistently.
+
+These need the [synth] extra (weasyprint + pymupdf); skipped cleanly when absent so the core
+suite still runs. The contract under test: every declared value lands in GT, spotting boxes are
+real and inside the image, tables emit valid TEDS-gold, checkboxes record the checked set, and
+redacted values are GT-only (never drawn) so they can serve as abstain targets.
+"""
+
+import pytest
+
+pytest.importorskip("weasyprint")
+pytest.importorskip("fitz")
+
+from docvlm_eval.synth import DocBuilder, render_html  # noqa: E402
+
+
+def _inside(box, size):
+    x1, y1, x2, y2 = box
+    w, h = size
+    return 0 <= x1 < x2 <= w and 0 <= y1 < y2 <= h
+
+
+def test_field_registers_value_and_spotbox_is_inside_image():
+    b = DocBuilder("t", ["s"], "m")
+    b.field("Invoice No", "INV-2025-0042", key="invoice_no", spot=True)
+    img, gt = b.build(dpi=120)
+    assert gt["fields"]["invoice_no"] == "INV-2025-0042"
+    assert "invoice_no" in gt["spotting"]
+    assert _inside(gt["spotting"]["invoice_no"], img.size)
+
+
+def test_uniform_schema_keys():
+    b = DocBuilder("t", ["s"], "m")
+    b.field("A", "x", key="a")
+    _, gt = b.build(dpi=100)
+    for k in ("type", "stressors", "anchor_metric", "fields", "source", "render"):
+        assert k in gt
+    assert gt["render"]["size_px"] and gt["render"]["page_count"] >= 1
+
+
+def test_table_emits_valid_teds_gold():
+    b = DocBuilder("t", ["s"], "m")
+    b.table(["Item", "Qty"], [["Widget", "2"], ["Cable", "5"]], key="lines")
+    _, gt = b.build(dpi=100)
+    assert gt["fields"]["lines_rows"] == 2
+    h = gt["table_html"]
+    assert h.startswith("<table>") and h.endswith("</table>")
+    assert h.count("<tr>") == 3  # header + 2 body
+    assert "Widget" in h and "Cable" in h
+
+
+def test_checkboxes_record_checked_and_box_per_option():
+    b = DocBuilder("t", ["s"], "m")
+    b.checkboxes("contact", [("Email", True), ("SMS", False), ("Phone", True)])
+    img, gt = b.build(dpi=120)
+    assert gt["selection"]["contact"] == ["Email", "Phone"]
+    for opt in ("Email", "SMS", "Phone"):
+        assert f"contact:{opt}" in gt["spotting"]
+        assert _inside(gt["spotting"][f"contact:{opt}"], img.size)
+
+
+def test_redacted_value_is_gt_only_and_adds_abstain_probe():
+    secret = "57975432319"
+    b = DocBuilder("t", ["s"], "m")
+    b.redaction("Account: ", secret, key="account_number")
+    _, gt = b.build(dpi=120)
+    # stored as an abstain target...
+    assert gt["redacted"]["account_number"] == secret
+    # ...but never written into the visible fields
+    import json
+    assert secret not in json.dumps(gt["fields"])
+    # ...and an abstain probe was auto-added
+    assert any(p["kind"] == "abstain" for p in gt["probes"])
+
+
+def test_redacted_text_is_not_rendered_so_search_finds_nothing():
+    secret = "ZZ-UNIQUE-SECRET-9931"
+    rr = render_html(f"<p>visible <span style='background:#111;color:#111'>████</span></p>"
+                     f"<!-- {secret} is only in a comment, never drawn -->", dpi=120)
+    try:
+        assert rr.search_boxes(secret) == []
+        assert rr.search_boxes("visible")  # control: real text is found
+    finally:
+        rr.close()
+
+
+def test_repeated_text_boxes_are_distinct_by_occurrence():
+    b = DocBuilder("t", ["s"], "m")
+    b.field(None, "DUP", key="first", spot=True)
+    b.field(None, "DUP", key="second", spot=True)
+    img, gt = b.build(dpi=120)
+    assert "first" in gt["spotting"] and "second" in gt["spotting"]
+    # different vertical positions -> the two occurrences resolved to different boxes
+    assert gt["spotting"]["first"] != gt["spotting"]["second"]
+
+
+def test_degrade_keeps_size_when_available():
+    aug = pytest.importorskip("augraphy")  # noqa: F841
+    from docvlm_eval.synth import degrade
+    b = DocBuilder("t", ["s"], "m")
+    b.field("A", "hello world", key="a")
+    img, _ = b.build(dpi=100)
+    out = degrade(img, "scan", seed=0)
+    assert out is not None and out.size == img.size

@@ -1,5 +1,5 @@
 {
-  "type": "bank statement",
+  "type": "bank statement / payslip",
   "stressors": [
     "layout",
     "table",
@@ -7,9 +7,28 @@
   ],
   "anchor_metric": "TEDS + F1",
   "fields": {
-    "closing_balance": "2435.50",
-    "n_transactions": 6
+    "account": "****6507",
+    "txns_rows": 6,
+    "closing_balance": "$1648.50",
+    "_task": "Convert the transaction table to HTML (TEDS) and read the closing balance."
   },
-  "task": "Convert the transaction table to HTML (TEDS).",
+  "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "render": {
+    "dpi": 150,
+    "size_px": [
+      875,
+      1241
+    ],
+    "page_count": 1
+  },
+  "spotting": {
+    "closing_balance": [
+      226,
+      383,
+      297,
+      402
+    ]
+  },
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>05/05</td><td>Embrace Next-Generat</td><td>+747.25</td><td>1747.25</td></tr><tr><td>08/01</td><td>Synthesize Next-Gene</td><td>+200.25</td><td>1947.50</td></tr><tr><td>03/03</td><td>Maximize Turn-Key Su</td><td>-341.75</td><td>1605.75</td></tr><tr><td>07/24</td><td>Benchmark Ubiquitous</td><td>+217.25</td><td>1823.00</td></tr><tr><td>05/04</td><td>Syndicate Innovative</td><td>-308.75</td><td>1514.25</td></tr><tr><td>07/16</td><td>Innovate Customized </td><td>+134.25</td><td>1648.50</td></tr></table>",
   "degraded_preset": "scan"
 }
