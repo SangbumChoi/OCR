@@ -75,6 +75,8 @@ def case_invoice(do_degrade):
     b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines")
     b.field("TOTAL", total_str, key="total", spot=True, cls="total")
     b.task("Extract invoice number, date and total; convert the line-item table to HTML.")
+    b.qa("What is the invoice number?", inv_no, metric="ned", answer_type="kie")
+    b.qa("What is the total amount?", [total_str, f"{total:.2f}", f"{total:,.2f}"], answer_type="kie")
     b.probe("abstain", "What is the shipping tracking number?", "not present — abstain")
     emit("invoice", b, "scan", do_degrade)
 
@@ -112,6 +114,8 @@ def case_id_card(do_degrade):
     b.transcript(mrz2, key="mrz2")
     b.raw("</div></div>")
     b.task("Extract name, document number, DOB and expiry; localise the MRZ and photo.")
+    b.qa("What is the document number?", idn, metric="ned", answer_type="kie")
+    b.qa("What is the cardholder's full name?", name, metric="ned", answer_type="kie")
     b.probe("abstain", "What is the cardholder's blood type?", "not present — abstain")
     emit("id_card", b, "photo", do_degrade)
 
@@ -128,6 +132,10 @@ def case_checkbox_form(do_degrade):
     b.line("<b>Notification language:</b>")
     b.checkboxes("language", langs)
     b.task("List ONLY the checked (☒) options per group.")
+    b.qa("Which contact methods are checked?", ", ".join(t for t, c in contact if c),
+         answer_type="selection")
+    b.qa("Which notification language is checked?", ", ".join(t for t, c in langs if c),
+         answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
     emit("checkbox_form", b, "scan", do_degrade)
 
@@ -143,6 +151,7 @@ def case_redacted(do_degrade):
     b.redaction("Authorising officer: ", fake.name(), key="authorising_officer", bar="█" * 8)
     b.line(f"Next review: {fake.date('%Y-%m-%d')}.")
     b.task("Answer only from visible text; for blacked-out values output '[redacted]'.")
+    b.qa("Who is the subject of the memo?", name, metric="ned", answer_type="kie")
     emit("redacted", b, "scan", do_degrade)
 
 
@@ -158,6 +167,7 @@ def case_bank_statement(do_degrade):
     b.table(["Date", "Description", "Amount", "Balance"], rows, key="txns")
     b.field("Closing balance", f"${bal:.2f}", key="closing_balance", spot=True)
     b.task("Convert the transaction table to HTML (TEDS) and read the closing balance.")
+    b.qa("What is the closing balance?", [f"${bal:.2f}", f"{bal:.2f}"], answer_type="kie")
     emit("bank_statement", b, "scan", do_degrade)
 
 
@@ -167,10 +177,13 @@ def case_rtl_arabic(do_degrade):
     b = DocBuilder("RTL doc (Arabic)", ["read-direction(RTL)", "language", "script"],
                    "direction + per-lang NED", page="A5", css=css)
     b.raw("<h2 dir=rtl>إيصال دفع</h2>")
-    b.transcript(text, key="transcript", lang="ar")
+    b.transcript(text, key="transcript", lang="ar", spot=True)
     b.fields["language"] = "ar"
     b.fields["reading_direction"] = "rtl"
     b.task("Transcribe the Arabic text and state the reading direction.")
+    b.qa("Transcribe the Arabic text in the image.", text, metric="ned", answer_type="multilingual")
+    b.qa("Is the text right-to-left or left-to-right?", ["right-to-left", "rtl"],
+         metric="exact", answer_type="direction")
     b.probe("direction", "Is this text right-to-left or left-to-right?", "right-to-left")
     emit("rtl_arabic", b, "scan", do_degrade)
 
@@ -189,12 +202,12 @@ def case_webtoon(do_degrade):
     b = DocBuilder("webtoon / manga", ["read-order", "direction(vertical)", "art-text"],
                    "read-order + direction + NED", page="80mm 200mm", margin="4mm", css=css)
     for i, ln in enumerate(lines, 1):
-        side = "left" if i % 2 else "right"
-        b.raw(f"<div class=panel><span class=pno>{i}</span>"
-              f"<div class='bubble {side}'>{esc(ln)}</div></div>")
-    b.order(lines, note="top-to-bottom scroll")
+        b.panel(ln, index=i, side="left" if i % 2 else "right")
+    b.spot("bubble_1", lines[0])
     b.fields["n_panels"] = len(lines)
     b.task("Transcribe speech bubbles in reading order (top to bottom).")
+    b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
+         metric="ned", answer_type="reading-order")
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -210,9 +223,10 @@ def case_prescription(do_degrade):
     b.title(f"{fake.name()}, M.D. — Internal Medicine", level=2)
     b.field("Patient", patient, key="patient")
     b.raw("<p class=rx>℞</p>")
-    b.transcript(drug, key="rx_handwritten", cls="hand")
+    b.transcript(drug, key="rx_handwritten", cls="hand", spot=True)
     b.raw("<p class='hand'>Sig: take with food</p>")
     b.task("Transcribe the handwritten medication line (CER).")
+    b.qa("Transcribe the handwritten medication line.", drug, metric="ned", answer_type="handwriting")
     b.probe("abstain", "What is the refill count?", "not legible / not present — abstain")
     emit("prescription", b, "fax", do_degrade)
 
@@ -237,6 +251,8 @@ def case_cheque(do_degrade):
     b.transcript(amt_words, key="amount_words", cls="words")
     b.raw("<p class=micr>⑆000123456⑆ 0987654321⑈ 4421</p></div>")
     b.task("Read the courtesy (numeric) and legal (written) amounts and check they agree.")
+    b.qa("What is the numeric (courtesy) amount on the cheque?", [amt_num, "1450.00"], answer_type="kie")
+    b.qa("Who is the payee?", payee, metric="ned", answer_type="kie")
     b.probe("consistency", "Do the numeric and written amounts agree?",
             "yes (1450.00 == one thousand four hundred fifty)")
     emit("cheque", b, "scan", do_degrade)
@@ -257,9 +273,12 @@ def case_ancient(do_degrade):
     b.title("古文書 — Classical manuscript", level=2)
     b.raw(f"<div class=wrap><div class=col>{esc(poem[:4])}</div>"
           f"<div class=col>{esc(poem[4:])}</div></div>")
+    b.spot("col_right", poem[:4])
     b.fields["transcript"] = poem
     b.fields["reading_direction"] = "vertical-rtl"
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
+    b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
+         answer_type="multilingual")
     emit("ancient", b, "historical", do_degrade)
 
 
@@ -304,6 +323,9 @@ def case_website(do_degrade):
     b.spot("cta_button", cta)
     b.order(["nav", "headline", "subtext", "feature cards (L→R)", "footer"])
     b.task("List the navigation items in order, then the main headline.")
+    b.qa("List the navigation menu items in order.", ", ".join(nav),
+         metric="ned", answer_type="ui")
+    b.qa("What is the main headline?", headline, metric="ned", answer_type="ui")
     b.probe("abstain", "What is the user's logged-in email?", "logged-out page — abstain")
     emit("website", b, "screenshot", do_degrade)
 
@@ -327,12 +349,13 @@ def case_mobile_app(do_degrade):
                    "NED + read-order", page="390px 844px", margin="0", css=css)
     b.raw("<div class=status><span>9:41</span><span>▮▮▮ 5G  87%</span></div>")
     b.raw("<div class=hdr>‹ Support Chat</div><div class=chat>")
-    for s, t in msgs:
-        b.raw(f'<div class="row {s}"><div class="bub {s}">{esc(t)}</div></div>')
+    for i, (s, t) in enumerate(msgs):
+        b.bubble(t, side=s, key="bubble_first" if i == 0 else None)
     b.raw("</div><div class=input>Type a message…</div>")
-    b.fields["messages"] = [t for _, t in msgs]
-    b.order([t for _, t in msgs])
+    b.fields["messages"] = b.reading_order
     b.task("Transcribe chat messages in order; mark incoming vs outgoing.")
+    b.qa("Transcribe the chat messages in order, one per line.", "\n".join(t for _, t in msgs),
+         metric="ned", answer_type="reading-order")
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
     emit("mobile_app", b, "screenshot", do_degrade)
 
@@ -372,6 +395,9 @@ def case_pdf_paper(do_degrade):
     b.spot("figure_caption", cap)
     b.order("left column top→bottom, then right column (NOT row-wise across columns)")
     b.task("Extract the title, authors and section headings in reading order.")
+    b.qa("What is the paper title?", title, metric="ned", answer_type="ui")
+    b.qa("List the section headings in order.", "; ".join(secs), metric="ned",
+         answer_type="reading-order")
     b.probe("order", "Does text read across both columns row-by-row?",
             "no — each column reads top-to-bottom independently")
     emit("pdf_paper", b, "scan", do_degrade)
@@ -387,6 +413,8 @@ def case_lcd(do_degrade):
     d.rectangle([0, 0, W - 1, H - 1], outline=(60, 70, 80), width=4)
     gt = {"type": "LCD / meter / 7-seg", "stressors": ["non-font digits", "glare"],
           "anchor_metric": "exact + IoU", "fields": {"reading": digits, "_task": "Read the display."},
+          "qa": [{"key": "reading", "question": "What number is on the display?",
+                  "answers": [digits], "metric": "exact", "answer_type": "special-glyph"}],
           "source": "SYNTHETIC (docvlm_eval.synth; PIL — no real 7-seg font)",
           "render": {"dpi": None, "size_px": [W, H], "page_count": 1}}
     emit("lcd_7seg", im, "photo", do_degrade, gt=gt)

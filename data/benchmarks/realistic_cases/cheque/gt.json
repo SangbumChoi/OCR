@@ -30,6 +30,27 @@
       130
     ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "What is the numeric (courtesy) amount on the cheque? Answer concisely, no explanation.",
+      "answers": [
+        "1,450.00",
+        "1450.00"
+      ],
+      "metric": "anls",
+      "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Who is the payee? Answer concisely, no explanation.",
+      "answers": [
+        "Thomas Crawford"
+      ],
+      "metric": "ned",
+      "answer_type": "kie"
+    }
+  ],
   "probes": [
     {
       "kind": "consistency",

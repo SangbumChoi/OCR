@@ -94,6 +94,38 @@ def test_repeated_text_boxes_are_distinct_by_occurrence():
     assert gt["spotting"]["first"] != gt["spotting"]["second"]
 
 
+def test_qa_records_answerable_pairs():
+    b = DocBuilder("t", ["s"], "m")
+    b.field("Total", "$145.50", key="total")
+    b.qa("What is the total?", ["$145.50", "145.50"], answer_type="kie")
+    _, gt = b.build(dpi=100)
+    assert len(gt["qa"]) == 1
+    qa = gt["qa"][0]
+    assert qa["answers"] == ["$145.50", "145.50"] and qa["answer_type"] == "kie"
+    assert qa["question"].startswith("What is the total?")  # concise suffix appended
+
+
+def test_bubble_and_panel_build_reading_order():
+    b = DocBuilder("t", ["s"], "m")
+    b.bubble("hello", side="in")
+    b.bubble("hi there", side="out")
+    _, gt = b.build(dpi=100)
+    assert gt["reading_order"] == ["hello", "hi there"]
+
+    b2 = DocBuilder("t", ["s"], "m")
+    b2.panel("p1", index=1)
+    b2.panel("p2", index=2, side="right")
+    _, gt2 = b2.build(dpi=100)
+    assert gt2["reading_order"] == ["p1", "p2"]
+
+
+def test_grounding_metric_question_has_no_concise_suffix():
+    b = DocBuilder("t", ["s"], "m")
+    b.qa("Return the bbox", "1,2,3,4", metric="grounding", answer_type="grounding")
+    _, gt = b.build(dpi=100)
+    assert gt["qa"][0]["question"] == "Return the bbox"  # no suffix for grounding/teds
+
+
 def test_degrade_keeps_size_when_available():
     aug = pytest.importorskip("augraphy")  # noqa: F841
     from docvlm_eval.synth import degrade

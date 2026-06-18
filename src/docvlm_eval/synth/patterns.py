@@ -50,6 +50,7 @@ class DocBuilder:
         self.reading_order: list = []
         self.probes: list[dict] = []
         self.table_html: str | None = None
+        self.qas: list[dict] = []
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
 
@@ -132,6 +133,37 @@ class DocBuilder:
         """Declare the canonical reading order (sequence GT). Rendering is done by other primitives."""
         self.reading_order = items if not note else {"order": items, "note": note}
 
+    def bubble(self, text: str, *, side: str = "in", key: str | None = None) -> str:
+        """A chat bubble. Renders the row+bubble, appends `text` to reading_order, optional spot.
+        `side` ('in'/'out') drives CSS the case supplies. Returns the text for convenience."""
+        if not isinstance(self.reading_order, list):
+            self.reading_order = []
+        self.reading_order.append(text)
+        self.raw(f"<div class='row {side}'><div class='bub {side}'>{esc(text)}</div></div>")
+        if key:
+            self._spot(key, text)
+        return text
+
+    def panel(self, text: str, *, index: int, side: str = "left") -> str:
+        """A comic/webtoon panel with one speech bubble. Renders panel, appends to reading_order."""
+        if not isinstance(self.reading_order, list):
+            self.reading_order = []
+        self.reading_order.append(text)
+        self.raw(f"<div class=panel><span class=pno>{index}</span>"
+                 f"<div class='bubble {side}'>{esc(text)}</div></div>")
+        return text
+
+    def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
+           key: str | None = None, concise: bool = True) -> None:
+        """Register an answerable (question, answer) pair over content already rendered, so the case
+        can be turned into eval Samples. `answer` may be a string or a list of acceptable strings."""
+        ans = answer if isinstance(answer, list) else [answer]
+        q = question
+        if concise and metric not in ("grounding", "teds"):
+            q += " Answer concisely, no explanation."
+        self.qas.append({"key": key, "question": q, "answers": ans,
+                         "metric": metric, "answer_type": answer_type})
+
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})
 
@@ -169,6 +201,8 @@ class DocBuilder:
                 gt["spotting"] = spotting
             if self.table_html:
                 gt["table_html"] = self.table_html
+            if self.qas:
+                gt["qa"] = self.qas
             if self.selection:
                 gt["selection"] = self.selection
             if self.redacted:

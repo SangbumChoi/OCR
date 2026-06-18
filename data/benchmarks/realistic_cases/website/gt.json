@@ -36,6 +36,26 @@
       125
     ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "List the navigation menu items in order. Answer concisely, no explanation.",
+      "answers": [
+        "Product, Pricing, Docs, Sign in"
+      ],
+      "metric": "ned",
+      "answer_type": "ui"
+    },
+    {
+      "key": null,
+      "question": "What is the main headline? Answer concisely, no explanation.",
+      "answers": [
+        "Ship documents, not paperwork."
+      ],
+      "metric": "ned",
+      "answer_type": "ui"
+    }
+  ],
   "reading_order": [
     "nav",
     "headline",

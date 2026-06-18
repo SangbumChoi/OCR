@@ -30,5 +30,17 @@
     ]
   },
   "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>05/05</td><td>Embrace Next-Generat</td><td>+747.25</td><td>1747.25</td></tr><tr><td>08/01</td><td>Synthesize Next-Gene</td><td>+200.25</td><td>1947.50</td></tr><tr><td>03/03</td><td>Maximize Turn-Key Su</td><td>-341.75</td><td>1605.75</td></tr><tr><td>07/24</td><td>Benchmark Ubiquitous</td><td>+217.25</td><td>1823.00</td></tr><tr><td>05/04</td><td>Syndicate Innovative</td><td>-308.75</td><td>1514.25</td></tr><tr><td>07/16</td><td>Innovate Customized </td><td>+134.25</td><td>1648.50</td></tr></table>",
+  "qa": [
+    {
+      "key": null,
+      "question": "What is the closing balance? Answer concisely, no explanation.",
+      "answers": [
+        "$1648.50",
+        "1648.50"
+      ],
+      "metric": "anls",
+      "answer_type": "kie"
+    }
+  ],
   "degraded_preset": "scan"
 }

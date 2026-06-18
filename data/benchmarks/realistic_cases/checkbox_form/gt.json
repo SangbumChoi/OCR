@@ -63,6 +63,26 @@
       470
     ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "Which contact methods are checked? Answer concisely, no explanation.",
+      "answers": [
+        "Email, Phone call"
+      ],
+      "metric": "anls",
+      "answer_type": "selection"
+    },
+    {
+      "key": null,
+      "question": "Which notification language is checked? Answer concisely, no explanation.",
+      "answers": [
+        "English"
+      ],
+      "metric": "anls",
+      "answer_type": "selection"
+    }
+  ],
   "selection": {
     "contact": [
       "Email",

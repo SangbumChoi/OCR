@@ -20,5 +20,24 @@
     ],
     "page_count": 1
   },
+  "spotting": {
+    "col_right": [
+      360,
+      137,
+      548,
+      204
+    ]
+  },
+  "qa": [
+    {
+      "key": null,
+      "question": "Transcribe the characters (top→bottom, right→left). Answer concisely, no explanation.",
+      "answers": [
+        "山重水複疑無路"
+      ],
+      "metric": "ned",
+      "answer_type": "multilingual"
+    }
+  ],
   "degraded_preset": "historical"
 }

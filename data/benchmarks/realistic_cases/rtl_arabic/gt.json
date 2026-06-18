@@ -21,6 +21,27 @@
     ],
     "page_count": 1
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "Transcribe the Arabic text in the image. Answer concisely, no explanation.",
+      "answers": [
+        "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً"
+      ],
+      "metric": "ned",
+      "answer_type": "multilingual"
+    },
+    {
+      "key": null,
+      "question": "Is the text right-to-left or left-to-right? Answer concisely, no explanation.",
+      "answers": [
+        "right-to-left",
+        "rtl"
+      ],
+      "metric": "exact",
+      "answer_type": "direction"
+    }
+  ],
   "probes": [
     {
       "kind": "direction",

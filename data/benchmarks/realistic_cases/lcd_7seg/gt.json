@@ -9,6 +9,17 @@
     "reading": "01428",
     "_task": "Read the display."
   },
+  "qa": [
+    {
+      "key": "reading",
+      "question": "What number is on the display?",
+      "answers": [
+        "01428"
+      ],
+      "metric": "exact",
+      "answer_type": "special-glyph"
+    }
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth; PIL — no real 7-seg font)",
   "render": {
     "dpi": null,

@@ -19,14 +19,30 @@
     ],
     "page_count": 1
   },
-  "reading_order": {
-    "order": [
-      "Are you ready?",
-      "I think so...",
-      "Then let's begin!",
-      "Wait — look over there!"
-    ],
-    "note": "top-to-bottom scroll"
+  "spotting": {
+    "bubble_1": [
+      86,
+      97,
+      224,
+      120
+    ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "Transcribe the speech bubbles top to bottom, one per line. Answer concisely, no explanation.",
+      "answers": [
+        "Are you ready?\nI think so...\nThen let's begin!\nWait — look over there!"
+      ],
+      "metric": "ned",
+      "answer_type": "reading-order"
+    }
+  ],
+  "reading_order": [
+    "Are you ready?",
+    "I think so...",
+    "Then let's begin!",
+    "Wait — look over there!"
+  ],
   "degraded_preset": "photo"
 }

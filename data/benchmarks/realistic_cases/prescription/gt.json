@@ -20,6 +20,25 @@
     ],
     "page_count": 1
   },
+  "spotting": {
+    "rx_handwritten": [
+      83,
+      316,
+      627,
+      362
+    ]
+  },
+  "qa": [
+    {
+      "key": null,
+      "question": "Transcribe the handwritten medication line. Answer concisely, no explanation.",
+      "answers": [
+        "Amoxicillin 500mg — 1 cap TID x7d"
+      ],
+      "metric": "ned",
+      "answer_type": "handwriting"
+    }
+  ],
   "probes": [
     {
       "kind": "abstain",

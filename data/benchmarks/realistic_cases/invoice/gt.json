@@ -38,6 +38,28 @@
     ]
   },
   "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",
+  "qa": [
+    {
+      "key": null,
+      "question": "What is the invoice number? Answer concisely, no explanation.",
+      "answers": [
+        "INV-2025-1791"
+      ],
+      "metric": "ned",
+      "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "What is the total amount? Answer concisely, no explanation.",
+      "answers": [
+        "$847.00",
+        "847.00",
+        "847.00"
+      ],
+      "metric": "anls",
+      "answer_type": "kie"
+    }
+  ],
   "probes": [
     {
       "kind": "abstain",

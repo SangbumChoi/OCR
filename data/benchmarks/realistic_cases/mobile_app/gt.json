@@ -25,6 +25,25 @@
     ],
     "page_count": 1
   },
+  "spotting": {
+    "bubble_first": [
+      41,
+      166,
+      289,
+      192
+    ]
+  },
+  "qa": [
+    {
+      "key": null,
+      "question": "Transcribe the chat messages in order, one per line. Answer concisely, no explanation.",
+      "answers": [
+        "Hi! Is my invoice ready?\nYes — INV-2025-0042, total $145.50.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
+      ],
+      "metric": "ned",
+      "answer_type": "reading-order"
+    }
+  ],
   "reading_order": [
     "Hi! Is my invoice ready?",
     "Yes — INV-2025-0042, total $145.50.",

@@ -36,6 +36,26 @@
       373
     ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "What is the paper title? Answer concisely, no explanation.",
+      "answers": [
+        "Sub-1B Vision-Language Models for Document Understanding"
+      ],
+      "metric": "ned",
+      "answer_type": "ui"
+    },
+    {
+      "key": null,
+      "question": "List the section headings in order. Answer concisely, no explanation.",
+      "answers": [
+        "1. Introduction; 2. Related Work; 3. Method; 4. Experiments; 5. Conclusion"
+      ],
+      "metric": "ned",
+      "answer_type": "reading-order"
+    }
+  ],
   "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",
   "probes": [
     {

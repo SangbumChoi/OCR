@@ -33,6 +33,26 @@
       130
     ]
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "What is the document number? Answer concisely, no explanation.",
+      "answers": [
+        "701571670"
+      ],
+      "metric": "ned",
+      "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "What is the cardholder's full name? Answer concisely, no explanation.",
+      "answers": [
+        "JOSHUA DUNCAN"
+      ],
+      "metric": "ned",
+      "answer_type": "kie"
+    }
+  ],
   "probes": [
     {
       "kind": "abstain",

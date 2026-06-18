@@ -18,6 +18,17 @@
     ],
     "page_count": 1
   },
+  "qa": [
+    {
+      "key": null,
+      "question": "Who is the subject of the memo? Answer concisely, no explanation.",
+      "answers": [
+        "Kathleen Schmidt"
+      ],
+      "metric": "ned",
+      "answer_type": "kie"
+    }
+  ],
   "redacted": {
     "account_number": "57975432319",
     "authorising_officer": "Jon Cooper"
