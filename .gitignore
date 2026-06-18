@@ -34,3 +34,6 @@ wandb/
 *.egg-info/
 build/
 dist/
+
+# Augraphy writes intermediate frames here when generating realistic samples
+augraphy_cache/
