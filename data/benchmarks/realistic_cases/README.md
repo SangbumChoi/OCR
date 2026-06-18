@@ -40,9 +40,34 @@ ground truth, so the pixels and the labels can never disagree (no hand-typed GT 
 | `table(hdr,rows)`    | an HTML table                    | `table_html` (TEDS-gold, identical structure) + row count|
 | `checkboxes(g,opts)` | ☐/☒ list                         | `selection[g]=checked` + a box per option                |
 | `redaction(pre,val)` | `pre [black bar]`                | `redacted[key]=val` (GT-only, never drawn) + abstain probe|
+| `bubble(text,side)`  | a chat row+bubble                | appends `text` to `reading_order` (+ optional box)       |
+| `panel(text,index)`  | a comic/webtoon panel+bubble     | appends `text` to `reading_order`                        |
 | `order(items)`       | (nothing — other primitives draw)| `reading_order` (sequence GT)                            |
 | `spot(key,text)`     | (nothing — text drawn via `raw`) | `spotting[key]` for raw/interpolated content             |
+| `qa(q,ans,metric)`   | (nothing — value already drawn)  | `qa[]` answerable pair -> eval Samples                   |
 | `probe(kind,q,exp)`  | (nothing)                        | a control question (abstain / consistency / direction…)  |
+
+## Use as an eval benchmark
+
+The GT is wired into the normal pipeline by `docvlm_eval.synth.to_samples`
+(`qa`→Q/A, `spotting`→grounding, `table_html`→TEDS, `probes`→control questions):
+
+```bash
+python scripts/build_realistic_benchmark.py                 # -> realistic_cases.jsonl (52 samples)
+python scripts/build_realistic_benchmark.py --variant degraded   # -> realistic_cases_degraded.jsonl
+docvlm-eval --model <id> --benchmark data/benchmarks/realistic_cases/realistic_cases.jsonl \
+  --benchmark-name realistic_cases --out results/<id>/realistic --device cpu
+```
+
+## Scale up for training data
+
+`--count N` fans each case into `<key>/<NNNN>/` with **reseeded Faker** (different content,
+reproducible), so the same generator produces a large GT-exact training set at zero labelling
+cost. The loader/benchmark builder handle both layouts automatically.
+
+```bash
+python scripts/make_realistic_cases.py --count 500          # 14 * 500 = 7000 labelled docs
+```
 
 The uniform GT schema (`gt.json`): `type · stressors · anchor_metric · fields · spotting ·
 table_html · selection · redacted · reading_order · probes · source · render{dpi,size_px,page_count}`.

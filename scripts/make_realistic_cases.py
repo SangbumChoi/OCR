@@ -36,13 +36,17 @@ Faker.seed(7)
 records: list[dict] = []
 
 
+# When generating >1 variant per case, emit() writes into OUT/<key>/<variant>/; None = OUT/<key>/.
+CURRENT_VARIANT: str | None = None
+
+
 def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | None = None):
     """Render a builder (or accept a prebuilt PIL image + gt) -> clean.png + degraded.png + gt.json."""
     if gt is None:
         img, gt = builder_or_img.build(dpi=DPI)
     else:
         img = builder_or_img
-    folder = OUT / key
+    folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
     img.save(folder / "clean.png")
     if do_degrade:
@@ -51,10 +55,11 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
             deg.save(folder / "degraded.png")
             gt["degraded_preset"] = preset
     (folder / "gt.json").write_text(json.dumps(gt, indent=2, ensure_ascii=False), encoding="utf-8")
-    records.append({"key": key, "type": gt["type"], "stressors": gt["stressors"],
-                    "anchor_metric": gt["anchor_metric"]})
-    n_spot = len(gt.get("spotting", {}))
-    print(f"[ok] {key:14} {img.size}  fields={len(gt.get('fields',{}))} spots={n_spot}")
+    records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
+                    "stressors": gt["stressors"], "anchor_metric": gt["anchor_metric"]})
+    if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
+        n_spot = len(gt.get("spotting", {}))
+        print(f"[ok] {key:14} {img.size}  fields={len(gt.get('fields',{}))} spots={n_spot}")
 
 
 # ============================================================ paper / scan cases
@@ -405,7 +410,7 @@ def case_pdf_paper(do_degrade):
 
 # ============================================================ non-HTML special case
 def case_lcd(do_degrade):
-    digits = "01428"
+    digits = fake.numerify("0####")
     W, H = 520, 200
     im = Image.new("RGB", (W, H), (12, 14, 18))
     d = ImageDraw.Draw(im)
@@ -448,15 +453,24 @@ CASES = {
 
 
 def main():
+    global CURRENT_VARIANT
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", nargs="*", choices=list(CASES))
     ap.add_argument("--no-degrade", action="store_true")
+    ap.add_argument("--count", type=int, default=1,
+                    help="variants per case (>1 fans out into <key>/<NNNN>/ with reseeded Faker)")
+    ap.add_argument("--seed", type=int, default=7, help="base Faker seed")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    for k in (args.only or list(CASES)):
-        CASES[k](do_degrade=not args.no_degrade)
+    keys = args.only or list(CASES)
+    for v in range(args.count):
+        # reseed per variant so each one has different (but reproducible) content
+        Faker.seed(args.seed + v)
+        CURRENT_VARIANT = None if args.count == 1 else f"{v:04d}"
+        for k in keys:
+            CASES[k](do_degrade=not args.no_degrade)
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n[done] {len(args.only or CASES)} realistic cases -> {OUT}")
+    print(f"\n[done] {len(keys)} cases x {args.count} variant(s) = {len(records)} docs -> {OUT}")
 
 
 if __name__ == "__main__":

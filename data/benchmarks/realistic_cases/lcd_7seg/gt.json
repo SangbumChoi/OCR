@@ -6,7 +6,7 @@
   ],
   "anchor_metric": "exact + IoU",
   "fields": {
-    "reading": "01428",
+    "reading": "05957",
     "_task": "Read the display."
   },
   "qa": [
@@ -14,7 +14,7 @@
       "key": "reading",
       "question": "What number is on the display?",
       "answers": [
-        "01428"
+        "05957"
       ],
       "metric": "exact",
       "answer_type": "special-glyph"

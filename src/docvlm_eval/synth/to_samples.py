@@ -93,9 +93,20 @@ def load_case_dir(case_dir: str | Path, *, variant: str = "clean",
 
 def load_realistic_samples(root: str | Path, *, variant: str = "clean",
                            include_probes: bool = True) -> list[Sample]:
-    """Load every case under ``data/benchmarks/realistic_cases/`` into one Sample list."""
+    """Load every case under ``data/benchmarks/realistic_cases/`` into one Sample list.
+
+    Handles both layouts: a case dir with ``gt.json`` directly (``--count 1``) and per-variant
+    subdirs (``<key>/0000/gt.json`` from ``--count N``). The sample-id prefix is the path
+    relative to ``root`` (``invoice`` or ``invoice_0003``) so ids stay unique across variants.
+    """
     root = Path(root)
     samples: list[Sample] = []
-    for case_dir in sorted(p for p in root.iterdir() if p.is_dir() and (p / "gt.json").exists()):
-        samples.extend(load_case_dir(case_dir, variant=variant, include_probes=include_probes))
+    for gt_path in sorted(root.rglob("gt.json")):
+        case_dir = gt_path.parent
+        prefix = str(case_dir.relative_to(root)).replace("/", "_")
+        gt = json.loads(gt_path.read_text(encoding="utf-8"))
+        img = case_dir / f"{variant}.png"
+        if not img.exists():
+            img = case_dir / "clean.png"
+        samples.extend(case_to_samples(gt, str(img), prefix, include_probes=include_probes))
     return samples

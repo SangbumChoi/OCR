@@ -1,6 +1,7 @@
 [
   {
     "key": "invoice",
+    "variant": null,
     "type": "invoice/receipt",
     "stressors": [
       "layout",
@@ -12,6 +13,7 @@
   },
   {
     "key": "id_card",
+    "variant": null,
     "type": "ID / passport",
     "stressors": [
       "language",
@@ -23,6 +25,7 @@
   },
   {
     "key": "checkbox_form",
+    "variant": null,
     "type": "checkbox form",
     "stressors": [
       "selection-marks",
@@ -33,6 +36,7 @@
   },
   {
     "key": "redacted",
+    "variant": null,
     "type": "redacted document",
     "stressors": [
       "hallucination",
@@ -42,6 +46,7 @@
   },
   {
     "key": "bank_statement",
+    "variant": null,
     "type": "bank statement / payslip",
     "stressors": [
       "layout",
@@ -52,6 +57,7 @@
   },
   {
     "key": "rtl_arabic",
+    "variant": null,
     "type": "RTL doc (Arabic)",
     "stressors": [
       "read-direction(RTL)",
@@ -62,6 +68,7 @@
   },
   {
     "key": "webtoon",
+    "variant": null,
     "type": "webtoon / manga",
     "stressors": [
       "read-order",
@@ -72,6 +79,7 @@
   },
   {
     "key": "prescription",
+    "variant": null,
     "type": "prescription / 처방전",
     "stressors": [
       "handwriting",
@@ -82,6 +90,7 @@
   },
   {
     "key": "cheque",
+    "variant": null,
     "type": "cheque / 수표",
     "stressors": [
       "handwriting",
@@ -93,6 +102,7 @@
   },
   {
     "key": "ancient",
+    "variant": null,
     "type": "ancient manuscript / 고문서",
     "stressors": [
       "direction(vertical)",
@@ -103,6 +113,7 @@
   },
   {
     "key": "website",
+    "variant": null,
     "type": "website / desktop screenshot",
     "stressors": [
       "layout(web)",
@@ -114,6 +125,7 @@
   },
   {
     "key": "mobile_app",
+    "variant": null,
     "type": "mobile app / phone screenshot",
     "stressors": [
       "layout(mobile)",
@@ -124,6 +136,7 @@
   },
   {
     "key": "pdf_paper",
+    "variant": null,
     "type": "PDF research paper (2-col)",
     "stressors": [
       "layout(multi-column)",
@@ -135,6 +148,7 @@
   },
   {
     "key": "lcd_7seg",
+    "variant": null,
     "type": "LCD / meter / 7-seg",
     "stressors": [
       "non-font digits",

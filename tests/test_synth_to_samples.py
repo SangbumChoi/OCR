@@ -1,6 +1,8 @@
 """GT (gt.json) -> Sample conversion. Pure (schema only), so it runs without the [synth] extra."""
 
-from docvlm_eval.synth.to_samples import ABSTAIN_OK, case_to_samples
+import json
+
+from docvlm_eval.synth.to_samples import ABSTAIN_OK, case_to_samples, load_realistic_samples
 
 GT = {
     "type": "invoice/receipt",
@@ -60,3 +62,21 @@ def test_handles_minimal_gt_without_optional_sections():
                "render": {"size_px": [100, 100]}}
     s = case_to_samples(minimal, "i.png", "m")
     assert len(s) == 1 and s[0].answer_type == "kie" and s[0].metric == "anls"
+
+
+def _write_case(d, qa_q="q"):
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "gt.json").write_text(json.dumps(
+        {"type": "t", "qa": [{"question": qa_q, "answers": ["a"]}],
+         "render": {"size_px": [10, 10]}}))
+
+
+def test_loader_handles_flat_and_variant_layouts(tmp_path):
+    _write_case(tmp_path / "invoice")                 # flat (--count 1)
+    _write_case(tmp_path / "id_card" / "0000")        # fanned out (--count N)
+    _write_case(tmp_path / "id_card" / "0001")
+    s = load_realistic_samples(tmp_path)
+    ids = {x.sample_id for x in s}
+    assert "invoice:qa0" in ids
+    assert "id_card_0000:qa0" in ids and "id_card_0001:qa0" in ids  # prefixed by relative path
+    assert len(s) == 3
