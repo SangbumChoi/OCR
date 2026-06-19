@@ -25,6 +25,26 @@ The capability axes, and which metric answers which question:
 
 ---
 
+## How the ten categories relate (families)
+
+The ten below are **not ten disjoint tasks** — they cluster into a few families, and two pairs
+overlap on purpose. Read the numbered sections through this lens:
+
+- **A · Recognition / transcription — "read it all."** §1 full-page recognition, §2 scene-text,
+  §9 end-to-end parsing. Same core skill (convert the *whole* input to text/structure), scored by
+  the **edit-distance family** (CER/WER/NED, plus TEDS for the tables inside §9); they differ only
+  in domain — clean page (§1) vs text in the wild (§2) vs complex multi-element page (§9).
+- **B · Question answering & extraction — "get the specific information."** §3 Document VQA,
+  §4 KIE, §6 chart QA. **§3 and §4 overlap on purpose** — see the boundary note in §3.
+- **C · Structure recovery.** §5 tables, §7 formulas — the output is a *structure* (HTML tree /
+  LaTeX), not free text.
+- **D · Umbrella suite (not a peer task).** §8 OCRBench is an *aggregate* that re-bundles families
+  A–C into one score; treat it as a breadth smoke-test, not a distinct capability (see §8).
+- **E · Cross-cutting reliability.** §10 (calibration / robustness / hallucination) applies *on top
+  of* any of the above, not beside them.
+
+---
+
 ## 1. Full-page / printed-text recognition (transcription)
 
 **Task.** Transcribe an entire page/line to text (optionally formatted markdown/LaTeX/HTML).
@@ -67,10 +87,28 @@ else score = best. Averaged over questions. Designed to tolerate minor OCR/forma
 (`$1,200` vs `1200`) without rewarding near-misses. (DocVQA, WACV'21; InfoVQA, WACV'22)
 VisualMRC (free-form) additionally uses **BLEU / METEOR / CIDEr / ROUGE-L**.
 
+**The §3 ↔ §4 boundary — a spectrum, not a wall.** Document-VQA questions span two natures, and
+the lower end *is* KIE:
+
+- **3a — extractive ("KIE in question form").** "What is the total?" / "Who is the vendor?" — the
+  answer is a *single field value* lifted from one region. This is **the same skill as §4 KIE**; the
+  only difference is the **interface + metric**: a free-form NL question scored by **ANLS** here, vs
+  a fixed field schema scored by **entity-F1** in §4. So §3 *contains* §4-style questions.
+- **3b — integrative.** "How much higher is Q3 than Q1?" / "Which region has the most branches?" —
+  the answer needs **related information combined across regions** (arithmetic, comparison,
+  multi-hop), not just one given field. This is where the real "understanding" (and the failure of
+  small models) lives.
+
+Practical rule: a **fixed set of fields** with per-field precision/recall → use the **§4 KIE**
+framing (entity-F1); **open-ended NL questions** (esp. 3b) → use **§3 ANLS**. Same underlying
+reading; different evaluation contract.
+
 ## 4. Key Information Extraction (KIE) — "extract the value I want"
 
-**Task.** Exactly your point: pull *specific* fields/entities from a document (total, date,
-vendor, line items) and their **key↔value relations** — not transcribe everything.
+**Task.** Pull *specific* fields/entities from a document (total, date, vendor, line items) and
+their **key↔value relations** — not transcribe everything. This is the **structured-schema
+counterpart of the extractive §3a questions**: the same extraction skill, but driven by a fixed
+field schema and scored per-field with entity-F1 instead of a free-form question scored by ANLS.
 
 **Benchmarks.**
 - **SROIE** — receipts; 4 fields (company, date, address, total). Field-level F1 / exact match.
@@ -128,14 +166,19 @@ gold; non-numeric uses exact match. (ChartQA, ACL Findings'22) Chart-to-Text use
 **Metrics.** **Exact match**, **token accuracy**, **BLEU**, and **normalized edit distance** on
 the LaTeX token sequence; CROHME also uses expression-level recognition rate.
 
-## 8. Comprehensive OCR-capability suites for LMMs
+## 8. Comprehensive OCR-capability suites for LMMs (umbrella — not a peer task)
 
-**OCRBench** — 1,000 curated items across **5 capability groups**: (1) text recognition,
-(2) scene-text-centric VQA, (3) document-oriented VQA, (4) **key information extraction**,
-(5) **handwritten mathematical expression** recognition. Scored **out of 1000** (1 point per
-correct item; a gold answer counted correct if contained in the prediction). It is the single
-most useful "does this LMM do OCR broadly" probe. (Liu et al., 2023) **OCRBench v2** extends to
-~10k items and 31 scenarios with finer text-spotting/structure tasks.
+**This is an aggregate, not a distinct capability.** Unlike §§1–7, category 8 does not test one new
+skill — it **re-bundles the others** into a single breadth score, so think of it as a smoke-test
+("does this LMM do OCR at all?") rather than a sibling task in the same list.
+
+**OCRBench** — 1,000 curated items across **5 capability groups that map onto the categories
+above**: (1) text recognition → §1, (2) scene-text-centric VQA → §2/§3, (3) document-oriented VQA
+→ §3, (4) **key information extraction** → §4, (5) **handwritten mathematical expression**
+recognition → §7. Scored **out of 1000** (1 point per correct item; a gold answer counted correct
+if contained in the prediction). It is the single most useful "does this LMM do OCR broadly" probe.
+(Liu et al., 2023) **OCRBench v2** extends to ~10k items and 31 scenarios with finer
+text-spotting/structure tasks.
 
 Related: **SEED-Bench-2-Plus** (text-rich images), **CharXiv** (scientific-figure reasoning).
 
