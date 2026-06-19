@@ -1,12 +1,17 @@
-# Capability axes for document VLMs — selection, custom probe, and prompt plan
+# Capability axes for document VLMs — the full axis catalogue, probes, and prompt plan
 
 Benchmark *names* hide what a model can actually do. To select and compare sub-1B document
-VLMs meaningfully we evaluate along **capability axes**, build a small **custom probe** that
-isolates each axis on controlled images, and define **what to put in the prompt** to elicit
-each axis from every model — including the tricky **location/spotting** axis where models
-differ a lot. This document is the rationale; the probe is
-[`data/probes/capability_probe`](../../data/probes/capability_probe), the prompts are
-[`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
+VLMs meaningfully we evaluate along **capability axes**, build small **controlled probes** that
+isolate each axis, and define **what to put in the prompt** to elicit each one. This single file
+is the rationale for **all** the axes:
+
+- **perception + content reasoning** (read / compute / compare / chart-value / locate) →
+  [`data/probes/capability_probe`](../../data/probes/capability_probe);
+- **spatial & context understanding** (position, consistency, absence/honesty, disambiguation,
+  cross-reference) → [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe);
+- **output-side requirements** (spotting + correct-or-abstain).
+
+Prompts: [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 
 ## Two top-level abilities
 
@@ -43,11 +48,12 @@ graphic perception, not text at all.
 >    (read values, then compute/compare them) — they are *layout-agnostic*. **Spatial & context
 >    understanding** — *where* regions are and how they relate (relative position, cross-region
 >    *consistency/verification*, absence/honesty, disambiguation, cross-reference) — is a **separate,
->    independent axis** with its own probe ([`spatial_context_probes.md`](spatial_context_probes.md),
->    [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe)). The two probes
->    share **no items**: capability_probe *computes/compares/reads values*; spatial_context_probe tests
->    *position + relation/context*. (e.g. "**add** the prices" is content reasoning here; "**do** the
->    items **add up to** the total?" is a context *verification* test there — compute vs verify.)
+>    independent axis** (see [Spatial & context understanding](#spatial--context-understanding-independent-axis)
+>    below; probe [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe)). The
+>    two probes share **no items**: capability_probe *computes/compares/reads values*; the
+>    spatial/context probe tests *position + relation/context*. (e.g. "**add** the prices" is content
+>    reasoning here; "**do** the items **add up to** the total?" is a context *verification* test there
+>    — compute vs verify.)
 > 2. **Chart-value reading ⟂ pure figure understanding.** This axis is reading a *value* off a chart.
 >    **General figure/diagram comprehension** (scientific-figure reasoning, arbitrary diagrams) is
 >    **not mandatory here** — it is out of scope for the capability probe (left to dedicated
@@ -118,7 +124,7 @@ This makes "can it localise?" an apples-to-apples number. The expected result �
 boxes** while **spotting-trained models (PaddleOCR-VL, Florence-2, GOT) localise well**, which
 is precisely a reason to prefer a spotting-capable model when field localisation matters.
 
-## Results on the probe (small models run here)
+## Results on the capability probe (small models run here)
 
 Run on CPU via `python scripts/run_matrix.py --models … --benchmark
 data/probes/capability_probe/capability.jsonl` (the two smallest models actually ran here;
@@ -146,6 +152,97 @@ the 1B+ models need a GPU — see `scripts/run_all.sh`). Scores are the per-axis
 
 Net: at ≤0.5B you get a *reader* (text + chart), not a *reasoner* or a *localizer*. That
 directly shapes selection (see *How this informs model selection*).
+
+## Spatial & context understanding (independent axis)
+
+The capability probe above tests *reading and computing values*. This axis tests the orthogonal
+question — **does the model understand *space* and *context*?** — and it is easy to fake: a model
+can score well by exploiting **shortcuts** (language priors like "totals are at the bottom",
+position bias, binary guessing, rubber-stamping "yes it's consistent", or hallucinating a plausible
+value). So every hypothesis is paired with a **control** that a shortcut would *fail*, and a
+**signal criterion** only true understanding satisfies. Probe:
+[`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe) (rendered, exact GT);
+generator `scripts/make_spatial_context_probe.py`; signals computed by
+`scripts/analyze_probe_signals.py`.
+
+> **Scope boundary (kept strict).** This axis is *only* position + context — where regions are, how
+> they relate, consistency/verification, absence/honesty, disambiguation, cross-reference. *Reading
+> or computing a value* (recognition, KIE, arithmetic sum, value comparison, chart-value) is the
+> capability probe above. The two probes share **no items**: *computing* the total is content
+> reasoning; *verifying* the items match the printed total (C1) is a context test here.
+
+### Methodology: signal, not score
+For each capability we report a **signal** = (passes the test) **AND** (passes the control). Plain
+accuracy is reported too, but the *criterion for "understands"* is the shortcut-robust signal —
+designed so the **null hypothesis = "uses a shortcut"** is falsifiable.
+
+### Spatial understanding
+
+| #      | Hypothesis                                | Test                                                                                                 | Shortcut it must beat                      | Signal / criterion                                                                                                                    |
+| ------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **S1** | Knows absolute region                     | "Which quadrant has ZEBRA?" ×4 (one per quadrant)                                                    | position bias (always answer one quadrant) | accuracy **> 25%** chance **and** not all-same-answer; criterion ≥ 3/4                                                                |
+| **S2** | Knows relative position from *perception* | "Is TOTAL above or below the items?" on **normal** (total bottom) **and counterfactual** (total top) | language prior "total = bottom"            | **must be correct on BOTH**. Define **prior-reliance gap = acc(normal) − acc(counterfactual)**; understanding ⇒ gap ≈ 0 with both = 1 |
+| **S3** | Box tracks the element                    | return bbox of ANCHOR at top / mid / bottom                                                          | constant-box prior (emit same box always)  | **center-tracking**: predicted box center-y must increase with true position (correlation **r > 0.8**) **and** mean IoU > 0.3         |
+
+S2's counterfactual is the key idea — a model that answers "below" on the *top* invoice is
+pattern-matching, not seeing. S3 turns grounding into a *relational* test: even if absolute IoU is
+low, a box that *moves with* the element shows real spatial tracking; a constant prior box scores r≈0.
+
+### Context understanding
+
+| #      | Hypothesis                                   | Test                                                                                                  | Shortcut it must beat                       | Signal / criterion                                                                                     |
+| ------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **C1** | Cross-region numeric consistency             | "Do the items add up to the TOTAL?" on **consistent** (yes) **and inconsistent** (no)                 | rubber-stamp "yes"                          | **must catch the inconsistent case** (n→no); criterion: both correct, esp. control=no                  |
+| **C2** | Absence / anti-hallucination                 | "What is the discount?" when **no discount field exists**                                             | invent a number                             | answers **"none"**; any numeric answer = hallucination (fail)                                          |
+| **C3** | Field disambiguation by context              | "What is the TOTAL (not subtotal)?" with a look-alike Subtotal present                                | grab the nearest/first number               | returns the **Total**, not the Subtotal                                                                |
+| **C4** | Cross-reference + counterfactual sensitivity | "How much does the 'Bill to' person owe?" with header **Bob** vs **Alice** (table maps names→amounts) | answer invariant to header (ignore context) | **answer must flip** Bob→45, Alice→80; criterion: both correct (= sensitivity to the relevant context) |
+
+C1's inconsistent variant defeats a model that always says "consistent"; C2 measures *honesty under
+absence*; C4's two-variant design measures **counterfactual sensitivity** — if changing the only
+relevant token (the name) doesn't change the answer, the model isn't using context, it's guessing.
+
+### Signal-criteria summary (what counts as "has the capability")
+
+| Capability               | PASS criterion (shortcut-robust)                                     |
+| ------------------------ | -------------------------------------------------------------------- |
+| Absolute spatial (S1)    | ≥ 3/4 quadrants correct, answers not constant                        |
+| Relative spatial (S2)    | correct on **both** normal & counterfactual (prior-reliance gap ≈ 0) |
+| Spatial tracking (S3)    | center-y correlation r > 0.8 **and** mean IoU > 0.3                  |
+| Consistency (C1)         | catches the inconsistent case (control=no correct)                   |
+| Anti-hallucination (C2)  | "none" on the absent field                                           |
+| Disambiguation (C3)      | returns Total, not Subtotal                                          |
+| Context sensitivity (C4) | answer flips correctly with the header (both variants)               |
+
+A model "understands space/context" only if it clears the **control**, not just the easy case.
+
+### Results (SmolVLM, CPU) — interpretation
+Signal table (✅ = clears the shortcut control), from `scripts/analyze_probe_signals.py`:
+
+| model        | S1 absolute       | S2 relative | S3 tracking | C1 consistency | C2 anti-halluc | C3 disambig | C4 context-sens |
+| ------------ | :---------------: | :---------: | :---------: | :------------: | :------------: | :---------: | :-------------: |
+| SmolVLM-256M | ❌ (acc .25, bias) | ❌           | ❌           | ❌              | ❌              | ✅           | ❌               |
+| SmolVLM-500M | ✅ (acc .75)       | ❌           | ❌           | ❌              | ❌              | ✅           | ❌               |
+
+What the *controls* exposed (the whole point):
+- **S2 — constant-answer trap.** Both answer *"above"* for **every** layout → correct on the
+  counterfactual, wrong on the normal one (`prior_reliance_gap = −1.0`). A counterfactual-only test
+  would have *falsely* certified relative-position understanding. **This justifies the whole
+  control-paired methodology.**
+- **S1 — absolute spatial emerges with size.** 256M answers *"top-left"* for all quadrants (bias,
+  acc .25); **500M reaches acc .75 → PASS.**
+- **C1 — rubber-stamping caught.** Both say *"Yes, consistent"* even when the total is wrong → the
+  inconsistent control flips them to FAIL. No real cross-region arithmetic verification.
+- **C2 — hallucination caught.** Asked for a non-existent discount, 256M invents *"$20.50"*, 500M
+  *"0"* — neither abstains → both FAIL.
+- **C4 — no context sensitivity.** Each anchors to one table row regardless of the *"Bill to"* name.
+- **C3 — the one real pass.** Both return the **Total** (not the look-alike Subtotal).
+
+**Bottom line:** at ≤0.5B, document VLMs are **literal readers with local disambiguation** but lack
+**relative-position, grounding, cross-region verification, honesty under absence, and context
+sensitivity** — gaps that are invisible to single-example accuracy and surface only under the paired
+controls. Run any model with `python scripts/run_matrix.py --models <m> --benchmark
+data/probes/spatial_context_probe/probe.jsonl`; `scripts/analyze_probe_signals.py` then prints the
+PASS/FAIL per criterion + the prior-reliance gap / tracking correlation.
 
 ## How this informs model selection
 

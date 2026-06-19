@@ -35,7 +35,7 @@ pixels. The rest of the plan follows from that one decision.
         │
 2 survey EVALUATIONS (data > models) ──────►  report/benchmark_taxonomy.md · benchmark_patterns.md
         │
-3 understand evals → hunt SPECIAL CASES ───►  report/capability_axes.md · spatial_context_probes.md
+3 understand evals → hunt SPECIAL CASES ───►  report/capability_axes.md (all capability axes)
         │                                      data/benchmarks/{custom_eval,oov_probe,realistic_cases}
 4 evaluate ALL models × ALL metrics ───────►  report/results_analysis.md · insights.md · results/*
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
@@ -81,10 +81,10 @@ With the evaluation space understood, ask: *what's missing? what totally special
 field skip?* This is where we separate "reads the pixels" from "guesses from priors", isolate the
 capability axes, and build controlled probes + our own evaluation format for the gaps.
 
-- **Read:** [`report/capability_axes.md`](report/capability_axes.md) — text vs location
-  understanding; KIE/integrative/chart output natures; spotting fair-comparison.
-- **Read:** [`report/spatial_context_probes.md`](report/spatial_context_probes.md) — falsifiable
-  control-pair probes (counterfactual / distractor / position-bias).
+- **Read:** [`report/capability_axes.md`](report/capability_axes.md) — the full capability-axis
+  catalogue: text vs location, content reasoning, chart-value, spotting fair-comparison, **and**
+  spatial & context understanding (falsifiable control-pair probes: counterfactual / distractor /
+  position-bias).
 - **Build/browse the gap sets:**
   [`../data/probes/custom_eval/`](../data/probes/custom_eval/README.md) (our proposed
   per-content-class format),
@@ -162,7 +162,6 @@ added factor lifting the score a step, ending well above the baseline.
 2. [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md) ·
    [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
 3. [`report/capability_axes.md`](report/capability_axes.md) ·
-   [`report/spatial_context_probes.md`](report/spatial_context_probes.md) ·
    [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md)
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)

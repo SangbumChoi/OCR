@@ -2,7 +2,7 @@
 """Compute the shortcut-robust SIGNAL criteria from spatial/context probe results.
 
 Reads docs/results/<model>/<probe>/per_sample.json and reports, per model, whether each capability
-PASSES its *control-aware* criterion (see docs/report/spatial_context_probes.md) — not just raw
+PASSES its *control-aware* criterion (see docs/report/capability_axes.md (Spatial & context understanding)) — not just raw
 accuracy. Prints a table and writes docs/results/probe_signals.json.
 
     python scripts/analyze_probe_signals.py --probe spatial_context_probe
