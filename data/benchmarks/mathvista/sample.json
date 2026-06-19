@@ -1,7 +1,7 @@
 {
   "benchmark": "mathvista",
   "name": "MathVista",
-  "category": "6. Chart/figure math reasoning",
+  "category": "B3. Chart/figure math reasoning",
   "metric": "exact",
   "purpose": "Visual mathematical reasoning over figures/plots/diagrams; multi-step quantitative reasoning.",
   "hf_id": "AI4Math/MathVista",

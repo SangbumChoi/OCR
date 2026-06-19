@@ -100,7 +100,7 @@ def main():
     im.save(OUT / "sample.png")
     (OUT / "sample.json").write_text(json.dumps({
         "benchmark": "webui_probe", "name": "Web UI/UX (agent) probe",
-        "category": "11. Custom capability axes", "metric": "grounding / exact / ned",
+        "category": "F1. Custom capability axes", "metric": "grounding / exact / ned",
         "purpose": "Web-agent UI understanding: locate interactive elements (button/search/cart), "
                    "identify the primary CTA, read the nav, and reason about affordances "
                    "(what to click to act). Element boxes are exact for spotting IoU.",

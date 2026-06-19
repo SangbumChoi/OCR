@@ -1,6 +1,6 @@
 {
   "benchmark": "recognition_fullpage",
-  "category": "1. Full-page / printed text recognition",
+  "category": "A1. Full-page / printed text recognition",
   "metric": "CER / WER / NED",
   "metric_note": "Character/word error rate or normalized edit distance vs transcript.",
   "source": "SYNTHETIC illustrative sample (rendered locally; not an official benchmark)",

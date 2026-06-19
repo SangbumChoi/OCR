@@ -1,7 +1,7 @@
 {
   "benchmark": "textvqa",
   "name": "TextVQA",
-  "category": "3. Scene-text VQA",
+  "category": "B1. Scene-text VQA",
   "metric": "exact",
   "purpose": "Answer questions that require reading text in natural images.",
   "hf_id": "lmms-lab/textvqa",

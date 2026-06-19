@@ -1,7 +1,7 @@
 {
   "benchmark": "charxiv",
   "name": "CharXiv",
-  "category": "8. Scientific-figure reasoning",
+  "category": "D1. Scientific-figure reasoning",
   "metric": "descriptive/reasoning acc",
   "purpose": "Realistic scientific-figure understanding (arXiv charts); descriptive + reasoning questions.",
   "hf_id": "princeton-nlp/CharXiv",

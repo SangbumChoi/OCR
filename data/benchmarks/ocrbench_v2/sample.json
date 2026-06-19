@@ -1,7 +1,7 @@
 {
   "benchmark": "ocrbench_v2",
   "name": "OCRBench v2",
-  "category": "8. LMM OCR suite",
+  "category": "D1. LMM OCR suite",
   "metric": "per-task acc",
   "purpose": "Extended OCR suite (~10k items, 31 scenarios) incl. fine-grained spotting & structure.",
   "hf_id": "ling99/OCRBench_v2",

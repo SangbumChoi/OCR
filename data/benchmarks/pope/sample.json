@@ -1,7 +1,7 @@
 {
   "benchmark": "pope",
   "name": "POPE",
-  "category": "10. Hallucination",
+  "category": "E1. Hallucination",
   "metric": "F1 / accuracy",
   "purpose": "Object-existence polling (yes/no) to quantify hallucination; precision/recall/F1.",
   "hf_id": "lmms-lab/POPE",

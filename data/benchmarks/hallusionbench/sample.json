@@ -1,7 +1,7 @@
 {
   "benchmark": "hallusionbench",
   "name": "HallusionBench",
-  "category": "10. Hallucination",
+  "category": "E1. Hallucination",
   "metric": "acc + consistency",
   "purpose": "Visual-illusion vs knowledge-hallucination yes/no pairs; consistency-aware scoring.",
   "hf_id": "lmms-lab/HallusionBench",

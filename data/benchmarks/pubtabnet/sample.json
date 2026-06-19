@@ -1,7 +1,7 @@
 {
   "benchmark": "pubtabnet",
   "name": "PubTabNet",
-  "category": "5. Table recognition",
+  "category": "C1. Table recognition",
   "metric": "TEDS / TEDS-S",
   "purpose": "Reconstruct table structure + cell content (HTML) from images; cell-relationship fidelity.",
   "hf_id": "apoidea/pubtabnet-html",

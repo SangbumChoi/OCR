@@ -1,7 +1,7 @@
 {
   "benchmark": "latexocr",
   "name": "LaTeX_OCR",
-  "category": "7. Formula recognition",
+  "category": "C2. Formula recognition",
   "metric": "edit dist / BLEU / exact",
   "purpose": "Image -> LaTeX rendering; exact-match + edit-distance on the token sequence.",
   "hf_id": "linxy/LaTeX_OCR",

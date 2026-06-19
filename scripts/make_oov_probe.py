@@ -112,7 +112,7 @@ def build():
     Image.open(samples[1].image_path).save(OUT / "sample.png")
     (OUT / "sample.json").write_text(json.dumps({
         "benchmark": "oov_probe", "name": "Out-of-vocabulary script probe",
-        "category": "11. Custom capability axes", "metric": "ned / exact",
+        "category": "F1. Custom capability axes", "metric": "ned / exact",
         "purpose": "Glyphs absent from VLM tokenizers (invented/ancient/7-seg): measure the "
                    "FALLBACK pattern (abstain / transliterate / hallucinate / copy) and whether an "
                    "in-image legend enables decoding by in-context visual reasoning.",

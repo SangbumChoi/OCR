@@ -1,7 +1,7 @@
 {
   "benchmark": "ocrbench",
   "name": "OCRBench",
-  "category": "8. LMM OCR suite",
+  "category": "D1. LMM OCR suite",
   "metric": "ocrbench",
   "purpose": "1000-item OCR capability probe across 5 sub-skills (recog / scene-VQA / doc-VQA / KIE / HME).",
   "hf_id": "echo840/OCRBench",

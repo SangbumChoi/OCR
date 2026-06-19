@@ -1,7 +1,7 @@
 {
   "benchmark": "im2latex",
   "name": "im2latex (latex-formulas)",
-  "category": "7. Formula recognition",
+  "category": "C2. Formula recognition",
   "metric": "edit dist / BLEU",
   "purpose": "Image -> LaTeX for printed formulas; token accuracy / normalized edit distance.",
   "hf_id": "OleehyO/latex-formulas",

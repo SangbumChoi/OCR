@@ -1,7 +1,7 @@
 {
   "benchmark": "ai2d",
   "name": "AI2D",
-  "category": "3. Diagram QA",
+  "category": "B1. Diagram QA",
   "metric": "exact",
   "purpose": "Multiple-choice QA over grade-school science diagrams; arrows/labels/structure reasoning.",
   "hf_id": "lmms-lab/ai2d",

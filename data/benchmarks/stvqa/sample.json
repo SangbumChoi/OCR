@@ -1,7 +1,7 @@
 {
   "benchmark": "stvqa",
   "name": "ST-VQA",
-  "category": "3. Scene-text VQA",
+  "category": "B1. Scene-text VQA",
   "metric": "anls",
   "purpose": "VQA requiring reading scene text; origin of the ANLS metric.",
   "hf_id": "lmms-lab/ST-VQA",

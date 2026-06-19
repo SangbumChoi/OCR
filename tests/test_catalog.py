@@ -28,12 +28,11 @@ def test_purpose_is_descriptive():
         assert len(e["purpose"]) > 15, f"{e['key']} purpose too short"
 
 
-def test_all_ten_categories_covered():
-    nums = set()
-    for e in load_catalog():
-        nums.add(int(str(e["category"]).split(".")[0]))
-    # the 10 taxonomy categories must all be present (plus optional custom axes, e.g. 11)
-    assert set(range(1, 11)).issubset(nums), f"categories present: {sorted(nums)}"
+def test_all_families_covered():
+    codes = {str(e["category"]).split(".")[0].strip() for e in load_catalog()}
+    # the ten standard taxonomy task-codes must all be present (plus optional custom family F)
+    required = {"A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "D1", "E1"}
+    assert required.issubset(codes), f"codes present: {sorted(codes)}"
 
 
 def test_metric_names_recognisable():

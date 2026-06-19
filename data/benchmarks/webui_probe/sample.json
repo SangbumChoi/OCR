@@ -1,7 +1,7 @@
 {
   "benchmark": "webui_probe",
   "name": "Web UI/UX (agent) probe",
-  "category": "11. Custom capability axes",
+  "category": "F1. Custom capability axes",
   "metric": "grounding / exact / ned",
   "purpose": "Web-agent UI understanding: locate interactive elements (button/search/cart), identify the primary CTA, read the nav, and reason about affordances (what to click to act). Element boxes are exact for spotting IoU.",
   "source": "SYNTHETIC (scripts/make_webui_probe.py)",

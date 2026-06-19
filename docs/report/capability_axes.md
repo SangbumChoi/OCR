@@ -57,7 +57,7 @@ not just *that* it is.
 **Why custom + synthetic?** (a) Public sets entangle axes (DocVQA mixes localized + integrative);
 the probe isolates *one* axis per item so a failure is unambiguous. (b) We control the layout,
 so the **sum, the relationship, and the box are exact** — no annotation noise. (c) It sits **at
-the same level as the other benchmarks** (`data/benchmarks/…`, catalogued as category 11) and
+the same level as the other benchmarks** (`data/benchmarks/…`, catalogued in the custom family F1) and
 runs through the *same* pipeline and metrics, so it is directly comparable.
 
 ## 4. Prompt plan — what goes in the prompt

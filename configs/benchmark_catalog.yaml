@@ -1,6 +1,6 @@
 # Document-understanding benchmark CATALOG.
 #
-# Every benchmark used across the 10 capability categories (docs/report/benchmark_taxonomy.md),
+# Every benchmark used across the capability families A–F (docs/report/benchmark_taxonomy.md),
 # each annotated with `purpose` = what it actually tries to measure. Entries with an `hf_id`
 # are fetched as a one-sample preview by scripts/fetch_benchmark_samples.py (HF streaming);
 # entries with `hf_id: null` are documented-only (not cleanly streamable from HF — script-based
@@ -9,161 +9,161 @@
 
 benchmarks:
 
-  # ---------- 1. Full-page / printed & handwritten text recognition ----------
-  - {key: iam, name: IAM-line, category: "1. Text recognition", metric: "CER / WER / NED",
+  # ---------- A1. Full-page / printed & handwritten text recognition ----------
+  - {key: iam, name: IAM-line, category: "A1. Text recognition", metric: "CER / WER / NED",
      purpose: "Recognize handwritten English text lines; the classic handwriting-recognition fidelity test.",
      hf_id: Teklia/IAM-line, config: null, split: test, source: "https://fki.tic.heia-fr.ch/databases/iam-handwriting-database"}
-  - {key: recognition_fullpage, name: "Printed full-page (illustrative)", category: "1. Text recognition",
+  - {key: recognition_fullpage, name: "Printed full-page (illustrative)", category: "A1. Text recognition",
      metric: "CER / WER / NED", purpose: "Transcribe a full printed page exactly; measures end-to-end OCR fidelity / typo rate.",
      hf_id: null, config: null, split: null, source: "synthetic (scripts/make_synthetic_samples.py)"}
-  - {key: iiit5k, name: IIIT5K, category: "1. Text recognition", metric: "word accuracy / 1-NED",
+  - {key: iiit5k, name: IIIT5K, category: "A1. Text recognition", metric: "word accuracy / 1-NED",
      purpose: "Cropped-word recognition; isolates pure recognition from detection.",
      hf_id: null, config: null, split: null, source: "https://cvit.iiit.ac.in/research/projects/cvit-projects/the-iiit-5k-word-dataset"}
 
-  # ---------- 2. Scene-text detection & recognition ----------
-  - {key: scenetext, name: "Scene text (illustrative)", category: "2. Scene-text", metric: "H-mean / word-acc / 1-NED",
+  # ---------- A2. Scene-text detection & recognition ----------
+  - {key: scenetext, name: "Scene text (illustrative)", category: "A2. Scene-text", metric: "H-mean / word-acc / 1-NED",
      purpose: "Detect + read text 'in the wild' (signs, products); irregular fonts/orientations.",
      hf_id: null, config: null, split: null, source: "synthetic (scripts/make_synthetic_samples.py)"}
-  - {key: icdar2015, name: ICDAR-2015 (Incidental Scene Text), category: "2. Scene-text", metric: "detection H-mean",
+  - {key: icdar2015, name: ICDAR-2015 (Incidental Scene Text), category: "A2. Scene-text", metric: "detection H-mean",
      purpose: "Detect/recognize incidental scene text under blur/perspective; standard detection F-measure.",
      hf_id: null, config: null, split: null, source: "https://rrc.cvc.uab.es/?ch=4"}
-  - {key: totaltext, name: Total-Text, category: "2. Scene-text", metric: "detection H-mean",
+  - {key: totaltext, name: Total-Text, category: "A2. Scene-text", metric: "detection H-mean",
      purpose: "Curved/multi-oriented scene text; stresses non-horizontal layouts.",
      hf_id: null, config: null, split: null, source: "https://github.com/cs-chan/Total-Text-Dataset"}
 
-  # ---------- 3. Document / scene-text / diagram VQA ----------
-  - {key: docvqa, name: DocVQA, category: "3. Document VQA", metric: anls,
+  # ---------- B1. Document / scene-text / diagram VQA ----------
+  - {key: docvqa, name: DocVQA, category: "B1. Document VQA", metric: anls,
      purpose: "Answer questions about scanned business documents; reading + layout + key-value extraction.",
      hf_id: lmms-lab/DocVQA, config: DocVQA, split: validation, source: "https://arxiv.org/abs/2007.00398"}
-  - {key: infovqa, name: InfographicVQA, category: "3. Document VQA", metric: anls,
+  - {key: infovqa, name: InfographicVQA, category: "B1. Document VQA", metric: anls,
      purpose: "QA over infographics; joint layout + graphics + text + basic arithmetic reasoning.",
      hf_id: lmms-lab/DocVQA, config: InfographicVQA, split: validation, source: "https://arxiv.org/abs/2104.12756"}
-  - {key: textvqa, name: TextVQA, category: "3. Scene-text VQA", metric: exact,
+  - {key: textvqa, name: TextVQA, category: "B1. Scene-text VQA", metric: exact,
      purpose: "Answer questions that require reading text in natural images.",
      hf_id: lmms-lab/textvqa, config: null, split: validation, source: "https://arxiv.org/abs/1904.08920"}
-  - {key: stvqa, name: ST-VQA, category: "3. Scene-text VQA", metric: anls,
+  - {key: stvqa, name: ST-VQA, category: "B1. Scene-text VQA", metric: anls,
      purpose: "VQA requiring reading scene text; origin of the ANLS metric.",
      hf_id: lmms-lab/ST-VQA, config: null, split: test, source: "https://arxiv.org/abs/1905.13648"}
-  - {key: ocrvqa, name: OCR-VQA, category: "3. Document VQA", metric: exact,
+  - {key: ocrvqa, name: OCR-VQA, category: "B1. Document VQA", metric: exact,
      purpose: "QA over book-cover images; reading titles/authors/edition from text-heavy images.",
      hf_id: howard-hou/OCR-VQA, config: null, split: test, source: "https://ocr-vqa.github.io/"}
-  - {key: ai2d, name: AI2D, category: "3. Diagram QA", metric: exact,
+  - {key: ai2d, name: AI2D, category: "B1. Diagram QA", metric: exact,
      purpose: "Multiple-choice QA over grade-school science diagrams; arrows/labels/structure reasoning.",
      hf_id: lmms-lab/ai2d, config: null, split: test, source: "https://allenai.org/data/diagrams"}
-  - {key: visualmrc, name: VisualMRC, category: "3. Document VQA (abstractive)", metric: "BLEU/METEOR/CIDEr",
+  - {key: visualmrc, name: VisualMRC, category: "B1. Document VQA (abstractive)", metric: "BLEU/METEOR/CIDEr",
      purpose: "Long abstractive answers over webpage screenshots; reading comprehension + generation.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2101.11272"}
 
-  # ---------- 4. Key Information Extraction (KIE) ----------
-  - {key: funsd, name: FUNSD, category: "4. Key Information Extraction (forms)", metric: "entity F1",
+  # ---------- B2. Key Information Extraction (KIE) ----------
+  - {key: funsd, name: FUNSD, category: "B2. Key Information Extraction (forms)", metric: "entity F1",
      purpose: "Extract entities (question/answer/header) AND key->value links from noisy scanned forms.",
      hf_id: nielsr/funsd-layoutlmv3, config: null, split: test, source: "https://arxiv.org/abs/1905.13538"}
-  - {key: cord, name: CORD, category: "4. Key Information Extraction (receipts)", metric: "entity F1",
+  - {key: cord, name: CORD, category: "B2. Key Information Extraction (receipts)", metric: "entity F1",
      purpose: "Extract ~30 fine-grained fields + hierarchy from receipts.",
      hf_id: naver-clova-ix/cord-v2, config: null, split: test, source: "https://github.com/clovaai/cord"}
-  - {key: sroie, name: SROIE, category: "4. Key Information Extraction (receipts)", metric: "field F1",
+  - {key: sroie, name: SROIE, category: "B2. Key Information Extraction (receipts)", metric: "field F1",
      purpose: "Extract 4 fields (company/date/address/total) from receipts; exact field match.",
      hf_id: priyank-m/SROIE_2019_text_recognition, config: null, split: train, source: "https://rrc.cvc.uab.es/?ch=13"}
-  - {key: docile, name: DocILE, category: "4. Key Information Extraction (invoices)", metric: "F1 / AP",
+  - {key: docile, name: DocILE, category: "B2. Key Information Extraction (invoices)", metric: "F1 / AP",
      purpose: "Localize+extract key info (KILE) and line items (LIR) from business documents; 55 field types.",
      hf_id: null, config: null, split: null, source: "https://docile.rossum.ai/"}
-  - {key: xfund, name: XFUND, category: "4. Key Information Extraction (multilingual forms)", metric: "entity / relation F1",
+  - {key: xfund, name: XFUND, category: "B2. Key Information Extraction (multilingual forms)", metric: "entity / relation F1",
      purpose: "Multilingual (7 languages) form understanding; entity + relation extraction.",
      hf_id: null, config: null, split: null, source: "https://github.com/doc-analysis/XFUND"}
-  - {key: wildreceipt, name: WildReceipt, category: "4. Key Information Extraction (receipts)", metric: "entity F1",
+  - {key: wildreceipt, name: WildReceipt, category: "B2. Key Information Extraction (receipts)", metric: "entity F1",
      purpose: "26-key receipt KIE in realistic photos; harder capture conditions than SROIE.",
      hf_id: null, config: null, split: null, source: "https://download.openmmlab.com/mmocr/data/wildreceipt.tar"}
 
-  # ---------- 5. Table recognition & structure ----------
-  - {key: pubtabnet, name: PubTabNet, category: "5. Table recognition", metric: "TEDS / TEDS-S",
+  # ---------- C1. Table recognition & structure ----------
+  - {key: pubtabnet, name: PubTabNet, category: "C1. Table recognition", metric: "TEDS / TEDS-S",
      purpose: "Reconstruct table structure + cell content (HTML) from images; cell-relationship fidelity.",
      hf_id: apoidea/pubtabnet-html, config: null, split: validation, source: "https://github.com/ibm-aur-nlp/PubTabNet"}
-  - {key: pubtables1m, name: PubTables-1M, category: "5. Table recognition + detection", metric: "GriTS / mAP",
+  - {key: pubtables1m, name: PubTables-1M, category: "C1. Table recognition + detection", metric: "GriTS / mAP",
      purpose: "Large-scale table detection + structure recognition; GriTS over cell grids (topology).",
      hf_id: bsmock/pubtables-1m, config: null, split: train, source: "https://github.com/microsoft/table-transformer"}
-  - {key: fintabnet, name: FinTabNet, category: "5. Table recognition (financial)", metric: "TEDS",
+  - {key: fintabnet, name: FinTabNet, category: "C1. Table recognition (financial)", metric: "TEDS",
      purpose: "Complex financial tables (merged cells, dense numerics); structure + content extraction.",
      hf_id: null, config: null, split: null, source: "https://developer.ibm.com/data/fintabnet/"}
-  - {key: scitsr, name: SciTSR, category: "5. Table structure recognition", metric: "cell-adjacency F1",
+  - {key: scitsr, name: SciTSR, category: "C1. Table structure recognition", metric: "cell-adjacency F1",
      purpose: "Table structure from scientific papers; neighbour-relationship correctness.",
      hf_id: null, config: null, split: null, source: "https://github.com/Academic-Hammer/SciTSR"}
 
-  # ---------- 6. Chart / plot understanding ----------
-  - {key: chartqa, name: ChartQA, category: "6. Chart understanding", metric: relaxed_acc,
+  # ---------- B3. Chart / plot understanding ----------
+  - {key: chartqa, name: ChartQA, category: "B3. Chart understanding", metric: relaxed_acc,
      purpose: "Read + reason (compare/arithmetic) over bar/line/pie charts; relaxed numeric accuracy.",
      hf_id: lmms-lab/ChartQA, config: null, split: test, source: "https://arxiv.org/abs/2203.10244"}
-  - {key: mathvista, name: MathVista, category: "6. Chart/figure math reasoning", metric: exact,
+  - {key: mathvista, name: MathVista, category: "B3. Chart/figure math reasoning", metric: exact,
      purpose: "Visual mathematical reasoning over figures/plots/diagrams; multi-step quantitative reasoning.",
      hf_id: AI4Math/MathVista, config: null, split: testmini, source: "https://arxiv.org/abs/2310.02255"}
-  - {key: plotqa, name: PlotQA, category: "6. Chart understanding", metric: relaxed_acc,
+  - {key: plotqa, name: PlotQA, category: "B3. Chart understanding", metric: relaxed_acc,
      purpose: "QA over scientific plots with out-of-vocabulary numeric answers; data extraction + reasoning.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/1909.00997"}
-  - {key: dvqa, name: DVQA, category: "6. Chart understanding", metric: exact,
+  - {key: dvqa, name: DVQA, category: "B3. Chart understanding", metric: exact,
      purpose: "Bar-chart QA testing structure/element reading and value comparison.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/1801.08163"}
 
-  # ---------- 7. Formula / math-expression recognition ----------
-  - {key: im2latex, name: im2latex (latex-formulas), category: "7. Formula recognition", metric: "edit dist / BLEU",
+  # ---------- C2. Formula / math-expression recognition ----------
+  - {key: im2latex, name: im2latex (latex-formulas), category: "C2. Formula recognition", metric: "edit dist / BLEU",
      purpose: "Image -> LaTeX for printed formulas; token accuracy / normalized edit distance.",
      hf_id: OleehyO/latex-formulas, config: cleaned_formulas, split: train, source: "https://github.com/OleehyO/TexTeller"}
-  - {key: latexocr, name: LaTeX_OCR, category: "7. Formula recognition", metric: "edit dist / BLEU / exact",
+  - {key: latexocr, name: LaTeX_OCR, category: "C2. Formula recognition", metric: "edit dist / BLEU / exact",
      purpose: "Image -> LaTeX rendering; exact-match + edit-distance on the token sequence.",
      hf_id: linxy/LaTeX_OCR, config: default, split: train, source: "https://huggingface.co/datasets/linxy/LaTeX_OCR"}
-  - {key: crohme, name: CROHME, category: "7. Formula recognition (handwritten)", metric: "expression rec. rate",
+  - {key: crohme, name: CROHME, category: "C2. Formula recognition (handwritten)", metric: "expression rec. rate",
      purpose: "Handwritten math expression recognition; expression-level + symbol-level accuracy.",
      hf_id: null, config: null, split: null, source: "https://www.isical.ac.in/~crohme/"}
 
-  # ---------- 8. Comprehensive LMM OCR / figure suites ----------
-  - {key: ocrbench, name: OCRBench, category: "8. LMM OCR suite", metric: ocrbench,
+  # ---------- D1. Comprehensive LMM OCR / figure suites ----------
+  - {key: ocrbench, name: OCRBench, category: "D1. LMM OCR suite", metric: ocrbench,
      purpose: "1000-item OCR capability probe across 5 sub-skills (recog / scene-VQA / doc-VQA / KIE / HME).",
      hf_id: echo840/OCRBench, config: null, split: test, source: "https://arxiv.org/abs/2305.07895"}
-  - {key: ocrbench_v2, name: OCRBench v2, category: "8. LMM OCR suite", metric: "per-task acc",
+  - {key: ocrbench_v2, name: OCRBench v2, category: "D1. LMM OCR suite", metric: "per-task acc",
      purpose: "Extended OCR suite (~10k items, 31 scenarios) incl. fine-grained spotting & structure.",
      hf_id: ling99/OCRBench_v2, config: null, split: test, source: "https://github.com/Yuliang-Liu/MultimodalOCR"}
-  - {key: charxiv, name: CharXiv, category: "8. Scientific-figure reasoning", metric: "descriptive/reasoning acc",
+  - {key: charxiv, name: CharXiv, category: "D1. Scientific-figure reasoning", metric: "descriptive/reasoning acc",
      purpose: "Realistic scientific-figure understanding (arXiv charts); descriptive + reasoning questions.",
      hf_id: princeton-nlp/CharXiv, config: null, split: validation, source: "https://arxiv.org/abs/2406.18521"}
-  - {key: seedbench2plus, name: SEED-Bench-2-Plus, category: "8. Text-rich image suite", metric: "accuracy",
+  - {key: seedbench2plus, name: SEED-Bench-2-Plus, category: "D1. Text-rich image suite", metric: "accuracy",
      purpose: "MCQ over text-rich images (charts/maps/webs); broad text-comprehension coverage.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2404.16790"}
 
-  # ---------- 9. End-to-end page parsing & layout ----------
-  - {key: omnidocbench, name: OmniDocBench, category: "9. End-to-end parsing", metric: "edit dist / TEDS / CDM",
+  # ---------- A3. End-to-end page parsing & layout ----------
+  - {key: omnidocbench, name: OmniDocBench, category: "A3. End-to-end parsing", metric: "edit dist / TEDS / CDM",
      purpose: "Whole-page -> structured output across text/formula/table/reading-order; per-element scoring.",
      hf_id: opendatalab/OmniDocBench, config: null, split: train, source: "https://arxiv.org/abs/2412.07626"}
-  - {key: doclaynet, name: DocLayNet, category: "9. Layout analysis", metric: "COCO mAP",
+  - {key: doclaynet, name: DocLayNet, category: "A3. Layout analysis", metric: "COCO mAP",
      purpose: "Document layout detection (11 classes) across 6 doc types; element localization.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2206.01062"}
-  - {key: fox, name: Fox, category: "9. Fine-grained region parsing", metric: "edit dist / F1",
+  - {key: fox, name: Fox, category: "A3. Fine-grained region parsing", metric: "edit dist / F1",
      purpose: "Region/colour-guided OCR + cross-page understanding on dense multi-page docs.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2405.14295"}
-  - {key: readoc, name: READoc, category: "9. PDF->Markdown conversion", metric: "edit-sim / TEDS",
+  - {key: readoc, name: READoc, category: "A3. PDF->Markdown conversion", metric: "edit-sim / TEDS",
      purpose: "Holistic PDF -> semantic Markdown (text/headings/tables/reading-order).",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2409.05137"}
 
-  # ---------- 10. Reliability: robustness / calibration / hallucination ----------
-  - {key: robustness, name: "Robustness probe (derived)", category: "10. Reliability", metric: "ANLS retention + ECE",
+  # ---------- E1. Reliability: robustness / calibration / hallucination ----------
+  - {key: robustness, name: "Robustness probe (derived)", category: "E1. Reliability", metric: "ANLS retention + ECE",
      purpose: "Stability under capture degradations + terminology paraphrase; confidence calibration.",
      hf_id: null, config: null, split: null, source: "derived from DocVQA (scripts/make_synthetic_samples.py / build_robustness_set.py)"}
-  - {key: pope, name: POPE, category: "10. Hallucination", metric: "F1 / accuracy",
+  - {key: pope, name: POPE, category: "E1. Hallucination", metric: "F1 / accuracy",
      purpose: "Object-existence polling (yes/no) to quantify hallucination; precision/recall/F1.",
      hf_id: lmms-lab/POPE, config: null, split: test, source: "https://arxiv.org/abs/2305.10355"}
-  - {key: hallusionbench, name: HallusionBench, category: "10. Hallucination", metric: "acc + consistency",
+  - {key: hallusionbench, name: HallusionBench, category: "E1. Hallucination", metric: "acc + consistency",
      purpose: "Visual-illusion vs knowledge-hallucination yes/no pairs; consistency-aware scoring.",
      hf_id: lmms-lab/HallusionBench, config: null, split: image, source: "https://arxiv.org/abs/2310.14566"}
-  - {key: kie_hvqa, name: KIE-HVQA, category: "10. OCR hallucination", metric: "hallucination-free acc",
+  - {key: kie_hvqa, name: KIE-HVQA, category: "E1. OCR hallucination", metric: "hallucination-free acc",
      purpose: "Penalize confident wrong field values on degraded ID/invoice docs; reward correct-or-abstain.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2506.20168"}
 
-  # ---------- 11. Custom capability axes (our probe; rendered, exact GT incl. boxes) ----------
-  - {key: capability_probe, name: "Custom capability probe", category: "11. Custom capability axes",
+  # ---------- F1. Custom capability axes (our probe; rendered, exact GT incl. boxes) ----------
+  - {key: capability_probe, name: "Custom capability probe", category: "F1. Custom capability axes",
      metric: "anls / relaxed_acc / exact / grounding",
      purpose: "Isolate the document-VLM capability axes on controlled renders: text recognition,
                localized KIE, integrative reasoning (sum & relations), chart reading, and spatial
                grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_capability_probe.py)"}
-  - {key: custom_eval, name: "Proposed custom evaluation set", category: "11. Custom capability axes",
+  - {key: custom_eval, name: "Proposed custom evaluation set", category: "F1. Custom capability axes",
      metric: "ned / teds / exact / relaxed_acc / grounding",
      purpose: "Our proposed real-world eval format: per content-class (text/table/formula/chart/
                qr/barcode/stamp/logo), per-language (en/ko/ja/zh), rotation robustness (0/15/90/180/
@@ -171,13 +171,13 @@ benchmarks:
                with a class-appropriate metric. See data/benchmarks/custom_eval/README.md.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_custom_eval.py)"}
-  - {key: oov_probe, name: "Out-of-vocabulary script probe", category: "11. Custom capability axes",
+  - {key: oov_probe, name: "Out-of-vocabulary script probe", category: "F1. Custom capability axes",
      metric: "ned / exact",
      purpose: "Un-tokenizable glyphs (invented / runic / 7-segment): measure the FALLBACK pattern
                (abstain / transliterate / hallucinate / copy) and whether an in-image legend enables
                decoding by in-context visual reasoning.",
      hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_oov_probe.py)"}
-  - {key: webui_probe, name: "Web UI/UX (agent) probe", category: "11. Custom capability axes",
+  - {key: webui_probe, name: "Web UI/UX (agent) probe", category: "F1. Custom capability axes",
      metric: "grounding / exact / ned",
      purpose: "Web-agent UI understanding: locate interactive elements (button/search/cart), identify
                the primary CTA, read the nav, and reason about affordances (what to click to act).",

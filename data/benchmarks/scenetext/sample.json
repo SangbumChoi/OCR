@@ -1,6 +1,6 @@
 {
   "benchmark": "scenetext",
-  "category": "2. Scene-text detection & recognition",
+  "category": "A2. Scene-text detection & recognition",
   "metric": "detection H-mean / word accuracy / 1-NED",
   "metric_note": "F-measure on detected boxes; case-insensitive word accuracy for recognition.",
   "source": "SYNTHETIC illustrative sample (rendered locally; not ICDAR/Total-Text)",

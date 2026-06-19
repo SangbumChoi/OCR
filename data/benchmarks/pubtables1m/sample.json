@@ -1,7 +1,7 @@
 {
   "benchmark": "pubtables1m",
   "name": "PubTables-1M",
-  "category": "5. Table recognition + detection",
+  "category": "C1. Table recognition + detection",
   "metric": "GriTS / mAP",
   "purpose": "Large-scale table detection + structure recognition; GriTS over cell grids (topology).",
   "hf_id": "bsmock/pubtables-1m",

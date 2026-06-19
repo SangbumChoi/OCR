@@ -1,7 +1,7 @@
 {
   "benchmark": "docvqa",
   "name": "DocVQA",
-  "category": "3. Document VQA",
+  "category": "B1. Document VQA",
   "metric": "anls",
   "purpose": "Answer questions about scanned business documents; reading + layout + key-value extraction.",
   "hf_id": "lmms-lab/DocVQA",

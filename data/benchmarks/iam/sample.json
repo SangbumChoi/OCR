@@ -1,7 +1,7 @@
 {
   "benchmark": "iam",
   "name": "IAM-line",
-  "category": "1. Text recognition",
+  "category": "A1. Text recognition",
   "metric": "CER / WER / NED",
   "purpose": "Recognize handwritten English text lines; the classic handwriting-recognition fidelity test.",
   "hf_id": "Teklia/IAM-line",

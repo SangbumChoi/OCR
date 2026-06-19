@@ -233,7 +233,7 @@ def main():
         Image.open(samples[0].image_path).save(OUT / "sample.png")
     (OUT / "sample.json").write_text(json.dumps({
         "benchmark": "custom_eval", "name": "Proposed custom evaluation set",
-        "category": "11. Custom capability axes", "metric": "ned/teds/exact/relaxed_acc/grounding",
+        "category": "F1. Custom capability axes", "metric": "ned/teds/exact/relaxed_acc/grounding",
         "purpose": "Our proposed real-world evaluation format: per content-class, per-language, "
                    "rotation-robustness, reading-direction, and spotting (basis-of-extraction), each "
                    "scored with a class-appropriate metric. See custom_eval/README.md.",

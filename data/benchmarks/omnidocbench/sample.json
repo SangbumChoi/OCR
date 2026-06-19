@@ -1,7 +1,7 @@
 {
   "benchmark": "omnidocbench",
   "name": "OmniDocBench",
-  "category": "9. End-to-end parsing",
+  "category": "A3. End-to-end parsing",
   "metric": "edit dist / TEDS / CDM",
   "purpose": "Whole-page -> structured output across text/formula/table/reading-order; per-element scoring.",
   "hf_id": "opendatalab/OmniDocBench",

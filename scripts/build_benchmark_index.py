@@ -19,26 +19,26 @@ ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "data" / "benchmarks"
 CATALOG = ROOT / "configs" / "benchmark_catalog.yaml"
 
-CATNAMES = {
-    1: "Text recognition (full-page / line / word)",
-    2: "Scene-text detection & recognition",
-    3: "Document / scene-text / diagram VQA",
-    4: "Key Information Extraction (KIE)",
-    5: "Table recognition & structure",
-    6: "Chart / plot / figure reasoning",
-    7: "Formula / math-expression recognition",
-    8: "Comprehensive LMM OCR & figure suites",
-    9: "End-to-end page parsing & layout",
-    10: "Reliability: robustness / calibration / hallucination",
-    11: "Custom capability axes (our probe)",
+# Capability families (see docs/report/benchmark_taxonomy.md). Each catalog entry's `category`
+# is a code like "B2. …"; the leading letter is its family.
+FAMILYNAMES = {
+    "A": "Recognition / transcription (full-page · scene-text · end-to-end parsing)",
+    "B": "Question answering & extraction (VQA · KIE · chart)",
+    "C": "Structure recovery (tables · formulas)",
+    "D": "Umbrella OCR & figure suites",
+    "E": "Reliability: robustness / calibration / hallucination",
+    "F": "Custom capability axes (our probes)",
 }
 
 
-def cnum(e: dict) -> int:
-    try:
-        return int(str(e["category"]).split(".")[0])
-    except Exception:
-        return 99
+def ccode(e: dict) -> str:
+    """Task code, e.g. 'B2', from the category string 'B2. Name'."""
+    return str(e.get("category", "")).split(".")[0].strip()
+
+
+def family(e: dict) -> str:
+    c = ccode(e)
+    return c[0] if c else "Z"
 
 
 def status(e: dict) -> str:
@@ -54,13 +54,13 @@ def status(e: dict) -> str:
 
 def main() -> None:
     cat = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["benchmarks"]
-    groups: "OrderedDict[int, list]" = OrderedDict()
-    for e in sorted(cat, key=cnum):
-        groups.setdefault(cnum(e), []).append(e)
+    groups: "OrderedDict[str, list]" = OrderedDict()
+    for e in sorted(cat, key=ccode):
+        groups.setdefault(family(e), []).append(e)
     withimg = len(list(BENCH.glob("*/sample.png")))
 
     L = ["# Benchmark catalog & sample previews\n",
-         "Every benchmark across the capability categories of",
+         "Every benchmark across the capability families of",
          "[`../../docs/report/benchmark_taxonomy.md`](../../docs/report/benchmark_taxonomy.md) and",
          "[`../../docs/report/capability_axes.md`](../../docs/report/capability_axes.md), annotated with **what",
          "each one measures** (`purpose`). Source of truth:",
@@ -68,16 +68,17 @@ def main() -> None:
          "- 🖼️ **sample** = image + `sample.json` (GT + metric + purpose) in `<key>/`.",
          "- 📝 **documented** = not cleanly streamable from HF; catalogued with purpose + source.\n",
          f"**Coverage: {withimg} image samples across {len(cat)} catalogued benchmarks.**\n"]
-    for n, items in groups.items():
-        L.append(f"### {n}. {CATNAMES.get(n, 'Other')}\n")
-        L.append("| Benchmark | Status | Metric | Purpose (what it measures) |")
-        L.append("|---|---|---|---|")
-        for e in items:
-            L.append(f"| [`{e['key']}`]({e['key']}/) | {status(e)} | {e.get('metric','-')} | {e.get('purpose','-')} |")
+    for fam in sorted(groups):
+        L.append(f"### {fam}. {FAMILYNAMES.get(fam, 'Other')}\n")
+        L.append("| Code | Benchmark | Status | Metric | Purpose (what it measures) |")
+        L.append("|---|---|---|---|---|")
+        for e in sorted(groups[fam], key=ccode):
+            L.append(f"| {ccode(e)} | [`{e['key']}`]({e['key']}/) | {status(e)} | "
+                     f"{e.get('metric','-')} | {e.get('purpose','-')} |")
         L.append("")
     from docvlm_eval.report_md import prettify_tables
     (BENCH / "README.md").write_text(prettify_tables("\n".join(L)) + "\n", encoding="utf-8")
-    print(f"[done] index: {withimg} image samples / {len(cat)} benchmarks / {len(groups)} categories")
+    print(f"[done] index: {withimg} image samples / {len(cat)} benchmarks / {len(groups)} families")
 
 
 if __name__ == "__main__":

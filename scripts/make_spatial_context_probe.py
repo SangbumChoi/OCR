@@ -156,7 +156,7 @@ def build():
     rep.save(OUT / "sample.png")
     (OUT / "sample.json").write_text(json.dumps({
         "benchmark": "spatial_context_probe", "name": "Spatial & context understanding probe",
-        "category": "11. Custom capability axes", "metric": "exact / relaxed_acc / grounding",
+        "category": "F1. Custom capability axes", "metric": "exact / relaxed_acc / grounding",
         "purpose": "Falsifiable hypothesis tests for spatial (quadrant, relative position, box "
                    "tracking) and context (consistency, absence/anti-hallucination, distractor, "
                    "cross-reference) understanding, each paired with a control that rules out a shortcut.",

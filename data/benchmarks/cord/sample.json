@@ -1,7 +1,7 @@
 {
   "benchmark": "cord",
   "name": "CORD",
-  "category": "4. Key Information Extraction (receipts)",
+  "category": "B2. Key Information Extraction (receipts)",
   "metric": "entity F1",
   "purpose": "Extract ~30 fine-grained fields + hierarchy from receipts.",
   "hf_id": "naver-clova-ix/cord-v2",

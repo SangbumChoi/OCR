@@ -23,27 +23,30 @@ The capability axes, and which metric answers which question:
 | "Can it parse a *whole page* end to end?"                      | **normalized edit distance** per element  | OmniDocBench               |
 | "Does it know when it's wrong / does it hold up on bad scans?" | **ECE calibration, robustness retention** | (our custom probe)         |
 
-**How to read this file.** The categories are *not* ten disjoint tasks; they are organised below
-into **five families**. Category numbers (1–10) are kept as stable IDs (data samples, the catalog,
-and scripts reference them), so they are not in numeric order within a family.
+**How to read this file.** The tasks are organised into **capability families A–E**, and each task
+has a short **code** (e.g. `A1`, `B2`) used as its stable ID throughout the repo (data samples,
+the catalog, scripts). The families:
 
-| Family | Members | Shared nature | Metric family |
-| ------ | ------- | ------------- | ------------- |
-| **A. Recognition / transcription** ("read it all") | §1, §2, §9 | convert the *whole* input to text/structure | edit-distance (CER/WER/NED, TEDS) |
-| **B. Question answering & extraction** ("get specific info") | §3, §4, §6 | answer about / pull out targeted content (§3⊃§4) | ANLS / entity-F1 / relaxed-acc |
-| **C. Structure recovery** | §5, §7 | output is a *structure* (HTML tree / LaTeX) | TEDS·GriTS / exact·NED |
-| **D. Umbrella suite** (aggregate, not a peer task) | §8 | re-bundles A–C into one breadth score | OCRBench /1000 |
-| **E. Cross-cutting reliability** | §10 | applies *on top of* any of the above | ECE / retention |
+| Family | Tasks | Shared nature | Metric family |
+| ------ | ----- | ------------- | ------------- |
+| **A · Recognition / transcription** ("read it all") | A1 full-page · A2 scene-text · A3 end-to-end parsing | convert the *whole* input to text/structure | edit-distance (CER/WER/NED, TEDS) |
+| **B · Question answering & extraction** ("get specific info") | B1 VQA · B2 KIE · B3 chart | answer about / pull out targeted content (B1 ⊃ B2) | ANLS / entity-F1 / relaxed-acc |
+| **C · Structure recovery** | C1 tables · C2 formula | output is a *structure* (HTML tree / LaTeX) | TEDS·GriTS / exact·NED |
+| **D · Umbrella suite** (aggregate, not a peer task) | D1 OCRBench | re-bundles A–C into one breadth score | OCRBench /1000 |
+| **E · Cross-cutting reliability** | E1 reliability | applies *on top of* any of the above | ECE / retention |
+
+(The repo's own synthetic probes form a custom family **F**, documented in
+[`capability_axes.md`](capability_axes.md) — not a standard benchmark, so not listed here.)
 
 ---
 
 ## A. Recognition / transcription — "read it all"
 
 Same core skill: convert the *entire* input to text/structure, scored by the **edit-distance
-family**. The members differ only in **domain** — a clean page (§1), text in the wild (§2), or a
-complex multi-element page (§9).
+family**. The members differ only in **domain** — a clean page (A1), text in the wild (A2), or a
+complex multi-element page (A3).
 
-### 1. Full-page / printed-text recognition (transcription)
+### A1. Full-page / printed-text recognition (transcription)
 
 **Task.** Transcribe an entire page/line to text (optionally formatted markdown/LaTeX/HTML).
 
@@ -60,7 +63,7 @@ complex multi-element page (§9).
 model that hallucinates or drops characters is penalised directly, which generic VQA accuracy
 would miss.
 
-### 2. Scene-text detection & recognition
+### A2. Scene-text detection & recognition
 
 **Task.** Localize + read text "in the wild" (signs, products). Adjacent to documents but tests
 irregular/curved/artistic text.
@@ -71,7 +74,7 @@ irregular/curved/artistic text.
 - **Detection H-mean (F-measure)** = 2·P·R/(P+R) over box matches at an IoU threshold.
 - **End-to-end / recognition: word accuracy** (case-insensitive exact) and **1−NED**.
 
-### 9. End-to-end document PARSING
+### A3. End-to-end document PARSING
 
 **Task.** Convert a full page to structured output (text + tables + formulas + reading order) —
 the closest to "real document digitization". (The most complex member of this family: it composes
@@ -87,11 +90,11 @@ related focused/fine-grained page benchmark.)
 
 ## B. Question answering & extraction — "get the specific information"
 
-Instead of reading everything, return *targeted* content: an answer to a question (§3), a set of
-schema fields (§4), or a value off a chart (§6). **§3 and §4 overlap on purpose** — see the
-boundary note in §3.
+Instead of reading everything, return *targeted* content: an answer to a question (B1), a set of
+schema fields (B2), or a value off a chart (B3). **B1 and B2 overlap on purpose** — see the
+boundary note in B1.
 
-### 3. Document Visual Question Answering (VQA)
+### B1. Document Visual Question Answering (VQA)
 
 **Task.** Answer a natural-language question about a document image. The core "understanding"
 benchmark family and the anchor of this PoC.
@@ -105,27 +108,27 @@ else score = best. Averaged over questions. Designed to tolerate minor OCR/forma
 (`$1,200` vs `1200`) without rewarding near-misses. (DocVQA, WACV'21; InfoVQA, WACV'22)
 VisualMRC (free-form) additionally uses **BLEU / METEOR / CIDEr / ROUGE-L**.
 
-**The §3 ↔ §4 boundary — a spectrum, not a wall.** Document-VQA questions span two natures, and
+**The B1 ↔ B2 boundary — a spectrum, not a wall.** Document-VQA questions span two natures, and
 the lower end *is* KIE:
 
-- **3a — extractive ("KIE in question form").** "What is the total?" / "Who is the vendor?" — the
-  answer is a *single field value* lifted from one region. This is **the same skill as §4 KIE**; the
+- **B1a — extractive ("KIE in question form").** "What is the total?" / "Who is the vendor?" — the
+  answer is a *single field value* lifted from one region. This is **the same skill as B2 KIE**; the
   only difference is the **interface + metric**: a free-form NL question scored by **ANLS** here, vs
-  a fixed field schema scored by **entity-F1** in §4. So §3 *contains* §4-style questions.
-- **3b — integrative.** "How much higher is Q3 than Q1?" / "Which region has the most branches?" —
+  a fixed field schema scored by **entity-F1** in B2. So B1 *contains* B2-style questions.
+- **B1b — integrative.** "How much higher is Q3 than Q1?" / "Which region has the most branches?" —
   the answer needs **related information combined across regions** (arithmetic, comparison,
   multi-hop), not just one given field. This is where the real "understanding" (and the failure of
   small models) lives.
 
-Practical rule: a **fixed set of fields** with per-field precision/recall → use the **§4 KIE**
-framing (entity-F1); **open-ended NL questions** (esp. 3b) → use **§3 ANLS**. Same underlying
+Practical rule: a **fixed set of fields** with per-field precision/recall → use the **B2 KIE**
+framing (entity-F1); **open-ended NL questions** (esp. B1b) → use **B1 ANLS**. Same underlying
 reading; different evaluation contract.
 
-### 4. Key Information Extraction (KIE) — "extract the value I want"
+### B2. Key Information Extraction (KIE) — "extract the value I want"
 
 **Task.** Pull *specific* fields/entities from a document (total, date, vendor, line items) and
 their **key↔value relations** — not transcribe everything. This is the **structured-schema
-counterpart of the extractive §3a questions**: the same extraction skill, but driven by a fixed
+counterpart of the extractive B1a questions**: the same extraction skill, but driven by a fixed
 field schema and scored per-field with entity-F1 instead of a free-form question scored by ANLS.
 
 **Benchmarks.**
@@ -143,7 +146,7 @@ field schema and scored per-field with entity-F1 instead of a free-form question
 value for this field" — ANLS or VQA accuracy do **not** capture per-field precision/recall or
 relational structure.
 
-### 6. Chart understanding
+### B3. Chart understanding
 
 **Task.** Read and reason over plotted data (bar/line/pie).
 
@@ -160,7 +163,7 @@ gold; non-numeric uses exact match. (ChartQA, ACL Findings'22) Chart-to-Text use
 The answer is not free text but a **structure** — a table tree or a formula expression — so the
 metrics compare *structures*, not strings.
 
-### 5. Table recognition & extraction — "table structure / cell relationships"
+### C1. Table recognition & extraction — "table structure / cell relationships"
 
 **Task.** Recover a table's **structure** (rows/cols/spans) and cell contents — i.e. the
 *relationships* between cells.
@@ -182,7 +185,7 @@ metrics compare *structures*, not strings.
 **Note.** For "correlation across a table" → **TEDS / GriTS** are the answer; a flat text metric cannot
 score whether two cells are correctly in the same row/column or span.
 
-### 7. Formula / mathematical-expression recognition
+### C2. Formula / mathematical-expression recognition
 
 **Task.** Image → LaTeX (printed or handwritten math).
 
@@ -195,16 +198,16 @@ the LaTeX token sequence; CROHME also uses expression-level recognition rate.
 
 ## D. Umbrella suite — aggregate, not a peer task
 
-### 8. Comprehensive OCR-capability suites for LMMs
+### D1. Comprehensive OCR-capability suites for LMMs
 
-**This is an aggregate, not a distinct capability.** Unlike the families above, category 8 does not
-test one new skill — it **re-bundles the others** into a single breadth score, so think of it as a
+**This is an aggregate, not a distinct capability.** Unlike the families above, D1 does not test
+one new skill — it **re-bundles the others** into a single breadth score, so think of it as a
 smoke-test ("does this LMM do OCR at all?") rather than a sibling task.
 
-**OCRBench** — 1,000 curated items across **5 capability groups that map onto the categories
-above**: (1) text recognition → §1, (2) scene-text-centric VQA → §2/§3, (3) document-oriented VQA
-→ §3, (4) **key information extraction** → §4, (5) **handwritten mathematical expression**
-recognition → §7. Scored **out of 1000** (1 point per correct item; a gold answer counted correct
+**OCRBench** — 1,000 curated items across **5 capability groups that map onto the families
+above**: (1) text recognition → A1, (2) scene-text-centric VQA → A2/B1, (3) document-oriented VQA
+→ B1, (4) **key information extraction** → B2, (5) **handwritten mathematical expression**
+recognition → C2. Scored **out of 1000** (1 point per correct item; a gold answer counted correct
 if contained in the prediction). It is the single most useful "does this LMM do OCR broadly" probe.
 (Liu et al., 2023) **OCRBench v2** extends to ~10k items and 31 scenarios with finer
 text-spotting/structure tasks.
@@ -215,11 +218,11 @@ Related: **SEED-Bench-2-Plus** (text-rich images), **CharXiv** (scientific-figur
 
 ## E. Cross-cutting reliability
 
-### 10. Reliability: calibration, robustness, hallucination
+### E1. Reliability: calibration, robustness, hallucination
 
 Public leaderboards almost never report these, yet they decide deployability — and they speak
-directly to the "are there typos / hallucinations?" concern. Unlike §§1–9 this is **not a task but
-a lens** applied on top of any of them:
+directly to the "are there typos / hallucinations?" concern. Unlike the families above this is
+**not a task but a lens** applied on top of any of them:
 
 - **Calibration — ECE (Expected Calibration Error)** = Σ_bin (|B|/N)·|acc(B)−conf(B)|. Does the
   model's confidence track its correctness? A well-calibrated reader lets you **route
@@ -235,17 +238,17 @@ a lens** applied on top of any of them:
 
 ## How this PoC instantiates the taxonomy
 
-| Capability (above)     | In this PoC                                                                   |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| 3 Document VQA         | **DocVQA, InfoVQA** — ANLS (implemented)                                      |
-| 6 Chart                | **ChartQA** — relaxed accuracy (implemented)                                  |
-| 8 LMM OCR suite        | **OCRBench** — /1000 scoring (implemented)                                    |
-| 1 Recognition fidelity | **CER/WER/NED** — defined here; metric hooks in `metrics/text.py`             |
-| 4 KIE                  | **entity F1** — defined here; add CORD/SROIE loader to extend (see README §3) |
-| 5 Tables               | **TEDS/GriTS** — defined here; add PubTabNet loader to extend                 |
-| 10 Reliability         | **ECE + robustness retention** — implemented (the "beyond accuracy" core)     |
+| Capability (above)      | In this PoC                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| B1 Document VQA         | **DocVQA, InfoVQA** — ANLS (implemented)                                      |
+| B3 Chart                | **ChartQA** — relaxed accuracy (implemented)                                  |
+| D1 LMM OCR suite        | **OCRBench** — /1000 scoring (implemented)                                    |
+| A1 Recognition fidelity | **CER/WER/NED** — defined here; metric hooks in `metrics/text.py`             |
+| B2 KIE                  | **entity F1** — defined here; add CORD/SROIE loader to extend (see README §3) |
+| C1 Tables               | **TEDS/GriTS** — defined here; add PubTabNet loader to extend                 |
+| E1 Reliability          | **ECE + robustness retention** — implemented (the "beyond accuracy" core)     |
 
-The evaluation harness already covers axes 3/6/8/10 end-to-end; axes 1/4/5 are documented with
+The evaluation harness already covers B1/B3/D1/E1 end-to-end; A1/B2/C1 are documented with
 exact metric definitions and are a drop-in extension (new loader + the metric, registered the
 same way as the others), so the comparison can grow from "document QA" to full "document
 understanding" without changing the pipeline.

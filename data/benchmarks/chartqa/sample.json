@@ -1,7 +1,7 @@
 {
   "benchmark": "chartqa",
   "name": "ChartQA",
-  "category": "6. Chart understanding",
+  "category": "B3. Chart understanding",
   "metric": "relaxed_acc",
   "purpose": "Read + reason (compare/arithmetic) over bar/line/pie charts; relaxed numeric accuracy.",
   "hf_id": "lmms-lab/ChartQA",

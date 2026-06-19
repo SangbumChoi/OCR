@@ -1,7 +1,7 @@
 {
   "benchmark": "infovqa",
   "name": "InfographicVQA",
-  "category": "3. Document VQA",
+  "category": "B1. Document VQA",
   "metric": "anls",
   "purpose": "QA over infographics; joint layout + graphics + text + basic arithmetic reasoning.",
   "hf_id": "lmms-lab/DocVQA",

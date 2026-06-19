@@ -1,7 +1,7 @@
 {
   "benchmark": "funsd",
   "name": "FUNSD",
-  "category": "4. Key Information Extraction (forms)",
+  "category": "B2. Key Information Extraction (forms)",
   "metric": "entity F1",
   "purpose": "Extract entities (question/answer/header) AND key->value links from noisy scanned forms.",
   "hf_id": "nielsr/funsd-layoutlmv3",

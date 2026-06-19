@@ -1,7 +1,7 @@
 {
   "benchmark": "ocrvqa",
   "name": "OCR-VQA",
-  "category": "3. Document VQA",
+  "category": "B1. Document VQA",
   "metric": "exact",
   "purpose": "QA over book-cover images; reading titles/authors/edition from text-heavy images.",
   "hf_id": "howard-hou/OCR-VQA",

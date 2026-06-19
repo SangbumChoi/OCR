@@ -38,7 +38,7 @@ def _save(key: str, img: Image.Image, label: dict) -> None:
 
 
 def make_fullpage_recognition() -> None:
-    """Category 1: full-page printed-text recognition. GT = the exact transcript."""
+    """A1: full-page printed-text recognition. GT = the exact transcript."""
     lines = [
         "QUARTERLY FINANCIAL SUMMARY",
         "",
@@ -61,7 +61,7 @@ def make_fullpage_recognition() -> None:
         img,
         {
             "benchmark": "recognition_fullpage",
-            "category": "1. Full-page / printed text recognition",
+            "category": "A1. Full-page / printed text recognition",
             "metric": "CER / WER / NED",
             "metric_note": "Character/word error rate or normalized edit distance vs transcript.",
             "source": "SYNTHETIC illustrative sample (rendered locally; not an official benchmark)",
@@ -71,7 +71,7 @@ def make_fullpage_recognition() -> None:
 
 
 def make_scenetext() -> None:
-    """Category 2: scene-text detection & recognition. GT = word list (+ rough boxes)."""
+    """A2: scene-text detection & recognition. GT = word list (+ rough boxes)."""
     img = Image.new("RGB", (800, 450), (38, 70, 110))
     d = ImageDraw.Draw(img)
     # a faux storefront sign with a couple of words at angles
@@ -86,7 +86,7 @@ def make_scenetext() -> None:
         img,
         {
             "benchmark": "scenetext",
-            "category": "2. Scene-text detection & recognition",
+            "category": "A2. Scene-text detection & recognition",
             "metric": "detection H-mean / word accuracy / 1-NED",
             "metric_note": "F-measure on detected boxes; case-insensitive word accuracy for recognition.",
             "source": "SYNTHETIC illustrative sample (rendered locally; not ICDAR/Total-Text)",
@@ -96,7 +96,7 @@ def make_scenetext() -> None:
 
 
 def make_robustness() -> None:
-    """Category 10: reliability/robustness. Derive a degraded copy of the DocVQA sample."""
+    """E1: reliability/robustness. Derive a degraded copy of the DocVQA sample."""
     base_path = OUT / "docvqa" / "sample.png"
     base_label = OUT / "docvqa" / "sample.json"
     if not base_path.exists():
@@ -116,7 +116,7 @@ def make_robustness() -> None:
         deg,
         {
             "benchmark": "robustness",
-            "category": "10. Reliability / robustness / calibration",
+            "category": "E1. Reliability / robustness / calibration",
             "metric": "ANLS retention + ECE",
             "metric_note": "score(degraded)/score(clean) per perturbation; ECE for confidence calibration.",
             "source": "DERIVED from data/benchmarks/docvqa (downscale+blur+JPEG q18); see scripts/build_robustness_set.py",

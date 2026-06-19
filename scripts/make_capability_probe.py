@@ -128,7 +128,7 @@ def main():
     (OUT / "sample.json").write_text(json.dumps({
         "benchmark": "capability_probe",
         "name": "Custom capability probe",
-        "category": "11. Custom capability axes",
+        "category": "F1. Custom capability axes",
         "metric": "anls / relaxed_acc / exact / grounding",
         "purpose": "Isolate document-VLM capability axes: text recognition, localized KIE, "
                    "integrative reasoning (sum/relations), chart reading, and spatial grounding.",
