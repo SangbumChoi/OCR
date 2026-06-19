@@ -108,7 +108,10 @@ pytest -q                            # 60+ tests: metrics, registry, pipeline, r
 
 ### 2) Full evaluation (free Colab/Kaggle T4)
 ```bash
-# build benchmarks (use --limit for a fast subset)
+# OFFLINE 10-sample slice of every benchmark (no network — uses the committed previews):
+python scripts/build_preview_eval.py        # -> data/benchmarks/preview_eval.jsonl (16 benchmarks)
+
+# ...or build full benchmarks from HF (use --limit for a fast subset)
 python scripts/build_benchmarks.py --benchmark all --limit 300
 python scripts/build_robustness_set.py --base data/benchmarks/docvqa.jsonl \
   --out-dir data/robustness/docvqa --limit 100
