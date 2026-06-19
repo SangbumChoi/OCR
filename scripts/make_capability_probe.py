@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Build the CUSTOM capability probe — a small, fully-controlled benchmark that isolates the
-capability axes we care about for document VLMs (see docs/report/capability_axes.md):
+PERCEPTION + CONTENT-REASONING axes for document VLMs (see docs/report/capability_axes.md).
 
-  1. text-recognition   : read an exact printed string
-  2. kie-localized      : extract one field's value from a single region (clear KIE answer)
-  3. integrative-sum    : compute a value by combining several regions (sum of line items)
-  4. integrative-rel    : reason over relationships between regions (which item is largest)
-  5. chart-dependent    : read a value off a chart (can't be answered from text alone)
-  6. location-grounding : return the bounding box of a named element (spatial understanding)
+Scope boundary (kept strict): this probe reads / computes / compares / locates VALUES. It does
+NOT test relative position or cross-region context (consistency, absence, disambiguation,
+cross-reference) — those are the independent spatial_context probe. Axes:
+
+  1. text-recognition        : read an exact printed string
+  2. kie-localized           : extract one field's value from a single region (clear KIE answer)
+  3. content-reasoning (sum) : arithmetic over read values (sum of line-item prices)
+  4. content-reasoning (cmp) : comparison over read values (which item is largest)
+  5. chart-value             : read a value off a chart (graphic value perception; NOT full figure
+                               comprehension, which is out of scope here)
+  6. location-grounding      : return the bounding box of a named element
 
 Because the images are rendered here, the ground truth — including exact pixel boxes for the
 grounding task — is known precisely. Output:
@@ -103,17 +108,21 @@ def main():
                "text-recognition", "anls", {"axis": "text", "prompt_strategy": "direct read"}),
         Sample("cap_kie", inv_p, "What is the vendor name?" + CONCISE, ["Acme Corporation"],
                "kie-localized", "anls", {"axis": "text", "prompt_strategy": "single-field KIE"}),
+        # content reasoning = arithmetic/comparison over read VALUES (layout-agnostic). NOT a
+        # consistency/verification or positional test — those live in the spatial_context probe.
         Sample("cap_integ_sum", inv_p,
-               "Add up the prices of all line items and give the total." + CONCISE, [f"{total:.2f}"],
-               "integrative-sum", "relaxed_acc",
-               {"axis": "text+reasoning", "prompt_strategy": "multi-region aggregation"}),
+               "Add up the prices of all line items." + CONCISE, [f"{total:.2f}"],
+               "content-reasoning", "relaxed_acc",
+               {"axis": "content-reasoning", "prompt_strategy": "value arithmetic (sum)"}),
         Sample("cap_integ_rel", inv_p,
                "Which line item has the highest price?" + CONCISE, [biggest],
-               "integrative-rel", "exact",
-               {"axis": "text+reasoning", "prompt_strategy": "cross-region comparison"}),
+               "content-reasoning", "exact",
+               {"axis": "content-reasoning", "prompt_strategy": "value comparison"}),
+        # chart-VALUE reading (graphic value perception). Pure figure/diagram comprehension is NOT
+        # in scope for the capability probe.
         Sample("cap_chart", ch_p, "What is the value of bar B?" + CONCISE, ["70"],
-               "chart-dependent", "relaxed_acc",
-               {"axis": "chart", "prompt_strategy": "chart value read"}),
+               "chart-value", "relaxed_acc",
+               {"axis": "chart-value", "prompt_strategy": "chart value read"}),
         Sample("cap_ground", inv_p,
                "Return the bounding box of the TOTAL field as [x1, y1, x2, y2] in pixel "
                f"coordinates. The image is {inv_sz[0]}x{inv_sz[1]} pixels.",
@@ -130,8 +139,9 @@ def main():
         "name": "Custom capability probe",
         "category": "F1. Custom capability axes",
         "metric": "anls / relaxed_acc / exact / grounding",
-        "purpose": "Isolate document-VLM capability axes: text recognition, localized KIE, "
-                   "integrative reasoning (sum/relations), chart reading, and spatial grounding.",
+        "purpose": "Isolate document-VLM PERCEPTION + CONTENT-REASONING axes: text recognition, "
+                   "localized KIE, content reasoning (value sum/compare), chart-value reading, and "
+                   "location grounding. Position/context reasoning is the separate spatial_context probe.",
         "source": "SYNTHETIC (scripts/make_capability_probe.py); GT incl. exact pixel boxes",
         "ground_truth": {"n_samples": len(samples),
                          "axes": sorted({s.answer_type for s in samples})},

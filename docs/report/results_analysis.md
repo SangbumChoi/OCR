@@ -111,9 +111,9 @@ The controlled probe (`results/matrix_capability.md`) gives a clean **capability
 | ------------------ | :----------: | :----------: | ---------------------------------------------- |
 | text-recognition   | 0.93         | 0.93         | solved at 256M                                 |
 | kie-localized      | 0.94         | 0.94         | solved at 256M                                 |
-| integrative-sum    | **0.00**     | **1.00**     | arithmetic **emerges 256M→500M**               |
-| integrative-rel    | **0.00**     | **0.00**     | cross-region comparison **fails at ≤0.5B**     |
-| chart-dependent    | 1.00         | 1.00         | clean-chart read works                         |
+| content-reasoning (sum) | **0.00**     | **1.00**     | arithmetic **emerges 256M→500M**               |
+| content-reasoning (cmp) | **0.00**     | **0.00**     | cross-region comparison **fails at ≤0.5B**     |
+| chart-value        | 1.00         | 1.00         | clean-chart read works                         |
 | location-grounding | **0.00**     | **0.00**     | general small VLMs have **no usable box head** |
 
 **Flaws / limits of the best small models tested:**

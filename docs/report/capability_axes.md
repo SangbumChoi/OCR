@@ -31,13 +31,27 @@ Not all text answers are equal. Three natures, in increasing difficulty:
 | Nature                    | What it demands                                                        | Example (probe sample)                                                                  | Metric              |
 | ------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------- |
 | **KIE-localized**         | read **one region**, give a clear field value                          | "What is the vendor name?" → `Acme Corporation`                                         | anls                |
-| **Integrative reasoning** | **combine several regions** into a value — a *sum* or a *relationship* | "Add up the line-item prices." → `145.50`; "Which item is most expensive?" → `Gadget B` | relaxed_acc / exact |
-| **Chart-dependent**       | the answer is **not in the text** — must read a figure/chart           | "What is the value of bar B?" → `70`                                                    | relaxed_acc         |
+| **Content reasoning** (integrative) | **combine several read *values*** by *arithmetic / comparison* — layout-agnostic | "Add up the line-item prices." → `145.50`; "Which item is most expensive?" → `Gadget B` | relaxed_acc / exact |
+| **Chart-value reading**   | read a *value* off a chart/plot — graphic value perception            | "What is the value of bar B?" → `70`                                                    | relaxed_acc         |
 
-The jump from *localized* to *integrative* is where small LMs fail: it needs multi-region
-attention + arithmetic/comparison, not just OCR. The *chart-dependent* nature additionally
-needs graphic perception, not text at all. Separating these tells us *why* a model is weak,
-not just *that* it is.
+The jump from *localized* to *content reasoning* is where small LMs fail: it needs multi-region
+attention + arithmetic/comparison, not just OCR. The *chart-value* nature additionally needs
+graphic perception, not text at all.
+
+> **Two boundaries kept strict.**
+> 1. **Content reasoning ⟂ spatial/context.** The axes above are **perception + content reasoning**
+>    (read values, then compute/compare them) — they are *layout-agnostic*. **Spatial & context
+>    understanding** — *where* regions are and how they relate (relative position, cross-region
+>    *consistency/verification*, absence/honesty, disambiguation, cross-reference) — is a **separate,
+>    independent axis** with its own probe ([`spatial_context_probes.md`](spatial_context_probes.md),
+>    [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe)). The two probes
+>    share **no items**: capability_probe *computes/compares/reads values*; spatial_context_probe tests
+>    *position + relation/context*. (e.g. "**add** the prices" is content reasoning here; "**do** the
+>    items **add up to** the total?" is a context *verification* test there — compute vs verify.)
+> 2. **Chart-value reading ⟂ pure figure understanding.** This axis is reading a *value* off a chart.
+>    **General figure/diagram comprehension** (scientific-figure reasoning, arbitrary diagrams) is
+>    **not mandatory here** — it is out of scope for the capability probe (left to dedicated
+>    figure benchmarks such as CharXiv/MathVista if needed).
 
 ## The custom capability probe (rationale)
 
@@ -45,20 +59,25 @@ not just *that* it is.
 [`scripts/make_capability_probe.py`](../../scripts/make_capability_probe.py) so the ground truth
 — **including exact pixel boxes** — is known. Six samples, one per axis:
 
-| Sample          | Axis               | Prompt intent              | Gold                   |
-| --------------- | ------------------ | -------------------------- | ---------------------- |
-| `cap_text`      | text-recognition   | direct read                | `INV-2025-0042`        |
-| `cap_kie`       | kie-localized      | single-field KIE           | `Acme Corporation`     |
-| `cap_integ_sum` | integrative-sum    | multi-region aggregation   | `145.50`               |
-| `cap_integ_rel` | integrative-rel    | cross-region comparison    | `Gadget B`             |
-| `cap_chart`     | chart-dependent    | chart value read           | `70`                   |
-| `cap_ground`    | location-grounding | text-prompted bounding box | box `(40,335,270,359)` |
+| Sample          | Axis                       | Prompt intent              | Gold                   |
+| --------------- | -------------------------- | -------------------------- | ---------------------- |
+| `cap_text`      | text-recognition           | direct read                | `INV-2025-0042`        |
+| `cap_kie`       | kie-localized              | single-field KIE           | `Acme Corporation`     |
+| `cap_integ_sum` | content-reasoning (sum)    | value arithmetic           | `145.50`               |
+| `cap_integ_rel` | content-reasoning (compare)| value comparison           | `Gadget B`             |
+| `cap_chart`     | chart-value                | chart value read           | `70`                   |
+| `cap_ground`    | location-grounding         | text-prompted bounding box | box `(40,335,270,359)` |
 
-**Why custom + synthetic?** (a) Public sets entangle axes (DocVQA mixes localized + integrative);
-the probe isolates *one* axis per item so a failure is unambiguous. (b) We control the layout,
-so the **sum, the relationship, and the box are exact** — no annotation noise. (c) It sits **at
-the same level as the other benchmarks** (`data/benchmarks/…`, catalogued in the custom family F1) and
-runs through the *same* pipeline and metrics, so it is directly comparable.
+All six axes are **perception + content reasoning** (read / compute / compare / locate). None tests
+*relative position* or *cross-region context* — those are deliberately left to the independent
+spatial/context probe (see the boundary note above), so each probe stays single-purpose.
+
+**Why custom + synthetic?** (a) Public sets entangle axes (DocVQA mixes localized + content
+reasoning); the probe isolates *one* axis per item so a failure is unambiguous. (b) We control the
+layout, so the **sum, the comparison, and the box are exact** — no annotation noise. (c) It sits **at
+the same level as the other benchmarks** (catalogued in the custom family F1, under
+[`data/probes/`](../../data/probes/README.md)) and runs through the *same* pipeline and metrics, so
+it is directly comparable.
 
 ## Prompt plan — what goes in the prompt
 

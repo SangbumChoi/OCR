@@ -19,18 +19,21 @@ capabilities:
     prompt: "What is the {field}? Answer concisely with only the value, no explanation."
     output: short string ; metric: anls
 
-  integrative-sum:
-    goal: "Combine several regions into one computed value."
-    prompt: "Add up {what} and give the result. Answer concisely with only the value."
+  # CONTENT reasoning = arithmetic / comparison over read VALUES (layout-agnostic). NOT positional
+  # or cross-region context reasoning (consistency / absence / disambiguation / cross-reference) —
+  # that is the independent spatial_context probe.
+  content-reasoning-sum:
+    goal: "Arithmetic over read values (e.g. sum of line-item prices)."
+    prompt: "Add up {what}. Answer concisely with only the value."
     output: number ; metric: relaxed_acc
 
-  integrative-rel:
-    goal: "Reason over relationships between regions."
+  content-reasoning-compare:
+    goal: "Comparison over read values (e.g. which value is largest)."
     prompt: "{question} Answer concisely with only the value, no explanation."
     output: short string ; metric: exact
 
-  chart-dependent:
-    goal: "Read a value off a chart (not answerable from text alone)."
+  chart-value:
+    goal: "Read a VALUE off a chart (graphic value perception; not full figure comprehension)."
     prompt: "{question} Answer concisely with only the value, no explanation."
     output: number ; metric: relaxed_acc
 

@@ -8,6 +8,15 @@ So every hypothesis below is paired with a **control** that a shortcut would *fa
 [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe) (rendered,
 exact GT); generator `scripts/make_spatial_context_probe.py`.
 
+> **Scope boundary (kept strict).** This probe is *only* about **position and context** — where
+> regions are, how they relate, consistency/verification, absence/honesty, disambiguation,
+> cross-reference. **Reading or computing a value** (recognition, KIE, arithmetic *sum*, value
+> *comparison*, chart-value) belongs to the independent **capability probe**
+> ([`capability_axes.md`](capability_axes.md), [`data/probes/capability_probe`](../../data/probes/capability_probe)).
+> The two share **no items**: e.g. *computing* the total of the line items is content reasoning
+> (capability_probe); *verifying* whether the items are consistent with the printed total (C1) is a
+> context test here.
+
 ## Methodology: signal, not score
 
 For each capability we report a **signal** = (does it pass the test) **AND** (does it pass the
