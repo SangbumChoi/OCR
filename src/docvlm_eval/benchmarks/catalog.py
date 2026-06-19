@@ -151,16 +151,23 @@ def fetch_many(e: dict, out_dir: str | Path, n: int = 10, force: bool = False,
 
     sdir.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
+    seen: set[str] = set()   # dedupe by image content (these sets often repeat an image per question)
+    import hashlib
     try:
-        for ex in ds:
-            if len(rows) >= n:
+        for scanned, ex in enumerate(ds):
+            if len(rows) >= n or scanned >= 1500:  # bound streaming cost
                 break
             ex = dict(ex)
             img = find_image(ex)
             if img is None:
                 continue
+            small = _downscale(img, max_px)
+            h = hashlib.md5(small.tobytes()).hexdigest()
+            if h in seen:           # skip duplicate image (keep distinct images only)
+                continue
+            seen.add(h)
             fn = f"{len(rows):02d}.jpg"
-            _downscale(img, max_px).save(sdir / fn, quality=quality)
+            small.save(sdir / fn, quality=quality)
             rows.append({"image": f"samples/{fn}", "ground_truth": json_safe(ex)})
     except Exception as exc:
         print(f"[warn] {key}: stopped after {len(rows)} ({type(exc).__name__})")
