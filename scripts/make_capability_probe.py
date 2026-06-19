@@ -3,16 +3,15 @@
 PERCEPTION + CONTENT-REASONING axes for document VLMs (see docs/report/capability_axes.md).
 
 Scope boundary (kept strict): this probe reads / computes / compares / locates VALUES. It does
-NOT test relative position or cross-region context (consistency, absence, disambiguation,
-cross-reference) — those are the independent spatial_context probe. Axes:
+NOT test relative position or cross-region context (S/C codes) — those are the independent
+spatial_context probe. Axis codes (answer_type) per docs/report/capability_axes.md:
 
-  1. text-recognition        : read an exact printed string
-  2. kie-localized           : extract one field's value from a single region (clear KIE answer)
-  3. content-reasoning (sum) : arithmetic over read values (sum of line-item prices)
-  4. content-reasoning (cmp) : comparison over read values (which item is largest)
-  5. chart-value             : read a value off a chart (graphic value perception; NOT full figure
-                               comprehension, which is out of scope here)
-  6. location-grounding      : return the bounding box of a named element
+  T1 text-recognition        : read an exact printed string                       (family T · Text)
+  T2 kie-localized           : one field's value from a single region             (family T · Text)
+  H1 content-reasoning (sum) : arithmetic over read values (sum of line items)    (family H · Hybrid)
+  H2 content-reasoning (cmp) : comparison over read values (which item largest)   (family H · Hybrid)
+  H3 chart-value             : read a value off a chart (NOT full figure compreh.)(family H · Hybrid)
+  L1 location-grounding      : bounding box of a named element                    (family L · Location)
 
 Because the images are rendered here, the ground truth — including exact pixel boxes for the
 grounding task — is known precisely. Output:
@@ -104,31 +103,31 @@ def main():
     biggest = max(items, key=lambda x: x[1])[0]
 
     samples = [
+        # answer_type = the family code (see docs/report/capability_axes.md); meta.axis = readable name
         Sample("cap_text", inv_p, "Read the invoice number." + CONCISE, ["INV-2025-0042"],
-               "text-recognition", "anls", {"axis": "text", "prompt_strategy": "direct read"}),
+               "T1", "anls", {"axis": "text-recognition", "family": "T"}),
         Sample("cap_kie", inv_p, "What is the vendor name?" + CONCISE, ["Acme Corporation"],
-               "kie-localized", "anls", {"axis": "text", "prompt_strategy": "single-field KIE"}),
-        # content reasoning = arithmetic/comparison over read VALUES (layout-agnostic). NOT a
-        # consistency/verification or positional test — those live in the spatial_context probe.
+               "T2", "anls", {"axis": "kie-localized", "family": "T"}),
+        # H · hybrid — content reasoning = arithmetic/comparison over read VALUES (layout-agnostic).
+        # NOT consistency/verification or positional — those are the spatial_context probe (C/S).
         Sample("cap_integ_sum", inv_p,
                "Add up the prices of all line items." + CONCISE, [f"{total:.2f}"],
-               "content-reasoning", "relaxed_acc",
-               {"axis": "content-reasoning", "prompt_strategy": "value arithmetic (sum)"}),
+               "H1", "relaxed_acc", {"axis": "content-reasoning (sum)", "family": "H"}),
         Sample("cap_integ_rel", inv_p,
                "Which line item has the highest price?" + CONCISE, [biggest],
-               "content-reasoning", "exact",
-               {"axis": "content-reasoning", "prompt_strategy": "value comparison"}),
-        # chart-VALUE reading (graphic value perception). Pure figure/diagram comprehension is NOT
-        # in scope for the capability probe.
+               "H2", "exact", {"axis": "content-reasoning (compare)", "family": "H"}),
+        # H3 chart-VALUE reading (graphic value perception). Pure figure/diagram comprehension is
+        # NOT in scope for the capability probe.
         Sample("cap_chart", ch_p, "What is the value of bar B?" + CONCISE, ["70"],
-               "chart-value", "relaxed_acc",
-               {"axis": "chart-value", "prompt_strategy": "chart value read"}),
+               "H3", "relaxed_acc", {"axis": "chart-value", "family": "H"}),
+        # L1 grounding/spotting (location family, with S1-S3 spatial in the spatial_context probe).
         Sample("cap_ground", inv_p,
                "Return the bounding box of the TOTAL field as [x1, y1, x2, y2] in pixel "
                f"coordinates. The image is {inv_sz[0]}x{inv_sz[1]} pixels.",
                [f"{boxes['total'][0]},{boxes['total'][1]},{boxes['total'][2]},{boxes['total'][3]};{inv_sz[0]},{inv_sz[1]}"],
-               "location-grounding", "grounding",
-               {"axis": "location", "prompt_strategy": "text-prompted box (fair-comparison normalisation)"}),
+               "L1", "grounding",
+               {"axis": "location-grounding", "family": "L",
+                "prompt_strategy": "text-prompted box (fair-comparison normalisation)"}),
     ]
     save_jsonl(samples, OUT / "capability.jsonl")
 
@@ -139,9 +138,9 @@ def main():
         "name": "Custom capability probe",
         "category": "F1. Custom capability axes",
         "metric": "anls / relaxed_acc / exact / grounding",
-        "purpose": "Isolate document-VLM PERCEPTION + CONTENT-REASONING axes: text recognition, "
-                   "localized KIE, content reasoning (value sum/compare), chart-value reading, and "
-                   "location grounding. Position/context reasoning is the separate spatial_context probe.",
+        "purpose": "Capability axes T1/T2 (text), H1/H2/H3 (hybrid: content-reasoning sum/compare + "
+                   "chart-value), L1 (location grounding). S/C (spatial & context) are the separate "
+                   "spatial_context probe. See docs/report/capability_axes.md.",
         "source": "SYNTHETIC (scripts/make_capability_probe.py); GT incl. exact pixel boxes",
         "ground_truth": {"n_samples": len(samples),
                          "axes": sorted({s.answer_type for s in samples})},

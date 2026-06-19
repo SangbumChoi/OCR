@@ -3,16 +3,17 @@
   "name": "Custom capability probe",
   "category": "F1. Custom capability axes",
   "metric": "anls / relaxed_acc / exact / grounding",
-  "purpose": "Isolate document-VLM PERCEPTION + CONTENT-REASONING axes: text recognition, localized KIE, content reasoning (value sum/compare), chart-value reading, and location grounding. Position/context reasoning is the separate spatial_context probe.",
+  "purpose": "Capability axes T1/T2 (text), H1/H2/H3 (hybrid: content-reasoning sum/compare + chart-value), L1 (location grounding). S/C (spatial & context) are the separate spatial_context probe. See docs/report/capability_axes.md.",
   "source": "SYNTHETIC (scripts/make_capability_probe.py); GT incl. exact pixel boxes",
   "ground_truth": {
     "n_samples": 6,
     "axes": [
-      "chart-value",
-      "content-reasoning",
-      "kie-localized",
-      "location-grounding",
-      "text-recognition"
+      "H1",
+      "H2",
+      "H3",
+      "L1",
+      "T1",
+      "T2"
     ]
   }
 }
