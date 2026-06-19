@@ -109,8 +109,8 @@ def comparison_table(argv: list[str] | None = None) -> None:
     from .comparison import build_tables
 
     p = argparse.ArgumentParser(prog="docvlm-table", description="Aggregate the comparison table.")
-    p.add_argument("--results-dir", default="results")
-    p.add_argument("--out-dir", default="results")
+    p.add_argument("--results-dir", default="docs/results")
+    p.add_argument("--out-dir", default="docs/results")
     a = p.parse_args(argv)
     print(build_tables(a.results_dir, a.out_dir))
     print(f"[done] wrote comparison_table.{{md,csv,json}} to {a.out_dir}")

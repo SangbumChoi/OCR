@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Visualise the Part-2 ablation study (see report/part2_ablation_plan.md):
+"""Visualise the Part-2 ablation study (see docs/report/part2_ablation_plan.md):
   1. ablation_staircase.png     - cumulative gain as winners are stacked (the "staircase")
   2. ablation_deltas.png        - marginal Δ per ablation (which factor helps how much)
   3. ablation_lang_transfer.png - language-pair transfer heatmap (A4)
   4. ablation_lora_placement.png- capability gain by LoRA target group (A5)
   5. ablation_relationship.png  - how the ablations compose (dependency diagram)
 
-Reads results/ablation_results.json (a committed DEMO renders the format; replace with real
+Reads docs/results/ablation_results.json (a committed DEMO renders the format; replace with real
 ablation numbers, same schema). `python scripts/plot_ablation.py`
 """
 
@@ -22,9 +22,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 ROOT = Path(__file__).resolve().parents[1]
-FIG = ROOT / "report" / "figures"
+FIG = ROOT / "docs" / "report" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
-DATA = ROOT / "results" / "ablation_results.json"
+DATA = ROOT / "docs" / "results" / "ablation_results.json"
 
 
 def _demo_tag(d):

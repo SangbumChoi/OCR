@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Realistic synthetic generator for the document-type *special cases*
-(report/document_type_taxonomy.md).
+(docs/report/document_type_taxonomy.md).
 
 Each case is declared through ``docvlm_eval.synth.DocBuilder`` so the ground truth is *produced
 by* the render — every value is declared once (no drift between pixels and labels) and spotting

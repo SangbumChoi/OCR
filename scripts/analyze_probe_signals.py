@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Compute the shortcut-robust SIGNAL criteria from spatial/context probe results.
 
-Reads results/<model>/<probe>/per_sample.json and reports, per model, whether each capability
-PASSES its *control-aware* criterion (see report/spatial_context_probes.md) — not just raw
-accuracy. Prints a table and writes results/probe_signals.json.
+Reads docs/results/<model>/<probe>/per_sample.json and reports, per model, whether each capability
+PASSES its *control-aware* criterion (see docs/report/spatial_context_probes.md) — not just raw
+accuracy. Prints a table and writes docs/results/probe_signals.json.
 
     python scripts/analyze_probe_signals.py --probe spatial_context_probe
 """
@@ -114,7 +114,7 @@ def analyze_model(rows: list[dict]) -> dict:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--probe", default="spatial_context_probe")
-    p.add_argument("--results-dir", default="results")
+    p.add_argument("--results-dir", default="docs/results")
     args = p.parse_args()
 
     results_dir = Path(args.results_dir)

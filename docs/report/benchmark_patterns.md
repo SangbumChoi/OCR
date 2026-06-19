@@ -1,7 +1,7 @@
 # Benchmark patterns: what the suite actually collects, and how it groups
 
 This note answers four questions about the 42-benchmark catalog
-([`../configs/benchmark_catalog.yaml`](../configs/benchmark_catalog.yaml)):
+([`../configs/benchmark_catalog.yaml`](../../configs/benchmark_catalog.yaml)):
 
 1. **What information** is each benchmark ultimately collecting? (patterns)
 2. **Which visual classes beyond plain text** do they probe? (charts, formulas, diagrams,

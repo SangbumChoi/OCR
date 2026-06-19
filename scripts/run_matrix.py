@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run a set of models across the cross-benchmark preview set and STORE + aggregate results.
 
-Stores results/<model>/all_preview/{predictions.jsonl,summary.json,per_sample.json} and writes
-a model x benchmark score matrix to results/matrix.md + results/matrix.json.
+Stores docs/results/<model>/all_preview/{predictions.jsonl,summary.json,per_sample.json} and writes
+a model x benchmark score matrix to docs/results/matrix.md + docs/results/matrix.json.
 
     # CPU smoke (dummy only):
     python scripts/run_matrix.py --models dummy-echo --device cpu
@@ -35,7 +35,7 @@ def main() -> None:
     p.add_argument("--models", nargs="+", default=["dummy-echo"])
     p.add_argument("--all", action="store_true", help="every registered model")
     p.add_argument("--benchmark", default=PREVIEW)
-    p.add_argument("--results-dir", default="results")
+    p.add_argument("--results-dir", default="docs/results")
     p.add_argument("--device", default="cuda")
     p.add_argument("--dtype", default="bfloat16")
     p.add_argument("--attn", default="auto", help="auto | eager | sdpa | flash_attention_2")

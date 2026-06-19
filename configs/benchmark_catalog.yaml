@@ -1,6 +1,6 @@
 # Document-understanding benchmark CATALOG.
 #
-# Every benchmark used across the 10 capability categories (report/benchmark_taxonomy.md),
+# Every benchmark used across the 10 capability categories (docs/report/benchmark_taxonomy.md),
 # each annotated with `purpose` = what it actually tries to measure. Entries with an `hf_id`
 # are fetched as a one-sample preview by scripts/fetch_benchmark_samples.py (HF streaming);
 # entries with `hf_id: null` are documented-only (not cleanly streamable from HF — script-based

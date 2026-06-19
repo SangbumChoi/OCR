@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Synthesize cross-model insights from all stored results into report/insights.md.
+"""Synthesize cross-model insights from all stored results into docs/report/insights.md.
 
-Reads whatever exists under results/ (matrices, probe signals, custom-eval breakdown, per-model
+Reads whatever exists under docs/results/ (matrices, probe signals, custom-eval breakdown, per-model
 summaries for efficiency, and raw predictions for the OOV fallback study) and emits automated
 findings: capability leaders, reasoning emergence vs size, grounding gap, efficiency frontier,
 per-language / per-class leaders, PaddleOCR version progression, and OOV fallback patterns.
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks import load_jsonl  # noqa: E402
 
-R = ROOT / "results"
+R = ROOT / "docs" / "results"
 
 
 def _load(p):
@@ -58,7 +58,7 @@ def classify_oov(pred: str) -> str:
 
 def main():
     L = ["# Cross-model insights (auto-generated)\n",
-         "Synthesized by `scripts/build_insights.py` from `results/`. Run it after a full sweep "
+         "Synthesized by `scripts/build_insights.py` from `docs/results/`. Run it after a full sweep "
          "(GPU) to populate every section; partial data degrades gracefully.\n"]
     summaries = _summaries()
     models = sorted({m for (m, _b) in summaries})
@@ -179,9 +179,9 @@ def main():
     L.insert(2, _top_findings(capj, gnd, ce) + "\n")
 
     from docvlm_eval.report_md import prettify_tables
-    (ROOT / "report" / "insights.md").write_text(prettify_tables("\n".join(L)) + "\n", encoding="utf-8")
+    (ROOT / "docs" / "report" / "insights.md").write_text(prettify_tables("\n".join(L)) + "\n", encoding="utf-8")
     print("\n".join(L))
-    print(f"\n[done] -> report/insights.md")
+    print(f"\n[done] -> docs/report/insights.md")
 
 
 def _top_findings(capj, gnd, ce) -> str:

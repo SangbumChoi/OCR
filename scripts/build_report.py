@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render report/technical_report.md to a styled PDF (report/technical_report.pdf).
+"""Render docs/report/technical_report.md to a styled PDF (docs/report/technical_report.pdf).
 
 Uses python-markdown + weasyprint (no LaTeX needed).
 
@@ -14,8 +14,8 @@ import markdown
 from weasyprint import HTML
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "report" / "technical_report.md"
-OUT = ROOT / "report" / "technical_report.pdf"
+SRC = ROOT / "docs" / "report" / "technical_report.md"
+OUT = ROOT / "docs" / "report" / "technical_report.pdf"
 
 CSS = """
 @page { size: A4; margin: 1.8cm 1.6cm; }

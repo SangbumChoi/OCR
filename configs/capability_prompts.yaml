@@ -1,4 +1,4 @@
-# Prompt plan for the capability axes (see report/capability_axes.md).
+# Prompt plan for the capability axes (see docs/report/capability_axes.md).
 #
 # Two ideas:
 #  (1) For each capability we use a prompt that ELICITS that capability and constrains the

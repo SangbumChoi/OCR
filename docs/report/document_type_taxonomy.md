@@ -3,7 +3,7 @@
 "Documents with text" is far wider than invoices and papers. To design evaluation that
 generalises, we organise document *types* against the **stressors** they impose on a VLM, then
 map each stressor to the metric/axis already in our proposed set
-([`data/benchmarks/custom_eval`](../data/benchmarks/custom_eval/README.md)). A type is only as
+([`data/benchmarks/custom_eval`](../../data/benchmarks/custom_eval/README.md)). A type is only as
 "hard" as the stressors it combines — so this lens turns an open-ended list into concrete
 evaluation requirements.
 

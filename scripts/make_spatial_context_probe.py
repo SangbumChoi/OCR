@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Hypothesis-driven probes for SPATIAL and CONTEXT understanding (see
-report/spatial_context_probes.md). The design goal is *falsifiability*: each hypothesis comes
+docs/report/spatial_context_probes.md). The design goal is *falsifiability*: each hypothesis comes
 with a CONTROL that rules out a shortcut (language prior, guessing, hallucination, position
 bias). Images are rendered so ground truth (incl. boxes) is exact.
 

@@ -5,7 +5,7 @@ well by exploiting **shortcuts** — language priors ("totals are at the bottom"
 binary guessing, rubber-stamping ("yes it's consistent"), or hallucinating a plausible value.
 So every hypothesis below is paired with a **control** that a shortcut would *fail*, and a
 **signal criterion** that only true understanding satisfies. Probe:
-[`data/benchmarks/spatial_context_probe`](../data/benchmarks/spatial_context_probe) (rendered,
+[`data/benchmarks/spatial_context_probe`](../../data/benchmarks/spatial_context_probe) (rendered,
 exact GT); generator `scripts/make_spatial_context_probe.py`.
 
 ## Methodology: signal, not score

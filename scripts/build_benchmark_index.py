@@ -61,8 +61,8 @@ def main() -> None:
 
     L = ["# Benchmark catalog & sample previews\n",
          "Every benchmark across the capability categories of",
-         "[`../../report/benchmark_taxonomy.md`](../../report/benchmark_taxonomy.md) and",
-         "[`../../report/capability_axes.md`](../../report/capability_axes.md), annotated with **what",
+         "[`../../docs/report/benchmark_taxonomy.md`](../../docs/report/benchmark_taxonomy.md) and",
+         "[`../../docs/report/capability_axes.md`](../../docs/report/capability_axes.md), annotated with **what",
          "each one measures** (`purpose`). Source of truth:",
          "[`../../configs/benchmark_catalog.yaml`](../../configs/benchmark_catalog.yaml).\n",
          "- 🖼️ **sample** = image + `sample.json` (GT + metric + purpose) in `<key>/`.",

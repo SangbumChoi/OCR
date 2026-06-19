@@ -5,8 +5,8 @@ VLMs meaningfully we evaluate along **capability axes**, build a small **custom 
 isolates each axis on controlled images, and define **what to put in the prompt** to elicit
 each axis from every model — including the tricky **location/spotting** axis where models
 differ a lot. This document is the rationale; the probe is
-[`data/benchmarks/capability_probe`](../data/benchmarks/capability_probe), the prompts are
-[`configs/capability_prompts.yaml`](../configs/capability_prompts.yaml).
+[`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe), the prompts are
+[`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 
 ## 1. Two top-level abilities
 
@@ -21,7 +21,7 @@ These are genuinely different heads: a model can read a field perfectly yet be u
 at it (and vice-versa for a detection-first model). Most leaderboards score only the first;
 production document parsing (reading order, field localisation, table cells, redaction) needs
 the second. So we score **both**, with a dedicated grounding metric
-([`metrics/grounding.py`](../src/docvlm_eval/metrics/grounding.py), IoU with a permissive box
+([`metrics/grounding.py`](../../src/docvlm_eval/metrics/grounding.py), IoU with a permissive box
 parser).
 
 ## 2. When the output is text, *what kind* of text?
@@ -41,8 +41,8 @@ not just *that* it is.
 
 ## 3. The custom capability probe (rationale)
 
-[`data/benchmarks/capability_probe`](../data/benchmarks/capability_probe) is rendered by
-[`scripts/make_capability_probe.py`](../scripts/make_capability_probe.py) so the ground truth
+[`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe) is rendered by
+[`scripts/make_capability_probe.py`](../../scripts/make_capability_probe.py) so the ground truth
 — **including exact pixel boxes** — is known. Six samples, one per axis:
 
 | Sample          | Axis               | Prompt intent              | Gold                   |
@@ -63,7 +63,7 @@ runs through the *same* pipeline and metrics, so it is directly comparable.
 ## 4. Prompt plan — what goes in the prompt
 
 Every axis uses a prompt that both *elicits* the capability and *constrains* the output so it
-is scorable; full templates in [`configs/capability_prompts.yaml`](../configs/capability_prompts.yaml).
+is scorable; full templates in [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 Two design rules learned from real runs:
 
 - **Constrain verbosity.** Small VLMs answer in sentences ("Pinterest has a heavy female

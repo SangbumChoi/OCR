@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Visualise the benchmark landscape:
-  1. report/figures/benchmark_class_matrix.png - what VISUAL CLASSES (beyond text) each
+  1. docs/report/figures/benchmark_class_matrix.png - what VISUAL CLASSES (beyond text) each
      benchmark probes (charts, tables, formulas, diagrams, handwriting, seals, ...).
-  2. report/figures/benchmark_priority.png - benchmarks grouped by evaluation "nature" into
+  2. docs/report/figures/benchmark_priority.png - benchmarks grouped by evaluation "nature" into
      priority tiers, with prerequisite arrows (recognition -> VQA -> reasoning; structure;
      reliability), sized by how universally model papers report them.
 
@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 ROOT = Path(__file__).resolve().parents[1]
-FIG = ROOT / "report" / "figures"
+FIG = ROOT / "docs" / "report" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- class matrix

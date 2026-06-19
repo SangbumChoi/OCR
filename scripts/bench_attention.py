@@ -34,7 +34,7 @@ def main():
     # the default compares the universally-available backends; add it explicitly to try flash.
     p.add_argument("--attns", nargs="+", default=["eager", "sdpa"])
     p.add_argument("--max-new-tokens", type=int, default=64)
-    p.add_argument("--out", default="results/attention_benchmark.md")
+    p.add_argument("--out", default="docs/results/attention_benchmark.md")
     a = p.parse_args()
 
     samples = load_jsonl(a.benchmark)
@@ -44,7 +44,7 @@ def main():
             try:
                 s = run_evaluation(
                     model_key=m, samples=samples,
-                    out_dir=f"results/_attnbench/{m}/{attn}", device=a.device, dtype=a.dtype,
+                    out_dir=f"docs/results/_attnbench/{m}/{attn}", device=a.device, dtype=a.dtype,
                     max_new_tokens=a.max_new_tokens, benchmark_name="attnbench",
                     resume=False, attn=attn,
                 )

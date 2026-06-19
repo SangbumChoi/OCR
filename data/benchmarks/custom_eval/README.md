@@ -62,7 +62,7 @@ Extraction results drive downstream actions, so even at 99% accuracy the remaini
 verifiable** — and a human verifier needs the **basis** of each extraction:
 * **Spotting** — *where* on the page each value came from (bounding box). We ask for `[x1,y1,x2,y2]`
   and score **IoU**. Models without a native spotting task (general VLMs) are normalised to the same
-  box format for fair comparison (see `report/capability_axes.md` §5).
+  box format for fair comparison (see `docs/report/capability_axes.md` §5).
 * **Reasoning** — *why* the model produced a value. Items with `needs_reasoning=true` should expose a
   short justification alongside the answer; when the reasoning itself contains additional fields,
   those are credited too. (Reasoning quality is partly qualitative; we score the answer with ANLS and
@@ -76,7 +76,7 @@ between a demo and a system you can put in front of a compliance team.
 After running any model on `custom_eval.jsonl`:
 ```bash
 python scripts/run_matrix.py --models <m> --benchmark data/benchmarks/custom_eval/custom_eval.jsonl --device cuda
-python scripts/analyze_custom_eval.py     # -> results/custom_eval_breakdown.md
+python scripts/analyze_custom_eval.py     # -> docs/results/custom_eval_breakdown.md
 ```
 yields per-class, per-language, rotation-retention, reading-direction and spotting tables — the
 proposed evaluation matrix.

@@ -1,4 +1,4 @@
-# Part-2 ablation registry (see report/part2_ablation_plan.md). Declarative so each ablation is
+# Part-2 ablation registry (see docs/report/part2_ablation_plan.md). Declarative so each ablation is
 # one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
 
 target_model: internvl2_5-1b

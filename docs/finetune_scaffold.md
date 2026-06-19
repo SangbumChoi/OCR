@@ -1,5 +1,17 @@
 # OCR (DeepSeek OCR Finetune Scaffold)
 
+> **Status — legacy scaffold (kept for reference).** This is the *original* LoRA fine-tuning
+> scaffold the repo started from. The scripts below still exist and run, but the project has since
+> moved to:
+> - the unified **`src/docvlm_eval/finetune`** subpackage (install with `pip install -e ".[finetune]"`),
+> - the literature-grounded **Part-2 plan** in
+>   [`docs/report/part2_ablation_plan.md`](report/part2_ablation_plan.md) (A1–A7 ablations → staircase), and
+> - the **synthetic training-data generator** with built-in ground truth
+>   ([`scripts/make_realistic_cases.py --count N`](../scripts/make_realistic_cases.py), see
+>   [`data/benchmarks/realistic_cases/`](../data/benchmarks/realistic_cases/README.md)).
+>
+> Prefer those for new work; treat this page as the historical "how the pieces fit" reference.
+
 DeepSeek OCR(VLM) 파인튜닝을 위한 **엔드투엔드 스캐폴딩**입니다.
 
 포함 기능
@@ -17,11 +29,9 @@ DeepSeek OCR(VLM) 파인튜닝을 위한 **엔드투엔드 스캐폴딩**입니�
 ### 1) 환경 준비
 
 ```bash
-cd /Users/sangbumchoi/Documents/OCR
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -U pip
-pip install -r requirements.txt
+pip install -e ".[models,finetune]"     # unified package + LoRA fine-tuning deps
 ```
 
 ### 2) 데이터셋 포맷
@@ -119,13 +129,13 @@ python scripts/vllm_local_infer.py \
   --prompt "<image>\nFree OCR."
 ```
 
-### C) `examples/` 폴더 배치 inference → `results/` 저장
+### C) `examples/` 폴더 배치 inference → `docs/results/` 저장
 
 ```bash
 python scripts/run_examples_hf_infer.py \
   --model_id deepseek-ai/DeepSeek-OCR \
   --examples_dir examples \
-  --results_dir results \
+  --results_dir docs/results \
   --prompt "<image>\n<|grounding|>Convert the document to markdown. "
 ```
 

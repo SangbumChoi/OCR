@@ -8,24 +8,24 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 - **Part 2 — Improvement strategy:** turn the gap analysis into a concrete, literature-grounded
   fine-tuning plan, backed by the LoRA scaffold in this repo.
 
-> 📄 **Technical report:** [`report/technical_report.pdf`](report/technical_report.pdf)
-> (source: [`report/technical_report.md`](report/technical_report.md))
-> 🧭 **Benchmark & metric taxonomy:** [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md)
-> 🗺️ **Benchmark patterns & priority map:** [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
+> 📄 **Technical report:** [`docs/report/technical_report.pdf`](docs/report/technical_report.pdf)
+> (source: [`docs/report/technical_report.md`](docs/report/technical_report.md))
+> 🧭 **Benchmark & metric taxonomy:** [`docs/report/benchmark_taxonomy.md`](docs/report/benchmark_taxonomy.md)
+> 🗺️ **Benchmark patterns & priority map:** [`docs/report/benchmark_patterns.md`](docs/report/benchmark_patterns.md)
 > (what each benchmark collects · visual-class diversity · VQA answer-natures · grouping/priority)
-> 🧩 **Capability axes & custom probe:** [`report/capability_axes.md`](report/capability_axes.md)
+> 🧩 **Capability axes & custom probe:** [`docs/report/capability_axes.md`](docs/report/capability_axes.md)
 > (text vs location understanding · KIE/integrative/chart output natures · grounding fair-comparison)
-> 🗂️ **Document-type taxonomy:** [`report/document_type_taxonomy.md`](report/document_type_taxonomy.md)
+> 🗂️ **Document-type taxonomy:** [`docs/report/document_type_taxonomy.md`](docs/report/document_type_taxonomy.md)
 > (type × stressor matrix — webtoon/ID/historical/LCD … → which metric/axis each needs)
-> 💡 **Cross-model insights (auto):** [`report/insights.md`](report/insights.md)
+> 💡 **Cross-model insights (auto):** [`docs/report/insights.md`](docs/report/insights.md)
 > (capability leaders · reasoning-emergence · grounding gap · efficiency frontier · OOV fallback)
-> 🪜 **Part-2 ablation plan:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
+> 🪜 **Part-2 ablation plan:** [`docs/report/part2_ablation_plan.md`](docs/report/part2_ablation_plan.md)
 > (spotting/reasoning/multilingual/LoRA-placement/HPO/preprocessing ablations → cumulative staircase)
-> 🔬 **Research novelty & open questions:** [`report/research_novelty.md`](report/research_novelty.md)
+> 🔬 **Research novelty & open questions:** [`docs/report/research_novelty.md`](docs/report/research_novelty.md)
 > (lit-grounded gaps the probes/ablations here can uniquely test at ≤1B)
-> 🔎 **Results analysis & flaws:** [`report/results_analysis.md`](report/results_analysis.md)
+> 🔎 **Results analysis & flaws:** [`docs/report/results_analysis.md`](docs/report/results_analysis.md)
 > (real CPU runs · inference bugs fixed · scoring flaws · per-model capability vector)
-> 📊 **Comparison table:** [`results/comparison_table.md`](results/comparison_table.md)
+> 📊 **Comparison table:** [`docs/results/comparison_table.md`](docs/results/comparison_table.md)
 
 ---
 
@@ -48,7 +48,7 @@ scripts/                # thin shims over docvlm_eval.cli + run_all.sh / build_r
 configs/                # models.yaml, benchmarks.yaml, benchmark_catalog.yaml
 tests/                  # pytest suite (metrics, schema, loaders, registry, robustness,
                         #   pipeline, catalog, comparison, cli, finetune)  -> 60+ tests
-report/ results/ data/  # report+figures, comparison table, benchmark/probe samples
+docs/report/ docs/results/ data/  # report+figures, comparison table, benchmark/probe samples
 ```
 
 **Candidate models** (`scripts/evaluate.py --list-models`): `internvl2_5-1b`, `internvl3-1b`,
@@ -57,7 +57,7 @@ report/ results/ data/  # report+figures, comparison table, benchmark/probe samp
 
 **Benchmark suite:** DocVQA, InfoVQA, ChartQA, OCRBench (from VLMEvalKit/HF) + a custom
 robustness probe. The full landscape of OCR/document benchmark *types and metrics* is in
-[`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md).
+[`docs/report/benchmark_taxonomy.md`](docs/report/benchmark_taxonomy.md).
 
 **Inspect the benchmarks at a glance.** One representative sample (image + ground-truth label
 + metric note) per benchmark — across all taxonomy categories (VQA, KIE, tables, charts,
@@ -113,11 +113,11 @@ python scripts/build_robustness_set.py --base data/benchmarks/docvqa.jsonl \
 # evaluate one model on one benchmark
 python scripts/evaluate.py --model internvl2_5-1b \
   --benchmark data/benchmarks/docvqa.jsonl --benchmark-name docvqa \
-  --out results/internvl2_5-1b/docvqa --limit 300
+  --out docs/results/internvl2_5-1b/docvqa --limit 300
 
 # ...or run everything and build the comparison table
 bash scripts/run_all.sh                  # LIMIT=20 bash scripts/run_all.sh  for a quick pass
-python scripts/make_comparison_table.py  # -> results/comparison_table.{md,csv,json}
+python scripts/make_comparison_table.py  # -> docs/results/comparison_table.{md,csv,json}
 ```
 
 ### 2b) Full comparison on a GPU (Colab T4) — incl. PaddleOCR-VL 1.0/1.5/1.6 + efficiency
@@ -126,7 +126,7 @@ Open [`notebooks/colab_full_comparison.ipynb`](notebooks/colab_full_comparison.i
 which handles the two transformers passes (4.49 for the chat VLMs, 4.57 for PaddleOCR-VL) and
 runs every model on the capability + spatial/context probes. Each run records **score +
 inference time + peak CPU/GPU memory** (measured by the model wrapper) into `summary.json`, and
-`results/matrix_*.md` includes an **Efficiency** table (load / avg latency / p90 / peak CPU MB /
+`docs/results/matrix_*.md` includes an **Efficiency** table (load / avg latency / p90 / peak CPU MB /
 peak GPU MB) so models are compared on quality *and* cost.
 
 ### 3) Add a new model (the "minimal modification" requirement)
@@ -151,7 +151,7 @@ class MyModel(ModelAdapter):
 
 ### 4) Rebuild the report PDF
 ```bash
-python scripts/build_report.py     # report/technical_report.md -> .pdf
+python scripts/build_report.py     # docs/report/technical_report.md -> .pdf
 ```
 
 ---

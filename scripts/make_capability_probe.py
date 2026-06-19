@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the CUSTOM capability probe — a small, fully-controlled benchmark that isolates the
-capability axes we care about for document VLMs (see report/capability_axes.md):
+capability axes we care about for document VLMs (see docs/report/capability_axes.md):
 
   1. text-recognition   : read an exact printed string
   2. kie-localized      : extract one field's value from a single region (clear KIE answer)

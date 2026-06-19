@@ -51,4 +51,4 @@ done
 python scripts/analyze_probe_signals.py --probe probe || true
 python scripts/analyze_custom_eval.py || true
 python scripts/build_insights.py || true
-echo "== DONE: results/matrix_*.md, probe_signals.json, custom_eval_breakdown.md, report/insights.md =="
+echo "== DONE: docs/results/matrix_*.md, probe_signals.json, custom_eval_breakdown.md, docs/report/insights.md =="
