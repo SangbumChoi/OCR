@@ -38,25 +38,31 @@ key insight: the *output type* — not the topic — decides the metric and the 
 
 ## B. Visual classes beyond plain text
 
-Documents are not just printed characters. The matrix below (figure) shows which **visual
-classes** each benchmark forces the model to handle — charts, tables, formulas, diagrams,
-handwriting, infographics, scientific figures, icons, book covers, scene/natural images.
+Documents are not just printed characters. The matrix below shows which **visual classes** each
+benchmark forces the model to handle. The per-benchmark class assignment is a **single source** —
+[`configs/benchmark_classes.yaml`](../../configs/benchmark_classes.yaml) (validated against the
+catalog) — so the figure can't drift; it is grounded by the **10-sample image+GT previews** under
+`data/benchmarks/<key>/samples/` (fetched with `docvlm-fetch --n 10`).
 
 ![Visual classes per benchmark](figures/benchmark_class_matrix.png)
 
-**What to watch beyond text (diversity summary)**
-- **Charts/plots** → ChartQA, MathVista, CharXiv, InfoVQA, HallusionBench
-- **Tables (structure + cells)** → PubTabNet, PubTables-1M, CORD, OmniDocBench, DocVQA
-- **Formulas (LaTeX / handwritten math)** → im2latex, LaTeX-OCR, CROHME, MathVista, OCRBench
-- **Diagrams / schematics** → AI2D, MathVista, OmniDocBench(figures), DocLayNet
-- **Handwriting** → IAM, OCRBench(HME), OmniDocBench
-- **Infographics / icons** → InfoVQA
+**What to watch beyond text (diversity summary)** — derived from the classes source:
+- **Charts/plots** → ChartQA, MathVista, PlotQA, DVQA, InfoVQA, CharXiv, SEED-Bench-2-Plus, HallusionBench
+- **Tables (structure + cells)** → PubTabNet, PubTables-1M, FinTabNet, SciTSR, FUNSD, DocILE, DocVQA, OmniDocBench, DocLayNet, READoc
+- **Formulas (LaTeX / handwritten math)** → im2latex, LaTeX-OCR, CROHME, MathVista, OmniDocBench, OCRBench(+v2)
+- **Diagrams / schematics** → AI2D, MathVista, DocLayNet, OCRBench v2, HallusionBench
+- **Handwriting** → IAM, CROHME, OmniDocBench, OCRBench(+v2)
+- **Infographics** → InfoVQA, SEED-Bench-2-Plus
 - **Scientific figures** → CharXiv, MathVista
-- **Scene/natural text** → TextVQA, ST-VQA, scenetext
+- **Scene/natural text** → TextVQA, ST-VQA, IIIT5K, scenetext, ICDAR-2015, Total-Text, WildReceipt, POPE, OCRBench(+v2)
+- **Web/UI** → VisualMRC, SEED-Bench-2-Plus, **webui_probe** (our probe)
 - **Book covers** → OCR-VQA
-- **Coverage gaps in our suite (honest):** **Web/UI screenshots** (VisualMRC — documented,
-  no sample) and **seals/stamps** (a PaddleOCR-VL-1.5 capability) are *not* yet exercised with
-  a sample → candidates to add next. **QR/barcodes** are also absent from mainstream sets.
+- **Seals/stamps** → **custom_eval**, KIE-HVQA
+- **Icons/symbols** → InfoVQA, AI2D, **custom_eval**, **oov_probe**, **webui_probe**
+- **QR/barcodes** → **custom_eval** (absent from mainstream public sets; covered by our probe)
+
+Note: the formerly-flagged gaps (Web/UI, seals/stamps, QR/barcodes) are now exercised by our own
+probes (`custom_eval`, `webui_probe`) even though mainstream public benchmarks omit them.
 
 ## C. The several "natures" of VQA (answer cardinality & fuzziness)
 

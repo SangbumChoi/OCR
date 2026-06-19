@@ -1,0 +1,67 @@
+# Visual classes per benchmark — single source for the class matrix
+# (docs/report/figures/benchmark_class_matrix.png via scripts/plot_benchmark_map.py).
+#
+# Kept separate from benchmark_catalog.yaml so the big inline catalog + its comments stay intact.
+# Each key must exist in benchmark_catalog.yaml; values are drawn from the controlled vocabulary in
+# plot_benchmark_map.CLASSES. "Printed text" is listed only when printed document text is a primary
+# surface (not for pure scene/figure sets). Grounded by the fetched 10-sample previews
+# (data/benchmarks/<key>/samples/) where available.
+
+classes:
+  # A. Recognition / transcription
+  iam:                  [Handwriting]
+  recognition_fullpage: [Printed text]
+  iiit5k:               [Scene/natural]
+  scenetext:            [Scene/natural]
+  icdar2015:            [Scene/natural]
+  totaltext:            [Scene/natural]
+  omnidocbench:         [Printed text, Table, Formula, Handwriting]
+  doclaynet:            [Printed text, Table, Diagram]
+  fox:                  [Printed text]
+  readoc:               [Printed text, Table]
+
+  # B. Question answering & extraction
+  docvqa:               [Printed text, Table]
+  infovqa:              [Printed text, Chart/plot, Infographic, Icon/symbol]
+  textvqa:              [Scene/natural]
+  stvqa:                [Scene/natural]
+  ocrvqa:               [Printed text, Book cover]
+  ai2d:                 [Diagram, Icon/symbol]
+  visualmrc:            [Web/UI, Printed text]
+  funsd:                [Printed text, Table]
+  cord:                 [Printed text]
+  sroie:                [Printed text]
+  docile:               [Printed text, Table]
+  xfund:                [Printed text]
+  wildreceipt:          [Printed text, Scene/natural]
+  chartqa:              [Chart/plot]
+  mathvista:            [Chart/plot, Diagram, Formula, Sci-figure]
+  plotqa:               [Chart/plot]
+  dvqa:                 [Chart/plot]
+
+  # C. Structure recovery
+  pubtabnet:            [Table]
+  pubtables1m:          [Table]
+  fintabnet:            [Table]
+  scitsr:               [Table]
+  im2latex:             [Formula]
+  latexocr:             [Formula]
+  crohme:               [Formula, Handwriting]
+
+  # D. Umbrella suites
+  ocrbench:             [Printed text, Handwriting, Scene/natural, Formula]
+  ocrbench_v2:          [Printed text, Handwriting, Scene/natural, Formula, Table, Diagram]
+  charxiv:              [Chart/plot, Sci-figure]
+  seedbench2plus:       [Chart/plot, Infographic, Web/UI]
+
+  # E. Reliability
+  robustness:           [Printed text, Table]
+  pope:                 [Scene/natural]
+  hallusionbench:       [Scene/natural, Chart/plot, Diagram]
+  kie_hvqa:             [Printed text, Seal/stamp]
+
+  # F. Custom probes (this repo)
+  capability_probe:     [Printed text, Chart/plot]
+  custom_eval:          [Printed text, Table, Formula, Chart/plot, QR/barcode, Seal/stamp, Icon/symbol]
+  oov_probe:            [Icon/symbol]
+  webui_probe:          [Web/UI, Icon/symbol]

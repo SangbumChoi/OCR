@@ -112,3 +112,61 @@ def fetch_one(e: dict, out_dir: str | Path, force: bool = False, refresh_meta: b
     json_path.write_text(json.dumps(meta(e, json_safe(ex)), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[ok]   {key}: image={'yes' if img is not None else 'NONE'} -> {folder}")
     return "ok"
+
+
+def _downscale(img, max_px: int = 1000):
+    """Convert to RGB and shrink so the longest side <= max_px (keeps repo size sane)."""
+    img = img.convert("RGB")
+    w, h = img.size
+    if max(w, h) > max_px:
+        s = max_px / max(w, h)
+        img = img.resize((max(1, round(w * s)), max(1, round(h * s))))
+    return img
+
+
+def fetch_many(e: dict, out_dir: str | Path, n: int = 10, force: bool = False,
+               max_px: int = 1000, quality: int = 80) -> str:
+    """Fetch up to ``n`` samples for one entry into ``<key>/samples/NN.jpg`` + ``<key>/samples.jsonl``.
+
+    Non-destructive: the existing one-image preview (``sample.png``/``sample.json``) is left as is.
+    Images are downscaled + JPEG-compressed so 10 samples × ~22 benchmarks stay a reasonable size.
+    Each ``samples.jsonl`` line is ``{"image": "samples/NN.jpg", "ground_truth": {...}}``.
+    """
+    key = e["key"]
+    if not e.get("hf_id"):
+        return "documented"
+    folder = Path(out_dir) / key
+    sdir = folder / "samples"
+    jsonl = folder / "samples.jsonl"
+    if jsonl.exists() and not force:
+        return "skip"
+
+    from datasets import load_dataset
+
+    try:
+        ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
+    except Exception as exc:
+        print(f"[fail] {key}: {type(exc).__name__}: {str(exc)[:120]}")
+        return "fail"
+
+    sdir.mkdir(parents=True, exist_ok=True)
+    rows: list[dict] = []
+    try:
+        for ex in ds:
+            if len(rows) >= n:
+                break
+            ex = dict(ex)
+            img = find_image(ex)
+            if img is None:
+                continue
+            fn = f"{len(rows):02d}.jpg"
+            _downscale(img, max_px).save(sdir / fn, quality=quality)
+            rows.append({"image": f"samples/{fn}", "ground_truth": json_safe(ex)})
+    except Exception as exc:
+        print(f"[warn] {key}: stopped after {len(rows)} ({type(exc).__name__})")
+
+    if not rows:
+        return "no-image"
+    jsonl.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+    print(f"[ok]   {key}: {len(rows)} samples -> {sdir}")
+    return "ok"

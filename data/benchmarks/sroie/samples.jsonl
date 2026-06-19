@@ -1,0 +1,10 @@
+{"image": "samples/00.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "TAN WOON YANN"}}
+{"image": "samples/01.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "BOOK TA .K(TAMAN DAYA) SDN BND"}}
+{"image": "samples/02.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "789417-W"}}
+{"image": "samples/03.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "NO.53 55,57 & 59, JALAN SAGU 18,"}}
+{"image": "samples/04.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "TAMAN DAYA,"}}
+{"image": "samples/05.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "81100 JOHOR BAHRU,"}}
+{"image": "samples/06.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "JOHOR."}}
+{"image": "samples/07.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "DOCUMENT NO : TD01167104"}}
+{"image": "samples/08.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "DATE:"}}
+{"image": "samples/09.jpg", "ground_truth": {"image": "<JpegImageFile>", "text": "25/12/2018 8:13:39 PM"}}

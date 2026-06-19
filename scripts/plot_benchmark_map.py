@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -20,48 +21,43 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from docvlm_eval.benchmarks.catalog import load_catalog  # noqa: E402
+
 FIG = ROOT / "docs" / "report" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- class matrix
+# The per-benchmark visual classes are the SINGLE SOURCE in the catalog (`classes:` field),
+# so the figure can never drift from the data; here we only define column order.
 CLASSES = [
     "Printed text", "Handwriting", "Scene/natural", "Chart/plot", "Table",
     "Formula", "Diagram", "Infographic", "Sci-figure", "Web/UI", "Seal/stamp",
-    "Icon/symbol", "Book cover",
+    "Icon/symbol", "Book cover", "QR/barcode",
 ]
-# benchmark -> classes present (1)
-MATRIX = {
-    "docvqa":      ["Printed text", "Table"],
-    "infovqa":     ["Printed text", "Chart/plot", "Infographic", "Icon/symbol"],
-    "textvqa":     ["Printed text", "Scene/natural"],
-    "stvqa":       ["Scene/natural"],
-    "ocrvqa":      ["Printed text", "Book cover"],
-    "ai2d":        ["Diagram", "Icon/symbol"],
-    "chartqa":     ["Chart/plot"],
-    "mathvista":   ["Chart/plot", "Diagram", "Formula", "Sci-figure"],
-    "iam":         ["Handwriting"],
-    "latexocr":    ["Formula"],
-    "im2latex":    ["Formula"],
-    "sroie":       ["Printed text"],
-    "cord":        ["Printed text", "Table"],
-    "funsd":       ["Printed text", "Table"],
-    "pubtabnet":   ["Table"],
-    "pubtables1m": ["Table"],
-    "ocrbench":    ["Printed text", "Handwriting", "Scene/natural", "Formula"],
-    "ocrbench_v2": ["Printed text", "Handwriting", "Scene/natural", "Formula", "Table", "Diagram"],
-    "charxiv":     ["Chart/plot", "Sci-figure"],
-    "omnidocbench":["Printed text", "Table", "Formula", "Handwriting"],
-    "doclaynet":   ["Printed text", "Table", "Diagram"],
-    "scenetext":   ["Scene/natural"],
-    "recognition_fullpage": ["Printed text"],
-    "pope":        ["Scene/natural"],
-    "hallusionbench": ["Scene/natural", "Chart/plot", "Diagram"],
-    "robustness":  ["Printed text", "Table"],
-}
+
+
+def _matrix_from_catalog() -> dict[str, list[str]]:
+    """Visual classes per benchmark from configs/benchmark_classes.yaml (single source),
+    restricted to keys that actually exist in the catalog so the figure can't drift."""
+    import yaml
+
+    valid = {e["key"] for e in load_catalog()}
+    raw = yaml.safe_load((ROOT / "configs" / "benchmark_classes.yaml").read_text())["classes"]
+    out, unknown = {}, []
+    for k, cls in raw.items():
+        if k in valid and cls:
+            out[k] = list(cls)
+        elif k not in valid:
+            unknown.append(k)
+    if unknown:
+        print(f"[warn] benchmark_classes keys not in catalog (ignored): {unknown}")
+    return out
 
 
 def plot_class_matrix() -> None:
-    rows = list(MATRIX)
+    MATRIX = _matrix_from_catalog()
+    rows = sorted(MATRIX)
     data = [[1 if c in MATRIX[r] else 0 for c in CLASSES] for r in rows]
     fig, ax = plt.subplots(figsize=(11, 10))
     ax.imshow(data, cmap="Blues", aspect="auto", vmin=0, vmax=1.4)

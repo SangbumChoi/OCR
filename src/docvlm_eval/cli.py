@@ -69,19 +69,25 @@ def build_benchmarks(argv: list[str] | None = None) -> None:
 
 # ----------------------------------------------------------------- fetch_samples
 def fetch_samples(argv: list[str] | None = None) -> None:
-    from .benchmarks.catalog import fetch_one, load_catalog
+    from .benchmarks.catalog import fetch_many, fetch_one, load_catalog
 
-    p = argparse.ArgumentParser(prog="docvlm-fetch", description="Fetch one preview sample per benchmark.")
+    p = argparse.ArgumentParser(prog="docvlm-fetch", description="Fetch preview sample(s) per benchmark.")
     p.add_argument("--only", nargs="+")
     p.add_argument("--out-dir", default="data/benchmarks")
     p.add_argument("--force", action="store_true")
     p.add_argument("--refresh-meta", action="store_true")
     p.add_argument("--catalog", default=None)
+    p.add_argument("--n", type=int, default=1,
+                   help="samples per benchmark; >1 writes <key>/samples/NN.jpg + samples.jsonl")
+    p.add_argument("--max-px", type=int, default=1000, help="downscale longest side (when --n > 1)")
     a = p.parse_args(argv)
     entries = [e for e in load_catalog(a.catalog) if not a.only or e["key"] in a.only]
     stats: dict[str, int] = {}
     for e in entries:
-        r = fetch_one(e, a.out_dir, force=a.force, refresh_meta=a.refresh_meta)
+        if a.n > 1:
+            r = fetch_many(e, a.out_dir, n=a.n, force=a.force, max_px=a.max_px)
+        else:
+            r = fetch_one(e, a.out_dir, force=a.force, refresh_meta=a.refresh_meta)
         stats[r] = stats.get(r, 0) + 1
     print(f"\n[done] {stats} over {len(entries)} catalog entries")
 
