@@ -1,25 +1,141 @@
 {
+  "doc_id": "RTL doc (Arabic)",
   "type": "RTL doc (Arabic)",
+  "doc_type": "RTL doc (Arabic)",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "read-direction(RTL)",
     "language",
     "script"
   ],
   "anchor_metric": "direction + per-lang NED",
-  "fields": {
-    "transcript": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
-    "language": "ar",
-    "reading_direction": "rtl",
-    "_task": "Transcribe the Arabic text and state the reading direction."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "transcript",
+      "value": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
+      "role": "transcript",
+      "bbox": null,
+      "language": "ar",
+      "script": "arabic",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "language",
+      "value": "ar",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "reading_direction",
+      "value": "rtl",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Transcribe the Arabic text in the image. Answer concisely, no explanation.",
+      "answers": [
+        "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً"
+      ],
+      "answer_type": "multilingual",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Is the text right-to-left or left-to-right? Answer concisely, no explanation.",
+      "answers": [
+        "right-to-left",
+        "rtl"
+      ],
+      "answer_type": "direction",
+      "metric": "exact",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       875,
       1241
     ],
-    "page_count": 1
+    "page_size": "A5",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7051
+  },
+  "ablation_support": {
+    "spotting": false,
+    "rationale": false,
+    "multilingual": true,
+    "small_text": false,
+    "table": false,
+    "abstain": false,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 423,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "transcript": "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً",
+    "language": "ar",
+    "reading_direction": "rtl"
   },
   "qa": [
     {
@@ -48,6 +164,5 @@
       "question": "Is this text right-to-left or left-to-right?",
       "expected": "right-to-left"
     }
-  ],
-  "degraded_preset": "scan"
+  ]
 }

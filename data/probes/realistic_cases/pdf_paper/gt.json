@@ -1,5 +1,9 @@
 {
+  "doc_id": "PDF research paper (2-col)",
   "type": "PDF research paper (2-col)",
+  "doc_type": "PDF research paper (2-col)",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "layout(multi-column)",
     "read-order",
@@ -7,26 +11,147 @@
     "header/footer"
   ],
   "anchor_metric": "read-order + NED + TEDS",
-  "fields": {
-    "title": "Sub-1B Vision-Language Models for Document Understanding",
-    "authors": "Diana Perry, Stephen Rosario",
-    "sections": [
-      "1. Introduction",
-      "2. Related Work",
-      "3. Method",
-      "4. Experiments",
-      "5. Conclusion"
-    ],
-    "_task": "Extract the title, authors and section headings in reading order."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "title",
+      "value": "Sub-1B Vision-Language Models for Document Understanding",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "authors",
+      "value": "Chris Curtis, Joshua Diaz",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "sections",
+      "value": "['1. Introduction', '2. Related Work', '3. Method', '4. Experiments', '5. Conclusion']",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "figure_caption",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        789,
+        361,
+        991,
+        373
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "What is the paper title? Answer concisely, no explanation.",
+      "answers": [
+        "Sub-1B Vision-Language Models for Document Understanding"
+      ],
+      "answer_type": "ui",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "List the section headings in order. Answer concisely, no explanation.",
+      "answers": [
+        "1. Introduction; 2. Related Work; 3. Method; 4. Experiments; 5. Conclusion"
+      ],
+      "answer_type": "reading-order",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       1241,
       1754
     ],
-    "page_count": 1
+    "page_size": "A4",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7075
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": false,
+    "reading_order": true
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 763,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "title": "Sub-1B Vision-Language Models for Document Understanding",
+    "authors": "Chris Curtis, Joshua Diaz",
+    "sections": "['1. Introduction', '2. Related Work', '3. Method', '4. Experiments', '5. Conclusion']"
   },
   "spotting": {
     "figure_caption": [
@@ -63,6 +188,5 @@
       "question": "Does text read across both columns row-by-row?",
       "expected": "no — each column reads top-to-bottom independently"
     }
-  ],
-  "degraded_preset": "scan"
+  ]
 }

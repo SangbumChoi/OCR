@@ -1,5 +1,9 @@
 {
+  "doc_id": "ID / passport",
   "type": "ID / passport",
+  "doc_type": "ID / passport",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "language",
     "MRZ",
@@ -7,23 +11,172 @@
     "spotting"
   ],
   "anchor_metric": "KIE F1 + abstain + IoU",
-  "fields": {
-    "name": "JOSHUA DUNCAN",
-    "doc_no": "701571670",
-    "dob": "30 JAN 1997",
-    "expiry": "14 JUN 2031",
-    "mrz1": "P<USADUNCAN<<JOSHUA<<<<<<<<<<<<<<<<<<<<<<<<<",
-    "mrz2": "701571670<4USA219935M310614<<<<<<<<<<<<<<00<",
-    "_task": "Extract name, document number, DOB and expiry; localise the MRZ and photo."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "name",
+      "value": "CHRIS CURTIS",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "doc_no",
+      "value": "177777868",
+      "role": "kie-value",
+      "bbox": [
+        138,
+        111,
+        224,
+        130
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "dob",
+      "value": "07 MAY 1997",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "expiry",
+      "value": "14 JUN 2031",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "mrz1",
+      "value": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
+      "role": "mrz",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": 10,
+      "is_small": true,
+      "reading_index": null
+    },
+    {
+      "key": "mrz2",
+      "value": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<",
+      "role": "mrz",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": 10,
+      "is_small": true,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "What is the document number? Answer concisely, no explanation.",
+      "answers": [
+        "177777868"
+      ],
+      "answer_type": "kie",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the cardholder's full name? Answer concisely, no explanation.",
+      "answers": [
+        "CHRIS CURTIS"
+      ],
+      "answer_type": "kie",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       532,
       343
     ],
-    "page_count": 1
+    "page_size": "90mm 58mm",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 1.551
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": true,
+    "table": false,
+    "abstain": true,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "photo",
+    "severity": 1.0,
+    "seed": 153,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "photo",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "name": "CHRIS CURTIS",
+    "doc_no": "177777868",
+    "dob": "07 MAY 1997",
+    "expiry": "14 JUN 2031",
+    "mrz1": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
+    "mrz2": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<"
   },
   "spotting": {
     "doc_no": [
@@ -38,7 +191,7 @@
       "key": null,
       "question": "What is the document number? Answer concisely, no explanation.",
       "answers": [
-        "701571670"
+        "177777868"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -47,7 +200,7 @@
       "key": null,
       "question": "What is the cardholder's full name? Answer concisely, no explanation.",
       "answers": [
-        "JOSHUA DUNCAN"
+        "CHRIS CURTIS"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -59,6 +212,5 @@
       "question": "What is the cardholder's blood type?",
       "expected": "not present — abstain"
     }
-  ],
-  "degraded_preset": "photo"
+  ]
 }

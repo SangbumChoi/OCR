@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.synth import load_realistic_samples  # noqa: E402
 
-CASES = ROOT / "data" / "benchmarks" / "realistic_cases"
+CASES = ROOT / "data" / "probes" / "realistic_cases"
 
 
 def main():

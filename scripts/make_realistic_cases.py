@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -28,38 +29,110 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
+from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
 
 OUT = ROOT / "data" / "probes" / "realistic_cases"
-DPI = 150
+
+# Faker locale per language code (A4). Latin locales localise name/company/address content;
+# CJK/Arabic locales need the matching Noto fonts (referenced in the case CSS) to render.
+LOCALE = {"en": "en_US", "es": "es_ES", "fr": "fr_FR", "de": "de_DE", "pt": "pt_BR",
+          "it": "it_IT", "ja": "ja_JP", "ko": "ko_KR", "zh": "zh_CN", "ar": "ar_AA"}
+
+# Module state set by main() per (variant, doc); the case functions read `fake` as before.
 fake = Faker()
 Faker.seed(7)
+CFG: GenConfig = GenConfig()
+CURRENT_VARIANT: str | None = None
+CURRENT_LANG: str = "en"
 records: list[dict] = []
 
 
-# When generating >1 variant per case, emit() writes into OUT/<key>/<variant>/; None = OUT/<key>/.
-CURRENT_VARIANT: str | None = None
+def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
+    """Apply the A7 resize knobs to the image AND rescale every spotting box so GT stays exact."""
+    tls, keep = CFG.target_long_side, CFG.keep_aspect
+    if not tls:
+        return img
+    w, h = img.size
+    if keep:
+        sx = sy = tls / max(w, h)
+        new = (max(1, round(w * sx)), max(1, round(h * sy)))
+    else:                                   # squash to a square -> independent x/y scale
+        sx, sy = tls / w, tls / h
+        new = (tls, tls)
+    img = img.resize(new, Image.LANCZOS)
+    spotting = gt.get("spotting")
+    if spotting:
+        gt["spotting"] = {k: [round(b[0] * sx), round(b[1] * sy),
+                              round(b[2] * sx), round(b[3] * sy)] for k, b in spotting.items()}
+    gt.setdefault("render", {})["size_px"] = list(new)
+    return img
 
 
-def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | None = None):
-    """Render a builder (or accept a prebuilt PIL image + gt) -> clean.png + degraded.png + gt.json."""
+def _apply_emit_toggles(gt: dict) -> None:
+    """Honour the A1/A2 supervision switches by dropping GT the control arm must not see."""
+    if not CFG.emit_spotting:
+        gt.pop("spotting", None)
+    if not CFG.emit_rationale:
+        for q in gt.get("qa", []):
+            q.pop("rationale", None)
+
+
+def _pick_preset(key: str, default: str) -> str:
+    """Choose a degradation preset for this doc-type honouring config overrides + severity-as-rng."""
+    presets = (CFG.degrade_presets or {}).get(key)
+    if presets:
+        return random.choice(presets)
+    return default
+
+
+def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | None = None,
+         *, builder=None, domain: str | None = None, acquisition: str | None = None):
+    """Render a builder (or accept a prebuilt PIL image + gt) -> clean.png + degraded.png + gt.json.
+
+    Writes the structured DocSample DTO (a superset of the legacy flat gt schema)."""
     if gt is None:
-        img, gt = builder_or_img.build(dpi=DPI)
+        builder = builder_or_img
+        img, gt = builder.build(dpi=CFG.dpi)
     else:
         img = builder_or_img
+    # A7 resize (with box rescale) + A1/A2 supervision toggles
+    img = _resize_with_boxes(img, gt)
+    # A4: this doc's content was generated under CURRENT_LANG's locale -> tag its fields
+    if builder is not None and CURRENT_LANG != "en":
+        for k in list(builder.field_lang):
+            if builder.field_lang[k] == "en":
+                builder.field_lang[k] = CURRENT_LANG
+    _apply_emit_toggles(gt)
+
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
     img.save(folder / "clean.png")
-    if do_degrade:
-        deg = degrade(img, preset)
+
+    degradation = None
+    if do_degrade and random.random() < CFG.degrade_prob:
+        chosen = _pick_preset(key, preset)
+        seed = CFG.seed + hash(key) % 1000
+        deg = degrade(img, chosen, seed=seed)
         if deg is not None:
             deg.save(folder / "degraded.png")
-            gt["degraded_preset"] = preset
-    (folder / "gt.json").write_text(json.dumps(gt, indent=2, ensure_ascii=False), encoding="utf-8")
+            degradation = Degradation(preset=chosen, severity=CFG.degrade_severity, seed=seed)
+
+    doc = DocSample.from_builder_gt(
+        gt, builder=builder, gen_config=CFG, degradation=degradation,
+        domain=domain, acquisition=acquisition,
+    )
+    doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
+    out = doc.to_dict()
+    (folder / "gt.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    sup = out["ablation_support"]
     records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
-                    "stressors": gt["stressors"], "anchor_metric": gt["anchor_metric"]})
+                    "language": CURRENT_LANG, "stressors": gt["stressors"],
+                    "anchor_metric": gt["anchor_metric"], "support": sup})
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
-        n_spot = len(gt.get("spotting", {}))
-        print(f"[ok] {key:14} {img.size}  fields={len(gt.get('fields',{}))} spots={n_spot}")
+        flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
+                        ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
+        print(f"[ok] {key:14} {img.size} lang={CURRENT_LANG:2} fields={len(out.get('fields',{}))} "
+              f"spots={len(out.get('spotting',{}))} [{flags}]")
 
 
 # ============================================================ paper / scan cases
@@ -80,10 +153,13 @@ def case_invoice(do_degrade):
     b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines")
     b.field("TOTAL", total_str, key="total", spot=True, cls="total")
     b.task("Extract invoice number, date and total; convert the line-item table to HTML.")
-    b.qa("What is the invoice number?", inv_no, metric="ned", answer_type="kie")
-    b.qa("What is the total amount?", [total_str, f"{total:.2f}", f"{total:,.2f}"], answer_type="kie")
+    b.qa("What is the invoice number?", inv_no, metric="ned", answer_type="kie", key="invoice_no")
+    line_sum = " + ".join(f"{q}×${p:.2f}" for _, q, p in items)
+    b.qa("What is the total amount?", [total_str, f"{total:.2f}", f"{total:,.2f}"],
+         answer_type="kie", key="total",
+         rationale=f"Sum the line amounts: {line_sum} = {total_str}.")
     b.probe("abstain", "What is the shipping tracking number?", "not present — abstain")
-    emit("invoice", b, "scan", do_degrade)
+    emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
 def case_id_card(do_degrade):
@@ -115,8 +191,8 @@ def case_id_card(do_degrade):
     b.field("Date of birth", dob, key="dob")
     b.field("Expiry", "14 JUN 2031", key="expiry")
     b.raw("<div class=mrz>")
-    b.transcript(mrz1, key="mrz1")
-    b.transcript(mrz2, key="mrz2")
+    b.transcript(mrz1, key="mrz1", role="mrz", font_px=10)   # small-text slice (A7)
+    b.transcript(mrz2, key="mrz2", role="mrz", font_px=10)
     b.raw("</div></div>")
     b.task("Extract name, document number, DOB and expiry; localise the MRZ and photo.")
     b.qa("What is the document number?", idn, metric="ned", answer_type="kie")
@@ -256,11 +332,15 @@ def case_cheque(do_degrade):
     b.transcript(amt_words, key="amount_words", cls="words")
     b.raw("<p class=micr>⑆000123456⑆ 0987654321⑈ 4421</p></div>")
     b.task("Read the courtesy (numeric) and legal (written) amounts and check they agree.")
-    b.qa("What is the numeric (courtesy) amount on the cheque?", [amt_num, "1450.00"], answer_type="kie")
-    b.qa("Who is the payee?", payee, metric="ned", answer_type="kie")
+    b.qa("What is the numeric (courtesy) amount on the cheque?", [amt_num, "1450.00"],
+         answer_type="kie", key="amount_numeric")
+    b.qa("Who is the payee?", payee, metric="ned", answer_type="kie", key="payee")
+    b.qa("Do the numeric and written amounts agree?", ["yes", "they agree"], metric="anls",
+         answer_type="consistency",
+         rationale=f"Numeric '{amt_num}' equals legal 'one thousand four hundred fifty' → they agree.")
     b.probe("consistency", "Do the numeric and written amounts agree?",
             "yes (1450.00 == one thousand four hundred fifty)")
-    emit("cheque", b, "scan", do_degrade)
+    emit("cheque", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
 def case_ancient(do_degrade):
@@ -452,25 +532,58 @@ CASES = {
 }
 
 
+def _choose_lang(rng: random.Random) -> str:
+    """Pick this doc's language from the configured mix (weighted if given, else uniform)."""
+    langs = CFG.languages or ["en"]
+    if len(langs) == 1:
+        return langs[0]
+    if CFG.language_weights:
+        ws = [CFG.language_weights.get(l, 0.0) for l in langs]
+        if sum(ws) > 0:
+            return rng.choices(langs, weights=ws, k=1)[0]
+    return rng.choice(langs)
+
+
 def main():
-    global CURRENT_VARIANT
-    ap = argparse.ArgumentParser()
+    global CURRENT_VARIANT, CFG, CURRENT_LANG, fake
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", choices=list(CASES))
     ap.add_argument("--no-degrade", action="store_true")
-    ap.add_argument("--count", type=int, default=1,
-                    help="variants per case (>1 fans out into <key>/<NNNN>/ with reseeded Faker)")
-    ap.add_argument("--seed", type=int, default=7, help="base Faker seed")
+    ap.add_argument("--config", default=str(ROOT / "configs" / "synth_data.yaml"),
+                    help="GenConfig YAML (controls every ablation factor)")
+    ap.add_argument("--ablation", default=None,
+                    help="named override under ablation_overrides: in the config (e.g. A1_spotting_on)")
+    ap.add_argument("--count", type=int, default=None,
+                    help="variants per case (overrides config.count; >1 fans out into <key>/<NNNN>/)")
+    ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
     args = ap.parse_args()
+
+    CFG = GenConfig.from_yaml(args.config, ablation=args.ablation)
+    if args.count is not None:
+        CFG.count = args.count
+    if args.seed is not None:
+        CFG.seed = args.seed
+    if args.no_degrade:
+        CFG.degrade_prob = 0.0
+
     OUT.mkdir(parents=True, exist_ok=True)
     keys = args.only or list(CASES)
-    for v in range(args.count):
-        # reseed per variant so each one has different (but reproducible) content
-        Faker.seed(args.seed + v)
-        CURRENT_VARIANT = None if args.count == 1 else f"{v:04d}"
+    print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
+          f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
+          f"langs={CFG.languages} degrade_p={CFG.degrade_prob}")
+    for v in range(CFG.count):
+        CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
+        rng = random.Random(CFG.seed + v)
+        random.seed(CFG.seed + v)            # used by emit() preset choice + degrade rng
         for k in keys:
+            CURRENT_LANG = _choose_lang(rng)
+            # reseed Faker to the doc's locale so multilingual content is real + reproducible
+            fake = Faker(LOCALE.get(CURRENT_LANG, "en_US"))
+            Faker.seed(CFG.seed + v)
             CASES[k](do_degrade=not args.no_degrade)
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n[done] {len(keys)} cases x {args.count} variant(s) = {len(records)} docs -> {OUT}")
+    (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")
+    print(f"\n[done] {len(keys)} cases x {CFG.count} variant(s) = {len(records)} docs -> {OUT}")
 
 
 if __name__ == "__main__":

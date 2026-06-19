@@ -63,16 +63,28 @@ docvlm-eval --model <id> --benchmark data/probes/realistic_cases/realistic_cases
 
 `--count N` fans each case into `<key>/<NNNN>/` with **reseeded Faker** (different content,
 reproducible), so the same generator produces a large GT-exact training set at zero labelling
-cost. The loader/benchmark builder handle both layouts automatically.
+cost. The loader/benchmark builder handle both layouts automatically. Every generation factor is
+controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`base` + per-ablation
+`ablation_overrides`), so each Part-2 ablation arm is one `--ablation` flag:
 
 ```bash
-python scripts/make_realistic_cases.py --count 500          # 14 * 500 = 7000 labelled docs
+python scripts/make_realistic_cases.py --count 500                       # 14 * 500 = 7000 labelled docs
+python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
+python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
+python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
 ```
 
-The uniform GT schema (`gt.json`): `type · stressors · anchor_metric · fields · spotting ·
-table_html · selection · redacted · reading_order · probes · source · render{dpi,size_px,page_count}`.
-Tests in [`tests/test_synth_patterns.py`](../../../tests/test_synth_patterns.py) assert each
-contract (boxes land inside the image, redacted values never leak into visible GT, etc.).
+Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a
+**backward-compatible superset** of the legacy flat schema. Alongside the flat keys (`type ·
+fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
+carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
+(`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
+`render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`), `degradation`, `gen_config`, and an
+`ablation_support` flag-set. See [`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md)
+for the DTO and the factor→config mapping. Tests in
+[`tests/test_synth_patterns.py`](../../../tests/test_synth_patterns.py) and
+[`tests/test_synth_dto.py`](../../../tests/test_synth_dto.py) assert each contract (boxes land
+inside the image, redacted values never leak, `to_dict` stays back-compatible, etc.).
 
 ## Cases (one folder each: `clean.png`, `degraded.png`, `gt.json`)
 

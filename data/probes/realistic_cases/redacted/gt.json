@@ -1,37 +1,116 @@
 {
+  "doc_id": "redacted document",
   "type": "redacted document",
+  "doc_type": "redacted document",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "hallucination",
     "spotting"
   ],
   "anchor_metric": "abstain (no-hallucination)",
-  "fields": {
-    "subject": "Kathleen Schmidt",
-    "_task": "Answer only from visible text; for blacked-out values output '[redacted]'."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "subject",
+      "value": "Chris Curtis",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Who is the subject of the memo? Answer concisely, no explanation.",
+      "answers": [
+        "Chris Curtis"
+      ],
+      "answer_type": "kie",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       875,
       1241
     ],
-    "page_count": 1
+    "page_size": "A5",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7051
+  },
+  "ablation_support": {
+    "spotting": false,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": true,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 129,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "subject": "Chris Curtis"
   },
   "qa": [
     {
       "key": null,
       "question": "Who is the subject of the memo? Answer concisely, no explanation.",
       "answers": [
-        "Kathleen Schmidt"
+        "Chris Curtis"
       ],
       "metric": "ned",
       "answer_type": "kie"
     }
   ],
   "redacted": {
-    "account_number": "57975432319",
-    "authorising_officer": "Jon Cooper"
+    "account_number": "18159083016",
+    "authorising_officer": "David Arnold"
   },
   "probes": [
     {
@@ -44,6 +123,5 @@
       "question": "What is the authorising officer?",
       "expected": "[redacted] — blacked out; must NOT invent a value"
     }
-  ],
-  "degraded_preset": "scan"
+  ]
 }

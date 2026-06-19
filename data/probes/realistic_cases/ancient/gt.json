@@ -1,24 +1,130 @@
 {
+  "doc_id": "ancient manuscript",
   "type": "ancient manuscript",
+  "doc_type": "ancient manuscript",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "direction(vertical)",
     "language(classical)",
     "degradation(fade/stain)"
   ],
   "anchor_metric": "NED + robustness",
-  "fields": {
-    "transcript": "山重水複疑無路",
-    "reading_direction": "vertical-rtl",
-    "_task": "Transcribe characters in reading order (top→bottom, right→left)."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "transcript",
+      "value": "山重水複疑無路",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "reading_direction",
+      "value": "vertical-rtl",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "col_right",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        360,
+        137,
+        548,
+        204
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Transcribe the characters (top→bottom, right→left). Answer concisely, no explanation.",
+      "answers": [
+        "山重水複疑無路"
+      ],
+      "answer_type": "multilingual",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       709,
       886
     ],
-    "page_count": 1
+    "page_size": "120mm 150mm",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.8002
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": false,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "historical",
+    "severity": 1.0,
+    "seed": 316,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "historical",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "transcript": "山重水複疑無路",
+    "reading_direction": "vertical-rtl"
   },
   "spotting": {
     "col_right": [
@@ -38,6 +144,5 @@
       "metric": "ned",
       "answer_type": "multilingual"
     }
-  ],
-  "degraded_preset": "historical"
+  ]
 }

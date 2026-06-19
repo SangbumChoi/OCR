@@ -1,25 +1,132 @@
 {
+  "doc_id": "bank statement / payslip",
   "type": "bank statement / payslip",
+  "doc_type": "bank statement / payslip",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "layout",
     "table",
     "spotting"
   ],
   "anchor_metric": "TEDS + F1",
-  "fields": {
-    "account": "****6507",
-    "txns_rows": 6,
-    "closing_balance": "$1648.50",
-    "_task": "Convert the transaction table to HTML (TEDS) and read the closing balance."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "account",
+      "value": "****2462",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "txns_rows",
+      "value": "6",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "closing_balance",
+      "value": "$2144.50",
+      "role": "kie-value",
+      "bbox": [
+        226,
+        383,
+        297,
+        402
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "What is the closing balance? Answer concisely, no explanation.",
+      "answers": [
+        "$2144.50",
+        "2144.50"
+      ],
+      "answer_type": "kie",
+      "metric": "anls",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       875,
       1241
     ],
-    "page_count": 1
+    "page_size": "A5",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7051
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": true,
+    "abstain": false,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 922,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "account": "****2462",
+    "txns_rows": "6",
+    "closing_balance": "$2144.50"
   },
   "spotting": {
     "closing_balance": [
@@ -29,18 +136,17 @@
       402
     ]
   },
-  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>05/05</td><td>Embrace Next-Generat</td><td>+747.25</td><td>1747.25</td></tr><tr><td>08/01</td><td>Synthesize Next-Gene</td><td>+200.25</td><td>1947.50</td></tr><tr><td>03/03</td><td>Maximize Turn-Key Su</td><td>-341.75</td><td>1605.75</td></tr><tr><td>07/24</td><td>Benchmark Ubiquitous</td><td>+217.25</td><td>1823.00</td></tr><tr><td>05/04</td><td>Syndicate Innovative</td><td>-308.75</td><td>1514.25</td></tr><tr><td>07/16</td><td>Innovate Customized </td><td>+134.25</td><td>1648.50</td></tr></table>",
   "qa": [
     {
       "key": null,
       "question": "What is the closing balance? Answer concisely, no explanation.",
       "answers": [
-        "$1648.50",
-        "1648.50"
+        "$2144.50",
+        "2144.50"
       ],
       "metric": "anls",
       "answer_type": "kie"
     }
   ],
-  "degraded_preset": "scan"
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>07/10</td><td>Strategize Scalable </td><td>+163.25</td><td>1163.25</td></tr><tr><td>04/26</td><td>Benchmark Leading-Ed</td><td>+597.25</td><td>1760.50</td></tr><tr><td>02/13</td><td>Brand Next-Generatio</td><td>-60.75</td><td>1699.75</td></tr><tr><td>02/14</td><td>Brand Leading-Edge N</td><td>-7.75</td><td>1692.00</td></tr><tr><td>07/01</td><td>Whiteboard Leading-E</td><td>-246.75</td><td>1445.25</td></tr><tr><td>05/25</td><td>Enhance Revolutionar</td><td>+699.25</td><td>2144.50</td></tr></table>"
 }

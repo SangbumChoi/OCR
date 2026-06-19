@@ -133,8 +133,10 @@ winners** cumulatively. The deliverable is a report whose headline figure is a *
 added factor lifting the score a step, ending well above the baseline.
 
 - **Make data (GT built-in):**
-  [`../scripts/make_realistic_cases.py`](../scripts/make_realistic_cases.py) `--count N` →
-  large, label-exact training set (see
+  [`../scripts/make_realistic_cases.py`](../scripts/make_realistic_cases.py) `--config
+  configs/synth_data.yaml [--ablation <id>] --count N` → large, label-exact training set whose GT
+  carries every ablation factor (see [`report/synthetic_data_dto.md`](report/synthetic_data_dto.md)
+  for the DTO + config-driven factor control, and
   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
   legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
 - **Ablate & combine:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
