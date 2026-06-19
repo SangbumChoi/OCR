@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "#INV-2", "confidence": null, "raw": "#INV-2"}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation", "confidence": null, "raw": "Acme Corporation"}
+{"sample_id": "cap_integ_sum", "prediction": "145.50", "confidence": null, "raw": "145.50"}
+{"sample_id": "cap_integ_rel", "prediction": "Gadget B", "confidence": null, "raw": "Gadget B"}
+{"sample_id": "cap_chart", "prediction": "70", "confidence": null, "raw": "70"}
+{"sample_id": "cap_ground", "prediction": "The bounding box for the \"TOTAL\" field in the image is [500, 500, 990, 590].", "confidence": null, "raw": "The bounding box for the \"TOTAL\" field in the image is [500, 500, 990, 590]."}

@@ -7,25 +7,15 @@ __pycache__/
 .ruff_cache/
 .vscode/
 outputs/
-# ignore per-run eval outputs, but keep the committed reference tables + result matrices
-docs/results/*
-!docs/results/comparison_table.md
-!docs/results/matrix_all_preview.md
-!docs/results/matrix_all_preview.json
-!docs/results/matrix_capability.md
-!docs/results/matrix_capability.json
-!docs/results/matrix_probe.md
-!docs/results/matrix_probe.json
-!docs/results/probe_signals.json
-!docs/results/custom_eval_breakdown.json
-!docs/results/custom_eval_breakdown.md
-!docs/results/matrix_custom_eval.json
-!docs/results/matrix_custom_eval.md
-!docs/results/matrix_oov.md
-!docs/results/matrix_oov.json
-!docs/results/matrix_webui.md
-!docs/results/matrix_webui.json
-!docs/results/ablation_results.json
+# Per-run eval outputs: ignore by default, but COMMIT (a) the reference tables/matrices at the top
+# level and (b) the resume state (predictions.jsonl / summary.json at any depth), so a GPU-limited
+# run can be checkpointed to git and resumed after the container resets (scripts/run_checkpointed.sh).
+docs/results/**
+!docs/results/**/
+!docs/results/*.md
+!docs/results/*.json
+!docs/results/**/predictions.jsonl
+!docs/results/**/summary.json
 data/crawled/
 wandb/
 

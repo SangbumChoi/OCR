@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "INV-20", "confidence": null, "raw": "INV-20"}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation", "confidence": null, "raw": "Acme Corporation"}
+{"sample_id": "cap_integ_sum", "prediction": "$145.50", "confidence": null, "raw": "$145.50"}
+{"sample_id": "cap_integ_rel", "prediction": "Widget A", "confidence": null, "raw": "Widget A"}
+{"sample_id": "cap_chart", "prediction": "70", "confidence": null, "raw": "70"}
+{"sample_id": "cap_ground", "prediction": "To determine the bounding box of the TOTAL field in the image, we need to locate the coordinates of the top-left and bottom-right corners of the bounding box. The image dimensions are 820 pixels in width and 600", "confidence": null, "raw": "To determine the bounding box of the TOTAL field in the image, we need to locate the coordinates of the top-left and bottom-right corners of the bounding box. The image dimensions are 820 pixels in width and 600"}

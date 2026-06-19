@@ -126,6 +126,19 @@ bash scripts/run_all.sh                  # LIMIT=20 bash scripts/run_all.sh  for
 python scripts/make_comparison_table.py  # -> docs/results/comparison_table.{md,csv,json}
 ```
 
+### 2a) Resumable runs on a GPU-limited / ephemeral box (Colab)
+The pipeline writes `predictions.jsonl` **per sample** and resumes by `sample_id`, so an
+interrupted run never recomputes finished work. To survive the **container being reset when the
+free-GPU limit hits**, checkpoint results to git and resume across sessions:
+```bash
+MODELS="smolvlm-256m smolvlm-500m internvl3-1b" \
+BENCH=data/benchmarks/preview_eval.jsonl NAME=preview_eval DEVICE=cuda \
+bash scripts/run_checkpointed.sh    # pull -> run each model -> commit+push its predictions/summary
+```
+Re-running after a reset `git pull`s the partial results back and continues from where it stopped.
+(`docs/results/**/predictions.jsonl` and `summary.json` are git-tracked for exactly this; the
+matrix is rebuilt from every committed `summary.json`.)
+
 ### 2b) Full comparison on a GPU (Colab T4) — incl. PaddleOCR-VL 1.0/1.5/1.6 + efficiency
 Open [`notebooks/colab_full_comparison.ipynb`](notebooks/colab_full_comparison.ipynb) in Colab
 (GPU runtime). It only clones + installs + runs repo scripts (`scripts/run_full_comparison.sh`),

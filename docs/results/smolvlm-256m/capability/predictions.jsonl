@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "#INV-2025-0042", "confidence": 0.9040134856305055, "raw": "#INV-2025-0042"}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation.", "confidence": 0.9614292368622662, "raw": "Acme Corporation."}
+{"sample_id": "cap_integ_sum", "prediction": "$45.00 + $80.00 + $20.50 = $125.00", "confidence": 0.8833962928198104, "raw": "$45.00 + $80.00 + $20.50 = $125.00"}
+{"sample_id": "cap_integ_rel", "prediction": "Widget A has the highest price at $45.00.", "confidence": 0.8660032095302788, "raw": "Widget A has the highest price at $45.00."}
+{"sample_id": "cap_chart", "prediction": "70.", "confidence": 0.9861502942454005, "raw": "70."}
+{"sample_id": "cap_ground", "prediction": "The image is 820x600 pixels.", "confidence": 0.6922638599940001, "raw": "The image is 820x600 pixels."}

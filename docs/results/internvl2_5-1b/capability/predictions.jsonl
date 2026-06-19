@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "2025", "confidence": null, "raw": "2025"}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation", "confidence": null, "raw": "Acme Corporation"}
+{"sample_id": "cap_integ_sum", "prediction": "$145.50", "confidence": null, "raw": "$145.50"}
+{"sample_id": "cap_integ_rel", "prediction": "Gadget B", "confidence": null, "raw": "Gadget B"}
+{"sample_id": "cap_chart", "prediction": "70", "confidence": null, "raw": "70"}
+{"sample_id": "cap_ground", "prediction": "The bounding box of the TOTAL field is approximately [200, 400, 800, 500].", "confidence": null, "raw": "The bounding box of the TOTAL field is approximately [200, 400, 800, 500]."}

@@ -1,0 +1,82 @@
+{
+  "n_samples": 16,
+  "primary_metric": "anls",
+  "score": 0.2435,
+  "accuracy": 0.3125,
+  "answer_rate": 1.0,
+  "ece": 0.4262,
+  "by_answer_type": {
+    "ai2d": {
+      "n": 1,
+      "score": 0.0
+    },
+    "chartqa": {
+      "n": 1,
+      "score": 0.0
+    },
+    "docvqa": {
+      "n": 1,
+      "score": 0.6
+    },
+    "iam": {
+      "n": 1,
+      "score": 0.7957
+    },
+    "im2latex": {
+      "n": 1,
+      "score": 0.0
+    },
+    "infovqa": {
+      "n": 1,
+      "score": 0.9
+    },
+    "latexocr": {
+      "n": 1,
+      "score": 0.0
+    },
+    "mathvista": {
+      "n": 1,
+      "score": 0.0
+    },
+    "ocrbench": {
+      "n": 1,
+      "score": 0.0
+    },
+    "ocrbench_v2": {
+      "n": 1,
+      "score": 0.0
+    },
+    "ocrvqa": {
+      "n": 1,
+      "score": 0.0
+    },
+    "pope": {
+      "n": 1,
+      "score": 0.0
+    },
+    "recognition_fullpage": {
+      "n": 1,
+      "score": 0.0
+    },
+    "robustness": {
+      "n": 1,
+      "score": 0.6
+    },
+    "sroie": {
+      "n": 1,
+      "score": 1.0
+    },
+    "textvqa": {
+      "n": 1,
+      "score": 0.0
+    }
+  },
+  "model": "smolvlm-500m",
+  "hf_id": "HuggingFaceTB/SmolVLM-500M-Instruct",
+  "param_count_m": 500.0,
+  "benchmark": "all_preview",
+  "device": "cpu",
+  "dtype": "float32",
+  "load_seconds": 2.52,
+  "avg_latency_s": null
+}

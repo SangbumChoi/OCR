@@ -1,0 +1,25 @@
+{"sample_id": "sp_quad_top-left", "prediction": "top-left.", "confidence": 0.8328444078031897, "raw": "top-left."}
+{"sample_id": "sp_quad_top-right", "prediction": "Top-right.", "confidence": 0.8609896869709618, "raw": "Top-right."}
+{"sample_id": "sp_quad_bottom-left", "prediction": "bottom-right.", "confidence": 0.772238656431763, "raw": "bottom-right."}
+{"sample_id": "sp_quad_bottom-right", "prediction": "Bottom-right.", "confidence": 0.8258058334028212, "raw": "Bottom-right."}
+{"sample_id": "sp_relpos_normal", "prediction": "ABOVE.", "confidence": 0.8214764298016958, "raw": "ABOVE."}
+{"sample_id": "sp_relpos_counterfactual", "prediction": "ABOVE.", "confidence": 0.8850141113120821, "raw": "ABOVE."}
+{"sample_id": "sp_box_top", "prediction": "[100, 100, 800, 600].", "confidence": 0.7481741872765488, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "sp_box_mid", "prediction": "[100, 100, 800, 600].", "confidence": 0.7595815239093383, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "sp_box_bot", "prediction": "[100, 100, 800, 600].", "confidence": 0.7454211073647261, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "ctx_consistency_consistent", "prediction": "Yes.", "confidence": 0.9683441262570792, "raw": "Yes."}
+{"sample_id": "sp_quad_top-left", "prediction": "top-left.", "confidence": 0.8328444078031897, "raw": "top-left."}
+{"sample_id": "sp_quad_top-right", "prediction": "Top-right.", "confidence": 0.8609896869709618, "raw": "Top-right."}
+{"sample_id": "sp_quad_bottom-left", "prediction": "bottom-right.", "confidence": 0.772238656431763, "raw": "bottom-right."}
+{"sample_id": "sp_quad_bottom-right", "prediction": "Bottom-right.", "confidence": 0.8258058334028212, "raw": "Bottom-right."}
+{"sample_id": "sp_relpos_normal", "prediction": "ABOVE.", "confidence": 0.8214764298016958, "raw": "ABOVE."}
+{"sample_id": "sp_relpos_counterfactual", "prediction": "ABOVE.", "confidence": 0.8850141113120821, "raw": "ABOVE."}
+{"sample_id": "sp_box_top", "prediction": "[100, 100, 800, 600].", "confidence": 0.7481741872765488, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "sp_box_mid", "prediction": "[100, 100, 800, 600].", "confidence": 0.7595815239093383, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "sp_box_bot", "prediction": "[100, 100, 800, 600].", "confidence": 0.7454211073647261, "raw": "[100, 100, 800, 600]."}
+{"sample_id": "ctx_consistency_consistent", "prediction": "Yes.", "confidence": 0.9683441262570792, "raw": "Yes."}
+{"sample_id": "ctx_consistency_inconsistent", "prediction": "Yes.", "confidence": 0.9635983002631543, "raw": "Yes."}
+{"sample_id": "ctx_absence", "prediction": "0.", "confidence": 0.8372312445544933, "raw": "0."}
+{"sample_id": "ctx_distractor", "prediction": "$135.50.", "confidence": 0.998760972570348, "raw": "$135.50."}
+{"sample_id": "ctx_xref_bob", "prediction": "$80.00.", "confidence": 0.9252923329088747, "raw": "$80.00."}
+{"sample_id": "ctx_xref_alice", "prediction": "$80.00.", "confidence": 0.9925352592179749, "raw": "$80.00."}

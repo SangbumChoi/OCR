@@ -1,0 +1,16 @@
+{"sample_id": "ai2d", "prediction": "B. dairy.", "confidence": 0.5887396906011053, "raw": "B. dairy."}
+{"sample_id": "chartqa", "prediction": "18", "confidence": 0.7863606397088454, "raw": "18"}
+{"sample_id": "docvqa", "prediction": "0.2", "confidence": 0.8429798056452165, "raw": "0.2"}
+{"sample_id": "iam", "prediction": "The text reads: \"Assuredness\" by Bella Marie, a lively song that changes tempo mid-way.", "confidence": 0.7984400906129053, "raw": "The text reads: \"Assuredness\" by Bella Marie, a lively song that changes tempo mid-way."}
+{"sample_id": "im2latex", "prediction": "=0.1R^{2}x_{R+} ; 0 =|u|", "confidence": 0.4919907759011466, "raw": "=0.1R^{2}x_{R+} ; 0 =|u|"}
+{"sample_id": "infovqa", "prediction": "Pinterest has a heavy female audience.", "confidence": 0.808065498005334, "raw": "Pinterest has a heavy female audience."}
+{"sample_id": "latexocr", "prediction": "The image contains a mathematical equation that appears to be a part of a larger text. The equation is written in a mathematical notation, likely in a scientific or technical context. The equation is as follows:\n\n$$\n\\text{ds", "confidence": 0.4565996507031349, "raw": "The image contains a mathematical equation that appears to be a part of a larger text. The equation is written in a mathematical notation, likely in a scientific or technical context. The equation is as follows:\n\n$$\n\\text{ds"}
+{"sample_id": "mathvista", "prediction": "The canister is momentarily stopped by the spring and then runs into and compresses the spring. The spring is then compressed by $d=750 \\mathrm{~N} / \\mathrm{m}$.", "confidence": 0.6388915046134028, "raw": "The canister is momentarily stopped by the spring and then runs into and compresses the spring. The spring is then compressed by $d=750 \\mathrm{~N} / \\mathrm{m}$."}
+{"sample_id": "ocrbench", "prediction": "There is text in the image.", "confidence": 0.8272377808609581, "raw": "There is text in the image."}
+{"sample_id": "ocrbench_v2", "prediction": "Text box in the question.", "confidence": 0.31010928885197586, "raw": "Text box in the question."}
+{"sample_id": "ocrvqa", "prediction": "Su Doku.", "confidence": 0.8153371183941046, "raw": "Su Doku."}
+{"sample_id": "pope", "prediction": "Yes, there is a snowboarder in the image.", "confidence": 0.8961389665853711, "raw": "Yes, there is a snowboarder in the image."}
+{"sample_id": "recognition_fullpage", "prediction": "### Markdown Format:\n\n#### Quarterly Financial Summary\n\n| Quarter | Revenue | Year | Operating Expenses |\n|------|-------|-------|-------|\n| Q3 2025 | $4,8", "confidence": 0.6778556705150932, "raw": "### Markdown Format:\n\n#### Quarterly Financial Summary\n\n| Quarter | Revenue | Year | Operating Expenses |\n|------|-------|-------|-------|\n| Q3 2025 | $4,8"}
+{"sample_id": "robustness", "prediction": "The actual 'actual' predictor is 0.22.", "confidence": 0.6888642091183051, "raw": "The actual 'actual' predictor is 0.22."}
+{"sample_id": "sroie", "prediction": "tan woon yann", "confidence": 0.896609798882532, "raw": "tan woon yann"}
+{"sample_id": "textvqa", "prediction": "The brand of this camera is Dakota.", "confidence": 0.8986538971985021, "raw": "The brand of this camera is Dakota."}

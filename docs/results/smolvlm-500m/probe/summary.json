@@ -1,0 +1,46 @@
+{
+  "n_samples": 15,
+  "primary_metric": "exact",
+  "score": 0.4682,
+  "accuracy": 0.4667,
+  "answer_rate": 1.0,
+  "ece": 0.3958,
+  "by_answer_type": {
+    "context-absence": {
+      "n": 1,
+      "score": 0.0
+    },
+    "context-consistency": {
+      "n": 2,
+      "score": 0.5
+    },
+    "context-distractor": {
+      "n": 1,
+      "score": 1.0
+    },
+    "context-xref": {
+      "n": 2,
+      "score": 0.5
+    },
+    "spatial-box-tracking": {
+      "n": 3,
+      "score": 0.0078
+    },
+    "spatial-quadrant": {
+      "n": 4,
+      "score": 0.75
+    },
+    "spatial-relative": {
+      "n": 2,
+      "score": 0.5
+    }
+  },
+  "model": "smolvlm-500m",
+  "hf_id": "HuggingFaceTB/SmolVLM-500M-Instruct",
+  "param_count_m": 500.0,
+  "benchmark": "probe",
+  "device": "cpu",
+  "dtype": "float32",
+  "load_seconds": 2.64,
+  "avg_latency_s": null
+}

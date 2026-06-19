@@ -1,0 +1,42 @@
+{
+  "n_samples": 6,
+  "primary_metric": "anls",
+  "score": 0.0,
+  "accuracy": 0.0,
+  "answer_rate": 1.0,
+  "ece": null,
+  "by_answer_type": {
+    "chart-dependent": {
+      "n": 1,
+      "score": 0.0
+    },
+    "integrative-rel": {
+      "n": 1,
+      "score": 0.0
+    },
+    "integrative-sum": {
+      "n": 1,
+      "score": 0.0
+    },
+    "kie-localized": {
+      "n": 1,
+      "score": 0.0
+    },
+    "location-grounding": {
+      "n": 1,
+      "score": 0.0
+    },
+    "text-recognition": {
+      "n": 1,
+      "score": 0.0
+    }
+  },
+  "model": "florence2-base",
+  "hf_id": "microsoft/Florence-2-base",
+  "param_count_m": 230.0,
+  "benchmark": "capability",
+  "device": "cpu",
+  "dtype": "float32",
+  "load_seconds": 4.91,
+  "avg_latency_s": 2.474
+}

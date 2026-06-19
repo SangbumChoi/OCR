@@ -1,0 +1,3 @@
+{"sample_id": "cap_text", "prediction": "#INV-2025-0042", "confidence": 0.9315728434773718, "raw": "#INV-2025-0042"}
+{"sample_id": "cap_kie", "prediction": "Acmecorporation", "confidence": 0.6467455925688705, "raw": "Acmecorporation"}
+{"sample_id": "cap_integ_sum", "prediction": "$145.50", "confidence": 0.6773402957211214, "raw": "$145.50"}

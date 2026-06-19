@@ -1,0 +1,16 @@
+{"sample_id": "ai2d", "prediction": "Options: C", "confidence": 0.5301922182976532, "raw": "Options: C"}
+{"sample_id": "chartqa", "prediction": "16", "confidence": 0.7626562143855634, "raw": "16"}
+{"sample_id": "docvqa", "prediction": "0.22.", "confidence": 0.8123638141081455, "raw": "0.22."}
+{"sample_id": "iam", "prediction": "\" Bella Bella Marie\" C Parlophone, a lively song that change's tempo mid-way.", "confidence": 0.8336589015537212, "raw": "\" Bella Bella Marie\" C Parlophone, a lively song that change's tempo mid-way."}
+{"sample_id": "im2latex", "prediction": "\\langle (\\gamma^{1}-2\\pi\\gamma)x\\rangle=0i\\underline{R^{\\prime}}x_{y}=0", "confidence": 0.5635624344759943, "raw": "\\langle (\\gamma^{1}-2\\pi\\gamma)x\\rangle=0i\\underline{R^{\\prime}}x_{y}=0"}
+{"sample_id": "infovqa", "prediction": "Pinterest.", "confidence": 0.8549684426846635, "raw": "Pinterest."}
+{"sample_id": "latexocr", "prediction": "ds^{2}=(1-\\frac{c_{0}cos\\theta}{r})^{1+1\\theta^{2}}(dr^{2}+r^{2}d0^{2}+sin^{2}", "confidence": 0.7478383368924846, "raw": "ds^{2}=(1-\\frac{c_{0}cos\\theta}{r})^{1+1\\theta^{2}}(dr^{2}+r^{2}d0^{2}+sin^{2}"}
+{"sample_id": "mathvista", "prediction": "The spring force does negative work, decreasing speed and kinetic energy. The spring force is given by $F=-kx$, where $x$ is the displacement of the spring. The work done by the spring force is $W_{spring", "confidence": 0.6513821448732935, "raw": "The spring force does negative work, decreasing speed and kinetic energy. The spring force is given by $F=-kx$, where $x$ is the displacement of the spring. The work done by the spring force is $W_{spring"}
+{"sample_id": "ocrbench", "prediction": "The image contains a handwritten note.", "confidence": 0.5089069916128569, "raw": "The image contains a handwritten note."}
+{"sample_id": "ocrbench_v2", "prediction": "Answer is wrong.", "confidence": 0.3181716695016744, "raw": "Answer is wrong."}
+{"sample_id": "ocrvqa", "prediction": "Su Doku wrote this book.", "confidence": 0.7796912613311697, "raw": "Su Doku wrote this book."}
+{"sample_id": "pope", "prediction": "Yes, there is a person wearing a snowboard in the image.", "confidence": 0.8653988009972223, "raw": "Yes, there is a person wearing a snowboard in the image."}
+{"sample_id": "recognition_fullpage", "prediction": "Quarterly Financial Summary\nRevenue for Q3 2025 reached $4,820,000, a 12.4% increase year over year. Operating expenses totaled $3,110", "confidence": 0.9521129546020294, "raw": "Quarterly Financial Summary\nRevenue for Q3 2025 reached $4,820,000, a 12.4% increase year over year. Operating expenses totaled $3,110"}
+{"sample_id": "robustness", "prediction": "0.22.", "confidence": 0.7674144315453847, "raw": "0.22."}
+{"sample_id": "sroie", "prediction": "tan woon yann", "confidence": 0.9409236869872716, "raw": "tan woon yann"}
+{"sample_id": "textvqa", "prediction": "Dakota Digital.", "confidence": 0.9295330804275354, "raw": "Dakota Digital."}

@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "000000000000000000000000000000000000000000000000000000000000000", "confidence": 0.8777135778424506, "raw": "000000000000000000000000000000000000000000000000000000000000000"}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation.", "confidence": 0.9237613982067352, "raw": "Acme Corporation."}
+{"sample_id": "cap_integ_sum", "prediction": "$45.00", "confidence": 0.8854554725861512, "raw": "$45.00"}
+{"sample_id": "cap_integ_rel", "prediction": "Widget A.", "confidence": 0.8253653937975306, "raw": "Widget A."}
+{"sample_id": "cap_chart", "prediction": "0.0%", "confidence": 0.6024508505262685, "raw": "0.0%"}
+{"sample_id": "cap_ground", "prediction": "0>0>500>500><_VisualBasic_> INVOICE #INV-2025-0042\nVendor: Acme Corporation\nDate: 2025-06-14\nItem\nWidget A", "confidence": 0.886640079267321, "raw": "0>0>500>500><_VisualBasic_> INVOICE #INV-2025-0042\nVendor: Acme Corporation\nDate: 2025-06-14\nItem\nWidget A"}

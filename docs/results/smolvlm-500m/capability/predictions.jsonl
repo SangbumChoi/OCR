@@ -1,0 +1,6 @@
+{"sample_id": "cap_text", "prediction": "INV-2025-0042.", "confidence": 0.9955042584442122, "raw": "INV-2025-0042."}
+{"sample_id": "cap_kie", "prediction": "Acme Corporation.", "confidence": 0.9856098527397752, "raw": "Acme Corporation."}
+{"sample_id": "cap_integ_sum", "prediction": "$145.50.", "confidence": 0.9327760194197731, "raw": "$145.50."}
+{"sample_id": "cap_integ_rel", "prediction": "Widget A.", "confidence": 0.96226098902234, "raw": "Widget A."}
+{"sample_id": "cap_chart", "prediction": "70.", "confidence": 0.9825449483370371, "raw": "70."}
+{"sample_id": "cap_ground", "prediction": "[145.50, 820, 600, 820].", "confidence": 0.8130185051270649, "raw": "[145.50, 820, 600, 820]."}

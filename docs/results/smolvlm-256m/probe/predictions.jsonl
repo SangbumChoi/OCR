@@ -1,0 +1,30 @@
+{"sample_id": "sp_quad_top-left", "prediction": "top-left.", "confidence": 0.8713033467797232, "raw": "top-left."}
+{"sample_id": "sp_quad_top-right", "prediction": "top-left.", "confidence": 0.8411119041631208, "raw": "top-left."}
+{"sample_id": "sp_quad_bottom-left", "prediction": "top-left.", "confidence": 0.753049996793899, "raw": "top-left."}
+{"sample_id": "sp_quad_bottom-right", "prediction": "top-left", "confidence": 0.7133116044851218, "raw": "top-left"}
+{"sample_id": "sp_relpos_normal", "prediction": "Above.", "confidence": 0.8480444965541386, "raw": "Above."}
+{"sample_id": "sp_relpos_counterfactual", "prediction": "Above.", "confidence": 0.877905888867971, "raw": "Above."}
+{"sample_id": "sp_box_top", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6456191121775369, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "sp_box_mid", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6391899792342035, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "sp_box_bot", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6357083725587467, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "ctx_consistency_consistent", "prediction": "Yes.", "confidence": 0.9972995636641884, "raw": "Yes."}
+{"sample_id": "ctx_consistency_inconsistent", "prediction": "Yes.", "confidence": 0.9973172972985938, "raw": "Yes."}
+{"sample_id": "ctx_absence", "prediction": "$20.50.", "confidence": 0.8597091888913072, "raw": "$20.50."}
+{"sample_id": "ctx_distractor", "prediction": "$135.50.", "confidence": 0.9601831872037608, "raw": "$135.50."}
+{"sample_id": "ctx_xref_bob", "prediction": "$45.00", "confidence": 0.885816243907457, "raw": "$45.00"}
+{"sample_id": "ctx_xref_alice", "prediction": "$45.00", "confidence": 0.8778393888207887, "raw": "$45.00"}
+{"sample_id": "sp_quad_top-left", "prediction": "top-left.", "confidence": 0.8713033467797232, "raw": "top-left."}
+{"sample_id": "sp_quad_top-right", "prediction": "top-left.", "confidence": 0.8411119041631208, "raw": "top-left."}
+{"sample_id": "sp_quad_bottom-left", "prediction": "top-left.", "confidence": 0.753049996793899, "raw": "top-left."}
+{"sample_id": "sp_quad_bottom-right", "prediction": "top-left", "confidence": 0.7133116044851218, "raw": "top-left"}
+{"sample_id": "sp_relpos_normal", "prediction": "Above.", "confidence": 0.8480444965541386, "raw": "Above."}
+{"sample_id": "sp_relpos_counterfactual", "prediction": "Above.", "confidence": 0.877905888867971, "raw": "Above."}
+{"sample_id": "sp_box_top", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6456191121775369, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "sp_box_mid", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6391899792342035, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "sp_box_bot", "prediction": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11].", "confidence": 0.6357083725587467, "raw": "The bounding box of the word ANCHOR is [111.11, 111.11, 111.11, 111.11]."}
+{"sample_id": "ctx_consistency_consistent", "prediction": "Yes.", "confidence": 0.9972995636641884, "raw": "Yes."}
+{"sample_id": "ctx_consistency_inconsistent", "prediction": "Yes.", "confidence": 0.9973172972985938, "raw": "Yes."}
+{"sample_id": "ctx_absence", "prediction": "$20.50.", "confidence": 0.8597091888913072, "raw": "$20.50."}
+{"sample_id": "ctx_distractor", "prediction": "$135.50.", "confidence": 0.9601831872037608, "raw": "$135.50."}
+{"sample_id": "ctx_xref_bob", "prediction": "$45.00", "confidence": 0.885816243907457, "raw": "$45.00"}
+{"sample_id": "ctx_xref_alice", "prediction": "$45.00", "confidence": 0.8778393888207887, "raw": "$45.00"}
