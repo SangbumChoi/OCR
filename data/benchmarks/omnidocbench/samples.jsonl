@@ -1,0 +1,10 @@
+{"image": "samples/00.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/01.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/02.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/03.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/04.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/05.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/06.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/07.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/08.jpg", "ground_truth": {"image": "<PngImageFile>"}}
+{"image": "samples/09.jpg", "ground_truth": {"image": "<PngImageFile>"}}

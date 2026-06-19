@@ -1,0 +1,10 @@
+{"image": "samples/00.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["CENTRE"], "image": "<JpegImageFile>"}}
+{"image": "samples/01.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["FRIEND"], "image": "<JpegImageFile>"}}
+{"image": "samples/02.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["CHAIN"], "image": "<JpegImageFile>"}}
+{"image": "samples/03.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["CLOSE"], "image": "<JpegImageFile>"}}
+{"image": "samples/04.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["MARKET"], "image": "<JpegImageFile>"}}
+{"image": "samples/05.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["EXTRA"], "image": "<JpegImageFile>"}}
+{"image": "samples/06.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["MOBI"], "image": "<JpegImageFile>"}}
+{"image": "samples/07.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["COTTAGE"], "image": "<JpegImageFile>"}}
+{"image": "samples/08.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["AHEAD"], "image": "<JpegImageFile>"}}
+{"image": "samples/09.jpg", "ground_truth": {"dataset": "IIIT5K", "question": "what is written in the image?", "question_type": "Regular Text Recognition", "answer": ["TIMES"], "image": "<JpegImageFile>"}}

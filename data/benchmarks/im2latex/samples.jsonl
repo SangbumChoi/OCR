@@ -1,0 +1,10 @@
+{"image": "samples/00.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}-\\div (y^{1-2m}\\nabla w)=0\\mbox{in}\\mathbb R^n\\times\\mathbb R_+;w\\big|_{y=0}=|u|\\end{align*}"}}
+{"image": "samples/01.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*} \\frac{{\\rm d}\\vec{X}}{{\\rm d}t} = \\vec{\\Im} \\left( \\displaystyle \\vec{X} \\right)\\end{align*}"}}
+{"image": "samples/02.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*} L_{\\vec{X}} \\phi (\\vec{X}) = \\mbox{Tr}[J] \\phi (\\vec{X}) + P (\\vec{V} \\cdot \\vec{\\gamma})\\end{align*}"}}
+{"image": "samples/03.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}z_k = (z_{1,k}, z_{2,k})\\in Z, \\ \\ \\ \\ k=1,..., K,\\end{align*}"}}
+{"image": "samples/04.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}(\\nu_\\mu\\cdot \\Phi)(A,U) = \\int_P (\\mu\\cdot \\Phi)(A\\cap \\varphi_p(X), U\\cap \\varphi_p(X)) \\, dp\\end{align*}"}}
+{"image": "samples/05.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}s\\omega _{1}=\\partial _{i}k^{i}, \\end{align*}"}}
+{"image": "samples/06.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}d(\\omega _kdx^k)=(\\partial _i\\omega _k)dx^idx^k+\\omega _kd^2x^k;\\end{align*}"}}
+{"image": "samples/07.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}K^{\\epsilon '} = \\tilde{M} K^{\\epsilon} M^{-1} \\quad .\\end{align*}"}}
+{"image": "samples/08.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}+\\delta_{\\alpha\\beta}[-\\Delta B-{\\tilde d}(\\partial B)^{2}-q (\\partial A\\partial B) - r(\\partial F\\partial B)], \\end{align*}"}}
+{"image": "samples/09.jpg", "ground_truth": {"image": "<JpegImageFile>", "latex_formula": "\\begin{align*}a^{\\dagger}_m=\\sqrt{\\frac{2}{\\zeta}}z_m\\,,\\quad a_m=\\sqrt{\\frac{2}{\\zeta}}\\bar{z}_m\\quad\\textrm{for}\\quad m=1,\\,3\\,,\\end{align*}"}}

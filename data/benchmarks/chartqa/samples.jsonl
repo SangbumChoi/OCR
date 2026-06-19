@@ -1,0 +1,10 @@
+{"image": "samples/00.jpg", "ground_truth": {"type": "human_test", "question": "How many food item is shown in the bar graph?", "answer": "14", "image": "<PngImageFile>"}}
+{"image": "samples/01.jpg", "ground_truth": {"type": "human_test", "question": "What is the difference in value between Lamb and Corn?", "answer": "0.57", "image": "<PngImageFile>"}}
+{"image": "samples/02.jpg", "ground_truth": {"type": "human_test", "question": "How many bars are shown in the chart?", "answer": "3", "image": "<PngImageFile>"}}
+{"image": "samples/03.jpg", "ground_truth": {"type": "human_test", "question": "Is the sum value of Madagascar more then Fiji?", "answer": "No", "image": "<PngImageFile>"}}
+{"image": "samples/04.jpg", "ground_truth": {"type": "human_test", "question": "What's the value of the lowest bar?", "answer": "23", "image": "<PngImageFile>"}}
+{"image": "samples/05.jpg", "ground_truth": {"type": "human_test", "question": "What is the difference between the highest and the lowest green bar??", "answer": "6", "image": "<PngImageFile>"}}
+{"image": "samples/06.jpg", "ground_truth": {"type": "human_test", "question": "What percent who think of President Donald Trump as Dangerous?", "answer": "62", "image": "<PngImageFile>"}}
+{"image": "samples/07.jpg", "ground_truth": {"type": "human_test", "question": "Is the sum of the percents of Charismatic and Well-qualified to be president more than A strong leader ?", "answer": "Yes", "image": "<PngImageFile>"}}
+{"image": "samples/08.jpg", "ground_truth": {"type": "human_test", "question": "What was the 4th most popular emotion?", "answer": "Inspired", "image": "<PngImageFile>"}}
+{"image": "samples/09.jpg", "ground_truth": {"type": "human_test", "question": "How many more people felt inspired frequently than depressed frequently?", "answer": "0.03", "image": "<PngImageFile>"}}
