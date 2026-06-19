@@ -8,6 +8,9 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 - **Part 2 — Improvement strategy:** turn the gap analysis into a concrete, literature-grounded
   fine-tuning plan, backed by the LoRA scaffold in this repo.
 
+> 🧭 **Start here — project plan / reading order:** [`docs/plan.md`](docs/plan.md)
+> (the north-star narrative: define "document" (incl. UX/screens) → survey variations → evaluations
+> (data > models) → special cases → evaluate models → integrate-don't-pipeline → ablation staircase)
 > 📄 **Technical report:** [`docs/report/technical_report.pdf`](docs/report/technical_report.pdf)
 > (source: [`docs/report/technical_report.md`](docs/report/technical_report.md))
 > 🧭 **Benchmark & metric taxonomy:** [`docs/report/benchmark_taxonomy.md`](docs/report/benchmark_taxonomy.md)
