@@ -9,8 +9,11 @@ and [`data/probes/spatial_context_probe`](../../data/probes/spatial_context_prob
 
 ## Capability axis catalogue (three families)
 
-Each axis has a stable **code**. The three families are **orthogonal** — an axis belongs to exactly
-one — so a model's result is a clean vector with no double-counting.
+Axes are grouped into **three families**. **T** and **L** are clean single-mechanism families; **H**
+is a deliberate **composite** (content reasoning + chart-value + context) — see the note below, it is
+*not* one mechanism. Codes are stable per axis, but **the code letter is not always the family
+letter**: `S1–S3` (spatial) and `C1–C4` (context) keep their historical codes, so the family is the
+*grouping*, not the code prefix. A model's result is the per-axis vector across all codes.
 
 | Family | Code | Axis | What it tests | Probe item | Metric |
 | ------ | ---- | ---- | ------------- | ---------- | ------ |
@@ -20,9 +23,9 @@ one — so a model's result is a clean vector with no double-counting.
 | | **S1** | absolute region | which quadrant (vs position bias) | spatial `S1` | signal |
 | | **S2** | relative position | above/below + **counterfactual** | spatial `S2` | signal |
 | | **S3** | spatial tracking | box center tracks the element | spatial `S3` | signal |
-| **H · Hybrid** *(text + reasoning/context combined)* | **H1** | content reasoning — sum | arithmetic over read values | `cap_integ_sum` | relaxed_acc |
+| **H · Reasoning & context** *(composite — see note)* | **H1** | content reasoning — sum | arithmetic over read values | `cap_integ_sum` | relaxed_acc |
 | | **H2** | content reasoning — compare | comparison over read values | `cap_integ_rel` | exact |
-| | **H3** | chart-value | read a value off a chart | `cap_chart` | relaxed_acc |
+| | **H3** | chart-value *(graphic perception)* | read a value off a chart | `cap_chart` | relaxed_acc |
 | | **C1** | context — consistency | items vs printed total (vs rubber-stamp) | context `C1` | signal |
 | | **C2** | context — anti-hallucination | absent field → "none" | context `C2` | signal |
 | | **C3** | context — disambiguation | Total vs look-alike Subtotal | context `C3` | signal |
@@ -30,22 +33,23 @@ one — so a model's result is a clean vector with no double-counting.
 
 **Why three families (and not the old "two abilities" + "answer natures" split):** the previous
 framing listed *Text/Location* abilities and *KIE/integrative/chart* "natures" separately, which
-**double-listed** the same axes. The clean partition is by *what the answer depends on*:
+**double-listed** the same axes. The grouping is by *what the answer depends on*:
 
-- **T — text only:** the answer is a string you read off one place.
+- **T — text only:** the answer is a string you read off one place. Single mechanism.
 - **L — location/space only:** the answer is *where* (a box) or a *positional* relation — no value
   computation. (L1 grounding + S1–S3 spatial belong together: both are "where", not "what".)
-- **H — hybrid:** the answer needs **text *and* something else** — arithmetic/comparison over values
-  (H1/H2), reading a graphic (H3), or cross-region **context** (C1–C4). All "combine to decide"
-  tasks live here.
+- **H — reasoning & context (composite):** a **deliberate bucket**, not one mechanism — it holds
+  everything that needs *more than reading one field*: arithmetic/comparison over values (H1/H2),
+  **graphic value perception** (H3, which is really perception, parked here for convenience), and
+  cross-region **context** reasoning (C1–C4). If H ever needs to split, C1–C4 (context) is the
+  natural sub-family to peel off.
 
-> **Two boundaries kept strict (no overlap between families).**
-> 1. **Compute (H) vs verify-context (H/C) vs locate (L).** "*Add* the prices" is H1 (content
->    reasoning); "*do* the items *add up to* the total?" is C1 (context verification); "*where* is the
->    total?" is L1 (grounding). Same invoice, three different families — never scored as one.
-> 2. **Chart-value (H3) ⟂ pure figure understanding.** H3 is reading a *value* off a chart. General
->    figure/diagram comprehension (scientific-figure reasoning, arbitrary diagrams) is **not
->    mandatory here** — out of scope for these probes (left to CharXiv/MathVista if ever needed).
+> **Boundaries (where they matter).** *Within the H bucket* the distinct operations are kept
+> separate, never scored as one: "**add** the prices" = H1 (compute); "**do** they **add up to** the
+> total?" = C1 (context verify); and "**where** is the total?" = L1 (locate, family L). Same invoice,
+> three codes. And **H3 chart-value ⟂ pure figure understanding**: H3 reads a *value* off a chart;
+> general figure/diagram comprehension (scientific-figure reasoning, arbitrary diagrams) is **not in
+> scope** here (left to CharXiv/MathVista if ever needed).
 
 ## The controlled probes
 
@@ -120,8 +124,14 @@ answer tracks the only relevant token.
 
 One row per model across **all** axes. Measured-score axes (T/L1/H1–H3) show the metric value;
 signal axes (S/C) show ✅/❌ = clears the shortcut control. From
-`scripts/run_matrix.py` + `scripts/analyze_probe_signals.py` (the two smallest models ran on CPU;
-1B+ need a GPU — `scripts/run_all.sh`).
+`scripts/run_matrix.py` + `scripts/analyze_probe_signals.py`.
+
+> **Read as illustrative, not conclusive.** This is **2 models (SmolVLM 256M/500M), ~1 controlled
+> item per axis, on clean *synthetic* renders** — enough to demonstrate the framework and expose
+> shortcut failures, **not** a powered benchmark. The 1B / spotting models are **not run here** (need
+> a GPU — `scripts/run_all.sh`); the T scores are a *best case* (crisp synthetic text, no
+> degradation); and the row mixes **units** (numeric scores for T/L1/H vs pass/fail signals for S/C),
+> so compare *within* an axis, not across. Treat the cells as direction, not measurement.
 
 | model        | T1 text | T2 kie | L1 ground | S1 | S2 | S3 | H1 sum | H2 cmp | H3 chart | C1 | C2 | C3 | C4 |
 | ------------ | :-----: | :----: | :-------: | :-: | :-: | :-: | :----: | :----: | :------: | :-: | :-: | :-: | :-: |
@@ -159,16 +169,19 @@ Selection is therefore a **capability vector per model**, not a single score.
 
 ## Output-side requirements per document type (L1 spotting & abstain)
 
-The [document-type taxonomy](document_type_taxonomy.md) lists only *input* stressors; the two
-**output-side** requirements live here because they are properties of the model's *answer*:
+The [document-type taxonomy](document_type_taxonomy.md) lists only *input* stressors; the
+**output-side** requirements that gate deployment are summarised here. These are **deployment-lens
+*views* of axes already in the catalogue, not new axes** — so they intentionally re-use **L1** and
+**C2** rather than double-count:
 
-- **Spotting / grounding (L1)** — *where* each value came from; scored by IoU (the L1 normalisation
-  above makes it fair across OCR engines and chat VLMs).
-- **Hallucination control (correct-or-abstain)** — the reliability counterpart (overlaps C2). When a
-  field is **absent / redacted / illegible**, the correct answer is "not present" / "[redacted]";
-  inventing a value is the worst failure. Scored by **abstain accuracy** (the `abstain` probes in
-  [`data/probes/realistic_cases`](../../data/probes/realistic_cases/README.md)) + **ECE calibration**
-  ([`metrics/calibration.py`](../../src/docvlm_eval/metrics/calibration.py)).
+- **Spotting / grounding** — this *is* **L1** (the grounding axis), viewed as "can we audit *where*
+  each value came from?"; scored by IoU (the L1 normalisation above makes it fair across OCR engines
+  and chat VLMs).
+- **Hallucination control (correct-or-abstain)** — this *is* **C2** (anti-hallucination), viewed as a
+  per-type deployment gate. When a field is **absent / redacted / illegible**, the correct answer is
+  "not present" / "[redacted]"; inventing a value is the worst failure. Scored by **abstain accuracy**
+  (the `abstain` probes in [`data/probes/realistic_cases`](../../data/probes/realistic_cases/README.md))
+  + **ECE calibration** ([`metrics/calibration.py`](../../src/docvlm_eval/metrics/calibration.py)).
 
 These are *why* a type's **anchor metric** in the taxonomy reads "… + spotting IoU" or "… + abstain".
 Types where each is a **primary** requirement (✓✓ = critical):
