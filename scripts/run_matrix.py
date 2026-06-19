@@ -22,10 +22,67 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from docvlm_eval.benchmarks import load_jsonl  # noqa: E402
+from docvlm_eval.metrics import aggregate  # noqa: E402
 from docvlm_eval.models import list_models  # noqa: E402
 from docvlm_eval.pipeline import run_evaluation  # noqa: E402
+from docvlm_eval.schema import Prediction  # noqa: E402
 
 PREVIEW = "data/benchmarks/all_preview.jsonl"
+
+
+# --- carried over verbatim from a run's summary.json so a re-score keeps the run metadata ---
+_META_KEYS = (
+    "model", "hf_id", "param_count_m", "benchmark", "device", "dtype", "attn",
+    "load_seconds", "avg_latency_s", "p90_latency_s", "total_infer_s",
+    "peak_gpu_mb", "peak_cpu_mb",
+)
+
+
+def rescore_cached(samples, results_dir: Path, bench_name: str) -> dict[str, str]:
+    """Re-aggregate every model's CACHED predictions against the CURRENT benchmark jsonl.
+
+    No model is loaded — this only re-runs the scorer, so it refreshes ``summary.json`` and
+    ``per_sample.json`` (e.g. after the answer_type taxonomy or a metric changed) for every
+    model dir that already has a committed ``predictions.jsonl``. Models without cached
+    predictions are skipped (they need a real GPU run).
+    """
+    status: dict[str, str] = {}
+    for pred_file in sorted(results_dir.glob(f"*/{bench_name}/predictions.jsonl")):
+        m = pred_file.parent.parent.name
+        preds: dict[str, Prediction] = {}
+        for line in pred_file.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                preds[d["sample_id"]] = Prediction(**d)
+        if not preds:
+            status[m] = "skip (empty predictions)"
+            continue
+        result = aggregate(samples, preds)
+        # preserve run metadata (params/latency/device) from the prior summary.json if present
+        sm_path = pred_file.parent / "summary.json"
+        if sm_path.exists():
+            prior = json.loads(sm_path.read_text(encoding="utf-8"))
+            result["summary"].update({k: prior[k] for k in _META_KEYS if k in prior})
+        else:
+            result["summary"]["model"] = m
+            result["summary"]["benchmark"] = bench_name
+        # backfill static metadata (params/hf_id) from the registry class attributes when the
+        # prior summary lacked them (e.g. a partial run that never wrote a full summary).
+        if not result["summary"].get("param_count_m"):
+            from docvlm_eval.models.registry import _REGISTRY
+            import docvlm_eval.models  # noqa: F401 (populate registry)
+            from docvlm_eval.models import list_models  # noqa: F401
+            list_models()
+            cls = _REGISTRY.get(m)
+            if cls is not None:
+                result["summary"].setdefault("param_count_m", getattr(cls, "param_count_m", None))
+                result["summary"].setdefault("hf_id", getattr(cls, "hf_id", None))
+        sm_path.write_text(json.dumps(result["summary"], indent=2, ensure_ascii=False), encoding="utf-8")
+        (pred_file.parent / "per_sample.json").write_text(
+            json.dumps(result["per_sample"], indent=2, ensure_ascii=False), encoding="utf-8")
+        covered = sum(1 for s in samples if s.sample_id in preds)
+        status[m] = f"rescored ({covered}/{len(samples)} samples)"
+    return status
 
 
 def main() -> None:
@@ -42,6 +99,10 @@ def main() -> None:
     p.add_argument("--max-new-tokens", type=int, default=64)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-resume", action="store_true", help="ignore cached predictions")
+    p.add_argument("--rescore", action="store_true",
+                   help="re-aggregate cached predictions against the current benchmark jsonl "
+                        "WITHOUT loading any model (refreshes summary/per_sample after a "
+                        "taxonomy/metric change), then rebuild the matrix")
     a = p.parse_args()
 
     models = list_models() if a.all else a.models
@@ -51,7 +112,11 @@ def main() -> None:
 
     status: dict[str, str] = {}
     per_model_scores: dict[str, dict[str, float]] = {}
-    for m in models:
+    if a.rescore:
+        status.update(rescore_cached(samples, results_dir, bench_name))
+        for m, st in sorted(status.items()):
+            print(f"[rescore] {m}: {st}")
+    for m in ([] if a.rescore else models):
         out = results_dir / m / bench_name
         try:
             run_evaluation(

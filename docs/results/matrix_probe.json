@@ -1,7 +1,7 @@
 {
   "status": {
-    "smolvlm-256m": "ok",
-    "smolvlm-500m": "ok"
+    "smolvlm-256m": "rescored (15/15 samples)",
+    "smolvlm-500m": "rescored (15/15 samples)"
   },
   "scores": {
     "smolvlm-256m": {

@@ -6,27 +6,27 @@
   "answer_rate": 0.0,
   "ece": null,
   "by_answer_type": {
-    "chart-dependent": {
+    "H1": {
       "n": 1,
       "score": 0.0
     },
-    "integrative-rel": {
+    "H2": {
       "n": 1,
       "score": 0.0
     },
-    "integrative-sum": {
+    "H3": {
       "n": 1,
       "score": 0.0
     },
-    "kie-localized": {
+    "L1": {
       "n": 1,
       "score": 0.0
     },
-    "location-grounding": {
+    "T1": {
       "n": 1,
       "score": 0.0
     },
-    "text-recognition": {
+    "T2": {
       "n": 1,
       "score": 0.0
     }

@@ -9,7 +9,14 @@ Per-cell = task score (ANLS / relaxed-acc / OCRBench / exact). One preview sampl
 | smolvlm-256m | 1.00             | 0.00              | 0.00                | 0.00                 | 0.00             | 1.00                     | 0.00       | 0.00       | 0.00       | 1.00                       | 0.00                         | 0.00        | 1.00           | 1.00         | 0.00           |
 | smolvlm-500m | 1.00             | 1.00              | 0.00                | 1.00                 | 0.00             | 1.00                     | 0.00       | 0.01       | 0.01       | 1.00                       | 0.00                         | 0.00        | 1.00           | 0.00         | 1.00           |
 
+## Efficiency (load / latency / memory)
+
+| model        | device | params(M) | load(s) | avg lat(s) | p90(s) | peak CPU(MB) | peak GPU(MB) |
+| ------------ | ------ | --------- | ------- | ---------- | ------ | ------------ | ------------ |
+| smolvlm-256m | cpu    | 256       | 7.46    | None       | -      | -            | -            |
+| smolvlm-500m | cpu    | 500       | 2.64    | None       | -      | -            | -            |
+
 ## Run status
 
-- **smolvlm-256m**: ok
-- **smolvlm-500m**: ok
+- **smolvlm-256m**: rescored (15/15 samples)
+- **smolvlm-500m**: rescored (15/15 samples)

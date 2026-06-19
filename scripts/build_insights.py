@@ -84,8 +84,9 @@ def main():
             params = next((s.get("param_count_m") for (mm, _), s in summaries.items() if mm == m), None)
             sc = scores.get(m, {})
             if "cap_integ_sum" in sc:
-                L.append(f"- {m} (~{params:.0f}M): sum={sc.get('cap_integ_sum')}, "
-                         f"rel={sc.get('cap_integ_rel')}")
+                psize = f"~{params:.0f}M" if params else "size n/a"
+                L.append(f"- {m} ({psize}): sum={sc.get('cap_integ_sum')}, "
+                         f"rel={sc.get('cap_integ_rel', 'n/a')}")
 
     # ---- 2. grounding gap ----
     gnd = []

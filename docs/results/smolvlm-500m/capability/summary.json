@@ -6,29 +6,29 @@
   "answer_rate": 1.0,
   "ece": 0.2786,
   "by_answer_type": {
-    "chart-dependent": {
+    "H1": {
       "n": 1,
       "score": 1.0
     },
-    "integrative-rel": {
+    "H2": {
       "n": 1,
       "score": 0.0
     },
-    "integrative-sum": {
+    "H3": {
       "n": 1,
       "score": 1.0
     },
-    "kie-localized": {
-      "n": 1,
-      "score": 0.9412
-    },
-    "location-grounding": {
+    "L1": {
       "n": 1,
       "score": 0.0
     },
-    "text-recognition": {
+    "T1": {
       "n": 1,
       "score": 0.9286
+    },
+    "T2": {
+      "n": 1,
+      "score": 0.9412
     }
   },
   "model": "smolvlm-500m",

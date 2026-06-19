@@ -1,16 +1,16 @@
 {
   "status": {
-    "smolvlm-256m": "ok",
-    "florence2-large": "ok (cached)",
-    "dummy-echo": "ok (cached)",
-    "got-ocr2": "ok (cached)",
-    "smoldocling-256m": "ok (cached)",
-    "internvl3-1b": "ok (cached)",
-    "internvl2-1b": "ok (cached)",
-    "internvl2_5-1b": "ok (cached)",
-    "h2ovl-0.8b": "ok (cached)",
-    "florence2-base": "ok (cached)",
-    "smolvlm-500m": "ok (cached)"
+    "florence2-base": "rescored (6/6 samples)",
+    "florence2-large": "rescored (6/6 samples)",
+    "got-ocr2": "rescored (6/6 samples)",
+    "h2ovl-0.8b": "rescored (6/6 samples)",
+    "internvl2-1b": "rescored (6/6 samples)",
+    "internvl2_5-1b": "rescored (6/6 samples)",
+    "internvl3-1b": "rescored (6/6 samples)",
+    "llava-ov-0.5b": "rescored (3/6 samples)",
+    "smoldocling-256m": "rescored (6/6 samples)",
+    "smolvlm-256m": "rescored (6/6 samples)",
+    "smolvlm-500m": "rescored (6/6 samples)"
   },
   "scores": {
     "florence2-large": {
@@ -19,14 +19,6 @@
       "cap_integ_sum": 0.0,
       "cap_integ_rel": 0.0,
       "cap_chart": 1.0,
-      "cap_ground": 0.0
-    },
-    "dummy-echo": {
-      "cap_text": 0.0,
-      "cap_kie": 0.0,
-      "cap_integ_sum": 0.0,
-      "cap_integ_rel": 0.0,
-      "cap_chart": 0.0,
       "cap_ground": 0.0
     },
     "got-ocr2": {
@@ -67,6 +59,14 @@
       "cap_integ_sum": 1.0,
       "cap_integ_rel": 0.0,
       "cap_chart": 1.0,
+      "cap_ground": 0.0
+    },
+    "llava-ov-0.5b": {
+      "cap_text": 0.9286,
+      "cap_kie": 0.9375,
+      "cap_integ_sum": 1.0,
+      "cap_integ_rel": 0.0,
+      "cap_chart": 0.0,
       "cap_ground": 0.0
     },
     "internvl2_5-1b": {
