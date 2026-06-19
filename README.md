@@ -101,8 +101,8 @@ This installs console commands: `docvlm-eval`, `docvlm-build-bench`, `docvlm-fet
 Proves the whole pipeline works end-to-end before spending GPU time:
 ```bash
 docvlm-eval --model dummy-echo \
-  --benchmark data/custom/custom.jsonl --benchmark-name custom \
-  --out /tmp/custom --device cpu
+  --benchmark data/benchmarks/custom_eval/custom_eval.jsonl --benchmark-name custom_eval \
+  --out /tmp/custom_eval --device cpu
 pytest -q                            # 60+ tests: metrics, registry, pipeline, robustness, …
 ```
 

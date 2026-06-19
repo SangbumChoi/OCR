@@ -23,7 +23,7 @@ def _iter_images(examples_dir: Path) -> List[Path]:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run DeepSeek-OCR HF inference on examples/ and save to docs/results/")
     p.add_argument("--model_id", type=str, default="deepseek-ai/DeepSeek-OCR")
-    p.add_argument("--examples_dir", type=str, default="data/custom/images")
+    p.add_argument("--examples_dir", type=str, default="data/benchmarks/custom_eval/images")
     p.add_argument("--results_dir", type=str, default="docs/results")
     p.add_argument("--prompt", type=str, default="<image>\n<|grounding|>Convert the document to markdown. ")
     p.add_argument("--dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"])

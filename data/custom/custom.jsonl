@@ -1,3 +1,0 @@
-{"sample_id": "custom_0", "image_path": "data/custom/images/IMG_OCR_6_F_0238706.png", "question": "What is the document about?", "answers": ["document"], "answer_type": "free-text", "metric": "anls", "meta": {"benchmark": "custom"}}
-{"sample_id": "custom_1", "image_path": "data/custom/images/IMG_OCR_6_T_NV_000322.png", "question": "How much is the total?", "answers": ["100"], "answer_type": "form/total", "metric": "anls", "meta": {"benchmark": "custom"}}
-{"sample_id": "custom_2", "image_path": "data/custom/images/IMG_OCR_6_T_NV_000322.png", "question": "What is the value of the chart?", "answers": ["42"], "answer_type": "numeric", "metric": "relaxed_acc", "meta": {"benchmark": "custom"}}
