@@ -8,7 +8,7 @@
 #   BENCH=data/benchmarks/all_preview.jsonl TIMEOUT=1800 bash scripts/run_all_cpu.sh
 set -uo pipefail
 
-BENCH="${BENCH:-data/benchmarks/capability_probe/capability.jsonl}"
+BENCH="${BENCH:-data/probes/capability_probe/capability.jsonl}"
 TIMEOUT="${TIMEOUT:-1500}"     # seconds per model
 MNT="${MNT:-64}"              # max new tokens
 

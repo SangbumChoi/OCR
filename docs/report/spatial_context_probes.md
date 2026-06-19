@@ -5,7 +5,7 @@ well by exploiting **shortcuts** — language priors ("totals are at the bottom"
 binary guessing, rubber-stamping ("yes it's consistent"), or hallucinating a plausible value.
 So every hypothesis below is paired with a **control** that a shortcut would *fail*, and a
 **signal criterion** that only true understanding satisfies. Probe:
-[`data/benchmarks/spatial_context_probe`](../../data/benchmarks/spatial_context_probe) (rendered,
+[`data/probes/spatial_context_probe`](../../data/probes/spatial_context_probe) (rendered,
 exact GT); generator `scripts/make_spatial_context_probe.py`.
 
 ## Methodology: signal, not score
@@ -101,6 +101,6 @@ models on a GPU run with no code change.
 
 ## Extending to all models
 Run any model with `python scripts/run_matrix.py --models <m> --benchmark
-data/benchmarks/spatial_context_probe/probe.jsonl`. The control-aware signals above are then
+data/probes/spatial_context_probe/probe.jsonl`. The control-aware signals above are then
 computed by `scripts/analyze_probe_signals.py`, which prints the PASS/FAIL per criterion and
 the prior-reliance gap / tracking correlation per model.

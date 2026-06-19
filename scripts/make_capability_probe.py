@@ -11,9 +11,9 @@ capability axes we care about for document VLMs (see docs/report/capability_axes
 
 Because the images are rendered here, the ground truth — including exact pixel boxes for the
 grounding task — is known precisely. Output:
-    data/benchmarks/capability_probe/images/*.png
-    data/benchmarks/capability_probe/capability.jsonl   (normalised Sample records)
-    data/benchmarks/capability_probe/sample.{png,json}  (catalog/index preview)
+    data/probes/capability_probe/images/*.png
+    data/probes/capability_probe/capability.jsonl   (normalised Sample records)
+    data/probes/capability_probe/sample.{png,json}  (catalog/index preview)
 
     python scripts/make_capability_probe.py
 """
@@ -31,7 +31,7 @@ from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-OUT = Path("data/benchmarks/capability_probe")
+OUT = Path("data/probes/capability_probe")
 IMG = OUT / "images"
 
 

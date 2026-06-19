@@ -21,7 +21,7 @@ from docvlm_eval.benchmarks import load_jsonl  # noqa: E402
 from docvlm_eval.pipeline import run_evaluation  # noqa: E402
 from docvlm_eval.report_md import prettify_tables  # noqa: E402
 
-DEFAULT_BENCH = "data/benchmarks/capability_probe/capability.jsonl"
+DEFAULT_BENCH = "data/probes/capability_probe/capability.jsonl"
 
 
 def main():

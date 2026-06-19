@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the proposed CUSTOM evaluation benchmark (data/benchmarks/custom_eval/).
+"""Build the proposed CUSTOM evaluation benchmark (data/probes/custom_eval/).
 
 This is *our* evaluation format: every sample carries rich metadata so results can be sliced by
 the axes that matter for real-world document AI — content class, language, rotation, reading
@@ -30,7 +30,7 @@ from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.benchmarks.fonts import have_cjk, load_cjk_font, load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-OUT = ROOT / "data" / "benchmarks" / "custom_eval"
+OUT = ROOT / "data" / "probes" / "custom_eval"
 IMG = OUT / "images"
 CONCISE = " Answer concisely, no explanation."
 samples: list[Sample] = []

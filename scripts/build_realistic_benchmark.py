@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Turn the realistic synthetic cases into an eval-pipeline benchmark JSONL.
 
-Walks ``data/benchmarks/realistic_cases/<key>/gt.json`` and emits Samples (qa / spotting /
+Walks ``data/probes/realistic_cases/<key>/gt.json`` and emits Samples (qa / spotting /
 table / probes) via ``docvlm_eval.synth.load_realistic_samples`` so every model can be run on
 these cases with the normal harness:
 
     python scripts/build_realistic_benchmark.py            # clean -> realistic_cases.jsonl
     python scripts/build_realistic_benchmark.py --variant degraded
     docvlm-eval --model dummy-echo \
-      --benchmark data/benchmarks/realistic_cases/realistic_cases.jsonl \
+      --benchmark data/probes/realistic_cases/realistic_cases.jsonl \
       --benchmark-name realistic_cases --out /tmp/rc --device cpu
 """
 

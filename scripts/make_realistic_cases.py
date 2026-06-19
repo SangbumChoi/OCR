@@ -8,7 +8,7 @@ boxes are read straight out of the rendered PDF. A photometric Augraphy preset t
 realistic degraded copy whose boxes are still valid (no geometry changed). Faker (seeded) fills
 field content deterministically.
 
-Output per case: data/benchmarks/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
+Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
 
     python scripts/make_realistic_cases.py                       # all cases
     python scripts/make_realistic_cases.py --only id_card cheque
@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
 
-OUT = ROOT / "data" / "benchmarks" / "realistic_cases"
+OUT = ROOT / "data" / "probes" / "realistic_cases"
 DPI = 150
 fake = Faker()
 Faker.seed(7)

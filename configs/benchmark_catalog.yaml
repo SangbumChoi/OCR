@@ -13,7 +13,7 @@ benchmarks:
   - {key: iam, name: IAM-line, category: "A1. Text recognition", metric: "CER / WER / NED",
      purpose: "Recognize handwritten English text lines; the classic handwriting-recognition fidelity test.",
      hf_id: Teklia/IAM-line, config: null, split: test, source: "https://fki.tic.heia-fr.ch/databases/iam-handwriting-database"}
-  - {key: recognition_fullpage, name: "Printed full-page (illustrative)", category: "A1. Text recognition",
+  - {key: recognition_fullpage, kind: synthetic, name: "Printed full-page (illustrative)", category: "A1. Text recognition",
      metric: "CER / WER / NED", purpose: "Transcribe a full printed page exactly; measures end-to-end OCR fidelity / typo rate.",
      hf_id: null, config: null, split: null, source: "synthetic (scripts/make_synthetic_samples.py)"}
   - {key: iiit5k, name: IIIT5K, category: "A1. Text recognition", metric: "word accuracy / 1-NED",
@@ -21,7 +21,7 @@ benchmarks:
      hf_id: null, config: null, split: null, source: "https://cvit.iiit.ac.in/research/projects/cvit-projects/the-iiit-5k-word-dataset"}
 
   # ---------- A2. Scene-text detection & recognition ----------
-  - {key: scenetext, name: "Scene text (illustrative)", category: "A2. Scene-text", metric: "H-mean / word-acc / 1-NED",
+  - {key: scenetext, kind: synthetic, name: "Scene text (illustrative)", category: "A2. Scene-text", metric: "H-mean / word-acc / 1-NED",
      purpose: "Detect + read text 'in the wild' (signs, products); irregular fonts/orientations.",
      hf_id: null, config: null, split: null, source: "synthetic (scripts/make_synthetic_samples.py)"}
   - {key: icdar2015, name: ICDAR-2015 (Incidental Scene Text), category: "A2. Scene-text", metric: "detection H-mean",
@@ -142,7 +142,7 @@ benchmarks:
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2409.05137"}
 
   # ---------- E1. Reliability: robustness / calibration / hallucination ----------
-  - {key: robustness, name: "Robustness probe (derived)", category: "E1. Reliability", metric: "ANLS retention + ECE",
+  - {key: robustness, kind: synthetic, name: "Robustness probe (derived)", category: "E1. Reliability", metric: "ANLS retention + ECE",
      purpose: "Stability under capture degradations + terminology paraphrase; confidence calibration.",
      hf_id: null, config: null, split: null, source: "derived from DocVQA (scripts/make_synthetic_samples.py / build_robustness_set.py)"}
   - {key: pope, name: POPE, category: "E1. Hallucination", metric: "F1 / accuracy",
@@ -156,29 +156,40 @@ benchmarks:
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2506.20168"}
 
   # ---------- F1. Custom capability axes (our probe; rendered, exact GT incl. boxes) ----------
-  - {key: capability_probe, name: "Custom capability probe", category: "F1. Custom capability axes",
+  - {key: capability_probe, kind: probe, name: "Custom capability probe", category: "F1. Custom capability axes",
      metric: "anls / relaxed_acc / exact / grounding",
      purpose: "Isolate the document-VLM capability axes on controlled renders: text recognition,
                localized KIE, integrative reasoning (sum & relations), chart reading, and spatial
                grounding (bounding box) — built by scripts/make_capability_probe.py with exact GT.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_capability_probe.py)"}
-  - {key: custom_eval, name: "Proposed custom evaluation set", category: "F1. Custom capability axes",
+  - {key: custom_eval, kind: probe, name: "Proposed custom evaluation set", category: "F1. Custom capability axes",
      metric: "ned / teds / exact / relaxed_acc / grounding",
      purpose: "Our proposed real-world eval format: per content-class (text/table/formula/chart/
                qr/barcode/stamp/logo), per-language (en/ko/ja/zh), rotation robustness (0/15/90/180/
                270), reading-direction (vertical CJK), and spotting (basis-of-extraction), each scored
-               with a class-appropriate metric. See data/benchmarks/custom_eval/README.md.",
+               with a class-appropriate metric. See data/probes/custom_eval/README.md.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_custom_eval.py)"}
-  - {key: oov_probe, name: "Out-of-vocabulary script probe", category: "F1. Custom capability axes",
+  - {key: oov_probe, kind: probe, name: "Out-of-vocabulary script probe", category: "F1. Custom capability axes",
      metric: "ned / exact",
      purpose: "Un-tokenizable glyphs (invented / runic / 7-segment): measure the FALLBACK pattern
                (abstain / transliterate / hallucinate / copy) and whether an in-image legend enables
                decoding by in-context visual reasoning.",
      hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_oov_probe.py)"}
-  - {key: webui_probe, name: "Web UI/UX (agent) probe", category: "F1. Custom capability axes",
+  - {key: webui_probe, kind: probe, name: "Web UI/UX (agent) probe", category: "F1. Custom capability axes",
      metric: "grounding / exact / ned",
      purpose: "Web-agent UI understanding: locate interactive elements (button/search/cart), identify
                the primary CTA, read the nav, and reason about affordances (what to click to act).",
      hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_webui_probe.py)"}
+  - {key: spatial_context_probe, kind: probe, name: "Spatial/context falsifiable probe", category: "F1. Custom capability axes",
+     metric: "exact / ned / grounding",
+     purpose: "Control-paired probes (counterfactual / distractor / position-bias / absence) that
+               defeat shortcut guessing — does the model read the pixels, and abstain when it can't?",
+     hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_spatial_context_probe.py)"}
+  - {key: realistic_cases, kind: probe, name: "Realistic document special cases", category: "F1. Custom capability axes",
+     metric: "ned / teds / exact / grounding / abstain",
+     purpose: "Realistic-looking document types (ID/cheque/prescription/redacted/webtoon/ancient/LCD/
+               website/mobile/PDF) rendered with built-in GT (HTML/CSS->WeasyPrint->PyMuPDF boxes->
+               Augraphy), paired clean/degraded. See data/probes/realistic_cases/README.md.",
+     hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_realistic_cases.py)"}

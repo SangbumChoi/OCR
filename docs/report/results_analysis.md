@@ -138,6 +138,6 @@ The controlled probe (`results/matrix_capability.md`) gives a clean **capability
 python scripts/build_preview_benchmark.py            # cross-benchmark preview set
 python scripts/make_capability_probe.py              # controlled capability probe
 python scripts/run_matrix.py --models smolvlm-256m smolvlm-500m \
-    --benchmark data/benchmarks/capability_probe/capability.jsonl --device cpu --dtype float32
+    --benchmark data/probes/capability_probe/capability.jsonl --device cpu --dtype float32
 python scripts/run_matrix.py --all --device cuda     # full sweep on a GPU
 ```

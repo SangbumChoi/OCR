@@ -93,7 +93,7 @@ def load_case_dir(case_dir: str | Path, *, variant: str = "clean",
 
 def load_realistic_samples(root: str | Path, *, variant: str = "clean",
                            include_probes: bool = True) -> list[Sample]:
-    """Load every case under ``data/benchmarks/realistic_cases/`` into one Sample list.
+    """Load every case under ``data/probes/realistic_cases/`` into one Sample list.
 
     Handles both layouts: a case dir with ``gt.json`` directly (``--count 1``) and per-variant
     subdirs (``<key>/0000/gt.json`` from ``--count N``). The sample-id prefix is the path

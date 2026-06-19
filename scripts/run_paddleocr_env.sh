@@ -7,7 +7,7 @@
 set -uo pipefail
 
 ENVDIR="${ENVDIR:-.venv-paddle}"
-BENCH="${BENCH:-data/benchmarks/capability_probe/capability.jsonl}"
+BENCH="${BENCH:-data/probes/capability_probe/capability.jsonl}"
 PY="$ENVDIR/bin/python"
 
 if [ ! -x "$PY" ]; then

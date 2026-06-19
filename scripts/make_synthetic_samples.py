@@ -18,7 +18,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "benchmarks"
+OUT = ROOT / "data" / "probes"            # synthetic illustrations are our own, not public benchmarks
+BENCH = ROOT / "data" / "benchmarks"      # read the real docvqa sample to derive the robustness copy
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 
@@ -97,8 +98,8 @@ def make_scenetext() -> None:
 
 def make_robustness() -> None:
     """E1: reliability/robustness. Derive a degraded copy of the DocVQA sample."""
-    base_path = OUT / "docvqa" / "sample.png"
-    base_label = OUT / "docvqa" / "sample.json"
+    base_path = BENCH / "docvqa" / "sample.png"
+    base_label = BENCH / "docvqa" / "sample.json"
     if not base_path.exists():
         print("[skip] robustness: run fetch_benchmark_samples.py for docvqa first")
         return

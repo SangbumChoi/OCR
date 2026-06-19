@@ -5,7 +5,7 @@ VLMs meaningfully we evaluate along **capability axes**, build a small **custom 
 isolates each axis on controlled images, and define **what to put in the prompt** to elicit
 each axis from every model — including the tricky **location/spotting** axis where models
 differ a lot. This document is the rationale; the probe is
-[`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe), the prompts are
+[`data/probes/capability_probe`](../../data/probes/capability_probe), the prompts are
 [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 
 ## Two top-level abilities
@@ -41,7 +41,7 @@ not just *that* it is.
 
 ## The custom capability probe (rationale)
 
-[`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe) is rendered by
+[`data/probes/capability_probe`](../../data/probes/capability_probe) is rendered by
 [`scripts/make_capability_probe.py`](../../scripts/make_capability_probe.py) so the ground truth
 — **including exact pixel boxes** — is known. Six samples, one per axis:
 
@@ -102,7 +102,7 @@ is precisely a reason to prefer a spotting-capable model when field localisation
 ## Results on the probe (small models run here)
 
 Run on CPU via `python scripts/run_matrix.py --models … --benchmark
-data/benchmarks/capability_probe/capability.jsonl` (the two smallest models actually ran here;
+data/probes/capability_probe/capability.jsonl` (the two smallest models actually ran here;
 the 1B+ models need a GPU — see `scripts/run_all.sh`). Scores are the per-axis task metric:
 
 | model        | text-recog | kie-localized | integrative-sum | integrative-rel | chart | grounding |
@@ -154,7 +154,7 @@ properties of the model's *answer*, not of the document:
   field is **absent / redacted / illegible**, the correct answer is "not present" / "[redacted]";
   confidently inventing a value is the worst failure. Scored by **abstain accuracy** on planted
   absent/redacted fields (the `abstain` probes in
-  [`data/benchmarks/realistic_cases`](../../data/benchmarks/realistic_cases/README.md)) plus
+  [`data/probes/realistic_cases`](../../data/probes/realistic_cases/README.md)) plus
   **ECE calibration** ([`metrics/calibration.py`](../../src/docvlm_eval/metrics/calibration.py)) —
   does the model's confidence track whether it is actually right?
 

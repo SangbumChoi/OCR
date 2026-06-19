@@ -4,7 +4,7 @@ docs/report/spatial_context_probes.md). The design goal is *falsifiability*: eac
 with a CONTROL that rules out a shortcut (language prior, guessing, hallucination, position
 bias). Images are rendered so ground truth (incl. boxes) is exact.
 
-Output: data/benchmarks/spatial_context_probe/{images/, probe.jsonl, sample.png, sample.json}
+Output: data/probes/spatial_context_probe/{images/, probe.jsonl, sample.png, sample.json}
     python scripts/make_spatial_context_probe.py
 """
 
@@ -21,7 +21,7 @@ from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-OUT = Path("data/benchmarks/spatial_context_probe")
+OUT = Path("data/probes/spatial_context_probe")
 IMG = OUT / "images"
 CONCISE = " Answer concisely, no explanation."
 

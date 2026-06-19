@@ -4,7 +4,7 @@ questions an agent must answer to act: locate interactive elements (button/searc
 identify the primary call-to-action, read the nav, and reason about affordances ("what would you
 click to check out?"). Element boxes are exact (recorded at draw time) so spotting is gradable.
 
-Output: data/benchmarks/webui_probe/{images,webui.jsonl,sample.*}
+Output: data/probes/webui_probe/{images,webui.jsonl,sample.*}
     python scripts/make_webui_probe.py
 """
 
@@ -22,7 +22,7 @@ from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-OUT = ROOT / "data" / "benchmarks" / "webui_probe"
+OUT = ROOT / "data" / "probes" / "webui_probe"
 IMG = OUT / "images"
 W, H = 1000, 640
 

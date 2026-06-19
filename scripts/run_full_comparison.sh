@@ -11,11 +11,11 @@ set -uo pipefail
 DEVICE="${DEVICE:-cuda}"
 DTYPE="${DTYPE:-bfloat16}"
 MNT="${MNT:-64}"
-CAP=data/benchmarks/capability_probe/capability.jsonl
-SCP=data/benchmarks/spatial_context_probe/probe.jsonl
-CEV=data/benchmarks/custom_eval/custom_eval.jsonl
-OOV=data/benchmarks/oov_probe/oov.jsonl
-WEB=data/benchmarks/webui_probe/webui.jsonl
+CAP=data/probes/capability_probe/capability.jsonl
+SCP=data/probes/spatial_context_probe/probe.jsonl
+CEV=data/probes/custom_eval/custom_eval.jsonl
+OOV=data/probes/oov_probe/oov.jsonl
+WEB=data/probes/webui_probe/webui.jsonl
 
 CHAT=(internvl2-1b internvl2_5-1b internvl3-1b smolvlm-256m smolvlm-500m smoldocling-256m
       llava-ov-0.5b got-ocr2 florence2-base florence2-large h2ovl-0.8b ovis2-1b)

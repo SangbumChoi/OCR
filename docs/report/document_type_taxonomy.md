@@ -3,7 +3,7 @@
 "Documents with text" is far wider than invoices and papers. To design evaluation that
 generalises, we organise document *types* against the **stressors** they impose on a VLM, then
 map each stressor to the metric/axis already in our proposed set
-([`data/benchmarks/custom_eval`](../../data/benchmarks/custom_eval/README.md)). A type is only as
+([`data/probes/custom_eval`](../../data/probes/custom_eval/README.md)). A type is only as
 "hard" as the stressors it combines — so this lens turns an open-ended list into concrete
 evaluation requirements.
 
@@ -78,7 +78,7 @@ So "invoice" is really *invoice-native* vs *invoice-scan* vs *invoice-photo* —
 inputs with **identical ground truth**. This is exactly why the synthetic set emits a paired
 `clean.png` + `degraded.png` per case (preset = scan / photo / fax / historical) and scores
 **retention** across them
-([`data/benchmarks/realistic_cases`](../../data/benchmarks/realistic_cases/README.md)); modality
+([`data/probes/realistic_cases`](../../data/probes/realistic_cases/README.md)); modality
 is treated as a controlled perturbation of one type rather than a new type.
 
 ## Deep dives (the prioritized groups)

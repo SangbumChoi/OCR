@@ -10,7 +10,7 @@ Classes:
   * runic word (real ancient script) -> OOV-ish; GT is the romanisation
   * 7-segment digits                 -> non-font glyphs (overlaps digital/special)
 
-Output: data/benchmarks/oov_probe/{images,oov.jsonl,sample.*}
+Output: data/probes/oov_probe/{images,oov.jsonl,sample.*}
     python scripts/make_oov_probe.py
 """
 
@@ -28,7 +28,7 @@ from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-OUT = ROOT / "data" / "benchmarks" / "oov_probe"
+OUT = ROOT / "data" / "probes" / "oov_probe"
 IMG = OUT / "images"
 samples: list[Sample] = []
 

@@ -86,9 +86,9 @@ capability axes, and build controlled probes + our own evaluation format for the
 - **Read:** [`report/spatial_context_probes.md`](report/spatial_context_probes.md) — falsifiable
   control-pair probes (counterfactual / distractor / position-bias).
 - **Build/browse the gap sets:**
-  [`../data/benchmarks/custom_eval/`](../data/benchmarks/custom_eval/README.md) (our proposed
+  [`../data/probes/custom_eval/`](../data/probes/custom_eval/README.md) (our proposed
   per-content-class format),
-  [`../data/benchmarks/realistic_cases/`](../data/benchmarks/realistic_cases/README.md) (realistic
+  [`../data/probes/realistic_cases/`](../data/probes/realistic_cases/README.md) (realistic
   *and* GT-exact special cases incl. the UX surfaces), and the OOV/web-UI probes.
 - **Read (forward pointer):** [`report/research_novelty.md`](report/research_novelty.md) — the
   literature-grounded gaps these probes can uniquely test at ≤1B.
@@ -135,7 +135,7 @@ added factor lifting the score a step, ending well above the baseline.
 - **Make data (GT built-in):**
   [`../scripts/make_realistic_cases.py`](../scripts/make_realistic_cases.py) `--count N` →
   large, label-exact training set (see
-  [`../data/benchmarks/realistic_cases/README.md`](../data/benchmarks/realistic_cases/README.md));
+  [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
   legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
 - **Ablate & combine:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
@@ -163,7 +163,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
 3. [`report/capability_axes.md`](report/capability_axes.md) ·
    [`report/spatial_context_probes.md`](report/spatial_context_probes.md) ·
-   [`../data/benchmarks/realistic_cases/README.md`](../data/benchmarks/realistic_cases/README.md)
+   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md)
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md)

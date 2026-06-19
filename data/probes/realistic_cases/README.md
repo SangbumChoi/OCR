@@ -55,7 +55,7 @@ The GT is wired into the normal pipeline by `docvlm_eval.synth.to_samples`
 ```bash
 python scripts/build_realistic_benchmark.py                 # -> realistic_cases.jsonl (52 samples)
 python scripts/build_realistic_benchmark.py --variant degraded   # -> realistic_cases_degraded.jsonl
-docvlm-eval --model <id> --benchmark data/benchmarks/realistic_cases/realistic_cases.jsonl \
+docvlm-eval --model <id> --benchmark data/probes/realistic_cases/realistic_cases.jsonl \
   --benchmark-name realistic_cases --out docs/results/<id>/realistic --device cpu
 ```
 

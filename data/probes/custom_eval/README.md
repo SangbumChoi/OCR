@@ -75,7 +75,7 @@ between a demo and a system you can put in front of a compliance team.
 
 After running any model on `custom_eval.jsonl`:
 ```bash
-python scripts/run_matrix.py --models <m> --benchmark data/benchmarks/custom_eval/custom_eval.jsonl --device cuda
+python scripts/run_matrix.py --models <m> --benchmark data/probes/custom_eval/custom_eval.jsonl --device cuda
 python scripts/analyze_custom_eval.py     # -> docs/results/custom_eval_breakdown.md
 ```
 yields per-class, per-language, rotation-retention, reading-direction and spotting tables — the

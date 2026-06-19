@@ -8,7 +8,7 @@
 >   [`docs/report/part2_ablation_plan.md`](report/part2_ablation_plan.md) (A1–A7 ablations → staircase), and
 > - the **synthetic training-data generator** with built-in ground truth
 >   ([`scripts/make_realistic_cases.py --count N`](../scripts/make_realistic_cases.py), see
->   [`data/benchmarks/realistic_cases/`](../data/benchmarks/realistic_cases/README.md)).
+>   [`data/probes/realistic_cases/`](../data/probes/realistic_cases/README.md)).
 >
 > Prefer those for new work; treat this page as the historical "how the pieces fit" reference.
 
