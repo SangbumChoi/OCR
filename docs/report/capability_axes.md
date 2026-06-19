@@ -140,3 +140,46 @@ directly shapes selection (§7).
 
 The selection is therefore a **capability vector per model**, not a single score — which is
 what the probe + the cross-benchmark matrix produce.
+
+## 8. Output-side requirements per document type (spotting & abstain)
+
+The [document-type taxonomy](document_type_taxonomy.md) deliberately lists only *input* stressors;
+the two **output-side** requirements live here, with the evaluation axes, because they are
+properties of the model's *answer*, not of the document:
+
+- **Spotting / grounding** (§1, §5) — *where* each value came from. Scored by IoU
+  ([`metrics/grounding.py`](../../src/docvlm_eval/metrics/grounding.py)); the fairness/normalisation
+  layer in §5 makes it apples-to-apples across OCR engines and chat VLMs.
+- **Hallucination control (correct-or-abstain)** — the reliability counterpart to spotting. When a
+  field is **absent / redacted / illegible**, the correct answer is "not present" / "[redacted]";
+  confidently inventing a value is the worst failure. Scored by **abstain accuracy** on planted
+  absent/redacted fields (the `abstain` probes in
+  [`data/benchmarks/realistic_cases`](../../data/benchmarks/realistic_cases/README.md)) plus
+  **ECE calibration** ([`metrics/calibration.py`](../../src/docvlm_eval/metrics/calibration.py)) —
+  does the model's confidence track whether it is actually right?
+
+These two are *why* a type's **anchor metric** in the taxonomy reads "… + spotting IoU" or
+"… + abstain". The types where each is a **primary** requirement (✓✓ = critical):
+
+| Document type               | Spotting (IoU) | Abstain (correct-or-abstain) |
+| --------------------------- | :------------: | :--------------------------: |
+| Invoice / receipt           | ✓              | ✓                            |
+| Bank stmt / payslip         | ✓              | ✓                            |
+| Contract / NDA              | ◐              | ✓                            |
+| **ID / passport / license** | ✓              | ✓✓                           |
+| Certificate / diploma       | ◐              | ✓                            |
+| **Cheque**                  | ✓              | ✓                            |
+| **Prescription**            | ✓              | ✓ (illegible → abstain)      |
+| Ticket / boarding pass      | ✓              | —                            |
+| Map / floor plan            | ✓              | —                            |
+| Ledger / census             | ✓              | —                            |
+| LCD / meter / 7-seg         | ✓              | —                            |
+| UI / chat / code screenshot | ✓              | —                            |
+| **Form w/ checkboxes**      | ✓              | ✓                            |
+| **Redacted document**       | ✓              | ✓✓                           |
+| Chemical / circuit diagram  | ✓              | —                            |
+
+The **identity/administration** family (ID, cheque, prescription, redaction) is where abstain
+matters most — a confidently-wrong passport number or cheque amount is worse than "unreadable" —
+so its anchor metrics pair spotting IoU with abstain. Secondary (◐) needs for other types are
+captured directly in their anchor-metric column in the taxonomy.
