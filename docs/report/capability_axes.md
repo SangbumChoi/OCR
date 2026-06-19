@@ -8,7 +8,7 @@ differ a lot. This document is the rationale; the probe is
 [`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe), the prompts are
 [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 
-## 1. Two top-level abilities
+## Two top-level abilities
 
 A document model is really two abilities stacked:
 
@@ -24,7 +24,7 @@ the second. So we score **both**, with a dedicated grounding metric
 ([`metrics/grounding.py`](../../src/docvlm_eval/metrics/grounding.py), IoU with a permissive box
 parser).
 
-## 2. When the output is text, *what kind* of text?
+## When the output is text, *what kind* of text?
 
 Not all text answers are equal. Three natures, in increasing difficulty:
 
@@ -39,7 +39,7 @@ attention + arithmetic/comparison, not just OCR. The *chart-dependent* nature ad
 needs graphic perception, not text at all. Separating these tells us *why* a model is weak,
 not just *that* it is.
 
-## 3. The custom capability probe (rationale)
+## The custom capability probe (rationale)
 
 [`data/benchmarks/capability_probe`](../../data/benchmarks/capability_probe) is rendered by
 [`scripts/make_capability_probe.py`](../../scripts/make_capability_probe.py) so the ground truth
@@ -60,7 +60,7 @@ so the **sum, the relationship, and the box are exact** — no annotation noise.
 the same level as the other benchmarks** (`data/benchmarks/…`, catalogued in the custom family F1) and
 runs through the *same* pipeline and metrics, so it is directly comparable.
 
-## 4. Prompt plan — what goes in the prompt
+## Prompt plan — what goes in the prompt
 
 Every axis uses a prompt that both *elicits* the capability and *constrains* the output so it
 is scorable; full templates in [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
@@ -72,7 +72,7 @@ Two design rules learned from real runs:
 - **Ask for a machine-parseable box** for grounding: *"Return the bounding box … as
   [x1,y1,x2,y2] in pixel coordinates. The image is W×H."*
 
-## 5. Location/spotting — the fair-comparison problem
+## Location/spotting — the fair-comparison problem
 
 This is the crux of comparing OCR engines against general VLMs. **Models do not have the same
 interface for "where is X":**
@@ -99,7 +99,7 @@ This makes "can it localise?" an apples-to-apples number. The expected result �
 boxes** while **spotting-trained models (PaddleOCR-VL, Florence-2, GOT) localise well**, which
 is precisely a reason to prefer a spotting-capable model when field localisation matters.
 
-## 6. Results on the probe (small models run here)
+## Results on the probe (small models run here)
 
 Run on CPU via `python scripts/run_matrix.py --models … --benchmark
 data/benchmarks/capability_probe/capability.jsonl` (the two smallest models actually ran here;
@@ -121,14 +121,14 @@ the 1B+ models need a GPU — see `scripts/run_all.sh`). Scores are the per-axis
   comparison is beyond this size.
 - **Chart reading works** (bar B = 70, both 1.00) on a clean synthetic chart.
 - **Grounding fails for both** (256M echoes the image size; 500M emits a nonsense box
-  `[145.50,820,600,820]`). General small VLMs have **no usable location head** — confirming
-  §5: localisation needs a spotting-capable model, and is the axis where PaddleOCR-VL /
+  `[145.50,820,600,820]`). General small VLMs have **no usable location head** — confirming the
+  *Location/spotting* section: localisation needs a spotting-capable model, and is the axis where PaddleOCR-VL /
   Florence-2 / GOT are expected to dominate.
 
 Net: at ≤0.5B you get a *reader* (text + chart), not a *reasoner* or a *localizer*. That
-directly shapes selection (§7).
+directly shapes selection (see *How this informs model selection*).
 
-## 7. How this informs model selection
+## How this informs model selection
 
 - If the use case is **read a known field** (KIE-localized) → text-understanding axis dominates;
   even a 256–500M VLM can be viable.
@@ -141,15 +141,15 @@ directly shapes selection (§7).
 The selection is therefore a **capability vector per model**, not a single score — which is
 what the probe + the cross-benchmark matrix produce.
 
-## 8. Output-side requirements per document type (spotting & abstain)
+## Output-side requirements per document type (spotting & abstain)
 
 The [document-type taxonomy](document_type_taxonomy.md) deliberately lists only *input* stressors;
 the two **output-side** requirements live here, with the evaluation axes, because they are
 properties of the model's *answer*, not of the document:
 
-- **Spotting / grounding** (§1, §5) — *where* each value came from. Scored by IoU
+- **Spotting / grounding** (see *Two top-level abilities* and *Location/spotting*) — *where* each value came from. Scored by IoU
   ([`metrics/grounding.py`](../../src/docvlm_eval/metrics/grounding.py)); the fairness/normalisation
-  layer in §5 makes it apples-to-apples across OCR engines and chat VLMs.
+  layer in *Location/spotting* makes it apples-to-apples across OCR engines and chat VLMs.
 - **Hallucination control (correct-or-abstain)** — the reliability counterpart to spotting. When a
   field is **absent / redacted / illegible**, the correct answer is "not present" / "[redacted]";
   confidently inventing a value is the worst failure. Scored by **abstain accuracy** on planted
