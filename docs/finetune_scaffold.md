@@ -1,4 +1,4 @@
-# OCR (DeepSeek OCR Finetune Scaffold)
+# OCR (DeepSeek-OCR fine-tuning scaffold)
 
 > **Status — legacy scaffold (kept for reference).** This is the *original* LoRA fine-tuning
 > scaffold the repo started from. The scripts below still exist and run, but the project has since
@@ -12,21 +12,21 @@
 >
 > Prefer those for new work; treat this page as the historical "how the pieces fit" reference.
 
-DeepSeek OCR(VLM) 파인튜닝을 위한 **엔드투엔드 스캐폴딩**입니다.
+An **end-to-end scaffold** for fine-tuning DeepSeek-OCR (a VLM).
 
-포함 기능
-- **파인튜닝 로직**: LoRA(PEFT) 기반 `transformers` `Seq2SeqTrainer` 파이프라인
-- **커스텀 데이터셋 로더**: JSONL 기반 이미지+정답 텍스트 로딩
-- **W&B 로깅**: 학습/평가 손실 및 CER/WER 로깅(옵션)
-- **평가 메트릭 로깅**: CER/WER 계산 및 리포트 저장
-- **바닐라 vs 파인튜닝 비교**: 동일 eval set에서 비교 스크립트 제공
-- **LoRA 적용 및 merge**: 어댑터 merge 후 단일 모델로 export
-- **데이터셋 수집(크롤러)**: URL seed 기반 파일 다운로드/메타 기록(기본형)
-- **vLLM 클라이언트 추론**: OpenAI-compatible `/v1/chat/completions` 호출 스크립트
+**Included features**
+- **Fine-tuning logic:** a LoRA (PEFT) `transformers` `Seq2SeqTrainer` pipeline.
+- **Custom dataset loader:** loads image + target text from JSONL.
+- **W&B logging:** train/eval loss and CER/WER logging (optional).
+- **Eval metric logging:** computes CER/WER and saves a report.
+- **Vanilla vs fine-tuned comparison:** a script to compare both on the same eval set.
+- **LoRA apply + merge:** merge the adapter and export a single model.
+- **Dataset collection (crawler):** URL-seed-based file download + metadata (basic).
+- **vLLM client inference:** calls an OpenAI-compatible `/v1/chat/completions` endpoint.
 
-## 빠른 시작
+## Quick start
 
-### 1) 환경 준비
+### 1) Environment
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -34,21 +34,21 @@ pip install -U pip
 pip install -e ".[models,finetune]"     # unified package + LoRA fine-tuning deps
 ```
 
-### 2) 데이터셋 포맷
+### 2) Dataset format
 
-`data/my_dataset/train.jsonl`, `data/my_dataset/val.jsonl` 형태를 기대합니다.
+Expects `data/my_dataset/train.jsonl`, `data/my_dataset/val.jsonl`.
 
-각 라인은 다음 필드를 가집니다:
-- `image_path`: 이미지 파일 경로(절대/상대 모두 가능)
-- `text`: 정답 텍스트
+Each line has these fields:
+- `image_path`: path to the image file (absolute or relative).
+- `text`: the target text.
 
-예시:
+Example:
 
 ```json
 {"image_path":"data/my_dataset/images/0001.png","text":"Hello world"}
 ```
 
-### 3) LoRA 파인튜닝
+### 3) LoRA fine-tuning
 
 ```bash
 python scripts/finetune_lora.py \
@@ -59,7 +59,7 @@ python scripts/finetune_lora.py \
   --use_wandb 0
 ```
 
-### 4) 평가
+### 4) Evaluation
 
 ```bash
 python scripts/eval.py \
@@ -68,7 +68,7 @@ python scripts/eval.py \
   --report_path outputs/exp1/eval_report.json
 ```
 
-### 5) 바닐라 vs 파인튜닝 비교
+### 5) Vanilla vs fine-tuned comparison
 
 ```bash
 python scripts/compare.py \
@@ -78,7 +78,7 @@ python scripts/compare.py \
   --report_path outputs/compare_report.json
 ```
 
-### 6) LoRA merge(export)
+### 6) LoRA merge (export)
 
 ```bash
 python scripts/merge_lora.py \
@@ -87,7 +87,7 @@ python scripts/merge_lora.py \
   --merged_out_dir outputs/exp1-merged
 ```
 
-### 7) 데이터 수집(크롤러)
+### 7) Data collection (crawler)
 
 ```bash
 python scripts/crawl.py \
@@ -96,7 +96,7 @@ python scripts/crawl.py \
   --max_pages 50
 ```
 
-### 8) vLLM(OpenAI-compatible) 클라이언트 추론
+### 8) vLLM (OpenAI-compatible) client inference
 
 ```bash
 python scripts/vllm_client_infer.py \
@@ -106,12 +106,12 @@ python scripts/vllm_client_infer.py \
   --prompt "Extract all text from the image."
 ```
 
-## Inference 예시(로컬)
+## Inference examples (local)
 
-DeepSeek-OCR HF 모델 카드의 예시를 그대로 따라가는 로컬 inference 2종을 제공합니다.  
-참고: [`deepseek-ai/DeepSeek-OCR` 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-OCR)
+Two local inference paths that follow the DeepSeek-OCR HF model-card examples.
+Reference: [`deepseek-ai/DeepSeek-OCR` model card](https://huggingface.co/deepseek-ai/DeepSeek-OCR)
 
-### A) HuggingFace 방식(`model.infer`)
+### A) HuggingFace (`model.infer`)
 
 ```bash
 python scripts/hf_infer.py \
@@ -120,7 +120,7 @@ python scripts/hf_infer.py \
   --prompt "<image>\n<|grounding|>Convert the document to markdown. "
 ```
 
-### B) vLLM Python API(로컬 실행)
+### B) vLLM Python API (local)
 
 ```bash
 python scripts/vllm_local_infer.py \
@@ -129,7 +129,7 @@ python scripts/vllm_local_infer.py \
   --prompt "<image>\nFree OCR."
 ```
 
-### C) `examples/` 폴더 배치 inference → `docs/results/` 저장
+### C) Batch inference over `examples/` → saved to `docs/results/`
 
 ```bash
 python scripts/run_examples_hf_infer.py \
@@ -139,8 +139,9 @@ python scripts/run_examples_hf_infer.py \
   --prompt "<image>\n<|grounding|>Convert the document to markdown. "
 ```
 
-## 중요 메모
-- DeepSeek-OCR의 **정확한 프롬프트/특수 토큰 규약**은 모델/서빙 방식에 따라 달라질 수 있어, 이 스캐폴딩은 기본적으로 “image → text” 형태의 일반 VLM OCR 파이프라인을 제공합니다.
-- 다음 정보 2가지만 주시면, DeepSeek-OCR에 맞춘 프롬프트/입력 포맷을 즉시 반영해 드릴게요:
-  - (A) 사용할 **베이스 모델 ID**(HF repo 또는 로컬 경로)
-  - (B) 학습 라벨이 **plain text**인지, 아니면 **markdown/html/JSON** 같은 구조인지
+## Notes
+- DeepSeek-OCR's exact prompt / special-token conventions can vary by model and serving mode, so
+  this scaffold defaults to a generic "image → text" VLM OCR pipeline.
+- Provide these two details and the prompt / input format can be tailored to DeepSeek-OCR:
+  - (A) the **base model ID** to use (HF repo or local path);
+  - (B) whether the training labels are **plain text** or a structure such as **markdown / HTML / JSON**.

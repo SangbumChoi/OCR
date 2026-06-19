@@ -42,7 +42,7 @@ class TrainConfig:
     dtype: str = "bfloat16"
     attn_implementation: Optional[str] = None
 
-    # DeepSeek-OCR prompt / infer options (eval용)
+    # DeepSeek-OCR prompt / infer options (for eval)
     prompt: str = "<image>\n<|grounding|>Convert the document to markdown. "
     base_size: int = 1024
     image_size: int = 640
@@ -107,7 +107,7 @@ def _maybe_init_wandb(cfg: TrainConfig) -> Any:
 
 def _load_jsonl_as_items(jsonl_path: str, max_samples: Optional[int] = None) -> List[Dict[str, Any]]:
     ds = JsonlOcrDataset(jsonl_path, max_samples=max_samples)
-    # eval은 infer가 image_file path를 받으므로, path를 그대로 제공
+    # eval's infer takes an image_file path, so pass the path through
     items = []
     for i in range(len(ds)):
         ex = ds[i]
@@ -158,15 +158,15 @@ def train_lora(cfg: TrainConfig) -> None:
     if cfg.use_lora:
         model = _apply_lora(model, cfg)
 
-    # 학습 입력 구성: (1) model.processor가 있으면 사용, (2) AutoProcessor가 있으면 사용, (3) 아니면 명확한 에러
+    # Build training inputs: (1) use model.processor if present, (2) else AutoProcessor, (3) else a clear error
     processor = getattr(model, "processor", None)
     if processor is None:
         processor = try_load_deepseek_ocr_processor(cfg.model_id)
     if processor is None:
         raise RuntimeError(
-            "학습용 processor를 찾지 못했습니다. "
-            "DeepSeek-OCR은 HF model card에서 infer API만 예시로 제공되므로, "
-            "학습용 forward 입력 포맷(pixel_values/labels 등)에 맞춘 processor 또는 collator 구현이 필요합니다."
+            "Could not find a training processor. "
+            "DeepSeek-OCR's HF model card only documents the infer API, so "
+            "a processor or collator matching the forward input format (pixel_values/labels) is required."
         )
 
     train_ds = JsonlOcrDataset(cfg.train_jsonl, max_samples=cfg.max_samples_train)
@@ -210,7 +210,7 @@ def train_lora(cfg: TrainConfig) -> None:
                 and (global_step > 0)
                 and (global_step % cfg.eval_every_steps == 0)
             ):
-                # eval은 infer 기반으로 수행 (학습 중엔 느릴 수 있음)
+                # eval runs via infer (can be slow during training)
                 base_model = accelerator.unwrap_model(model)
                 eval_items = _load_jsonl_as_items(cfg.val_jsonl, max_samples=cfg.max_samples_val)
                 report = evaluate_dataset_with_infer(
@@ -243,7 +243,7 @@ def train_lora(cfg: TrainConfig) -> None:
 
     pbar.close()
 
-    # 저장: LoRA면 adapter 저장, 아니면 full model 저장
+    # Save: adapter for LoRA, otherwise the full model
     if accelerator.is_main_process:
         out = Path(cfg.output_dir)
         out.mkdir(parents=True, exist_ok=True)

@@ -18,9 +18,9 @@ class OcrExample:
 
 class JsonlOcrDataset(Dataset):
     """
-    JSONL 기반 OCR 데이터셋.
+    JSONL-based OCR dataset.
 
-    각 라인 예시:
+    Example line:
       {"image_path": "path/to/img.png", "text": "GT text", "id": "optional"}
     """
 

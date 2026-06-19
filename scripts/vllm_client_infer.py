@@ -60,8 +60,8 @@ def call_vllm_chat_completions(
 
 def main() -> None:
     p = argparse.ArgumentParser(description="vLLM OpenAI-compatible multimodal client (image -> OCR text)")
-    p.add_argument("--base_url", type=str, required=True, help='예: "http://localhost:8000/v1"')
-    p.add_argument("--model", type=str, required=True, help='vLLM에 로드된 모델명')
+    p.add_argument("--base_url", type=str, required=True, help='e.g. "http://localhost:8000/v1"')
+    p.add_argument("--model", type=str, required=True, help='name of the model loaded in vLLM')
     p.add_argument("--image_path", type=str, required=True)
     p.add_argument("--prompt", type=str, required=True)
     p.add_argument("--api_key", type=str, default=None)
@@ -79,7 +79,7 @@ def main() -> None:
         temperature=args.temperature,
     )
 
-    # 표준 OpenAI 응답 형태에서 텍스트만 출력
+    # print only the text from the standard OpenAI response shape
     try:
         print(out["choices"][0]["message"]["content"])
     except Exception:

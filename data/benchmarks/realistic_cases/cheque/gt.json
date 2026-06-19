@@ -1,5 +1,5 @@
 {
-  "type": "cheque / 수표",
+  "type": "cheque",
   "stressors": [
     "handwriting",
     "dual-amount",
@@ -9,7 +9,7 @@
   "anchor_metric": "dual-amount F1 + sign detect",
   "fields": {
     "amount_numeric": "1,450.00",
-    "payee": "Thomas Crawford",
+    "payee": "Jordan Johnson",
     "amount_words": "One thousand four hundred fifty and 00/100",
     "_task": "Read the courtesy (numeric) and legal (written) amounts and check they agree."
   },
@@ -45,7 +45,7 @@
       "key": null,
       "question": "Who is the payee? Answer concisely, no explanation.",
       "answers": [
-        "Thomas Crawford"
+        "Jordan Johnson"
       ],
       "metric": "ned",
       "answer_type": "kie"

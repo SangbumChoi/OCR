@@ -55,7 +55,7 @@ def main() -> None:
 
     images = _iter_images(examples_dir)
     if len(images) == 0:
-        raise SystemExit(f"이미지를 찾지 못했습니다: {examples_dir}")
+        raise SystemExit(f"no images found: {examples_dir}")
 
     rows: List[Dict[str, str]] = []
     for img_path in tqdm(images, desc="examples"):

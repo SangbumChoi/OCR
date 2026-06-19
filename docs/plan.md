@@ -4,6 +4,10 @@ This is the north-star narrative for the whole repo: *why* each piece exists and
 to read it. Every phase links the document(s) that carry out that step. Treat this as the table of
 contents for the thinking, not a duplicate of it.
 
+> **Convention — English only.** Every document in this repo (all Markdown/reports under `docs/`
+> and elsewhere, plus code comments and docstrings) is written in **English**. No mixed-language
+> glosses. This keeps the project consistent and reviewable for any reader.
+
 ---
 
 ## 0. North star — redefine the target before touching a model
@@ -45,7 +49,7 @@ pixels. The rest of the plan follows from that one decision.
 
 ---
 
-## 1. Survey the document **variations** (변주)
+## 1. Survey the document **variations**
 
 Under the broad definition, first map *what kinds of documents exist* and — crucially — what
 **stressors** each imposes (layout, reading direction, language/script, degradation, non-text

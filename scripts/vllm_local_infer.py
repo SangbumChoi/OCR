@@ -14,17 +14,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--skip_special_tokens", type=int, default=0)
 
-    # DeepSeek-OCR vLLM에서 권장되는 NGram logits processor 옵션
+    # NGram logits-processor option recommended for DeepSeek-OCR on vLLM
     p.add_argument("--ngram_size", type=int, default=30)
     p.add_argument("--window_size", type=int, default=90)
-    p.add_argument("--whitelist_token_ids", type=str, default="128821,128822", help="예: '128821,128822'")
+    p.add_argument("--whitelist_token_ids", type=str, default="128821,128822", help="e.g. '128821,128822'")
     return p
 
 
 def main() -> None:
     args = build_parser().parse_args()
 
-    # vLLM import는 설치 환경에 따라 달라질 수 있어 런타임 import
+    # import vLLM at runtime since it varies by install environment
     from vllm import LLM, SamplingParams
     from vllm.model_executor.models.deepseek_ocr import NGramPerReqLogitsProcessor
 

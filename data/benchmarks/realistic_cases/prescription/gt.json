@@ -1,5 +1,5 @@
 {
-  "type": "prescription / 처방전",
+  "type": "prescription",
   "stressors": [
     "handwriting",
     "hallucination",
@@ -7,7 +7,7 @@
   ],
   "anchor_metric": "CER(hand) + abstain",
   "fields": {
-    "patient": "Levi Snyder",
+    "patient": "Chris Curtis",
     "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d",
     "_task": "Transcribe the handwritten medication line (CER)."
   },

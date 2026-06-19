@@ -2,7 +2,7 @@
 
 This interprets the **stored** results (`results/matrix_*.{md,json}`,
 `results/<model>/<bench>/`) produced by running models across the benchmark suite, and lists
-the flaws ("흠") found — split into **inference bugs**, **harness/scoring flaws**, and
+the flaws found — split into **inference bugs**, **harness/scoring flaws**, and
 **model-capability flaws** — plus what was fixed.
 
 ## What actually ran (and what couldn't)
@@ -66,7 +66,7 @@ reasoning emerges around 1B, while ≤0.5B models stay at sum-only (500M) or nei
 models still score 0 on grounding (no spotting head). This is exactly the gap the report's
 Part-2 improvement plan targets.
 
-## A. Inference bugs (the "인퍼런스 안 되는 부분" — found via real runs)
+## A. Inference bugs (the "inference doesn't work" cases — found via real runs)
 
 1. **`AutoModelForVision2Seq` removed in transformers 5.x** → SmolVLM/SmolDocling failed to
    load. **Fixed**: adapter now falls back to `AutoModelForImageTextToText`. (SmolVLM then ran

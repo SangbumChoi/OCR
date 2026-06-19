@@ -18,12 +18,12 @@ def _is_same_host(seed: str, url: str) -> bool:
 
 
 def _is_downloadable(url: str) -> bool:
-    # 이미지/PDF 위주 기본형(필요 시 확장)
+    # images/PDF only by default (extend as needed)
     return bool(re.search(r"\.(png|jpg|jpeg|webp|tif|tiff|pdf)(\?.*)?$", url, re.IGNORECASE))
 
 
 def _safe_filename(url: str) -> str:
-    # URL path 기반 파일명 생성
+    # build the filename from the URL path
     p = urlparse(url).path
     name = Path(p).name or "download"
     name = re.sub(r"[^a-zA-Z0-9._-]+", "_", name)
@@ -73,7 +73,7 @@ def crawl(
             pages += 1
 
             if _is_downloadable(url) or "application/pdf" in ctype or ctype.startswith("image/"):
-                # 직접 다운로드 타입
+                # direct-download type
                 fname = _safe_filename(url)
                 target = downloads_dir / fname
                 try:
@@ -91,7 +91,7 @@ def crawl(
                 time.sleep(sleep_sec)
                 continue
 
-            # HTML 파싱
+            # parse HTML
             if "text/html" in ctype or ctype == "" or "<html" in (r.text[:200].lower()):
                 soup = BeautifulSoup(r.text, "html.parser")
                 for a in soup.find_all("a", href=True):
@@ -101,7 +101,7 @@ def crawl(
                         continue
                     if nxt not in visited:
                         q.append(nxt)
-                # img src도 다운로드 대상으로 큐에 추가
+                # also queue img src URLs for download
                 for img in soup.find_all("img", src=True):
                     src = urljoin(url, img["src"])
                     if same_host_only and not _is_same_host(seed_url, src):
@@ -113,7 +113,7 @@ def crawl(
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Simple crawler for downloading PDFs/images + metadata 기록")
+    p = argparse.ArgumentParser(description="Simple crawler for downloading PDFs/images + metadata")
     p.add_argument("--seed_url", type=str, required=True)
     p.add_argument("--out_dir", type=str, required=True)
     p.add_argument("--max_pages", type=int, default=50)

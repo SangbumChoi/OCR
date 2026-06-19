@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 
 def _levenshtein(a: List[str], b: List[str]) -> int:
-    # 메모리 절약형 DP
+    # memory-efficient DP
     if len(a) < len(b):
         a, b = b, a
     prev = list(range(len(b) + 1))
@@ -23,7 +23,7 @@ def _levenshtein(a: List[str], b: List[str]) -> int:
 def cer(pred: str, ref: str) -> float:
     """
     Character Error Rate = edit_distance(chars) / len(ref_chars)
-    ref가 빈 문자열이면 0/1 정의가 애매하므로:
+    If ref is empty the 0/1 definition is ambiguous, so:
       - ref=="" and pred=="" => 0
       - ref=="" and pred!="" => 1
     """
@@ -53,7 +53,7 @@ class MetricAverages:
 
 def compute_ocr_metrics(preds: List[str], refs: List[str]) -> Dict[str, float]:
     if len(preds) != len(refs):
-        raise ValueError(f"preds/refs 길이가 다릅니다: {len(preds)} vs {len(refs)}")
+        raise ValueError(f"preds/refs length mismatch: {len(preds)} vs {len(refs)}")
     if len(preds) == 0:
         return {"cer": 0.0, "wer": 0.0}
 

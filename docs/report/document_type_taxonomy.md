@@ -40,10 +40,10 @@ evaluation requirements.
 | Map / floor plan                | ✓        | ✓(angled labels)   | ◐             |                 | ✓(figure)          |                 |         | ✓    | spotting + read-order        |
 | **ID / passport / license**     | ◐        | ◐(MRZ)             | ✓             | ◐               | ✓(photo/stamp)     | ◐(sign)         | ✓✓      | ✓    | KIE F1 + abstain + IoU       |
 | Certificate / diploma           | ◐        |                    | ✓             | ◐               | ✓(seal)            | ◐(sign)         | ✓       | ◐    | F1 + stamp IoU               |
-| **Cheque / 수표**                 | ◐        |                    |               | ◐               | ◐(MICR)            | ✓(amount/sign)  | ✓       | ✓    | dual-amount F1 + sign detect |
-| **Prescription / 처방전**          | ◐        |                    | ◐             | ✓               |                    | ✓✓(doctor hand) | ✓       | ✓    | CER(hand) + abstain          |
+| **Cheque**                 | ◐        |                    |               | ◐               | ◐(MICR)            | ✓(amount/sign)  | ✓       | ✓    | dual-amount F1 + sign detect |
+| **Prescription**          | ◐        |                    | ◐             | ✓               |                    | ✓✓(doctor hand) | ✓       | ✓    | CER(hand) + abstain          |
 | Ticket / boarding pass          | ✓        |                    | ◐             |                 | ✓(barcode/QR)      |                 |         | ✓    | decode + KIE F1              |
-| **Ancient manuscript / 고문서**    | ◐        | ✓(vertical/RTL)    | ✓✓(classical) | ✓✓(fade/stain)  |                    | ✓(calligraphy)  | ◐       |      | NED + robustness             |
+| **Ancient manuscript**    | ◐        | ✓(vertical/RTL)    | ✓✓(classical) | ✓✓(fade/stain)  |                    | ✓(calligraphy)  | ◐       |      | NED + robustness             |
 | Ledger / census (historical)    | ✓(table) |                    | ◐             | ✓               | ✓(table)           | ✓               |         | ✓    | TEDS + CER(hand)             |
 | Microfilm / carbon copy         | ◐        |                    |               | ✓✓              |                    |                 | ◐       |      | robustness retention         |
 | **LCD / meter / 7-seg**         |          |                    |               | ◐(glare)        | ✓(non-font digits) |                 |         | ✓    | exact + IoU                  |

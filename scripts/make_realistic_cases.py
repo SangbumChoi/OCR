@@ -223,7 +223,7 @@ def case_prescription(do_degrade):
     .rx{ font-size:34px; font-weight:bold;}
     .hand .tx,.hand.tx{ font-family:'Purisa',cursive; font-size:18px; color:#1a2a5a;}
     """
-    b = DocBuilder("prescription / 처방전", ["handwriting", "hallucination", "degradation"],
+    b = DocBuilder("prescription", ["handwriting", "hallucination", "degradation"],
                    "CER(hand) + abstain", page="A5", css=css)
     b.title(f"{fake.name()}, M.D. — Internal Medicine", level=2)
     b.field("Patient", patient, key="patient")
@@ -246,7 +246,7 @@ def case_cheque(do_degrade):
     .words .tx,.words.tx{ font-family:'Purisa',cursive; font-size:16px; border-bottom:1px solid #888;}
     .micr{ font-family:'Liberation Mono',monospace; letter-spacing:2px; margin-top:6mm;}
     """
-    b = DocBuilder("cheque / 수표", ["handwriting", "dual-amount", "hallucination", "spotting"],
+    b = DocBuilder("cheque", ["handwriting", "dual-amount", "hallucination", "spotting"],
                    "dual-amount F1 + sign detect", page="160mm 70mm", margin="6mm", css=css)
     b.raw("<div class=cheque>")
     b.raw(f"<p>{esc(fake.company())} BANK <span class=num>$ {amt_num}</span></p>")
@@ -272,7 +272,7 @@ def case_ancient(do_degrade):
     .wrap{ display:flex; flex-direction:row-reverse; gap:10mm; justify-content:center;}
     .col{ writing-mode:vertical-rl; font-size:30px; line-height:1.6; color:#2a1f12;}
     """
-    b = DocBuilder("ancient manuscript / 고문서",
+    b = DocBuilder("ancient manuscript",
                    ["direction(vertical)", "language(classical)", "degradation(fade/stain)"],
                    "NED + robustness", page="120mm 150mm", margin="14mm", css=css)
     b.title("古文書 — Classical manuscript", level=2)

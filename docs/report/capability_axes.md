@@ -14,8 +14,8 @@ A document model is really two abilities stacked:
 
 | Ability                            | Question it answers   | How we elicit it               | How we score it        |
 | ---------------------------------- | --------------------- | ------------------------------ | ---------------------- |
-| **Text understanding** (글자 이해)     | "What does it *say*?" | read / answer prompts          | ANLS / exact / relaxed |
-| **Location understanding** (위치 이해) | "*Where* is it?"      | "return the bounding box of X" | **IoU** (grounding)    |
+| **Text understanding**     | "What does it *say*?" | read / answer prompts          | ANLS / exact / relaxed |
+| **Location understanding** | "*Where* is it?"      | "return the bounding box of X" | **IoU** (grounding)    |
 
 These are genuinely different heads: a model can read a field perfectly yet be unable to point
 at it (and vice-versa for a detection-first model). Most leaderboards score only the first;

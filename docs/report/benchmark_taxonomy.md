@@ -106,7 +106,7 @@ relational structure.
 - **Cell-adjacency F1** (ICDAR-2013 style) — correctness of neighbour relationships between
   cells. Directly measures "which cells relate to which".
 
-**Note.** For "테이블에 상관관계" → **TEDS / GriTS** are the answer; a flat text metric cannot
+**Note.** For "correlation across a table" → **TEDS / GriTS** are the answer; a flat text metric cannot
 score whether two cells are correctly in the same row/column or span.
 
 ## 6. Chart understanding
@@ -153,7 +153,7 @@ related focused/fine-grained page benchmark.)
 ## 10. Reliability: calibration, robustness, hallucination
 
 Public leaderboards almost never report these, yet they decide deployability — and they speak
-directly to your "오타/할루시네이션 없는지" concern:
+directly to your "are there typos / hallucinations?" concern:
 
 - **Calibration — ECE (Expected Calibration Error)** = Σ_bin (|B|/N)·|acc(B)−conf(B)|. Does the
   model's confidence track its correctness? A well-calibrated reader lets you **route

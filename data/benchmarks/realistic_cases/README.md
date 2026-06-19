@@ -85,9 +85,9 @@ contract (boxes land inside the image, redacted values never leak into visible G
 | `bank_statement` | bank statement / payslip | layout · table · spotting                  | TEDS + F1                    |
 | `rtl_arabic`     | RTL doc (Arabic)         | read-direction(RTL) · language · script    | direction + per-lang NED     |
 | `webtoon`        | webtoon / manga          | read-order · direction(vertical) · art-text| read-order + direction + NED |
-| `prescription`   | prescription / 처방전     | handwriting · hallucination · degradation  | CER(hand) + abstain          |
-| `cheque`         | cheque / 수표             | handwriting · dual-amount · hallucination  | dual-amount F1 + sign detect |
-| `ancient`        | ancient manuscript / 고문서| direction(vertical) · classical · fade/stain| NED + robustness            |
+| `prescription`   | prescription     | handwriting · hallucination · degradation  | CER(hand) + abstain          |
+| `cheque`         | cheque             | handwriting · dual-amount · hallucination  | dual-amount F1 + sign detect |
+| `ancient`        | ancient manuscript| direction(vertical) · classical · fade/stain| NED + robustness            |
 | `lcd_7seg`       | LCD / meter / 7-seg      | non-font digits · glare                    | exact + IoU                  |
 | `website`        | website / desktop screenshot | web layout · reflow · icons/links · spotting | NED + spotting          |
 | `mobile_app`     | mobile app / phone screenshot| mobile layout · vertical reflow · read-order | NED + read-order        |
