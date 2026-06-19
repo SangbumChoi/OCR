@@ -38,28 +38,28 @@ def analyze_model(rows: list[dict]) -> dict:
     r = _by_id(rows)
     out = {}
 
-    # S1 quadrant: >=3/4 correct and not all-constant prediction
+    # L2 quadrant: >=3/4 correct and not all-constant prediction
     quad = [v for k, v in r.items() if k.startswith("sp_quad_")]
     if quad:
         correct = sum(1 for v in quad if v["score"] >= 0.5)
         preds = {str(v["prediction"]).strip().lower()[:12] for v in quad}
-        out["S1_absolute_spatial"] = {
+        out["L2_absolute_spatial"] = {
             "acc": round(correct / len(quad), 2), "n": len(quad),
             "distinct_preds": len(preds),
             "PASS": correct >= 3 and len(preds) >= 2,
         }
 
-    # S2 relative position with counterfactual control
+    # L3 relative position with counterfactual control
     n_, c_ = r.get("sp_relpos_normal"), r.get("sp_relpos_counterfactual")
     if n_ and c_:
         an, ac = n_["score"] >= 0.5, c_["score"] >= 0.5
-        out["S2_relative_spatial"] = {
+        out["L3_relative_spatial"] = {
             "normal_correct": an, "counterfactual_correct": ac,
             "prior_reliance_gap": round(float(an) - float(ac), 2),
             "PASS": an and ac,  # must beat the language prior
         }
 
-    # S3 box tracking: center-y correlation across positions + mean IoU
+    # L4 box tracking: center-y correlation across positions + mean IoU
     boxes = [r.get(f"sp_box_{t}") for t in ("top", "mid", "bot")]
     boxes = [b for b in boxes if b]
     if len(boxes) >= 2:
@@ -74,37 +74,37 @@ def analyze_model(rows: list[dict]) -> dict:
             pred_cy.append((pbox[1] + pbox[3]) / 2 if pbox else 0.0)
             ious.append(b["score"])
         rcorr = _pearson(true_cy, pred_cy)
-        out["S3_box_tracking"] = {
+        out["L4_box_tracking"] = {
             "center_y_corr": round(rcorr, 2), "mean_iou": round(sum(ious) / len(ious), 2),
             "PASS": rcorr > 0.8 and (sum(ious) / len(ious)) > 0.3,
         }
 
-    # C1 consistency: must catch the inconsistent case
+    # H4 consistency: must catch the inconsistent case
     cc, ci = r.get("ctx_consistency_consistent"), r.get("ctx_consistency_inconsistent")
     if cc and ci:
-        out["C1_consistency"] = {
+        out["H4_consistency"] = {
             "consistent_correct": cc["score"] >= 0.5,
             "inconsistent_caught": ci["score"] >= 0.5,
             "PASS": ci["score"] >= 0.5,  # catching the error is the real test
         }
 
-    # C2 anti-hallucination on absent field
+    # H5 anti-hallucination on absent field
     ab = r.get("ctx_absence")
     if ab:
-        out["C2_anti_hallucination"] = {
+        out["H5_anti_hallucination"] = {
             "answered_none": ab["score"] >= 0.5,
             "prediction": str(ab["prediction"])[:30], "PASS": ab["score"] >= 0.5,
         }
 
-    # C3 distractor disambiguation
+    # H6 distractor disambiguation
     di = r.get("ctx_distractor")
     if di:
-        out["C3_disambiguation"] = {"score": di["score"], "PASS": di["score"] >= 0.5}
+        out["H6_disambiguation"] = {"score": di["score"], "PASS": di["score"] >= 0.5}
 
-    # C4 cross-reference counterfactual sensitivity (both variants correct)
+    # H7 cross-reference counterfactual sensitivity (both variants correct)
     xb, xa = r.get("ctx_xref_bob"), r.get("ctx_xref_alice")
     if xb and xa:
-        out["C4_context_sensitivity"] = {
+        out["H7_context_sensitivity"] = {
             "bob_correct": xb["score"] >= 0.5, "alice_correct": xa["score"] >= 0.5,
             "PASS": xb["score"] >= 0.5 and xa["score"] >= 0.5,
         }
@@ -126,8 +126,8 @@ def main() -> None:
     if not out:
         raise SystemExit(f"No results for probe '{args.probe}'. Run run_matrix first.")
 
-    crits = ["S1_absolute_spatial", "S2_relative_spatial", "S3_box_tracking",
-             "C1_consistency", "C2_anti_hallucination", "C3_disambiguation", "C4_context_sensitivity"]
+    crits = ["L2_absolute_spatial", "L3_relative_spatial", "L4_box_tracking",
+             "H4_consistency", "H5_anti_hallucination", "H6_disambiguation", "H7_context_sensitivity"]
     print(f"\nSignal criteria (PASS = clears the shortcut control) — probe: {args.probe}\n")
     hdr = ["model"] + [c.split("_", 1)[0] for c in crits]
     print("| " + " | ".join(hdr) + " |")

@@ -3,7 +3,7 @@
 PERCEPTION + CONTENT-REASONING axes for document VLMs (see docs/report/capability_axes.md).
 
 Scope boundary (kept strict): this probe reads / computes / compares / locates VALUES. It does
-NOT test relative position or cross-region context (S/C codes) — those are the independent
+NOT test relative position or cross-region context (L2-L4 / H4-H7) — those are the independent
 spatial_context probe. Axis codes (answer_type) per docs/report/capability_axes.md:
 
   T1 text-recognition        : read an exact printed string                       (family T · Text)
@@ -109,7 +109,7 @@ def main():
         Sample("cap_kie", inv_p, "What is the vendor name?" + CONCISE, ["Acme Corporation"],
                "T2", "anls", {"axis": "kie-localized", "family": "T"}),
         # H · hybrid — content reasoning = arithmetic/comparison over read VALUES (layout-agnostic).
-        # NOT consistency/verification or positional — those are the spatial_context probe (C/S).
+        # NOT consistency/verification or positional — those are the spatial_context probe (L2-L4 / H4-H7).
         Sample("cap_integ_sum", inv_p,
                "Add up the prices of all line items." + CONCISE, [f"{total:.2f}"],
                "H1", "relaxed_acc", {"axis": "content-reasoning (sum)", "family": "H"}),
@@ -120,7 +120,7 @@ def main():
         # NOT in scope for the capability probe.
         Sample("cap_chart", ch_p, "What is the value of bar B?" + CONCISE, ["70"],
                "H3", "relaxed_acc", {"axis": "chart-value", "family": "H"}),
-        # L1 grounding/spotting (location family, with S1-S3 spatial in the spatial_context probe).
+        # L1 grounding/spotting (location family, with L2-L4 spatial in the spatial_context probe).
         Sample("cap_ground", inv_p,
                "Return the bounding box of the TOTAL field as [x1, y1, x2, y2] in pixel "
                f"coordinates. The image is {inv_sz[0]}x{inv_sz[1]} pixels.",
@@ -139,7 +139,7 @@ def main():
         "category": "F1. Custom capability axes",
         "metric": "anls / relaxed_acc / exact / grounding",
         "purpose": "Capability axes T1/T2 (text), H1/H2/H3 (hybrid: content-reasoning sum/compare + "
-                   "chart-value), L1 (location grounding). S/C (spatial & context) are the separate "
+                   "chart-value), L1 (location grounding). L2-L4 / H4-H7 (spatial & context) are the separate "
                    "spatial_context probe. See docs/report/capability_axes.md.",
         "source": "SYNTHETIC (scripts/make_capability_probe.py); GT incl. exact pixel boxes",
         "ground_truth": {"n_samples": len(samples),

@@ -112,30 +112,30 @@ def build():
         d.text((40, y + 20), f"TOTAL: {total_str}", fill=(150, 0, 0), font=fnt(26, True))
         return im
 
-    # C1 consistency-check (control pair): correct vs wrong total
+    # H4 consistency-check (control pair): correct vs wrong total
     for variant, total, gold in [("consistent", "$145.50", "yes"), ("inconsistent", "$200.00", "no")]:
         p = save(f"consistency_{variant}", invoice(total))
         samples.append(S(f"ctx_consistency_{variant}", p,
                          "Do the line items add up to the printed TOTAL? Answer yes or no.",
                          [gold], "context-consistency", "exact",
-                         "C1: cross-region numeric consistency (inconsistent variant resists rubber-stamping)",
+                         "H4: cross-region numeric consistency (inconsistent variant resists rubber-stamping)",
                          control=(variant == "inconsistent")))
 
-    # C2 absence / anti-hallucination: ask for a field that does NOT exist
+    # H5 absence / anti-hallucination: ask for a field that does NOT exist
     p = save("absence", invoice("$145.50", with_discount=False))
     samples.append(S("ctx_absence", p,
                      "What is the discount amount on this invoice? If there is no discount, answer 'none'.",
                      ["none"], "context-absence", "exact",
-                     "C2: absent-field -> should abstain, not hallucinate a number", control=True))
+                     "H5: absent-field -> should abstain, not hallucinate a number", control=True))
 
-    # C3 distractor: Subtotal present; ask for Total (must not return subtotal)
+    # H6 distractor: Subtotal present; ask for Total (must not return subtotal)
     p = save("distractor", invoice("$135.50", subtotal=True))
     samples.append(S("ctx_distractor", p,
                      "What is the TOTAL amount (not the subtotal)?",
                      ["135.50"], "context-distractor", "relaxed_acc",
-                     "C3: pick the right field among look-alikes"))
+                     "H6: pick the right field among look-alikes"))
 
-    # C4 cross-reference with counterfactual sensitivity: name in header -> amount in table
+    # H7 cross-reference with counterfactual sensitivity: name in header -> amount in table
     table = [("Bob", "$45.00"), ("Alice", "$80.00")]
     for name, amt in table:
         im, d = blank(800, 420)
@@ -147,7 +147,7 @@ def build():
         samples.append(S(f"ctx_xref_{name.lower()}", p,
                          f"How much does the person on the 'Bill to' line owe? (Use the table.)",
                          [amt.replace("$", "")], "context-xref", "relaxed_acc",
-                         "C4: link header->table; counterfactual name flips the answer",
+                         "H7: link header->table; counterfactual name flips the answer",
                          control=(name == "Alice")))
 
     save_jsonl(samples, OUT / "probe.jsonl")
