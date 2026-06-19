@@ -23,29 +23,27 @@ The capability axes, and which metric answers which question:
 | "Can it parse a *whole page* end to end?"                      | **normalized edit distance** per element  | OmniDocBench               |
 | "Does it know when it's wrong / does it hold up on bad scans?" | **ECE calibration, robustness retention** | (our custom probe)         |
 
----
+**How to read this file.** The categories are *not* ten disjoint tasks; they are organised below
+into **five families**. Category numbers (1–10) are kept as stable IDs (data samples, the catalog,
+and scripts reference them), so they are not in numeric order within a family.
 
-## How the ten categories relate (families)
-
-The ten below are **not ten disjoint tasks** — they cluster into a few families, and two pairs
-overlap on purpose. Read the numbered sections through this lens:
-
-- **A · Recognition / transcription — "read it all."** §1 full-page recognition, §2 scene-text,
-  §9 end-to-end parsing. Same core skill (convert the *whole* input to text/structure), scored by
-  the **edit-distance family** (CER/WER/NED, plus TEDS for the tables inside §9); they differ only
-  in domain — clean page (§1) vs text in the wild (§2) vs complex multi-element page (§9).
-- **B · Question answering & extraction — "get the specific information."** §3 Document VQA,
-  §4 KIE, §6 chart QA. **§3 and §4 overlap on purpose** — see the boundary note in §3.
-- **C · Structure recovery.** §5 tables, §7 formulas — the output is a *structure* (HTML tree /
-  LaTeX), not free text.
-- **D · Umbrella suite (not a peer task).** §8 OCRBench is an *aggregate* that re-bundles families
-  A–C into one score; treat it as a breadth smoke-test, not a distinct capability (see §8).
-- **E · Cross-cutting reliability.** §10 (calibration / robustness / hallucination) applies *on top
-  of* any of the above, not beside them.
+| Family | Members | Shared nature | Metric family |
+| ------ | ------- | ------------- | ------------- |
+| **A. Recognition / transcription** ("read it all") | §1, §2, §9 | convert the *whole* input to text/structure | edit-distance (CER/WER/NED, TEDS) |
+| **B. Question answering & extraction** ("get specific info") | §3, §4, §6 | answer about / pull out targeted content (§3⊃§4) | ANLS / entity-F1 / relaxed-acc |
+| **C. Structure recovery** | §5, §7 | output is a *structure* (HTML tree / LaTeX) | TEDS·GriTS / exact·NED |
+| **D. Umbrella suite** (aggregate, not a peer task) | §8 | re-bundles A–C into one breadth score | OCRBench /1000 |
+| **E. Cross-cutting reliability** | §10 | applies *on top of* any of the above | ECE / retention |
 
 ---
 
-## 1. Full-page / printed-text recognition (transcription)
+## A. Recognition / transcription — "read it all"
+
+Same core skill: convert the *entire* input to text/structure, scored by the **edit-distance
+family**. The members differ only in **domain** — a clean page (§1), text in the wild (§2), or a
+complex multi-element page (§9).
+
+### 1. Full-page / printed-text recognition (transcription)
 
 **Task.** Transcribe an entire page/line to text (optionally formatted markdown/LaTeX/HTML).
 
@@ -62,7 +60,7 @@ overlap on purpose. Read the numbered sections through this lens:
 model that hallucinates or drops characters is penalised directly, which generic VQA accuracy
 would miss.
 
-## 2. Scene-text detection & recognition
+### 2. Scene-text detection & recognition
 
 **Task.** Localize + read text "in the wild" (signs, products). Adjacent to documents but tests
 irregular/curved/artistic text.
@@ -73,7 +71,27 @@ irregular/curved/artistic text.
 - **Detection H-mean (F-measure)** = 2·P·R/(P+R) over box matches at an IoU threshold.
 - **End-to-end / recognition: word accuracy** (case-insensitive exact) and **1−NED**.
 
-## 3. Document Visual Question Answering (VQA)
+### 9. End-to-end document PARSING
+
+**Task.** Convert a full page to structured output (text + tables + formulas + reading order) —
+the closest to "real document digitization". (The most complex member of this family: it composes
+recognition with structure recovery from family C.)
+
+**Benchmark — OmniDocBench.** Diverse real PDFs (papers, books, slides, financial, exams).
+**Metric:** per-element **Normalized Edit Distance** for text/formula, **TEDS** for tables,
+and a **reading-order** edit distance, aggregated into an overall edit-distance score (lower
+better). This is what PaddleOCR-VL and dots.ocr / MinerU-style systems report. (**Fox** is a
+related focused/fine-grained page benchmark.)
+
+---
+
+## B. Question answering & extraction — "get the specific information"
+
+Instead of reading everything, return *targeted* content: an answer to a question (§3), a set of
+schema fields (§4), or a value off a chart (§6). **§3 and §4 overlap on purpose** — see the
+boundary note in §3.
+
+### 3. Document Visual Question Answering (VQA)
 
 **Task.** Answer a natural-language question about a document image. The core "understanding"
 benchmark family and the anchor of this PoC.
@@ -103,7 +121,7 @@ Practical rule: a **fixed set of fields** with per-field precision/recall → us
 framing (entity-F1); **open-ended NL questions** (esp. 3b) → use **§3 ANLS**. Same underlying
 reading; different evaluation contract.
 
-## 4. Key Information Extraction (KIE) — "extract the value I want"
+### 4. Key Information Extraction (KIE) — "extract the value I want"
 
 **Task.** Pull *specific* fields/entities from a document (total, date, vendor, line items) and
 their **key↔value relations** — not transcribe everything. This is the **structured-schema
@@ -125,10 +143,27 @@ field schema and scored per-field with entity-F1 instead of a free-form question
 value for this field" — ANLS or VQA accuracy do **not** capture per-field precision/recall or
 relational structure.
 
-## 5. Table recognition & extraction — "table structure / cell relationships"
+### 6. Chart understanding
+
+**Task.** Read and reason over plotted data (bar/line/pie).
+
+**Benchmarks.** **ChartQA** (human + machine-augmented Qs), **PlotQA**, **Chart-to-Text**
+(summarization), **ChartX / ChartBench**.
+
+**Metric — relaxed accuracy.** A numeric answer is correct if within **5% relative error** of
+gold; non-numeric uses exact match. (ChartQA, ACL Findings'22) Chart-to-Text uses BLEU/CIDEr.
+
+---
+
+## C. Structure recovery — "the output is a structure"
+
+The answer is not free text but a **structure** — a table tree or a formula expression — so the
+metrics compare *structures*, not strings.
+
+### 5. Table recognition & extraction — "table structure / cell relationships"
 
 **Task.** Recover a table's **structure** (rows/cols/spans) and cell contents — i.e. the
-*relationships* between cells, exactly as you described.
+*relationships* between cells.
 
 **Benchmarks.** **PubTabNet** (~568k), **FinTabNet**, **PubTables-1M** (~948k, also detection),
 **SciTSR**, **WTW** (wild), **TableBank**.
@@ -147,17 +182,7 @@ relational structure.
 **Note.** For "correlation across a table" → **TEDS / GriTS** are the answer; a flat text metric cannot
 score whether two cells are correctly in the same row/column or span.
 
-## 6. Chart understanding
-
-**Task.** Read and reason over plotted data (bar/line/pie).
-
-**Benchmarks.** **ChartQA** (human + machine-augmented Qs), **PlotQA**, **Chart-to-Text**
-(summarization), **ChartX / ChartBench**.
-
-**Metric — relaxed accuracy.** A numeric answer is correct if within **5% relative error** of
-gold; non-numeric uses exact match. (ChartQA, ACL Findings'22) Chart-to-Text uses BLEU/CIDEr.
-
-## 7. Formula / mathematical-expression recognition
+### 7. Formula / mathematical-expression recognition
 
 **Task.** Image → LaTeX (printed or handwritten math).
 
@@ -166,11 +191,15 @@ gold; non-numeric uses exact match. (ChartQA, ACL Findings'22) Chart-to-Text use
 **Metrics.** **Exact match**, **token accuracy**, **BLEU**, and **normalized edit distance** on
 the LaTeX token sequence; CROHME also uses expression-level recognition rate.
 
-## 8. Comprehensive OCR-capability suites for LMMs (umbrella — not a peer task)
+---
 
-**This is an aggregate, not a distinct capability.** Unlike §§1–7, category 8 does not test one new
-skill — it **re-bundles the others** into a single breadth score, so think of it as a smoke-test
-("does this LMM do OCR at all?") rather than a sibling task in the same list.
+## D. Umbrella suite — aggregate, not a peer task
+
+### 8. Comprehensive OCR-capability suites for LMMs
+
+**This is an aggregate, not a distinct capability.** Unlike the families above, category 8 does not
+test one new skill — it **re-bundles the others** into a single breadth score, so think of it as a
+smoke-test ("does this LMM do OCR at all?") rather than a sibling task.
 
 **OCRBench** — 1,000 curated items across **5 capability groups that map onto the categories
 above**: (1) text recognition → §1, (2) scene-text-centric VQA → §2/§3, (3) document-oriented VQA
@@ -182,21 +211,15 @@ text-spotting/structure tasks.
 
 Related: **SEED-Bench-2-Plus** (text-rich images), **CharXiv** (scientific-figure reasoning).
 
-## 9. End-to-end document PARSING
+---
 
-**Task.** Convert a full page to structured output (text + tables + formulas + reading order) —
-the closest to "real document digitization".
+## E. Cross-cutting reliability
 
-**Benchmark — OmniDocBench.** Diverse real PDFs (papers, books, slides, financial, exams).
-**Metric:** per-element **Normalized Edit Distance** for text/formula, **TEDS** for tables,
-and a **reading-order** edit distance, aggregated into an overall edit-distance score (lower
-better). This is what PaddleOCR-VL and dots.ocr / MinerU-style systems report. (**Fox** is a
-related focused/fine-grained page benchmark.)
-
-## 10. Reliability: calibration, robustness, hallucination
+### 10. Reliability: calibration, robustness, hallucination
 
 Public leaderboards almost never report these, yet they decide deployability — and they speak
-directly to your "are there typos / hallucinations?" concern:
+directly to the "are there typos / hallucinations?" concern. Unlike §§1–9 this is **not a task but
+a lens** applied on top of any of them:
 
 - **Calibration — ECE (Expected Calibration Error)** = Σ_bin (|B|/N)·|acc(B)−conf(B)|. Does the
   model's confidence track its correctness? A well-calibrated reader lets you **route
