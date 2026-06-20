@@ -1,9 +1,10 @@
 # Ablation registry (see docs/report/ablation_plan.md). Declarative so each ablation is
 # one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
 
-# Single fine-tuning base (compute-constrained): qwen3_5-0.8b — strongest genuinely sub-1B
-# (text + multilingual/CJK + chart) from the full GPU comparison. LFM2.5-VL dropped for compute.
-target_models: [qwen3_5-0.8b]
+# Fine-tuning base: lfm2_5-vl-1.6b — its hybrid-conv backbone trains ~10x faster on a T4 than
+# qwen3_5-0.8b (whose full-attention prefill runs ~0.05 it/s; see notebooks/latency_profile.ipynb).
+# qwen3_5-0.8b remains selectable (run_ablation --models / notebook MODEL) but LFM is the default base.
+target_models: [lfm2_5-vl-1.6b]
 base_task: document-generation (image -> structured text); per-ablation augmentation from
            data/probes/realistic_cases (configs/synth_data.yaml)
 

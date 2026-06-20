@@ -7,10 +7,10 @@ notebook (notebooks/finetune_ablation.ipynb) reads that file to draw the side-by
 
 Progress is logged as "[done/total] (N left) stage" so it is clear how much remains.
 
-    # baseline (no training) for both bases, then the A1 spotting arm:
-    python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm baseline
-    python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm A1_spotting_on \
-        --placement connector --steps 200
+    # default base is LFM2.5-VL (fast on a T4); pass --models qwen3_5-0.8b to use Qwen instead.
+    python scripts/run_ablation.py --arm A0                                   # memorization sweep (LFM)
+    python scripts/run_ablation.py --arm A1_spotting_on --placement connector --steps 200
+    python scripts/run_ablation.py --models qwen3_5-0.8b --arm baseline       # opt back into Qwen
 """
 from __future__ import annotations
 
@@ -104,7 +104,8 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--models", nargs="+", default=list(HF_ID))
+    p.add_argument("--models", nargs="+", default=["lfm2_5-vl-1.6b"],
+                   help=f"Part-2 base(s) to run; default LFM2.5-VL (fast on a T4). Choices: {list(HF_ID)}")
     p.add_argument("--arm", required=True,
                    help="'baseline' (eval only), 'A0' (memorization-vs-size prerequisite sweep), or a "
                         "configs/synth_data.yaml ablation id (e.g. A1_spotting_on, A4_ko_en)")
