@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks import load_jsonl  # noqa: E402
 
-JSONL = ROOT / "data" / "benchmarks" / "custom_eval" / "custom_eval.jsonl"
+JSONL = ROOT / "data" / "probes" / "custom_eval" / "custom_eval.jsonl"
 RESULTS = ROOT / "docs" / "results"
 
 

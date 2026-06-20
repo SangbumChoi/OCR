@@ -149,7 +149,7 @@ def main():
                          f"avg lat {s.get('avg_latency_s')}s, peak GPU {s.get('peak_gpu_mb')}MB")
 
     # ---- 6. OOV fallback patterns ----
-    oov_jsonl = ROOT / "data" / "benchmarks" / "oov_probe" / "oov.jsonl"
+    oov_jsonl = ROOT / "data" / "probes" / "oov_probe" / "oov.jsonl"
     if oov_jsonl.exists():
         meta = {s.sample_id: s for s in load_jsonl(oov_jsonl)}
         fb_rows = []
