@@ -803,6 +803,9 @@ def main():
             fake = Faker(LOCALE.get(CURRENT_LANG, "en_US"))
             Faker.seed(case_seed)
             CASES[k](do_degrade=not args.no_degrade)
+        # generation heartbeat for the variant fan-out (~20 lines total) so a big sweep isn't silent
+        if CFG.count > 1 and (v == 0 or (v + 1) % max(1, CFG.count // 20) == 0 or v + 1 == CFG.count):
+            print(f"[gen] variant {v+1}/{CFG.count}  (~{(v+1)*len(keys)} docs)", flush=True)
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")
     print(f"\n[done] {len(keys)} cases x {CFG.count} variant(s) = {len(records)} docs -> {OUT}")
