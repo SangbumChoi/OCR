@@ -109,6 +109,20 @@ def _target_text(sample: dict) -> str:
     return f"{rat}\nAnswer: {ans}" if rat else ans
 
 
+def _to_model(inputs, device, dt):
+    """Move processor outputs to the model's device, casting FLOATING tensors (pixel_values) to the
+    model dtype. Without this, float32 pixel_values hit a bf16 vision tower -> 'expected BFloat16 but
+    found Float'. int tensors (input_ids/attention_mask/image_grid_thw) keep their dtype."""
+    import torch
+    out = {}
+    for k, v in inputs.items():
+        if torch.is_tensor(v):
+            out[k] = v.to(device=device, dtype=dt) if torch.is_floating_point(v) else v.to(device)
+        else:
+            out[k] = v
+    return out
+
+
 def _auto_vlm():
     try:
         from transformers import AutoModelForImageTextToText as _AutoVLM
@@ -134,6 +148,7 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64) -> dict:
 
     was_training = model.training
     model.eval()
+    dt = next(model.parameters()).dtype                        # cast pixel_values to the model dtype
     samples = load_jsonl(jsonl)
     preds: dict[str, Prediction] = {}
     for s in samples:
@@ -141,7 +156,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64) -> dict:
         msgs = [{"role": "user", "content": [{"type": "image", "image": img},
                                              {"type": "text", "text": s.question}]}]
         inputs = proc.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
-                                          return_dict=True, return_tensors="pt").to(device)
+                                          return_dict=True, return_tensors="pt")
+        inputs = _to_model(inputs, device, dt)
         n = inputs["input_ids"].shape[1]
         try:
             with torch.no_grad():
@@ -229,7 +245,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         labels = full["input_ids"].clone()
         labels[:, : prompt["input_ids"].shape[1]] = -100      # supervise only the answer span
         full["labels"] = labels
-        return {k: (v.to(device) if hasattr(v, "to") else v) for k, v in full.items()}
+        return _to_model(full, device, dt)                    # cast pixel_values -> model dtype
 
     dl = DataLoader(_DS(), batch_size=1, shuffle=True, collate_fn=collate)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
