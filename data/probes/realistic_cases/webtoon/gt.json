@@ -86,7 +86,7 @@
   "degradation": {
     "preset": "photo",
     "severity": 1.0,
-    "seed": 513,
+    "seed": 165,
     "geometry_preserved": true
   },
   "degraded_preset": "photo",

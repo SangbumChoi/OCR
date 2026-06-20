@@ -18,6 +18,7 @@ Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import re
@@ -131,7 +132,8 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     degradation = None
     if do_degrade and random.random() < CFG.degrade_prob:
         chosen = _pick_preset(key, preset)
-        seed = CFG.seed + hash(key) % 1000
+        # stable per-case seed (Python's str hash is salted per-process -> not reproducible)
+        seed = CFG.seed + int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
         deg = degrade(img, chosen, seed=seed)
         if deg is not None:
             deg.save(folder / "degraded.png")

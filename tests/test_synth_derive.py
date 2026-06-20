@@ -83,6 +83,16 @@ def test_region_box_unions_member_strings():
     assert box.to_list() == [40, 180, 600, 240]                   # encloses header + cell
 
 
+def test_region_box_ignores_stray_match_below_region():
+    # "Balance" occurs twice: the table header (y=180) AND a "Closing balance" field far below
+    # (y=900). The region must bound the table (first instance), not stretch to the stray hit.
+    rr = _FakeRR({"Date": [[40, 180, 90, 200]],
+                  "Balance": [[520, 180, 600, 200], [120, 900, 320, 920]],
+                  "Widget": [[40, 220, 110, 240]]})
+    box = region_box(rr, ["Date", "Balance", "Widget"])
+    assert box.to_list() == [40, 180, 600, 240]                   # not y2=920 (the stray field)
+
+
 # ---------------------------------------------------------------- resolve -> qa dicts
 def test_resolve_locate_emits_grounding_qa_with_box_and_rationale():
     qa = resolve(RR, Derivation("locate", text="TOTAL", label="the TOTAL row"))

@@ -97,7 +97,7 @@
   "degradation": {
     "preset": "historical",
     "severity": 1.0,
-    "seed": 519,
+    "seed": 350,
     "geometry_preserved": true
   },
   "degraded_preset": "historical",

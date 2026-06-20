@@ -86,7 +86,7 @@
   "degradation": {
     "preset": "fax",
     "severity": 1.0,
-    "seed": 634,
+    "seed": 877,
     "geometry_preserved": true
   },
   "degraded_preset": "fax",

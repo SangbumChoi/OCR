@@ -107,7 +107,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 796,
+    "seed": 988,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",

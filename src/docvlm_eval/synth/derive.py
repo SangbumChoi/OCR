@@ -56,11 +56,18 @@ def union_box(boxes: list[BBox | None]) -> BBox | None:
 
 def region_box(rr, texts: list[str]) -> BBox | None:
     """Bounding box of a region defined by the strings it contains (header + cells of a table,
-    etc.). Model-free: union of every hit of every string."""
-    all_boxes: list[BBox | None] = []
+    etc.). Model-free: union of the **first rendered instance** of each string.
+
+    First-instance (not every hit) is deliberate: a member word can also occur *outside* the region
+    — e.g. a "Balance" column header also matches a "Closing balance" field below the table — and
+    unioning that stray hit would stretch the box past the region. The members are chosen to appear
+    in the region first (it is rendered before such fields), so the first hit is the in-region one."""
+    boxes: list[BBox | None] = []
     for t in texts:
-        all_boxes.extend(word_boxes(rr, t))
-    return union_box(all_boxes)
+        hits = word_boxes(rr, t)
+        if hits:
+            boxes.append(hits[0])
+    return union_box(boxes)
 
 
 # --------------------------------------------------------------------------- arithmetic (values)

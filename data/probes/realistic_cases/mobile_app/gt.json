@@ -86,7 +86,7 @@
   "degradation": {
     "preset": "screenshot",
     "severity": 1.0,
-    "seed": 383,
+    "seed": 767,
     "geometry_preserved": true
   },
   "degraded_preset": "screenshot",
