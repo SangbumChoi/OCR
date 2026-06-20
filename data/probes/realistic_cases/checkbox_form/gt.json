@@ -167,6 +167,25 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the Email option located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "119,205,170,228;875,1241"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the Email option is rendered at [119, 205, 170, 228] on the 875x1241px page.",
+      "answer_bbox": [
+        119,
+        205,
+        170,
+        228
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -186,7 +205,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -287,6 +306,16 @@
       ],
       "metric": "anls",
       "answer_type": "selection"
+    },
+    {
+      "key": null,
+      "question": "Where is the Email option located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "119,205,170,228;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the Email option is rendered at [119, 205, 170, 228] on the 875x1241px page."
     }
   ],
   "selection": {

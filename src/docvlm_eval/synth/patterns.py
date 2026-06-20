@@ -111,11 +111,14 @@ class DocBuilder:
 
     def table(self, header: list[str], rows: list[list[str]], *, key: str = "table",
               footer: list[str] | None = None, spot_cells: list[tuple[int, int]] | None = None,
-              cls: str = "") -> None:
+              cls: str = "", region: str | None = "the table") -> None:
         """Render an HTML table AND store the TEDS-gold HTML (identical structure by construction).
 
         spot_cells: list of (row, col) into the *body* rows to register a spotting box for, keyed
         ``{key}_r{row}c{col}`` on the cell text.
+        region: if given (default "the table"), auto-register an L1-region derivation that bounds the
+        whole table — derived from the header row + the last body row (the two short, reliable rows
+        that define the rectangle's top and bottom), first-instance to avoid stray matches.
         """
         def row(cells, tag):
             return "<tr>" + "".join(f"<{tag}>{esc(c)}</{tag}>" for c in cells) + "</tr>"
@@ -128,6 +131,16 @@ class DocBuilder:
         for (r, c) in (spot_cells or []):
             if 0 <= r < len(rows) and 0 <= c < len(rows[r]):
                 self._spot(f"{key}_r{r}c{c}", rows[r][c])
+        if region and rows:
+            # region = header row (top edge + full width) ∪ first column (left edge + full height);
+            # union of top-right + bottom-left corners gives the whole table rectangle. We avoid the
+            # last *row* because short cells there (e.g. a Qty "1") match digits elsewhere on the page
+            # and would drag the box outside the table.
+            from .derive import Derivation
+            col0 = [str(r[0]) for r in rows] + ([str(footer[0])] if footer else [])
+            members = [str(c) for c in header] + col0
+            self._derivations.append(Derivation("region", texts=members, label=region,
+                                                key=f"{key}_region"))
 
     def checkboxes(self, group: str, options: list[tuple[str, bool]], *, cls: str = "") -> None:
         """Selection marks. Registers selection[group]=checked-labels and a box per option label."""

@@ -172,7 +172,7 @@ def case_invoice(do_degrade):
     b.line(f"{esc(company)}<br>{esc(fake.street_address())}", cls="muted")
     b.field("Invoice No", inv_no, key="invoice_no", spot=True)
     b.field("Date", fake.date("%Y-%m-%d"), key="date")
-    b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines")
+    b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines", region="the line-item table")
     b.field("TOTAL", total_str, key="total", spot=True, cls="total")
     b.task("Extract invoice number, date and total; convert the line-item table to HTML.")
     b.qa("What is the invoice number?", inv_no, metric="ned", answer_type="kie", key="invoice_no")
@@ -183,8 +183,7 @@ def case_invoice(do_degrade):
     b.probe("abstain", "What is the shipping tracking number?", "not present — abstain")
     # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
     b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
-    b.ask_region("the line-item table", ["Item", "Qty", "Unit", "Amount"] + [r[0] for r in rows])
-    b.ask_count("$")                                                  # H: count currency symbols
+    b.ask_count("$")                                                  # H: count currency symbols (table region is auto)
     b.ask_aggregate("the sum of all line-item amounts", [q * p for _, q, p in items], op="sum")
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
@@ -225,6 +224,8 @@ def case_id_card(do_degrade):
     b.qa("What is the document number?", idn, metric="ned", answer_type="kie")
     b.qa("What is the cardholder's full name?", name, metric="ned", answer_type="kie")
     b.probe("abstain", "What is the cardholder's blood type?", "not present — abstain")
+    b.ask_where(idn, label="the document number")
+    b.ask_region("the machine-readable zone (MRZ)", [mrz1, mrz2])
     emit("id_card", b, "photo", do_degrade)
 
 
@@ -245,6 +246,7 @@ def case_checkbox_form(do_degrade):
     b.qa("Which notification language is checked?", ", ".join(t for t, c in langs if c),
          answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
+    b.ask_where("Email", label="the Email option")
     emit("checkbox_form", b, "scan", do_degrade)
 
 
@@ -260,6 +262,7 @@ def case_redacted(do_degrade):
     b.line(f"Next review: {fake.date('%Y-%m-%d')}.")
     b.task("Answer only from visible text; for blacked-out values output '[redacted]'.")
     b.qa("Who is the subject of the memo?", name, metric="ned", answer_type="kie")
+    b.ask_where(name, label="the subject")
     emit("redacted", b, "scan", do_degrade)
 
 
@@ -272,14 +275,13 @@ def case_bank_statement(do_degrade):
     b = DocBuilder("bank statement / payslip", ["layout", "table", "spotting"], "TEDS + F1", page="A5")
     b.title("MONTHLY STATEMENT", level=2)
     b.field("Account", fake.numerify("****####"), key="account")
-    b.table(["Date", "Description", "Amount", "Balance"], rows, key="txns")
+    b.table(["Date", "Description", "Amount", "Balance"], rows, key="txns",
+            region="the transaction table")
     b.field("Closing balance", f"${bal:.2f}", key="closing_balance", spot=True)
     b.task("Convert the transaction table to HTML (TEDS) and read the closing balance.")
     b.qa("What is the closing balance?", [f"${bal:.2f}", f"{bal:.2f}"], answer_type="kie")
-    # model-free understanding GT: locate the closing balance + bound the transaction table
+    # model-free understanding GT: locate the closing balance (table region is auto)
     b.ask_where(f"${bal:.2f}", label="the closing balance")
-    b.ask_region("the transaction table", ["Date", "Description", "Amount", "Balance"]
-                 + [r[1] for r in rows])
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -320,6 +322,7 @@ def case_webtoon(do_degrade):
     b.task("Transcribe speech bubbles in reading order (top to bottom).")
     b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
          metric="ned", answer_type="reading-order")
+    b.ask_where(lines[0], label="the first speech bubble")
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -340,6 +343,7 @@ def case_prescription(do_degrade):
     b.task("Transcribe the handwritten medication line (CER).")
     b.qa("Transcribe the handwritten medication line.", drug, metric="ned", answer_type="handwriting")
     b.probe("abstain", "What is the refill count?", "not legible / not present — abstain")
+    b.ask_where(drug, label="the handwritten medication line")
     emit("prescription", b, "fax", do_degrade)
 
 
@@ -371,6 +375,7 @@ def case_cheque(do_degrade):
          rationale=f"Numeric '{amt_num}' equals legal 'one thousand four hundred fifty' → they agree.")
     b.probe("consistency", "Do the numeric and written amounts agree?",
             "yes (1450.00 == one thousand four hundred fifty)")
+    b.ask_where(amt_num, label="the courtesy (numeric) amount")
     emit("cheque", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -395,6 +400,7 @@ def case_ancient(do_degrade):
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
+    b.ask_where(poem[:4], label="the right-hand column")
     emit("ancient", b, "historical", do_degrade)
 
 
@@ -443,6 +449,8 @@ def case_website(do_degrade):
          metric="ned", answer_type="ui")
     b.qa("What is the main headline?", headline, metric="ned", answer_type="ui")
     b.probe("abstain", "What is the user's logged-in email?", "logged-out page — abstain")
+    b.ask_where(cta, label="the call-to-action button")
+    b.ask_region("the feature cards", [t for t, _ in cards])
     emit("website", b, "screenshot", do_degrade)
 
 
@@ -473,6 +481,8 @@ def case_mobile_app(do_degrade):
     b.qa("Transcribe the chat messages in order, one per line.", "\n".join(t for _, t in msgs),
          metric="ned", answer_type="reading-order")
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
+    b.ask_where(msgs[0][1], label="the first chat message")
+    b.ask_count("INV-2025-0042")
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
@@ -516,6 +526,8 @@ def case_pdf_paper(do_degrade):
          answer_type="reading-order")
     b.probe("order", "Does text read across both columns row-by-row?",
             "no — each column reads top-to-bottom independently")
+    b.ask_where(title, label="the paper title")
+    b.ask_region("the figure", [cap])
     emit("pdf_paper", b, "scan", do_degrade)
 
 

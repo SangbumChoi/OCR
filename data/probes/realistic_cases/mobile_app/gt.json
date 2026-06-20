@@ -57,6 +57,39 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
+      "answers": [
+        "41,166,289,192;610,1319"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the first chat message is rendered at [41, 166, 289, 192] on the 610x1319px page.",
+      "answer_bbox": [
+        41,
+        166,
+        289,
+        192
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many times does 'INV-2025-0042' appear in the document? Answer with a number.",
+      "answers": [
+        "1"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "'INV-2025-0042' is found 1 time(s), at [262,239].",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -76,7 +109,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -132,6 +165,26 @@
       ],
       "metric": "ned",
       "answer_type": "reading-order"
+    },
+    {
+      "key": null,
+      "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
+      "answers": [
+        "41,166,289,192;610,1319"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the first chat message is rendered at [41, 166, 289, 192] on the 610x1319px page."
+    },
+    {
+      "key": null,
+      "question": "How many times does 'INV-2025-0042' appear in the document? Answer with a number.",
+      "answers": [
+        "1"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "'INV-2025-0042' is found 1 time(s), at [262,239]."
     }
   ],
   "reading_order": [
