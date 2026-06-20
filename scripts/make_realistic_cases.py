@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -48,7 +49,8 @@ records: list[dict] = []
 
 
 def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
-    """Apply the A7 resize knobs to the image AND rescale every spotting box so GT stays exact."""
+    """Apply the A7 resize knobs to the image AND rescale every box (spotting + derived grounding
+    answers) so GT stays exact at the new resolution."""
     tls, keep = CFG.target_long_side, CFG.keep_aspect
     if not tls:
         return img
@@ -59,22 +61,40 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
     else:                                   # squash to a square -> independent x/y scale
         sx, sy = tls / w, tls / h
         new = (tls, tls)
+    nw, nh = new
     img = img.resize(new, Image.LANCZOS)
+
+    def scale(b):
+        return [round(b[0] * sx), round(b[1] * sy), round(b[2] * sx), round(b[3] * sy)]
+
     spotting = gt.get("spotting")
     if spotting:
-        gt["spotting"] = {k: [round(b[0] * sx), round(b[1] * sy),
-                              round(b[2] * sx), round(b[3] * sy)] for k, b in spotting.items()}
+        gt["spotting"] = {k: scale(b) for k, b in spotting.items()}
+    # derived grounding QAs carry the box twice (qa["box"] + the "x1,y1,x2,y2;W,H" answer string)
+    for q in gt.get("qa", []):
+        if q.get("derived") and q.get("box"):
+            nb = scale(q["box"])
+            q["box"] = nb
+            q["answers"] = [f"{nb[0]},{nb[1]},{nb[2]},{nb[3]};{nw},{nh}"]
+            if q.get("rationale"):  # keep the reasoning coords consistent with the resized image
+                q["rationale"] = (re.sub(r"\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\]",
+                                         f"[{nb[0]}, {nb[1]}, {nb[2]}, {nb[3]}]", q["rationale"], count=1)
+                                  ).replace(f"{w}x{h}px", f"{nw}x{nh}px")
     gt.setdefault("render", {})["size_px"] = list(new)
     return img
 
 
 def _apply_emit_toggles(gt: dict) -> None:
-    """Honour the A1/A2 supervision switches by dropping GT the control arm must not see."""
+    """Honour the supervision switches by dropping GT the control arm must not see."""
     if not CFG.emit_spotting:
         gt.pop("spotting", None)
     if not CFG.emit_rationale:
         for q in gt.get("qa", []):
             q.pop("rationale", None)
+    if not getattr(CFG, "emit_understanding", True):
+        gt["qa"] = [q for q in gt.get("qa", []) if not q.get("derived")]
+    # note: the internal "box"/"derived" keys are consumed by from_builder_gt and then dropped by
+    # DocSample.to_dict (which rebuilds qa from QAItem), so they never reach the saved gt.json.
 
 
 def _pick_preset(key: str, default: str) -> str:
@@ -159,6 +179,11 @@ def case_invoice(do_degrade):
          answer_type="kie", key="total",
          rationale=f"Sum the line amounts: {line_sum} = {total_str}.")
     b.probe("abstain", "What is the shipping tracking number?", "not present — abstain")
+    # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
+    b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
+    b.ask_region("the line-item table", ["Item", "Qty", "Unit", "Amount"] + [r[0] for r in rows])
+    b.ask_count("$")                                                  # H: count currency symbols
+    b.ask_aggregate("the sum of all line-item amounts", [q * p for _, q, p in items], op="sum")
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -249,7 +274,11 @@ def case_bank_statement(do_degrade):
     b.field("Closing balance", f"${bal:.2f}", key="closing_balance", spot=True)
     b.task("Convert the transaction table to HTML (TEDS) and read the closing balance.")
     b.qa("What is the closing balance?", [f"${bal:.2f}", f"{bal:.2f}"], answer_type="kie")
-    emit("bank_statement", b, "scan", do_degrade)
+    # model-free understanding GT: locate the closing balance + bound the transaction table
+    b.ask_where(f"${bal:.2f}", label="the closing balance")
+    b.ask_region("the transaction table", ["Date", "Description", "Amount", "Balance"]
+                 + [r[1] for r in rows])
+    emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
 def case_rtl_arabic(do_degrade):

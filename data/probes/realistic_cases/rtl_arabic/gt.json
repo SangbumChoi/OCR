@@ -107,7 +107,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 423,
+    "seed": 796,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -123,6 +123,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],

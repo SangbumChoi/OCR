@@ -97,7 +97,7 @@
     "anchor_metric": "TEDS + F1",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": true,

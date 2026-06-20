@@ -46,6 +46,15 @@ ground truth, so the pixels and the labels can never disagree (no hand-typed GT 
 | `spot(key,text)`     | (nothing — text drawn via `raw`) | `spotting[key]` for raw/interpolated content             |
 | `qa(q,ans,metric)`   | (nothing — value already drawn)  | `qa[]` answerable pair -> eval Samples                   |
 | `probe(kind,q,exp)`  | (nothing)                        | a control question (abstain / consistency / direction…)  |
+| `ask_where(text)`    | (nothing — resolved from render) | `L1-locate` QA: a word's box + reasoning (model-free)    |
+| `ask_region(lbl,ts)` | (nothing)                        | `L1-region` QA: table/region bbox (union of member boxes)|
+| `ask_count(text)`    | (nothing)                        | `H-count` QA: occurrence count + hit positions          |
+| `ask_aggregate(…)`   | (nothing)                        | `H1-aggregate` QA: total over known values + worked sum  |
+
+The last four are the **model-free understanding layer** (`docvlm_eval.synth.derive`): non-OCR GT
+— *where / how-many / totals* + the reasoning — derived from the render with no external model. See
+[`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md) and the
+visualization notebook [`notebooks/synthetic_data_design.ipynb`](../../../notebooks/synthetic_data_design.ipynb).
 
 ## Use as an eval benchmark
 
@@ -53,7 +62,7 @@ The GT is wired into the normal pipeline by `docvlm_eval.synth.to_samples`
 (`qa`→Q/A, `spotting`→grounding, `table_html`→TEDS, `probes`→control questions):
 
 ```bash
-python scripts/build_realistic_benchmark.py                 # -> realistic_cases.jsonl (52 samples)
+python scripts/build_realistic_benchmark.py                 # -> realistic_cases.jsonl (59 samples)
 python scripts/build_realistic_benchmark.py --variant degraded   # -> realistic_cases_degraded.jsonl
 docvlm-eval --model <id> --benchmark data/probes/realistic_cases/realistic_cases.jsonl \
   --benchmark-name realistic_cases --out docs/results/<id>/realistic --device cpu

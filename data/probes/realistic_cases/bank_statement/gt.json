@@ -2,8 +2,8 @@
   "doc_id": "bank statement / payslip",
   "type": "bank statement / payslip",
   "doc_type": "bank statement / payslip",
-  "domain": null,
-  "acquisition": null,
+  "domain": "finance",
+  "acquisition": "scan",
   "stressors": [
     "layout",
     "table",
@@ -69,10 +69,48 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "226,383,297,402;875,1241"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the closing balance is rendered at [226, 383, 297, 402] on the 875x1241px page.",
+      "answer_bbox": [
+        226,
+        383,
+        297,
+        402
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "93,172,719,402;875,1241"
+      ],
+      "answer_type": "L1-region",
+      "metric": "grounding",
+      "rationale": "the transaction table is rendered at [93, 172, 719, 402] on the 875x1241px page.",
+      "answer_bbox": [
+        93,
+        172,
+        719,
+        402
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
-    "source": "digital-native-pdf",
+    "source": "scan",
     "dpi": 150,
     "size_px": [
       875,
@@ -88,7 +126,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": true,
@@ -98,7 +136,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 922,
+    "seed": 794,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -114,6 +152,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -146,7 +185,27 @@
       ],
       "metric": "anls",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "226,383,297,402;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the closing balance is rendered at [226, 383, 297, 402] on the 875x1241px page."
+    },
+    {
+      "key": null,
+      "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "93,172,719,402;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-region",
+      "rationale": "the transaction table is rendered at [93, 172, 719, 402] on the 875x1241px page."
     }
   ],
-  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>07/10</td><td>Strategize Scalable </td><td>+163.25</td><td>1163.25</td></tr><tr><td>04/26</td><td>Benchmark Leading-Ed</td><td>+597.25</td><td>1760.50</td></tr><tr><td>02/13</td><td>Brand Next-Generatio</td><td>-60.75</td><td>1699.75</td></tr><tr><td>02/14</td><td>Brand Leading-Edge N</td><td>-7.75</td><td>1692.00</td></tr><tr><td>07/01</td><td>Whiteboard Leading-E</td><td>-246.75</td><td>1445.25</td></tr><tr><td>05/25</td><td>Enhance Revolutionar</td><td>+699.25</td><td>2144.50</td></tr></table>"
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>07/10</td><td>Strategize Scalable </td><td>+163.25</td><td>1163.25</td></tr><tr><td>04/26</td><td>Benchmark Leading-Ed</td><td>+597.25</td><td>1760.50</td></tr><tr><td>02/13</td><td>Brand Next-Generatio</td><td>-60.75</td><td>1699.75</td></tr><tr><td>02/14</td><td>Brand Leading-Edge N</td><td>-7.75</td><td>1692.00</td></tr><tr><td>07/02</td><td>Whiteboard Leading-E</td><td>-246.75</td><td>1445.25</td></tr><tr><td>05/26</td><td>Enhance Revolutionar</td><td>+699.25</td><td>2144.50</td></tr></table>"
 }

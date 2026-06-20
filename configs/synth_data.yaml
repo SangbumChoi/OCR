@@ -25,6 +25,7 @@ base:
   # --- A1 / A2 supervision targets to EMIT in the GT ---
   emit_spotting: true       # A1: include bbox targets (Field.bbox / QAItem.answer_bbox)
   emit_rationale: true      # A2: include chain-of-thought rationales
+  emit_understanding: true  # model-free understanding GT (where / how-many / totals) from derive.py
 
   # --- A4 multilingual mix (real-world script distribution) ---
   languages: [en]
@@ -74,6 +75,10 @@ ablation_overrides:
   A4_ko_en:     {languages: [ko, en]}
   A4_en_zh:     {languages: [en, zh]}
   A4_all:       {languages: [en, es, ko, ja, zh]}
+
+  # Understanding layer (model-free where/how-many/totals) on vs off — isolates its contribution.
+  U_understanding_off: {emit_understanding: false}
+  U_understanding_on:  {emit_understanding: true}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}

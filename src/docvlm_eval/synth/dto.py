@@ -183,6 +183,9 @@ class GenConfig:
     # --- A1 / A2 supervision toggles (what GT to EMIT) ---
     emit_spotting: bool = True               # A1: include bbox targets
     emit_rationale: bool = True              # A2: include CoT rationales
+    # model-free UNDERSTANDING layer: where/how-many/totals derived from the render (derive.py).
+    # The OCR GT is free; this is the non-OCR understanding GT that needs no external model.
+    emit_understanding: bool = True
 
     # --- A4 multilingual ---
     languages: list[str] = field(default_factory=lambda: ["en"])
@@ -299,11 +302,13 @@ class DocSample:
 
         qa: list[QAItem] = []
         for q in gt.get("qa", []):
+            # answer box: an explicit derived box (q["box"]) or the spotting box for its key
+            abox = q.get("box") if q.get("box") else spotting.get(q.get("key"))
             qa.append(QAItem(
                 question=q["question"], answers=list(q["answers"]),
                 answer_type=q.get("answer_type", "kie"), metric=q.get("metric", "anls"),
                 rationale=q.get("rationale"),
-                answer_bbox=BBox.from_list(spotting.get(q.get("key"))) if q.get("key") in spotting else None,
+                answer_bbox=BBox.from_list(abox),
                 languages=q.get("languages", ["en"]), key=q.get("key"),
             ))
 

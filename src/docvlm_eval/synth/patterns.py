@@ -53,6 +53,7 @@ class DocBuilder:
         self.qas: list[dict] = []
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
+        self._derivations: list = []   # model-free understanding-GT requests (resolved in build)
         # per-field metadata consumed by DocSample.from_builder_gt (A4 language, A7 small-text)
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
@@ -189,6 +190,32 @@ class DocBuilder:
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})
 
+    # -- model-free UNDERSTANDING ground truth (resolved from the render at build time) -----
+    # These derive non-OCR GT — where / how-many / totals — plus the reasoning that justifies it,
+    # with no external model (see docvlm_eval.synth.derive). Each is gold by construction.
+    def ask_where(self, text: str, *, label: str | None = None, occurrence: int = 0,
+                  key: str | None = None) -> None:
+        """'Where is <text>?' → its bounding box (derived from the rendered PDF)."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("locate", text=text, label=label,
+                                            occurrence=occurrence, key=key))
+
+    def ask_count(self, text: str, *, key: str | None = None) -> None:
+        """'How many times does <text> appear?' → exact occurrence count + the hit positions."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("count", text=text, key=key))
+
+    def ask_region(self, label: str, texts: list[str], *, key: str | None = None) -> None:
+        """'Where is the <label> (e.g. the table)?' → bbox enclosing all the member strings."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("region", texts=list(texts), label=label, key=key))
+
+    def ask_aggregate(self, label: str, values, *, op: str = "sum", key: str | None = None) -> None:
+        """'What is the <label>?' → arithmetic over known values, with the working as rationale."""
+        from .derive import Derivation
+        self._derivations.append(
+            Derivation("aggregate", values=[float(v) for v in values], op=op, label=label, key=key))
+
     def task(self, text: str) -> None:
         self.fields["_task"] = text
 
@@ -211,6 +238,16 @@ class DocBuilder:
         rr = render_html("".join(self._html), self._full_css(), dpi=dpi)
         try:
             spotting = resolve_boxes(rr, self._spots)
+            # resolve model-free understanding GT (where/how-many/totals) against the open render
+            if self._derivations:
+                from .derive import resolve as _resolve_derivation
+                for d in self._derivations:
+                    qa = _resolve_derivation(rr, d)
+                    if qa is None:  # validation: requested text not on the page -> warn, don't fake
+                        print(f"  [warn] derivation {d.kind}({d.text or d.label!r}) found nothing "
+                              f"in {self.doc_type} — skipped")
+                        continue
+                    self.qas.append(qa)
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),

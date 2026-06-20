@@ -45,7 +45,7 @@
     },
     {
       "key": "dob",
-      "value": "07 MAY 1997",
+      "value": "08 MAY 1997",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -145,7 +145,7 @@
   "degradation": {
     "preset": "photo",
     "severity": 1.0,
-    "seed": 153,
+    "seed": 271,
     "geometry_preserved": true
   },
   "degraded_preset": "photo",
@@ -161,6 +161,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -173,7 +174,7 @@
   "fields": {
     "name": "CHRIS CURTIS",
     "doc_no": "177777868",
-    "dob": "07 MAY 1997",
+    "dob": "08 MAY 1997",
     "expiry": "14 JUN 2031",
     "mrz1": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
     "mrz2": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<"

@@ -69,7 +69,7 @@
   "degradation": {
     "preset": "photo",
     "severity": 1.0,
-    "seed": 693,
+    "seed": 980,
     "geometry_preserved": true
   },
   "degraded_preset": "photo",
@@ -85,6 +85,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
