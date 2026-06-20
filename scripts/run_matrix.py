@@ -116,7 +116,11 @@ def main() -> None:
         status.update(rescore_cached(samples, results_dir, bench_name))
         for m, st in sorted(status.items()):
             print(f"[rescore] {m}: {st}")
-    for m in ([] if a.rescore else models):
+    run_list = [] if a.rescore else models
+    n_models = len(run_list)
+    for i, m in enumerate(run_list, 1):
+        print(f"[run_matrix {i}/{n_models}] loading + evaluating {m} on {bench_name} "
+              f"({n_models - i} model(s) left)", flush=True)
         out = results_dir / m / bench_name
         try:
             run_evaluation(
