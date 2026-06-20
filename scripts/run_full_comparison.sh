@@ -28,9 +28,11 @@ WEB=data/probes/webui_probe/webui.jsonl
 CHAT=(internvl2-1b internvl2_5-1b internvl3-1b smolvlm-256m smolvlm-500m smoldocling-256m
       llava-ov-0.5b got-ocr2 florence2-base florence2-large h2ovl-0.8b ovis2-1b)
 PADDLE=(paddleocr-vl paddleocr-vl-1.5 paddleocr-vl-1.6)
-# Newer releases (2025-26). Note: Ovis2.5 has no 1B (smallest is 2B); MiniCPM-V-4.6 / LFM2.5-VL
-# are ~1.3-1.6B — kept as stronger reference points. Qwen3.5-0.8B is sub-1B.
-NEW=(ovis2_5-2b minicpm-v-4_6 lfm2_5-vl-1.6b qwen3_5-0.8b lightonocr-1b)
+# Newer releases (2025-26). MiniCPM-V-4.6 / LFM2.5-VL are ~1.3-1.6B (over <1B, kept as stronger
+# reference points); Qwen3.5-0.8B is sub-1B. All four verified runnable on CPU under tf>=5.
+# Ovis2.5-2B is intentionally EXCLUDED here (no 1B variant; ~2.6B; custom interface) — its adapter
+# stays registered, so opt in with `--models ovis2_5-2b` if wanted.
+NEW=(minicpm-v-4_6 lfm2_5-vl-1.6b qwen3_5-0.8b lightonocr-1b)
 
 # --- progress accounting: total (model x benchmark) experiments across all three passes ---
 CHAT_BENCHES=5; PADDLE_BENCHES=3; NEW_BENCHES=3

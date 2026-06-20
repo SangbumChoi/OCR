@@ -102,13 +102,15 @@ they need task-specific harnessing rather than the shared VQA loop. **Out of <1B
 (flagged for completeness): MonkeyOCR-pro-1.2B, Kosmos-2.5 (~1.3B), dots.ocr (~1.7B),
 Janus-Pro-1B (~1.5B, non-permissive license), Qwen2-VL-2B, Ovis2-2B, InternVL2.5/3.5-2B.
 
-**Newer 2025-26 additions (registered for the Colab sweep).** Five further recent releases were
-added so the comparison tracks the moving field: **Qwen3.5-0.8B** (the VL variant — config carries
-a vision tower; the only genuinely sub-1B one), **LightOnOCR-1B** (`lightonai/LightOnOCR-1B-1025`,
-Mistral3/Pixtral-style OCR specialist, ~1.16B), and — slightly over the <1B line but kept as
-stronger reference points — **MiniCPM-V-4.6** (~1.3B), **LFM2.5-VL-1.6B** (~1.6B), and
-**Ovis2.5-2B** (~2.6B; Ovis2.5 has *no* 1B variant). *Shakti-VLM-1B* was requested but is not
-publicly available on the Hub (no accessible repo), so it could not be registered.
+**Newer 2025-26 additions (registered for the Colab sweep).** Four further recent releases were
+added so the comparison tracks the moving field, all verified runnable on CPU: **Qwen3.5-0.8B**
+(the VL variant — config carries a vision tower; the only genuinely sub-1B one), **LightOnOCR-1B**
+(`lightonai/LightOnOCR-1B-1025`, Mistral3/Pixtral-style OCR specialist, ~1.16B), and — slightly
+over the <1B line but kept as stronger reference points — **MiniCPM-V-4.6** (~1.3B) and
+**LFM2.5-VL-1.6B** (~1.6B). *Ovis2.5-2B* (~2.6B; Ovis2.5 has no 1B variant) has an adapter but is
+**excluded from the default sweep** (custom interface, well over budget); opt in with
+`--models ovis2_5-2b`. *Shakti-VLM-1B* was requested but is not publicly available on the Hub (no
+accessible repo), so it could not be registered.
 
 > Architecture / pretraining / capability profiles for each model are in **Appendix A**.
 
