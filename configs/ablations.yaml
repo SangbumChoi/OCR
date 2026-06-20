@@ -1,40 +1,68 @@
 # Ablation registry (see docs/report/ablation_plan.md). Declarative so each ablation is
 # one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
 
-# Two fine-tuning bases, chosen from the full GPU comparison (notebooks/colab_full_comparison.ipynb):
-#   qwen3_5-0.8b     — strongest GENUINELY sub-1B (text + multilingual/CJK + chart)
-#   lfm2_5-vl-1.6b   — best overall AND fastest (~1s/sample); slightly over 1B
-target_models: [qwen3_5-0.8b, lfm2_5-vl-1.6b]
+# Single fine-tuning base (compute-constrained): qwen3_5-0.8b — strongest genuinely sub-1B
+# (text + multilingual/CJK + chart) from the full GPU comparison. LFM2.5-VL dropped for compute.
+target_models: [qwen3_5-0.8b]
 base_task: document-generation (image -> structured text); per-ablation augmentation from
            data/probes/realistic_cases (configs/synth_data.yaml)
 
-# Measured baseline gaps the ablations must close (from the GPU run; control-robust signals):
-#   BOTH      : L1 grounding/spotting ~0 ; L4 box-tracking = 0 ; 180-deg rotation collapses
-#   qwen3.5   : H2 relational-compare = 0 ; slow latency (~13s/sample)
-#   lfm2.5-vl : grounding (spot-IoU 0.23, best but low) ; box-tracking
+# ---------------------------------------------------------------------------------------------
+# CONTROL FACTOR (held fixed across every arm so a delta is attributable to the factor alone):
+#   - same number of TRAINING IMAGES / ITERATIONS (max_steps) and same optimiser/seed;
+#   - same EVAL suite scored after each arm.
+# Most arms keep the *image set fixed* and change only what GT is read from each image (reasoning =
+# capturing more of the per-image information vs. missing it). A4 instead keeps the TOTAL SAMPLE
+# COUNT fixed and varies the language mix (equal totals -> synergy/interference is comparable).
+control:
+  fixed: [n_images, max_steps, optimizer, seed, eval_suite]
+  notes: "reasoning/spotting arms reuse the SAME images (vary GT richness); A4 fixes total samples."
+
+# Every arm is scored on the WHOLE suite (not just its target axis) to measure CROSS-CAPABILITY
+# transfer — e.g. does spotting also help CER/KIE/reasoning? does multilingual hurt EN?
+eval_suite: [capability, spatial, realistic]   # cap_*, L2-L7 signals, realistic per-axis (CER/KIE/reason)
+
+# Measured baseline gaps the ablations must close (qwen3.5, from the GPU run; control-robust):
 gaps:
-  both:      [L1_grounding, L4_box_tracking, rotation_180]
-  qwen3_5-0.8b:   [H2_relational, latency]
-  lfm2_5-vl-1.6b: [L1_grounding, L4_box_tracking]
+  qwen3_5-0.8b: [L1_grounding, L4_box_tracking, H2_relational, rotation_180, latency]
 
 ablations:
+  # A0 is the PREREQUISITE: synthetic data is infinite, so first separate "the model UNDERSTANDS the
+  # task" from "it MEMORISED the templates". Train at increasing data scale on seed S, evaluate on a
+  # HELD-OUT test set generated with a DIFFERENT seed (same distribution, unseen content). The
+  # train-vs-held-out gap is the memorization signal; the held-out learning curve is the
+  # understanding signal. Its result fixes the data scale ("how many images") used by A1-A7.
+  - id: A0_generalization
+    question: "Does the model UNDERSTAND or just MEMORISE the synthetic templates?"
+    factor: "training data scale (count = #images) — a learning curve"
+    protocol: "train on seed=7 x count in {50,200,800,3200}; eval held-out seed=999 (unseen content)"
+    control: "same eval set; only train count changes; held-out NEVER overlaps train (different seed)"
+    target_metrics: [heldout_score, train_minus_heldout_gap]
+    decision: "pick the count where held-out keeps improving (understanding) and the gap stays small;
+               if train->~1.0 while held-out plateaus, that scale is memorising -> back off / add diversity"
+    hypothesis: "understanding -> held-out rises with scale, small gap; memorization -> big train/test gap"
+
   - id: A1_spotting
-    question: "Does adding bbox (where) targets improve extraction + spatial grounding?"
+    question: "Does adding bbox (where) targets improve extraction + spatial grounding — and does it
+               TRANSFER to the original CER/KIE/reasoning targets?"
     factor: "target = value + [x1,y1,x2,y2]  vs  value only"
     data_arm: {on: A1_spotting_on, off: A1_spotting_off}   # configs/synth_data.yaml overrides
-    control: "same images/QA, same steps/optim"
+    control: "SAME images & QA, same n_images/steps/optim (only the bbox target is added)"
     closes_gap: [L1_grounding, L4_box_tracking]
-    metrics: [grounding_iou, cap_ground, spot_iou]
-    hypothesis: "spotting is a vision+connector signal -> grounding IoU up, box-tracking emerges"
+    target_metrics: [grounding_iou, cap_ground, spot_iou]
+    transfer_metrics: [cap_text_cer, cap_kie, cap_integ_rel]   # did 'where' also help 'what'/'why'?
+    hypothesis: "spotting is a vision+connector signal -> grounding up; test if it also lifts CER/KIE/reasoning"
 
   - id: A2_reasoning
-    question: "Does CoT/rationale supervision help integrative reasoning?"
-    factor: "target = rationale -> answer  vs  answer only"
+    question: "Does CoT/rationale supervision help reasoning — i.e. capturing the per-image
+               information diversity (sum/diff/next-action) instead of missing it?"
+    factor: "SAME images; target = rationale -> answer  vs  answer only (richer GT read per image)"
     data_arm: {on: A2_reasoning_on, off: A2_reasoning_off}
-    control: "same data"
+    control: "SAME images & n_images/steps; only GT richness (rationale + harder tasks) changes"
     closes_gap: [H2_relational]
-    metrics: [cap_integ_sum, cap_integ_rel, H_count]
-    hypothesis: "rationale is an LLM-attn+mlp signal -> relational/numeric reasoning up (esp. qwen3.5)"
+    target_metrics: [cap_integ_sum, cap_integ_rel, H_count, H_action]
+    transfer_metrics: [cap_kie, cap_text_cer]                  # does reasoning supervision cost extraction?
+    hypothesis: "rationale (LLM attn+mlp) -> relational/numeric/action reasoning up, extraction held"
 
   - id: A3_signal_vs_combined
     question: "Is it the structured signals (spot/reason) that help, or plain task combination?"
@@ -46,13 +74,15 @@ ablations:
     hypothesis: "spot & reason are complementary and beat plain combination"
 
   - id: A4_multilingual
-    question: "Multi-language mix vs single; which language PAIRS transfer?"
+    question: "At EQUAL total samples, which language PAIRS help each other and which interfere?"
     factor: "train mix: {en} {en+es} {en+ja} {ko+en} {en+zh} {all}"
     data_arm: {en: A4_en, en_es: A4_en_es, en_ja: A4_en_ja, ko_en: A4_ko_en,
                en_zh: A4_en_zh, all: A4_all}
-    control: "equal total samples"
-    metrics: [per_language_ned]
-    hypothesis: "related scripts transfer (en-es, ko-en); distant (en-ja) help less/interfere"
+    control: "EQUAL TOTAL SAMPLES across mixes (e.g. 1000/dir vs 500/dir x2) so synergy is comparable"
+    target_metrics: [per_language_ned]
+    transfer_metrics: [en_ned]   # does adding a 2nd language help or HURT EN? (synergy vs interference)
+    analysis: "transfer(L1<-L2) = ned_L1(train L1+L2) - ned_L1(train L1); heatmap of synergistic vs interfering pairs"
+    hypothesis: "related scripts transfer (en-es, ko-en); distant (en-ja) help less or interfere at fixed capacity"
 
   - id: A5_lora_placement
     question: "Which modules to LoRA-adapt for which capability?"

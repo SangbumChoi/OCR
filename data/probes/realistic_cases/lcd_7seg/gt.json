@@ -16,7 +16,7 @@
   "fields_detailed": [
     {
       "key": "reading",
-      "value": "05260",
+      "value": "02113",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -30,7 +30,7 @@
     {
       "question": "What number is on the display?",
       "answers": [
-        "05260"
+        "02113"
       ],
       "answer_type": "special-glyph",
       "metric": "exact",
@@ -86,6 +86,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -96,14 +97,14 @@
     "doc_type_weights": null
   },
   "fields": {
-    "reading": "05260"
+    "reading": "02113"
   },
   "qa": [
     {
       "key": "reading",
       "question": "What number is on the display?",
       "answers": [
-        "05260"
+        "02113"
       ],
       "metric": "exact",
       "answer_type": "special-glyph"

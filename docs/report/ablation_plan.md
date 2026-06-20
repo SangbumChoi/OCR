@@ -8,18 +8,41 @@ control — then **stack the winners** and show a **staircase** of cumulative ga
 *which-module-to-adapt* hypotheses these arms test are laid out in
 [`research_novelty.md`](research_novelty.md).
 
-Target models: **Qwen3.5-0.8B** (strongest genuinely sub-1B) and **LFM2.5-VL-1.6B** (best overall +
-fastest), chosen from the full GPU comparison. The two are carried side-by-side so each ablation's
-effect is read per architecture. Base data: document-parsing/generation pairs (image → structured
-text), augmented per-ablation. Every ablation is scored on the **same evaluation suite** (capability
-probe, custom_eval per-axis, spatial/context signals) so gains are attributable to a capability, not
-a single number.
+Target model: **Qwen3.5-0.8B** (strongest genuinely sub-1B from the full GPU comparison). *LFM2.5-VL
+is dropped for our compute budget.* Base data: synthetic document pairs (image → structured text)
+from the generator, augmented per-ablation.
 
-**Measured baseline gaps the ablations must close** (from the GPU run): *both* — L1 grounding/
-spotting ≈ 0, L4 box-tracking = 0, 180° rotation collapse; *qwen3.5* — H2 relational-compare = 0,
-slow latency; *lfm2.5-vl* — grounding (best but low). The hypotheses mapping each gap to a module +
-ablation arm are in [`research_novelty.md`](research_novelty.md) and visualised side-by-side in
+**Control factor (held fixed across every arm so a delta is attributable to the factor alone):**
+the **number of training images / iterations** (`--count` = #images, `--steps`) and the optimiser/seed
+and eval suite. Most arms keep the *image set fixed* and change only **what GT is read per image**
+(reasoning = capturing the per-image information diversity instead of missing it); **A4** instead
+fixes the **total sample count** and varies the language mix (equal totals → synergy/interference is
+comparable). Every arm is scored on the **whole suite** (capability, spatial, realistic) to expose
+**cross-capability transfer** — e.g. does spotting also help CER/KIE/reasoning? does a 2nd language
+hurt EN? (`scripts/run_ablation.py`).
+
+**A0 — memorization vs understanding (run this first).** Because synthetic data is *infinite*, the
+first experiment separates understanding from template-memorization: train at increasing data scale
+(seed 7) and evaluate on a **held-out set generated with a different seed** (unseen content, same
+distribution; `run_ablation.py --heldout-seed`). Understanding → held-out keeps rising with scale and
+the train/held-out gap stays small; memorization → train→~1.0 while held-out plateaus. **A0's result
+fixes the data scale used by A1–A7.**
+
+**Two synthetic-quality axes we scale** (see [`synthetic_data_dto.md`](synthetic_data_dto.md)):
+*visual diversity* (14 doc types × acquisition/lighting/colour — `D_visual_diverse`) and *annotation
+difficulty* (accountant-style multi-step calc, MRZ field-parse, table-extremes diff, next-action —
+the understanding layer). They are the levers A0 trades off (more diversity vs more count).
+
+**Measured baseline gaps the ablations must close** (qwen3.5, from the GPU run): L1 grounding/spotting
+≈ 0, L4 box-tracking = 0, H2 relational-compare = 0, 180° rotation collapse, slow latency. The
+hypotheses mapping each gap to a module + ablation arm are in
+[`research_novelty.md`](research_novelty.md) and shown in
 [`../../notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb).
+
+> **Spotting coordinate caveat (Qwen3.5-VL).** It smart-resizes the input and emits boxes in the
+> *resized* frame's absolute pixels, so a predicted box is offset/scaled vs our original-pixel GT;
+> the grounding metric rescales it via `metrics.grounding.rescale_box` (using the processor's
+> `image_grid_thw`). Check this before reading A1 grounding numbers.
 
 ## Method: one factor at a time → integrate → staircase
 

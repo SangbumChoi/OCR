@@ -31,10 +31,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        86,
-        97,
-        224,
-        120
+        73,
+        85,
+        239,
+        108
       ],
       "language": "en",
       "script": "latin",
@@ -47,7 +47,7 @@
     {
       "question": "Transcribe the speech bubbles top to bottom, one per line. Answer concisely, no explanation.",
       "answers": [
-        "Are you ready?\nI think so...\nThen let's begin!\nWait — look over there!"
+        "Toward first yard...\nLife yet difficult certain?\nBest peace!\nAnother bag life..."
       ],
       "answer_type": "reading-order",
       "metric": "ned",
@@ -59,18 +59,32 @@
       "key": null
     },
     {
+      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "answers": [
+        "4"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the first speech bubble located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 473x1182 pixels.",
       "answers": [
-        "86,97,224,120;473,1182"
+        "73,85,239,108;473,1182"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the first speech bubble is rendered at [86, 97, 224, 120] on the 473x1182px page.",
+      "rationale": "the first speech bubble is rendered at [73, 85, 239, 108] on the 473x1182px page.",
       "answer_bbox": [
-        86,
-        97,
-        224,
-        120
+        73,
+        85,
+        239,
+        108
       ],
       "languages": [
         "en"
@@ -122,6 +136,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -136,10 +151,10 @@
   },
   "spotting": {
     "bubble_1": [
-      86,
-      97,
-      224,
-      120
+      73,
+      85,
+      239,
+      108
     ]
   },
   "qa": [
@@ -147,26 +162,35 @@
       "key": null,
       "question": "Transcribe the speech bubbles top to bottom, one per line. Answer concisely, no explanation.",
       "answers": [
-        "Are you ready?\nI think so...\nThen let's begin!\nWait — look over there!"
+        "Toward first yard...\nLife yet difficult certain?\nBest peace!\nAnother bag life..."
       ],
       "metric": "ned",
       "answer_type": "reading-order"
     },
     {
       "key": null,
+      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "answers": [
+        "4"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count"
+    },
+    {
+      "key": null,
       "question": "Where is the first speech bubble located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 473x1182 pixels.",
       "answers": [
-        "86,97,224,120;473,1182"
+        "73,85,239,108;473,1182"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the first speech bubble is rendered at [86, 97, 224, 120] on the 473x1182px page."
+      "rationale": "the first speech bubble is rendered at [73, 85, 239, 108] on the 473x1182px page."
     }
   ],
   "reading_order": [
-    "Are you ready?",
-    "I think so...",
-    "Then let's begin!",
-    "Wait — look over there!"
+    "Toward first yard...",
+    "Life yet difficult certain?",
+    "Best peace!",
+    "Another bag life..."
   ]
 }

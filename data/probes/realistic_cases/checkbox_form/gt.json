@@ -17,7 +17,7 @@
   "fields_detailed": [
     {
       "key": "applicant",
-      "value": "Chris Curtis",
+      "value": "Vicki Vega",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -31,10 +31,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        205,
-        170,
-        228
+        142,
+        184,
+        194,
+        211
       ],
       "language": "en",
       "script": "latin",
@@ -47,10 +47,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        237,
-        163,
-        260
+        142,
+        223,
+        183,
+        251
       ],
       "language": "en",
       "script": "latin",
@@ -63,10 +63,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        270,
-        214,
-        293
+        142,
+        262,
+        240,
+        290
       ],
       "language": "en",
       "script": "latin",
@@ -79,10 +79,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        302,
-        219,
-        325
+        142,
+        301,
+        246,
+        329
       ],
       "language": "en",
       "script": "latin",
@@ -95,10 +95,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        382,
-        186,
-        405
+        142,
+        387,
+        211,
+        414
       ],
       "language": "en",
       "script": "latin",
@@ -111,10 +111,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        415,
-        185,
-        437
+        142,
+        426,
+        210,
+        453
       ],
       "language": "en",
       "script": "latin",
@@ -127,10 +127,26 @@
       "value": "",
       "role": "region",
       "bbox": [
-        119,
-        447,
-        193,
-        470
+        142,
+        465,
+        217,
+        493
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "language:Japanese",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        142,
+        504,
+        228,
+        532
       ],
       "language": "en",
       "script": "latin",
@@ -143,7 +159,7 @@
     {
       "question": "Which contact methods are checked? Answer concisely, no explanation.",
       "answers": [
-        "Email, Phone call"
+        "Email, Phone call, Postal mail"
       ],
       "answer_type": "selection",
       "metric": "anls",
@@ -171,16 +187,16 @@
     {
       "question": "Where is the Email option located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "119,205,170,228;875,1241"
+        "142,184,194,211;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the Email option is rendered at [119, 205, 170, 228] on the 875x1241px page.",
+      "rationale": "the Email option is rendered at [142, 184, 194, 211] on the 875x1241px page.",
       "answer_bbox": [
-        119,
-        205,
-        170,
-        228
+        142,
+        184,
+        194,
+        211
       ],
       "languages": [
         "en"
@@ -232,6 +248,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -242,50 +259,56 @@
     "doc_type_weights": null
   },
   "fields": {
-    "applicant": "Chris Curtis"
+    "applicant": "Vicki Vega"
   },
   "spotting": {
     "contact:Email": [
-      119,
-      205,
-      170,
-      228
+      142,
+      184,
+      194,
+      211
     ],
     "contact:SMS": [
-      119,
-      237,
-      163,
-      260
+      142,
+      223,
+      183,
+      251
     ],
     "contact:Phone call": [
-      119,
-      270,
-      214,
-      293
+      142,
+      262,
+      240,
+      290
     ],
     "contact:Postal mail": [
-      119,
-      302,
-      219,
-      325
+      142,
+      301,
+      246,
+      329
     ],
     "language:English": [
-      119,
-      382,
-      186,
-      405
+      142,
+      387,
+      211,
+      414
     ],
     "language:Korean": [
-      119,
-      415,
-      185,
-      437
+      142,
+      426,
+      210,
+      453
     ],
     "language:Spanish": [
-      119,
-      447,
-      193,
-      470
+      142,
+      465,
+      217,
+      493
+    ],
+    "language:Japanese": [
+      142,
+      504,
+      228,
+      532
     ]
   },
   "qa": [
@@ -293,7 +316,7 @@
       "key": null,
       "question": "Which contact methods are checked? Answer concisely, no explanation.",
       "answers": [
-        "Email, Phone call"
+        "Email, Phone call, Postal mail"
       ],
       "metric": "anls",
       "answer_type": "selection"
@@ -311,17 +334,18 @@
       "key": null,
       "question": "Where is the Email option located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "119,205,170,228;875,1241"
+        "142,184,194,211;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the Email option is rendered at [119, 205, 170, 228] on the 875x1241px page."
+      "rationale": "the Email option is rendered at [142, 184, 194, 211] on the 875x1241px page."
     }
   ],
   "selection": {
     "contact": [
       "Email",
-      "Phone call"
+      "Phone call",
+      "Postal mail"
     ],
     "language": [
       "English"

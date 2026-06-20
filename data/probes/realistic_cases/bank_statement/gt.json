@@ -17,7 +17,7 @@
   "fields_detailed": [
     {
       "key": "account",
-      "value": "****2462",
+      "value": "****1780",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -39,13 +39,13 @@
     },
     {
       "key": "closing_balance",
-      "value": "$2144.50",
+      "value": "$561.50",
       "role": "kie-value",
       "bbox": [
-        226,
-        383,
-        297,
-        402
+        190,
+        347,
+        252,
+        366
       ],
       "language": "en",
       "script": "latin",
@@ -58,8 +58,8 @@
     {
       "question": "What is the closing balance? Answer concisely, no explanation.",
       "answers": [
-        "$2144.50",
-        "2144.50"
+        "$561.50",
+        "561.50"
       ],
       "answer_type": "kie",
       "metric": "anls",
@@ -73,16 +73,16 @@
     {
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,172,719,360;875,1241"
+        "42,121,753,339;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the transaction table is rendered at [93, 172, 719, 360] on the 875x1241px page.",
+      "rationale": "the transaction table is rendered at [42, 121, 753, 339] on the 875x1241px page.",
       "answer_bbox": [
-        93,
-        172,
-        719,
-        360
+        42,
+        121,
+        753,
+        339
       ],
       "languages": [
         "en"
@@ -92,17 +92,32 @@
     {
       "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "226,383,297,402;875,1241"
+        "190,347,252,366;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the closing balance is rendered at [226, 383, 297, 402] on the 875x1241px page.",
+      "rationale": "the closing balance is rendered at [190, 347, 252, 366] on the 875x1241px page.",
       "answer_bbox": [
-        226,
-        383,
-        297,
-        402
+        190,
+        347,
+        252,
+        366
       ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "answers": [
+        "812",
+        "812"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812.",
+      "answer_bbox": null,
       "languages": [
         "en"
       ],
@@ -153,6 +168,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -163,16 +179,16 @@
     "doc_type_weights": null
   },
   "fields": {
-    "account": "****2462",
+    "account": "****1780",
     "txns_rows": "6",
-    "closing_balance": "$2144.50"
+    "closing_balance": "$561.50"
   },
   "spotting": {
     "closing_balance": [
-      226,
-      383,
-      297,
-      402
+      190,
+      347,
+      252,
+      366
     ]
   },
   "qa": [
@@ -180,8 +196,8 @@
       "key": null,
       "question": "What is the closing balance? Answer concisely, no explanation.",
       "answers": [
-        "$2144.50",
-        "2144.50"
+        "$561.50",
+        "561.50"
       ],
       "metric": "anls",
       "answer_type": "kie"
@@ -190,22 +206,33 @@
       "key": "txns_region",
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,172,719,360;875,1241"
+        "42,121,753,339;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the transaction table is rendered at [93, 172, 719, 360] on the 875x1241px page."
+      "rationale": "the transaction table is rendered at [42, 121, 753, 339] on the 875x1241px page."
     },
     {
       "key": null,
       "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "226,383,297,402;875,1241"
+        "190,347,252,366;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the closing balance is rendered at [226, 383, 297, 402] on the 875x1241px page."
+      "rationale": "the closing balance is rendered at [190, 347, 252, 366] on the 875x1241px page."
+    },
+    {
+      "key": null,
+      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "answers": [
+        "812",
+        "812"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812."
     }
   ],
-  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>07/11</td><td>Strategize Scalable </td><td>+163.25</td><td>1163.25</td></tr><tr><td>04/26</td><td>Benchmark Leading-Ed</td><td>+597.25</td><td>1760.50</td></tr><tr><td>02/13</td><td>Brand Next-Generatio</td><td>-60.75</td><td>1699.75</td></tr><tr><td>02/14</td><td>Brand Leading-Edge N</td><td>-7.75</td><td>1692.00</td></tr><tr><td>07/02</td><td>Whiteboard Leading-E</td><td>-246.75</td><td>1445.25</td></tr><tr><td>05/26</td><td>Enhance Revolutionar</td><td>+699.25</td><td>2144.50</td></tr></table>"
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>02/03</td><td>Drive Bricks-And-Cli</td><td>+176.25</td><td>1176.25</td></tr><tr><td>11/15</td><td>Embrace Back-End Ini</td><td>-115.75</td><td>1060.50</td></tr><tr><td>12/20</td><td>Re-Intermediate Clic</td><td>+79.25</td><td>1139.75</td></tr><tr><td>12/16</td><td>Matrix Distributed S</td><td>-470.75</td><td>669.00</td></tr><tr><td>09/26</td><td>Aggregate Visionary </td><td>-304.75</td><td>364.25</td></tr><tr><td>07/05</td><td>Whiteboard Strategic</td><td>+197.25</td><td>561.50</td></tr></table>"
 }

@@ -187,6 +187,9 @@ class GenConfig:
     # The OCR GT is free; this is the non-OCR understanding GT that needs no external model.
     emit_understanding: bool = True
 
+    # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
+    jitter: bool = False
+
     # --- A4 multilingual ---
     languages: list[str] = field(default_factory=lambda: ["en"])
     language_weights: dict[str, float] | None = None

@@ -139,8 +139,10 @@ class DocBuilder:
             from .derive import Derivation
             col0 = [str(r[0]) for r in rows] + ([str(footer[0])] if footer else [])
             members = [str(c) for c in header] + col0
+            # pad so the region wraps the whole table (ruled border + the empty right column),
+            # not just the cell-text extent.
             self._derivations.append(Derivation("region", texts=members, label=region,
-                                                key=f"{key}_region"))
+                                                key=f"{key}_region", pad_frac=0.012))
 
     def checkboxes(self, group: str, options: list[tuple[str, bool]], *, cls: str = "") -> None:
         """Selection marks. Registers selection[group]=checked-labels and a box per option label."""
@@ -237,6 +239,7 @@ class DocBuilder:
         base = f"""
         @page {{ size: {self.page}; margin: {self.margin}; }}
         * {{ box-sizing: border-box; }}
+        html, body {{ margin:0; padding:0; }}  /* drop UA 8px body margin: a page-tall card (ID/passport) would otherwise overflow to page 2 and lose its bottom strip (e.g. the MRZ) */
         body {{ font-family:'Liberation Sans',sans-serif; color:#111; font-size:11px; }}
         h1,h2,h3 {{ margin:0 0 6px; }}
         table {{ border-collapse:collapse; width:100%; font-size:10px; }}

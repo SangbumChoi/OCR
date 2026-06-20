@@ -18,7 +18,7 @@
   "fields_detailed": [
     {
       "key": "name",
-      "value": "CHRIS CURTIS",
+      "value": "DANIEL SMITH",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -29,13 +29,13 @@
     },
     {
       "key": "doc_no",
-      "value": "177777868",
+      "value": "204791382",
       "role": "kie-value",
       "bbox": [
-        138,
-        111,
-        224,
-        130
+        118,
+        93,
+        182,
+        110
       ],
       "language": "en",
       "script": "latin",
@@ -45,7 +45,7 @@
     },
     {
       "key": "dob",
-      "value": "08 MAY 1997",
+      "value": "21 FEB 1964",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -67,7 +67,7 @@
     },
     {
       "key": "mrz1",
-      "value": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
+      "value": "P<USASMITH<<DANIEL<<<<<<<<<<<<<<<<<<<<<<<<<<",
       "role": "mrz",
       "bbox": null,
       "language": "en",
@@ -78,7 +78,7 @@
     },
     {
       "key": "mrz2",
-      "value": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<",
+      "value": "204791382<4USA537219M310614<<<<<<<<<<<<<<00<",
       "role": "mrz",
       "bbox": null,
       "language": "en",
@@ -92,7 +92,7 @@
     {
       "question": "What is the document number? Answer concisely, no explanation.",
       "answers": [
-        "177777868"
+        "204791382"
       ],
       "answer_type": "kie",
       "metric": "ned",
@@ -106,7 +106,7 @@
     {
       "question": "What is the cardholder's full name? Answer concisely, no explanation.",
       "answers": [
-        "CHRIS CURTIS"
+        "DANIEL SMITH"
       ],
       "answer_type": "kie",
       "metric": "ned",
@@ -118,18 +118,32 @@
       "key": null
     },
     {
+      "question": "Extract only the surname from the MRZ (the part right after the country code, before '<<'). Answer concisely, no explanation.",
+      "answers": [
+        "SMITH"
+      ],
+      "answer_type": "H-extract-strict",
+      "metric": "exact",
+      "rationale": "MRZ line 1 encodes 'P<USASMITH<<...'; the surname before '<<' is SMITH.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "138,111,224,130;532,343"
+        "118,93,182,110;532,343"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the document number is rendered at [138, 111, 224, 130] on the 532x343px page.",
+      "rationale": "the document number is rendered at [118, 93, 182, 110] on the 532x343px page.",
       "answer_bbox": [
-        138,
-        111,
-        224,
-        130
+        118,
+        93,
+        182,
+        110
       ],
       "languages": [
         "en"
@@ -139,16 +153,16 @@
     {
       "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "48,308,528,343;532,343"
+        "35,200,440,236;532,343"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the machine-readable zone (MRZ) is rendered at [48, 308, 528, 343] on the 532x343px page.",
+      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 200, 440, 236] on the 532x343px page.",
       "answer_bbox": [
-        48,
-        308,
-        528,
-        343
+        35,
+        200,
+        440,
+        236
       ],
       "languages": [
         "en"
@@ -200,6 +214,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -210,19 +225,19 @@
     "doc_type_weights": null
   },
   "fields": {
-    "name": "CHRIS CURTIS",
-    "doc_no": "177777868",
-    "dob": "08 MAY 1997",
+    "name": "DANIEL SMITH",
+    "doc_no": "204791382",
+    "dob": "21 FEB 1964",
     "expiry": "14 JUN 2031",
-    "mrz1": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
-    "mrz2": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<"
+    "mrz1": "P<USASMITH<<DANIEL<<<<<<<<<<<<<<<<<<<<<<<<<<",
+    "mrz2": "204791382<4USA537219M310614<<<<<<<<<<<<<<00<"
   },
   "spotting": {
     "doc_no": [
-      138,
-      111,
-      224,
-      130
+      118,
+      93,
+      182,
+      110
     ]
   },
   "qa": [
@@ -230,7 +245,7 @@
       "key": null,
       "question": "What is the document number? Answer concisely, no explanation.",
       "answers": [
-        "177777868"
+        "204791382"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -239,30 +254,40 @@
       "key": null,
       "question": "What is the cardholder's full name? Answer concisely, no explanation.",
       "answers": [
-        "CHRIS CURTIS"
+        "DANIEL SMITH"
       ],
       "metric": "ned",
       "answer_type": "kie"
     },
     {
       "key": null,
+      "question": "Extract only the surname from the MRZ (the part right after the country code, before '<<'). Answer concisely, no explanation.",
+      "answers": [
+        "SMITH"
+      ],
+      "metric": "exact",
+      "answer_type": "H-extract-strict",
+      "rationale": "MRZ line 1 encodes 'P<USASMITH<<...'; the surname before '<<' is SMITH."
+    },
+    {
+      "key": null,
       "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "138,111,224,130;532,343"
+        "118,93,182,110;532,343"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the document number is rendered at [138, 111, 224, 130] on the 532x343px page."
+      "rationale": "the document number is rendered at [118, 93, 182, 110] on the 532x343px page."
     },
     {
       "key": null,
       "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "48,308,528,343;532,343"
+        "35,200,440,236;532,343"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the machine-readable zone (MRZ) is rendered at [48, 308, 528, 343] on the 532x343px page."
+      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 200, 440, 236] on the 532x343px page."
     }
   ],
   "probes": [

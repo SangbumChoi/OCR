@@ -113,8 +113,14 @@ def _op_count(ns):  # count of values (arithmetic counterpart of count_occurrenc
     return float(len(ns)), f"there are {len(ns)} value(s)"
 
 
+def _op_diff(ns):   # difference of the extremes (e.g. top vs bottom row of a column)
+    r = max(ns) - min(ns)
+    return r, f"{_fmt(max(ns))} − {_fmt(min(ns))} = {_fmt(r)}"
+
+
 _OPS: dict[str, Callable[[list[float]], tuple[float, str]]] = {
-    "sum": _op_sum, "max": _op_max, "min": _op_min, "mean": _op_mean, "count": _op_count,
+    "sum": _op_sum, "max": _op_max, "min": _op_min, "mean": _op_mean,
+    "count": _op_count, "diff": _op_diff,
 }
 
 
@@ -136,10 +142,21 @@ class Derivation:
     occurrence: int = 0
     key: str | None = None
     answer_type: str | None = None       # override the default readable axis tag
+    pad_frac: float = 0.0                # expand the resolved box by this fraction of the long side
+                                         # (used for regions so the box wraps the whole table, borders included)
 
 
 _DEFAULT_TYPE = {"locate": "L1-locate", "count": "H-count",
                  "region": "L1-region", "aggregate": "H1-aggregate"}
+
+
+def _pad(box: BBox, frac: float, W: int, H: int) -> BBox:
+    """Grow a box outward by frac*max(W,H), clamped to the image — so a region wraps the table
+    (its ruled border / empty columns), not just the text extent."""
+    if not frac:
+        return box
+    p = round(frac * max(W, H))
+    return BBox(max(0, box.x1 - p), max(0, box.y1 - p), min(W, box.x2 + p), min(H, box.y2 + p))
 
 
 def resolve(rr, d: Derivation) -> dict | None:
@@ -155,6 +172,7 @@ def resolve(rr, d: Derivation) -> dict | None:
         box = locate(rr, d.text, d.occurrence) if d.kind == "locate" else region_box(rr, d.texts or [])
         if box is None:
             return None
+        box = _pad(box, d.pad_frac, W, H)
         target = d.label or (f"the text '{d.text}'" if d.kind == "locate" else "the region")
         q = (f"Where is {target} located? Return its bounding box as [x1, y1, x2, y2] in pixel "
              f"coordinates. The image is {W}x{H} pixels.")

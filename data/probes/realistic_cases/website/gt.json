@@ -18,7 +18,7 @@
   "fields_detailed": [
     {
       "key": "brand",
-      "value": "Gould-Foster",
+      "value": "Preston,",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -29,7 +29,7 @@
     },
     {
       "key": "nav_items",
-      "value": "['Product', 'Pricing', 'Docs', 'Sign in']",
+      "value": "['Sign in', 'Product', 'Contact', 'Login', 'Customers', 'Sign in']",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -40,7 +40,7 @@
     },
     {
       "key": "headline",
-      "value": "Ship documents, not paperwork.",
+      "value": "Documents in, data out.",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -51,7 +51,7 @@
     },
     {
       "key": "cta",
-      "value": "Start free trial",
+      "value": "Get started",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -65,7 +65,7 @@
       "value": "",
       "role": "region",
       "bbox": [
-        1673,
+        1701,
         98,
         1825,
         125
@@ -81,7 +81,7 @@
     {
       "question": "List the navigation menu items in order. Answer concisely, no explanation.",
       "answers": [
-        "Product, Pricing, Docs, Sign in"
+        "Sign in, Product, Contact, Login, Customers, Sign in"
       ],
       "answer_type": "ui",
       "metric": "ned",
@@ -95,7 +95,7 @@
     {
       "question": "What is the main headline? Answer concisely, no explanation.",
       "answers": [
-        "Ship documents, not paperwork."
+        "Documents in, data out."
       ],
       "answer_type": "ui",
       "metric": "ned",
@@ -107,15 +107,30 @@
       "key": null
     },
     {
+      "question": "What is the primary action this page wants the visitor to take? Answer concisely, no explanation.",
+      "answers": [
+        "Get started",
+        "get started"
+      ],
+      "answer_type": "H-action",
+      "metric": "anls",
+      "rationale": "The prominent call-to-action button reads 'Get started', so that is the next action.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the call-to-action button located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
       "answers": [
-        "1673,98,1825,125;2000,1407"
+        "1701,98,1825,125;2000,1407"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the call-to-action button is rendered at [1673, 98, 1825, 125] on the 2000x1407px page.",
+      "rationale": "the call-to-action button is rendered at [1701, 98, 1825, 125] on the 2000x1407px page.",
       "answer_bbox": [
-        1673,
+        1701,
         98,
         1825,
         125
@@ -128,15 +143,15 @@
     {
       "question": "Where is the feature cards located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
       "answers": [
-        "191,577,1403,600;2000,1407"
+        "191,577,1408,600;2000,1407"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the feature cards is rendered at [191, 577, 1403, 600] on the 2000x1407px page.",
+      "rationale": "the feature cards is rendered at [191, 577, 1408, 600] on the 2000x1407px page.",
       "answer_bbox": [
         191,
         577,
-        1403,
+        1408,
         600
       ],
       "languages": [
@@ -189,6 +204,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -199,14 +215,14 @@
     "doc_type_weights": null
   },
   "fields": {
-    "brand": "Gould-Foster",
-    "nav_items": "['Product', 'Pricing', 'Docs', 'Sign in']",
-    "headline": "Ship documents, not paperwork.",
-    "cta": "Start free trial"
+    "brand": "Preston,",
+    "nav_items": "['Sign in', 'Product', 'Contact', 'Login', 'Customers', 'Sign in']",
+    "headline": "Documents in, data out.",
+    "cta": "Get started"
   },
   "spotting": {
     "cta_button": [
-      1673,
+      1701,
       98,
       1825,
       125
@@ -217,7 +233,7 @@
       "key": null,
       "question": "List the navigation menu items in order. Answer concisely, no explanation.",
       "answers": [
-        "Product, Pricing, Docs, Sign in"
+        "Sign in, Product, Contact, Login, Customers, Sign in"
       ],
       "metric": "ned",
       "answer_type": "ui"
@@ -226,30 +242,41 @@
       "key": null,
       "question": "What is the main headline? Answer concisely, no explanation.",
       "answers": [
-        "Ship documents, not paperwork."
+        "Documents in, data out."
       ],
       "metric": "ned",
       "answer_type": "ui"
     },
     {
       "key": null,
+      "question": "What is the primary action this page wants the visitor to take? Answer concisely, no explanation.",
+      "answers": [
+        "Get started",
+        "get started"
+      ],
+      "metric": "anls",
+      "answer_type": "H-action",
+      "rationale": "The prominent call-to-action button reads 'Get started', so that is the next action."
+    },
+    {
+      "key": null,
       "question": "Where is the call-to-action button located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
       "answers": [
-        "1673,98,1825,125;2000,1407"
+        "1701,98,1825,125;2000,1407"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the call-to-action button is rendered at [1673, 98, 1825, 125] on the 2000x1407px page."
+      "rationale": "the call-to-action button is rendered at [1701, 98, 1825, 125] on the 2000x1407px page."
     },
     {
       "key": null,
       "question": "Where is the feature cards located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
       "answers": [
-        "191,577,1403,600;2000,1407"
+        "191,577,1408,600;2000,1407"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the feature cards is rendered at [191, 577, 1403, 600] on the 2000x1407px page."
+      "rationale": "the feature cards is rendered at [191, 577, 1408, 600] on the 2000x1407px page."
     }
   ],
   "reading_order": [

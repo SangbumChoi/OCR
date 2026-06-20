@@ -27,6 +27,9 @@ base:
   emit_rationale: true      # A2: include chain-of-thought rationales
   emit_understanding: true  # model-free understanding GT (where / how-many / totals) from derive.py
 
+  # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
+  jitter: true
+
   # --- A4 multilingual mix (real-world script distribution) ---
   languages: [en]
   language_weights: null    # e.g. {en: 0.5, es: 0.2, ko: 0.15, ja: 0.1, zh: 0.05}
@@ -79,6 +82,29 @@ ablation_overrides:
   # Understanding layer (model-free where/how-many/totals) on vs off — isolates its contribution.
   U_understanding_off: {emit_understanding: false}
   U_understanding_on:  {emit_understanding: true}
+
+  # --- the two synthetic-quality axes we scale (see docs/report/synthetic_data_dto.md) ---
+  # (1) VISUAL DIVERSITY — image kinds (14 doc types, fixed) x acquisition/lighting/colour. This arm
+  #     randomises the degradation preset per doc (scan/photo/fax/historical) -> varied lighting,
+  #     colour cast, contrast; degrade_prob=1 so every doc gets a degraded copy.
+  D_visual_diverse:
+    degrade_prob: 1.0
+    degrade_presets:
+      invoice: [scan, photo, fax]
+      id_card: [photo, scan]
+      bank_statement: [scan, photo, fax]
+      cheque: [scan, photo]
+      prescription: [fax, photo, historical]
+      checkbox_form: [scan, fax]
+      redacted: [scan, fax]
+      website: [screenshot]
+      mobile_app: [screenshot]
+      pdf_paper: [scan, photo]
+      ancient: [historical, fax]
+  # (2) ANNOTATION DIFFICULTY — harder GT (multi-step accounting, MRZ field-parse, extremes diff,
+  #     next-action) is always emitted with the understanding layer; toggle it as a whole here.
+  D_difficulty_on:  {emit_understanding: true,  emit_rationale: true}
+  D_difficulty_off: {emit_understanding: false, emit_rationale: false}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}
