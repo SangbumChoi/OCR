@@ -115,16 +115,16 @@
     {
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,274,717,405;875,1241"
+        "78,259,732,420;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the line-item table is rendered at [93, 274, 717, 405] on the 875x1241px page.",
+      "rationale": "the line-item table is rendered at [78, 259, 732, 420] on the 875x1241px page.",
       "answer_bbox": [
-        93,
-        274,
-        717,
-        405
+        78,
+        259,
+        732,
+        420
       ],
       "languages": [
         "en"
@@ -279,11 +279,11 @@
       "key": "lines_region",
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,274,717,405;875,1241"
+        "78,259,732,420;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the line-item table is rendered at [93, 274, 717, 405] on the 875x1241px page."
+      "rationale": "the line-item table is rendered at [78, 259, 732, 420] on the 875x1241px page."
     },
     {
       "key": null,

@@ -51,8 +51,9 @@ run() {  # run <model> <benchmark.jsonl>
 
 echo "== plan: $TOTAL experiments  (chat ${#CHAT[@]}x${CHAT_BENCHES}, paddle ${#PADDLE[@]}x${PADDLE_BENCHES}, new ${#NEW[@]}x${NEW_BENCHES}) =="
 
-echo "== deps for the custom set (CJK fonts + QR/barcode) =="
-(apt-get -qq update && apt-get -qq install -y fonts-noto-cjk) >/dev/null 2>&1 || true
+echo "== deps for the custom set (CJK/Arabic/handwriting fonts + QR/barcode) =="
+(apt-get -qq update && apt-get -qq install -y fonts-noto-cjk fonts-noto-core fonts-hosny-amiri \
+    fonts-tlwg-purisa fonts-ebgaramond fonts-liberation && fc-cache -f) >/dev/null 2>&1 || true
 pip -q install qrcode python-barcode >/dev/null 2>&1 || true
 
 echo "== probes =="

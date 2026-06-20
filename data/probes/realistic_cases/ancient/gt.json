@@ -38,14 +38,14 @@
       "reading_index": null
     },
     {
-      "key": "col_right",
+      "key": "first_glyph",
       "value": "",
       "role": "region",
       "bbox": [
-        360,
-        137,
-        548,
-        204
+        390,
+        162,
+        440,
+        234
       ],
       "language": "en",
       "script": "latin",
@@ -70,18 +70,18 @@
       "key": null
     },
     {
-      "question": "Where is the right-hand column located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
+      "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "360,137,548,204;709,886"
+        "95,90,173,127;709,886"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the right-hand column is rendered at [360, 137, 548, 204] on the 709x886px page.",
+      "rationale": "the title is rendered at [95, 90, 173, 127] on the 709x886px page.",
       "answer_bbox": [
-        360,
-        137,
-        548,
-        204
+        95,
+        90,
+        173,
+        127
       ],
       "languages": [
         "en"
@@ -147,11 +147,11 @@
     "reading_direction": "vertical-rtl"
   },
   "spotting": {
-    "col_right": [
-      360,
-      137,
-      548,
-      204
+    "first_glyph": [
+      390,
+      162,
+      440,
+      234
     ]
   },
   "qa": [
@@ -166,13 +166,13 @@
     },
     {
       "key": null,
-      "question": "Where is the right-hand column located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
+      "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "360,137,548,204;709,886"
+        "95,90,173,127;709,886"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the right-hand column is rendered at [360, 137, 548, 204] on the 709x886px page."
+      "rationale": "the title is rendered at [95, 90, 173, 127] on the 709x886px page."
     }
   ]
 }

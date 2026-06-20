@@ -73,16 +73,16 @@
     {
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,172,719,360;875,1241"
+        "78,157,734,375;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the transaction table is rendered at [93, 172, 719, 360] on the 875x1241px page.",
+      "rationale": "the transaction table is rendered at [78, 157, 734, 375] on the 875x1241px page.",
       "answer_bbox": [
-        93,
-        172,
-        719,
-        360
+        78,
+        157,
+        734,
+        375
       ],
       "languages": [
         "en"
@@ -190,11 +190,11 @@
       "key": "txns_region",
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "93,172,719,360;875,1241"
+        "78,157,734,375;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the transaction table is rendered at [93, 172, 719, 360] on the 875x1241px page."
+      "rationale": "the transaction table is rendered at [78, 157, 734, 375] on the 875x1241px page."
     },
     {
       "key": null,

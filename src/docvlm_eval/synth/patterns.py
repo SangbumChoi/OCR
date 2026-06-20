@@ -139,8 +139,10 @@ class DocBuilder:
             from .derive import Derivation
             col0 = [str(r[0]) for r in rows] + ([str(footer[0])] if footer else [])
             members = [str(c) for c in header] + col0
+            # pad so the region wraps the whole table (ruled border + the empty right column),
+            # not just the cell-text extent.
             self._derivations.append(Derivation("region", texts=members, label=region,
-                                                key=f"{key}_region"))
+                                                key=f"{key}_region", pad_frac=0.012))
 
     def checkboxes(self, group: str, options: list[tuple[str, bool]], *, cls: str = "") -> None:
         """Selection marks. Registers selection[group]=checked-labels and a box per option label."""

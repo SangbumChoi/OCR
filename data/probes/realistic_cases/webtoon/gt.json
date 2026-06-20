@@ -59,6 +59,20 @@
       "key": null
     },
     {
+      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "answers": [
+        "4"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the first speech bubble located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 473x1182 pixels.",
       "answers": [
         "86,97,224,120;473,1182"
@@ -151,6 +165,15 @@
       ],
       "metric": "ned",
       "answer_type": "reading-order"
+    },
+    {
+      "key": null,
+      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "answers": [
+        "4"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count"
     },
     {
       "key": null,

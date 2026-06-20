@@ -323,6 +323,7 @@ def case_webtoon(do_degrade):
     b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
          metric="ned", answer_type="reading-order")
     b.ask_where(lines[0], label="the first speech bubble")
+    b.qa("How many panels are in the comic?", str(len(lines)), metric="exact", answer_type="H-count")
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -381,26 +382,31 @@ def case_cheque(do_degrade):
 
 def case_ancient(do_degrade):
     poem = "山重水複疑無路"
+    cols = [poem[:4], poem[4:]]      # right-to-left columns; each stacked top->bottom
+    # Stack characters one-per-line (WeasyPrint ignores writing-mode:vertical-rl), so it renders as a
+    # true vertical classical manuscript. row-reverse puts the first column on the RIGHT.
     css = """
     @page{ size:120mm 150mm; margin:14mm;}
-    body{ font-family:'Noto Serif CJK SC',serif; background:#efe7d2;}
-    h2{ font-family:'EB Garamond',serif; color:#5a4a2a;}
-    .wrap{ display:flex; flex-direction:row-reverse; gap:10mm; justify-content:center;}
-    .col{ writing-mode:vertical-rl; font-size:30px; line-height:1.6; color:#2a1f12;}
+    body{ font-family:'Noto Serif CJK SC','Noto Sans CJK SC',serif; background:#efe7d2;}
+    h2{ font-family:'EB Garamond','Noto Serif CJK SC',serif; color:#5a4a2a;}
+    .wrap{ display:flex; flex-direction:row-reverse; gap:12mm; justify-content:center; margin-top:6mm;}
+    .col{ font-size:32px; line-height:1.45; color:#2a1f12; text-align:center; writing-mode:vertical-rl;}
+    .col span{ display:block; }      /* one glyph per line -> vertical column */
     """
     b = DocBuilder("ancient manuscript",
                    ["direction(vertical)", "language(classical)", "degradation(fade/stain)"],
                    "NED + robustness", page="120mm 150mm", margin="14mm", css=css)
     b.title("古文書 — Classical manuscript", level=2)
-    b.raw(f"<div class=wrap><div class=col>{esc(poem[:4])}</div>"
-          f"<div class=col>{esc(poem[4:])}</div></div>")
-    b.spot("col_right", poem[:4])
+    body = "".join("<div class=col>" + "".join(f"<span>{esc(c)}</span>" for c in col) + "</div>"
+                   for col in cols)
+    b.raw(f"<div class=wrap>{body}</div>")
+    b.spot("first_glyph", poem[0])   # a single glyph is reliably searchable (a stacked column isn't)
     b.fields["transcript"] = poem
     b.fields["reading_direction"] = "vertical-rtl"
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
-    b.ask_where(poem[:4], label="the right-hand column")
+    b.ask_where("古文書", label="the title")
     emit("ancient", b, "historical", do_degrade)
 
 
@@ -482,7 +488,12 @@ def case_mobile_app(do_degrade):
          metric="ned", answer_type="reading-order")
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
     b.ask_where(msgs[0][1], label="the first chat message")
-    b.ask_count("INV-2025-0042")
+    # diverse / contextual tasks: how many turns, and what the conversation is about
+    b.qa("How many messages are in the conversation?", str(len(msgs)), metric="exact",
+         answer_type="H-count")
+    b.qa("What is the conversation about?", ["invoice", "the invoice", "an invoice"],
+         metric="anls", answer_type="H-comprehension",
+         rationale="The user asks if their invoice is ready and to email it -> the topic is the invoice.")
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
