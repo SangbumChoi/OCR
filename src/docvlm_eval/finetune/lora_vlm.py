@@ -82,14 +82,14 @@ class LoraVLMConfig:
     learning_rate: float = 1e-4
     epochs: int = 1
     max_steps: int | None = None
-    batch_size: int = 1                    # micro-batch (one image/forward); effective batch = grad_accum
+    batch_size: int = 2                    # micro-batch (images/forward); effective batch = bs * grad_accum
     grad_accum: int = 8
     dtype: str = "bfloat16"
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
-    # --- OOM controls (a single full-page doc -> ~1000+ vision tokens dominates memory, not batch) ---
+    # --- OOM / throughput controls (a single full-page doc -> ~1000+ vision tokens dominates memory) ---
     grad_checkpointing: bool = True        # trade compute for ~big activation-memory savings
-    max_image_long_side: int | None = 1024 # downscale the image's long side before the processor
+    max_image_long_side: int | None = 768  # downscale the image's long side before the processor
                                            # (caps vision-token count; None = native resolution)
     # --- per-epoch logging / Weights & Biases (optional; no-op if unset or wandb missing) ---
     wandb_project: str | None = None       # set -> log loss + per-epoch eval metrics to W&B
@@ -264,23 +264,34 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         def __len__(self): return len(rows)
         def __getitem__(self, i): return rows[i]
 
+    if getattr(proc, "tokenizer", None) is not None:
+        proc.tokenizer.padding_side = "right"   # so each sample's prompt span is at [0:prompt_len]
+
     def collate(batch):
-        b = batch[0]   # batch_size=1 keeps the variable image sizes simple
-        img = _cap_image(Image.open(b["image_path"]).convert("RGB"), cfg.max_image_long_side)
-        tgt = _target_text(b) if cfg.use_rationale else b["answers"][0]
-        user = [{"role": "user", "content": [{"type": "image", "image": img},
-                                             {"type": "text", "text": b["question"]}]}]
-        full = proc.apply_chat_template(
-            user + [{"role": "assistant", "content": [{"type": "text", "text": tgt}]}],
-            tokenize=True, return_dict=True, return_tensors="pt")
-        prompt = proc.apply_chat_template(user, add_generation_prompt=True, tokenize=True,
-                                          return_dict=True, return_tensors="pt")
+        # batched VLM collate: one processor call over all conversations (pads input_ids/attention_mask
+        # and stacks pixel_values), then mask each sample's PROMPT span and the padding in the labels.
+        convs_full, prompt_lens = [], []
+        for b in batch:
+            img = _cap_image(Image.open(b["image_path"]).convert("RGB"), cfg.max_image_long_side)
+            tgt = _target_text(b) if cfg.use_rationale else b["answers"][0]
+            user = [{"role": "user", "content": [{"type": "image", "image": img},
+                                                 {"type": "text", "text": b["question"]}]}]
+            convs_full.append(user + [{"role": "assistant", "content": [{"type": "text", "text": tgt}]}])
+            p = proc.apply_chat_template(user, add_generation_prompt=True, tokenize=True,
+                                         return_dict=True, return_tensors="pt")
+            prompt_lens.append(int(p["input_ids"].shape[1]))
+        full = proc.apply_chat_template(convs_full, tokenize=True, return_dict=True,
+                                        return_tensors="pt", padding=True)
         labels = full["input_ids"].clone()
-        labels[:, : prompt["input_ids"].shape[1]] = -100      # supervise only the answer span
+        for i, pl in enumerate(prompt_lens):
+            labels[i, :pl] = -100                              # supervise only the answer span
+        am = full.get("attention_mask")
+        if am is not None:
+            labels[am == 0] = -100                             # ignore right-padding
         full["labels"] = labels
         return _to_model(full, device, dt)                    # cast pixel_values -> model dtype
 
-    dl = DataLoader(_DS(), batch_size=1, shuffle=True, collate_fn=collate)
+    dl = DataLoader(_DS(), batch_size=max(1, cfg.batch_size), shuffle=True, collate_fn=collate)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
     cap = cfg.max_steps or float("inf")               # optional hard step cap (control factor)
     run = _wandb_init(cfg)
@@ -293,7 +304,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     import time
     steps_per_epoch = len(dl)
     total = int(min(cap, cfg.epochs * steps_per_epoch))
-    print(f"[lora_vlm.train] {len(rows)} samples x {cfg.epochs} epochs = {total} micro-steps "
+    print(f"[lora_vlm.train] {len(rows)} samples, bs={cfg.batch_size} x {cfg.epochs} epochs = {total} steps "
           f"(grad_accum={cfg.grad_accum} -> ~{max(total // cfg.grad_accum, 1)} optimizer steps) | "
           f"img_cap={cfg.max_image_long_side} grad_ckpt={cfg.grad_checkpointing}", flush=True)
     t0 = time.time()

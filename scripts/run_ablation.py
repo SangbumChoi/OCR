@@ -90,7 +90,8 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                 output_dir=f"outputs/{model}/A0_n{n}",
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}A0-{model}-n{n}",
-                grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils),
+                grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
+                batch_size=args.batch_size),
                 eval_specs=[("train", train_jsonl), ("heldout", test_jsonl)])
             train_s, held_s = last["train"], last["heldout"]   # final-epoch eval (no model reload)
             ts, hs = train_s.get("score"), held_s.get("score")
@@ -134,10 +135,13 @@ def main() -> None:
                         "Omit to train without logging.")
     p.add_argument("--wandb-run-prefix", default="",
                    help="prefix for the W&B run name (run = <prefix><arm>-<model>[-n<size>])")
-    # --- OOM controls (micro-batch is fixed at 1; a single full-page doc dominates memory) ---
-    p.add_argument("--max-image-long-side", type=int, default=1024,
+    # --- throughput / OOM controls ---
+    p.add_argument("--batch-size", type=int, default=2,
+                   help="micro-batch (images/forward). LFM at 768px uses ~5GB on a T4 -> bs=2 fits; "
+                        "raise to use more VRAM, lower to 1 if OOM.")
+    p.add_argument("--max-image-long-side", type=int, default=768,
                    help="downscale each image's long side before the processor (caps vision tokens = "
-                        "the main OOM lever). Lower to 768/640 if a T4 still OOMs; 0 = native res.")
+                        "the main OOM/speed lever). Lower to 640 if OOM; 0 = native res.")
     p.add_argument("--no-grad-ckpt", action="store_true",
                    help="disable gradient checkpointing (faster but much more activation memory)")
     args = p.parse_args()
@@ -195,7 +199,8 @@ def main() -> None:
                 max_steps=args.steps, output_dir=f"outputs/{model}/{args.arm}_{args.placement}",
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}",
-                grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils),
+                grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
+                batch_size=args.batch_size),
                 eval_specs=[("train", train_jsonl)])
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
             payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement},
