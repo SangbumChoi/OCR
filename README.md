@@ -22,7 +22,7 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 > (type × stressor matrix — webtoon/ID/historical/LCD … → which metric/axis each needs)
 > 💡 **Cross-model insights (auto):** [`docs/report/insights.md`](docs/report/insights.md)
 > (capability leaders · reasoning-emergence · grounding gap · efficiency frontier · OOV fallback)
-> 🪜 **Part-2 ablation plan:** [`docs/report/part2_ablation_plan.md`](docs/report/part2_ablation_plan.md)
+> 🪜 **Ablation plan:** [`docs/report/ablation_plan.md`](docs/report/ablation_plan.md)
 > (spotting/reasoning/multilingual/LoRA-placement/HPO/preprocessing ablations → cumulative staircase)
 > 🔬 **Research novelty & open questions:** [`docs/report/research_novelty.md`](docs/report/research_novelty.md)
 > (lit-grounded gaps the probes/ablations here can uniquely test at ≤1B)

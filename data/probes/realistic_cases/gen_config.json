@@ -10,6 +10,7 @@
   "small_text_px": 10.0,
   "emit_spotting": true,
   "emit_rationale": true,
+  "emit_understanding": true,
   "languages": [
     "en"
   ],

@@ -94,6 +94,44 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the paper title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
+      "answers": [
+        "301,119,939,145;1241,1754"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the paper title is rendered at [301, 119, 939, 145] on the 1241x1754px page.",
+      "answer_bbox": [
+        301,
+        119,
+        939,
+        145
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Where is the figure located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
+      "answers": [
+        "789,361,991,373;1241,1754"
+      ],
+      "answer_type": "L1-region",
+      "metric": "grounding",
+      "rationale": "the figure is rendered at [789, 361, 991, 373] on the 1241x1754px page.",
+      "answer_bbox": [
+        789,
+        361,
+        991,
+        373
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -113,7 +151,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -123,7 +161,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 763,
+    "seed": 274,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -139,6 +177,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -179,6 +218,26 @@
       ],
       "metric": "ned",
       "answer_type": "reading-order"
+    },
+    {
+      "key": null,
+      "question": "Where is the paper title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
+      "answers": [
+        "301,119,939,145;1241,1754"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the paper title is rendered at [301, 119, 939, 145] on the 1241x1754px page."
+    },
+    {
+      "key": null,
+      "question": "Where is the figure located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
+      "answers": [
+        "789,361,991,373;1241,1754"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-region",
+      "rationale": "the figure is rendered at [789, 361, 991, 373] on the 1241x1754px page."
     }
   ],
   "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",

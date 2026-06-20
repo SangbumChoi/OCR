@@ -53,6 +53,7 @@ class DocBuilder:
         self.qas: list[dict] = []
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
+        self._derivations: list = []   # model-free understanding-GT requests (resolved in build)
         # per-field metadata consumed by DocSample.from_builder_gt (A4 language, A7 small-text)
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
@@ -110,11 +111,14 @@ class DocBuilder:
 
     def table(self, header: list[str], rows: list[list[str]], *, key: str = "table",
               footer: list[str] | None = None, spot_cells: list[tuple[int, int]] | None = None,
-              cls: str = "") -> None:
+              cls: str = "", region: str | None = "the table") -> None:
         """Render an HTML table AND store the TEDS-gold HTML (identical structure by construction).
 
         spot_cells: list of (row, col) into the *body* rows to register a spotting box for, keyed
         ``{key}_r{row}c{col}`` on the cell text.
+        region: if given (default "the table"), auto-register an L1-region derivation that bounds the
+        whole table — derived from the header row + the last body row (the two short, reliable rows
+        that define the rectangle's top and bottom), first-instance to avoid stray matches.
         """
         def row(cells, tag):
             return "<tr>" + "".join(f"<{tag}>{esc(c)}</{tag}>" for c in cells) + "</tr>"
@@ -127,6 +131,16 @@ class DocBuilder:
         for (r, c) in (spot_cells or []):
             if 0 <= r < len(rows) and 0 <= c < len(rows[r]):
                 self._spot(f"{key}_r{r}c{c}", rows[r][c])
+        if region and rows:
+            # region = header row (top edge + full width) ∪ first column (left edge + full height);
+            # union of top-right + bottom-left corners gives the whole table rectangle. We avoid the
+            # last *row* because short cells there (e.g. a Qty "1") match digits elsewhere on the page
+            # and would drag the box outside the table.
+            from .derive import Derivation
+            col0 = [str(r[0]) for r in rows] + ([str(footer[0])] if footer else [])
+            members = [str(c) for c in header] + col0
+            self._derivations.append(Derivation("region", texts=members, label=region,
+                                                key=f"{key}_region"))
 
     def checkboxes(self, group: str, options: list[tuple[str, bool]], *, cls: str = "") -> None:
         """Selection marks. Registers selection[group]=checked-labels and a box per option label."""
@@ -189,6 +203,32 @@ class DocBuilder:
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})
 
+    # -- model-free UNDERSTANDING ground truth (resolved from the render at build time) -----
+    # These derive non-OCR GT — where / how-many / totals — plus the reasoning that justifies it,
+    # with no external model (see docvlm_eval.synth.derive). Each is gold by construction.
+    def ask_where(self, text: str, *, label: str | None = None, occurrence: int = 0,
+                  key: str | None = None) -> None:
+        """'Where is <text>?' → its bounding box (derived from the rendered PDF)."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("locate", text=text, label=label,
+                                            occurrence=occurrence, key=key))
+
+    def ask_count(self, text: str, *, key: str | None = None) -> None:
+        """'How many times does <text> appear?' → exact occurrence count + the hit positions."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("count", text=text, key=key))
+
+    def ask_region(self, label: str, texts: list[str], *, key: str | None = None) -> None:
+        """'Where is the <label> (e.g. the table)?' → bbox enclosing all the member strings."""
+        from .derive import Derivation
+        self._derivations.append(Derivation("region", texts=list(texts), label=label, key=key))
+
+    def ask_aggregate(self, label: str, values, *, op: str = "sum", key: str | None = None) -> None:
+        """'What is the <label>?' → arithmetic over known values, with the working as rationale."""
+        from .derive import Derivation
+        self._derivations.append(
+            Derivation("aggregate", values=[float(v) for v in values], op=op, label=label, key=key))
+
     def task(self, text: str) -> None:
         self.fields["_task"] = text
 
@@ -211,6 +251,16 @@ class DocBuilder:
         rr = render_html("".join(self._html), self._full_css(), dpi=dpi)
         try:
             spotting = resolve_boxes(rr, self._spots)
+            # resolve model-free understanding GT (where/how-many/totals) against the open render
+            if self._derivations:
+                from .derive import resolve as _resolve_derivation
+                for d in self._derivations:
+                    qa = _resolve_derivation(rr, d)
+                    if qa is None:  # validation: requested text not on the page -> warn, don't fake
+                        print(f"  [warn] derivation {d.kind}({d.text or d.label!r}) found nothing "
+                              f"in {self.doc_type} — skipped")
+                        continue
+                    self.qas.append(qa)
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),

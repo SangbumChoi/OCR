@@ -68,6 +68,25 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the right-hand column located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
+      "answers": [
+        "360,137,548,204;709,886"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the right-hand column is rendered at [360, 137, 548, 204] on the 709x886px page.",
+      "answer_bbox": [
+        360,
+        137,
+        548,
+        204
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -87,7 +106,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -97,7 +116,7 @@
   "degradation": {
     "preset": "historical",
     "severity": 1.0,
-    "seed": 316,
+    "seed": 350,
     "geometry_preserved": true
   },
   "degraded_preset": "historical",
@@ -113,6 +132,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -143,6 +163,16 @@
       ],
       "metric": "ned",
       "answer_type": "multilingual"
+    },
+    {
+      "key": null,
+      "question": "Where is the right-hand column located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
+      "answers": [
+        "360,137,548,204;709,886"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the right-hand column is rendered at [360, 137, 548, 204] on the 709x886px page."
     }
   ]
 }

@@ -111,6 +111,73 @@
         "en"
       ],
       "key": "total"
+    },
+    {
+      "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "93,274,717,405;875,1241"
+      ],
+      "answer_type": "L1-region",
+      "metric": "grounding",
+      "rationale": "the line-item table is rendered at [93, 274, 717, 405] on the 875x1241px page.",
+      "answer_bbox": [
+        93,
+        274,
+        717,
+        405
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": "lines_region"
+    },
+    {
+      "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "83,434,159,460;875,1241"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the TOTAL row is rendered at [83, 434, 159, 460] on the 875x1241px page.",
+      "answer_bbox": [
+        83,
+        434,
+        159,
+        460
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many times does '$' appear in the document? Answer with a number.",
+      "answers": [
+        "9"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "'$' is found 9 time(s), at [522,302]; [658,302]; [522,330]; [658,330]; [522,359]; [658,359]; [522,387]; [658,387]; [174,434].",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the sum of all line-item amounts? Answer with a number.",
+      "answers": [
+        "847",
+        "847"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -140,7 +207,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 947,
+    "seed": 412,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -156,6 +223,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -206,6 +274,47 @@
       "metric": "anls",
       "answer_type": "kie",
       "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00."
+    },
+    {
+      "key": "lines_region",
+      "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "93,274,717,405;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-region",
+      "rationale": "the line-item table is rendered at [93, 274, 717, 405] on the 875x1241px page."
+    },
+    {
+      "key": null,
+      "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "83,434,159,460;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the TOTAL row is rendered at [83, 434, 159, 460] on the 875x1241px page."
+    },
+    {
+      "key": null,
+      "question": "How many times does '$' appear in the document? Answer with a number.",
+      "answers": [
+        "9"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "'$' is found 9 time(s), at [522,302]; [658,302]; [522,330]; [658,330]; [522,359]; [658,359]; [522,387]; [658,387]; [174,434]."
+    },
+    {
+      "key": null,
+      "question": "What is the sum of all line-item amounts? Answer with a number.",
+      "answers": [
+        "847",
+        "847"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847."
     }
   ],
   "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",

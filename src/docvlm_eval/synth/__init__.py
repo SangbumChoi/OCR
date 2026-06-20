@@ -12,6 +12,9 @@ faker) live in the ``[synth]`` extra and are imported lazily.
 """
 
 from .degrade import PRESETS, degrade
+from .derive import (
+    Derivation, aggregate, count_occurrences, locate, region_box, resolve, union_box, word_boxes,
+)
 from .dto import (
     AblationSupport, BBox, Degradation, DocSample, Field, GenConfig, QAItem, RenderSpec,
     script_for,
@@ -26,4 +29,7 @@ __all__ = [
     # structured GT + generation-config DTOs
     "DocSample", "GenConfig", "Field", "QAItem", "BBox", "RenderSpec", "Degradation",
     "AblationSupport", "script_for",
+    # model-free understanding-GT derivation
+    "Derivation", "resolve", "locate", "count_occurrences", "region_box", "union_box",
+    "word_boxes", "aggregate",
 ]

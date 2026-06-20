@@ -35,7 +35,7 @@
     "anchor_metric": "KIE F1 + abstain + IoU",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": true,
       "table": false,
@@ -56,7 +56,7 @@
     "anchor_metric": "selection-mark accuracy + F1",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -75,8 +75,8 @@
     ],
     "anchor_metric": "abstain (no-hallucination)",
     "support": {
-      "spotting": false,
-      "rationale": false,
+      "spotting": true,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -97,7 +97,7 @@
     "anchor_metric": "TEDS + F1",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": true,
@@ -139,7 +139,7 @@
     "anchor_metric": "read-order + direction + NED",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -160,7 +160,7 @@
     "anchor_metric": "CER(hand) + abstain",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -203,7 +203,7 @@
     "anchor_metric": "NED + robustness",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -225,7 +225,7 @@
     "anchor_metric": "NED + spotting",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -246,7 +246,7 @@
     "anchor_metric": "NED + read-order",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,
@@ -268,7 +268,7 @@
     "anchor_metric": "read-order + NED + TEDS",
     "support": {
       "spotting": true,
-      "rationale": false,
+      "rationale": true,
       "multilingual": false,
       "small_text": false,
       "table": false,

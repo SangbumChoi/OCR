@@ -105,6 +105,44 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the call-to-action button located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
+      "answers": [
+        "1673,98,1825,125;2000,1407"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the call-to-action button is rendered at [1673, 98, 1825, 125] on the 2000x1407px page.",
+      "answer_bbox": [
+        1673,
+        98,
+        1825,
+        125
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Where is the feature cards located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
+      "answers": [
+        "191,577,1403,600;2000,1407"
+      ],
+      "answer_type": "L1-region",
+      "metric": "grounding",
+      "rationale": "the feature cards is rendered at [191, 577, 1403, 600] on the 2000x1407px page.",
+      "answer_bbox": [
+        191,
+        577,
+        1403,
+        600
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -124,7 +162,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -134,7 +172,7 @@
   "degradation": {
     "preset": "screenshot",
     "severity": 1.0,
-    "seed": 23,
+    "seed": 559,
     "geometry_preserved": true
   },
   "degraded_preset": "screenshot",
@@ -150,6 +188,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -191,6 +230,26 @@
       ],
       "metric": "ned",
       "answer_type": "ui"
+    },
+    {
+      "key": null,
+      "question": "Where is the call-to-action button located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
+      "answers": [
+        "1673,98,1825,125;2000,1407"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the call-to-action button is rendered at [1673, 98, 1825, 125] on the 2000x1407px page."
+    },
+    {
+      "key": null,
+      "question": "Where is the feature cards located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
+      "answers": [
+        "191,577,1403,600;2000,1407"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-region",
+      "rationale": "the feature cards is rendered at [191, 577, 1403, 600] on the 2000x1407px page."
     }
   ],
   "reading_order": [

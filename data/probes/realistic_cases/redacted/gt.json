@@ -40,6 +40,25 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "156,129,246,149;875,1241"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the subject is rendered at [156, 129, 246, 149] on the 875x1241px page.",
+      "answer_bbox": [
+        156,
+        129,
+        246,
+        149
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -58,8 +77,8 @@
     "aspect_ratio": 0.7051
   },
   "ablation_support": {
-    "spotting": false,
-    "rationale": false,
+    "spotting": true,
+    "rationale": true,
     "multilingual": false,
     "small_text": false,
     "table": false,
@@ -69,7 +88,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 129,
+    "seed": 754,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -85,6 +104,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -106,6 +126,16 @@
       ],
       "metric": "ned",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
+      "answers": [
+        "156,129,246,149;875,1241"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the subject is rendered at [156, 129, 246, 149] on the 875x1241px page."
     }
   ],
   "redacted": {

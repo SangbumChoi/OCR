@@ -104,6 +104,25 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
+      "answers": [
+        "759,104,850,130;945,414"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the courtesy (numeric) amount is rendered at [759, 104, 850, 130] on the 945x414px page.",
+      "answer_bbox": [
+        759,
+        104,
+        850,
+        130
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -133,7 +152,7 @@
   "degradation": {
     "preset": "scan",
     "severity": 1.0,
-    "seed": 387,
+    "seed": 754,
     "geometry_preserved": true
   },
   "degraded_preset": "scan",
@@ -149,6 +168,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -201,6 +221,16 @@
       "metric": "anls",
       "answer_type": "consistency",
       "rationale": "Numeric '1,450.00' equals legal 'one thousand four hundred fifty' → they agree."
+    },
+    {
+      "key": null,
+      "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
+      "answers": [
+        "759,104,850,130;945,414"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the courtesy (numeric) amount is rendered at [759, 104, 850, 130] on the 945x414px page."
     }
   ],
   "probes": [

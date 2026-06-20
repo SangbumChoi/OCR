@@ -1,27 +1,46 @@
-# Part-2 ablation registry (see docs/report/part2_ablation_plan.md). Declarative so each ablation is
+# Ablation registry (see docs/report/ablation_plan.md). Declarative so each ablation is
 # one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
 
-target_model: internvl2_5-1b
-base_task: document-generation (image -> structured text); per-ablation augmentation
+# Two fine-tuning bases, chosen from the full GPU comparison (notebooks/colab_full_comparison.ipynb):
+#   qwen3_5-0.8b     — strongest GENUINELY sub-1B (text + multilingual/CJK + chart)
+#   lfm2_5-vl-1.6b   — best overall AND fastest (~1s/sample); slightly over 1B
+target_models: [qwen3_5-0.8b, lfm2_5-vl-1.6b]
+base_task: document-generation (image -> structured text); per-ablation augmentation from
+           data/probes/realistic_cases (configs/synth_data.yaml)
+
+# Measured baseline gaps the ablations must close (from the GPU run; control-robust signals):
+#   BOTH      : L1 grounding/spotting ~0 ; L4 box-tracking = 0 ; 180-deg rotation collapses
+#   qwen3.5   : H2 relational-compare = 0 ; slow latency (~13s/sample)
+#   lfm2.5-vl : grounding (spot-IoU 0.23, best but low) ; box-tracking
+gaps:
+  both:      [L1_grounding, L4_box_tracking, rotation_180]
+  qwen3_5-0.8b:   [H2_relational, latency]
+  lfm2_5-vl-1.6b: [L1_grounding, L4_box_tracking]
 
 ablations:
   - id: A1_spotting
     question: "Does adding bbox (where) targets improve extraction + spatial grounding?"
     factor: "target = value + [x1,y1,x2,y2]  vs  value only"
+    data_arm: {on: A1_spotting_on, off: A1_spotting_off}   # configs/synth_data.yaml overrides
     control: "same images/QA, same steps/optim"
-    metrics: [grounding_iou, kie_f1, infovqa_anls]
-    hypothesis: "spotting injects spatial grounding -> IoU and KIE up"
+    closes_gap: [L1_grounding, L4_box_tracking]
+    metrics: [grounding_iou, cap_ground, spot_iou]
+    hypothesis: "spotting is a vision+connector signal -> grounding IoU up, box-tracking emerges"
 
   - id: A2_reasoning
     question: "Does CoT/rationale supervision help integrative reasoning?"
     factor: "target = rationale -> answer  vs  answer only"
+    data_arm: {on: A2_reasoning_on, off: A2_reasoning_off}
     control: "same data"
-    metrics: [cap_integ_sum, cap_integ_rel, infovqa_anls]
-    hypothesis: "rationale teaches multi-region procedure -> reasoning up"
+    closes_gap: [H2_relational]
+    metrics: [cap_integ_sum, cap_integ_rel, H_count]
+    hypothesis: "rationale is an LLM-attn+mlp signal -> relational/numeric reasoning up (esp. qwen3.5)"
 
   - id: A3_signal_vs_combined
     question: "Is it the structured signals (spot/reason) that help, or plain task combination?"
     factor: "{answer} | {+spot} | {+reason} | {+spot+reason}"
+    data_arm: {answer: A3_answer_only, spot: A3_spot_only, reason: A3_reason_only,
+               both: A3_spot_and_reason}
     control: "same data/steps"
     metrics: [composite, grounding_iou, cap_integ_rel]
     hypothesis: "spot & reason are complementary and beat plain combination"
@@ -29,16 +48,20 @@ ablations:
   - id: A4_multilingual
     question: "Multi-language mix vs single; which language PAIRS transfer?"
     factor: "train mix: {en} {en+es} {en+ja} {ko+en} {en+zh} {all}"
+    data_arm: {en: A4_en, en_es: A4_en_es, en_ja: A4_en_ja, ko_en: A4_ko_en,
+               en_zh: A4_en_zh, all: A4_all}
     control: "equal total samples"
     metrics: [per_language_ned]
     hypothesis: "related scripts transfer (en-es, ko-en); distant (en-ja) help less/interfere"
 
   - id: A5_lora_placement
     question: "Which modules to LoRA-adapt for which capability?"
-    factor: "target_modules: vision_encoder | connector(mlp1) | llm_attn | llm_mlp | all"
+    # groups are resolved at runtime by introspecting the loaded model (no per-model hardcoding):
+    #   docvlm_eval.finetune.lora_vlm.resolve_lora_targets(model, group)
+    factor: "target group: vision | connector | llm_attn | llm_mlp | all"
     control: "rank/alpha/lr/steps fixed"
     metrics: [per_axis]
-    hypothesis: "spatial<-vision+connector ; reasoning/language<-llm_attn+mlp"
+    hypothesis: "spatial/grounding <- vision+connector ; reasoning & language <- llm_attn+mlp"
 
   - id: A6_hpo
     question: "Best LoRA rank/alpha/lr/epochs for the chosen placement?"
@@ -48,12 +71,15 @@ ablations:
     hypothesis: "moderate r (16-32) best; high r overfits small data"
 
   - id: A7_preprocessing
-    question: "Effect of resize/tiling logic on small-text + layout?"
+    question: "Effect of resize/tiling logic on small-text + layout (and rotation)?"
     factor: "dynamic tiling (n_max) vs fixed resize; max-resolution; keep-aspect"
+    data_arm: {lowres: A7_fixed_lowres, highres: A7_highres, tiling: A7_dynamic_tiling,
+               squash: A7_squash_aspect}
     control: "model/data fixed"
-    metrics: [infovqa_anls, ocrbench, smalltext_ned]
-    hypothesis: "higher-res dynamic tiling -> InfoVQA/OCRBench up"
+    closes_gap: [rotation_180]
+    metrics: [smalltext_ned, cap_text, rotation_retention]
+    hypothesis: "higher-res dynamic tiling -> small-text up; orientation aug -> 180-deg retention up"
 
-# Integration order for the cumulative staircase:
+# Cumulative staircase order (per model); each step re-evaluated on the same probe suite:
 integration_order: [baseline, A7_preprocessing, A1_spotting, A2_reasoning,
                     A4_multilingual, A5_lora_placement, A6_hpo]

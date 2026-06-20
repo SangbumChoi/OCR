@@ -45,7 +45,7 @@
     },
     {
       "key": "dob",
-      "value": "07 MAY 1997",
+      "value": "08 MAY 1997",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -116,6 +116,44 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
+      "answers": [
+        "138,111,224,130;532,343"
+      ],
+      "answer_type": "L1-locate",
+      "metric": "grounding",
+      "rationale": "the document number is rendered at [138, 111, 224, 130] on the 532x343px page.",
+      "answer_bbox": [
+        138,
+        111,
+        224,
+        130
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
+      "answers": [
+        "48,308,528,343;532,343"
+      ],
+      "answer_type": "L1-region",
+      "metric": "grounding",
+      "rationale": "the machine-readable zone (MRZ) is rendered at [48, 308, 528, 343] on the 532x343px page.",
+      "answer_bbox": [
+        48,
+        308,
+        528,
+        343
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -135,7 +173,7 @@
   },
   "ablation_support": {
     "spotting": true,
-    "rationale": false,
+    "rationale": true,
     "multilingual": false,
     "small_text": true,
     "table": false,
@@ -145,7 +183,7 @@
   "degradation": {
     "preset": "photo",
     "severity": 1.0,
-    "seed": 153,
+    "seed": 754,
     "geometry_preserved": true
   },
   "degraded_preset": "photo",
@@ -161,6 +199,7 @@
     "small_text_px": 10.0,
     "emit_spotting": true,
     "emit_rationale": true,
+    "emit_understanding": true,
     "languages": [
       "en"
     ],
@@ -173,7 +212,7 @@
   "fields": {
     "name": "CHRIS CURTIS",
     "doc_no": "177777868",
-    "dob": "07 MAY 1997",
+    "dob": "08 MAY 1997",
     "expiry": "14 JUN 2031",
     "mrz1": "P<USACURTIS<<CHRIS<<<<<<<<<<<<<<<<<<<<<<<<<<",
     "mrz2": "177777868<4USA159083M310614<<<<<<<<<<<<<<00<"
@@ -204,6 +243,26 @@
       ],
       "metric": "ned",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
+      "answers": [
+        "138,111,224,130;532,343"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-locate",
+      "rationale": "the document number is rendered at [138, 111, 224, 130] on the 532x343px page."
+    },
+    {
+      "key": null,
+      "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
+      "answers": [
+        "48,308,528,343;532,343"
+      ],
+      "metric": "grounding",
+      "answer_type": "L1-region",
+      "rationale": "the machine-readable zone (MRZ) is rendered at [48, 308, 528, 343] on the 532x343px page."
     }
   ],
   "probes": [

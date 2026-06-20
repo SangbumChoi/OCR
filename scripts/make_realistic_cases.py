@@ -18,8 +18,10 @@ Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -48,7 +50,8 @@ records: list[dict] = []
 
 
 def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
-    """Apply the A7 resize knobs to the image AND rescale every spotting box so GT stays exact."""
+    """Apply the A7 resize knobs to the image AND rescale every box (spotting + derived grounding
+    answers) so GT stays exact at the new resolution."""
     tls, keep = CFG.target_long_side, CFG.keep_aspect
     if not tls:
         return img
@@ -59,22 +62,40 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
     else:                                   # squash to a square -> independent x/y scale
         sx, sy = tls / w, tls / h
         new = (tls, tls)
+    nw, nh = new
     img = img.resize(new, Image.LANCZOS)
+
+    def scale(b):
+        return [round(b[0] * sx), round(b[1] * sy), round(b[2] * sx), round(b[3] * sy)]
+
     spotting = gt.get("spotting")
     if spotting:
-        gt["spotting"] = {k: [round(b[0] * sx), round(b[1] * sy),
-                              round(b[2] * sx), round(b[3] * sy)] for k, b in spotting.items()}
+        gt["spotting"] = {k: scale(b) for k, b in spotting.items()}
+    # derived grounding QAs carry the box twice (qa["box"] + the "x1,y1,x2,y2;W,H" answer string)
+    for q in gt.get("qa", []):
+        if q.get("derived") and q.get("box"):
+            nb = scale(q["box"])
+            q["box"] = nb
+            q["answers"] = [f"{nb[0]},{nb[1]},{nb[2]},{nb[3]};{nw},{nh}"]
+            if q.get("rationale"):  # keep the reasoning coords consistent with the resized image
+                q["rationale"] = (re.sub(r"\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\]",
+                                         f"[{nb[0]}, {nb[1]}, {nb[2]}, {nb[3]}]", q["rationale"], count=1)
+                                  ).replace(f"{w}x{h}px", f"{nw}x{nh}px")
     gt.setdefault("render", {})["size_px"] = list(new)
     return img
 
 
 def _apply_emit_toggles(gt: dict) -> None:
-    """Honour the A1/A2 supervision switches by dropping GT the control arm must not see."""
+    """Honour the supervision switches by dropping GT the control arm must not see."""
     if not CFG.emit_spotting:
         gt.pop("spotting", None)
     if not CFG.emit_rationale:
         for q in gt.get("qa", []):
             q.pop("rationale", None)
+    if not getattr(CFG, "emit_understanding", True):
+        gt["qa"] = [q for q in gt.get("qa", []) if not q.get("derived")]
+    # note: the internal "box"/"derived" keys are consumed by from_builder_gt and then dropped by
+    # DocSample.to_dict (which rebuilds qa from QAItem), so they never reach the saved gt.json.
 
 
 def _pick_preset(key: str, default: str) -> str:
@@ -111,7 +132,8 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     degradation = None
     if do_degrade and random.random() < CFG.degrade_prob:
         chosen = _pick_preset(key, preset)
-        seed = CFG.seed + hash(key) % 1000
+        # stable per-case seed (Python's str hash is salted per-process -> not reproducible)
+        seed = CFG.seed + int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
         deg = degrade(img, chosen, seed=seed)
         if deg is not None:
             deg.save(folder / "degraded.png")
@@ -150,7 +172,7 @@ def case_invoice(do_degrade):
     b.line(f"{esc(company)}<br>{esc(fake.street_address())}", cls="muted")
     b.field("Invoice No", inv_no, key="invoice_no", spot=True)
     b.field("Date", fake.date("%Y-%m-%d"), key="date")
-    b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines")
+    b.table(["Item", "Qty", "Unit", "Amount"], rows, key="lines", region="the line-item table")
     b.field("TOTAL", total_str, key="total", spot=True, cls="total")
     b.task("Extract invoice number, date and total; convert the line-item table to HTML.")
     b.qa("What is the invoice number?", inv_no, metric="ned", answer_type="kie", key="invoice_no")
@@ -159,6 +181,10 @@ def case_invoice(do_degrade):
          answer_type="kie", key="total",
          rationale=f"Sum the line amounts: {line_sum} = {total_str}.")
     b.probe("abstain", "What is the shipping tracking number?", "not present — abstain")
+    # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
+    b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
+    b.ask_count("$")                                                  # H: count currency symbols (table region is auto)
+    b.ask_aggregate("the sum of all line-item amounts", [q * p for _, q, p in items], op="sum")
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -198,6 +224,8 @@ def case_id_card(do_degrade):
     b.qa("What is the document number?", idn, metric="ned", answer_type="kie")
     b.qa("What is the cardholder's full name?", name, metric="ned", answer_type="kie")
     b.probe("abstain", "What is the cardholder's blood type?", "not present — abstain")
+    b.ask_where(idn, label="the document number")
+    b.ask_region("the machine-readable zone (MRZ)", [mrz1, mrz2])
     emit("id_card", b, "photo", do_degrade)
 
 
@@ -218,6 +246,7 @@ def case_checkbox_form(do_degrade):
     b.qa("Which notification language is checked?", ", ".join(t for t, c in langs if c),
          answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
+    b.ask_where("Email", label="the Email option")
     emit("checkbox_form", b, "scan", do_degrade)
 
 
@@ -233,6 +262,7 @@ def case_redacted(do_degrade):
     b.line(f"Next review: {fake.date('%Y-%m-%d')}.")
     b.task("Answer only from visible text; for blacked-out values output '[redacted]'.")
     b.qa("Who is the subject of the memo?", name, metric="ned", answer_type="kie")
+    b.ask_where(name, label="the subject")
     emit("redacted", b, "scan", do_degrade)
 
 
@@ -245,11 +275,14 @@ def case_bank_statement(do_degrade):
     b = DocBuilder("bank statement / payslip", ["layout", "table", "spotting"], "TEDS + F1", page="A5")
     b.title("MONTHLY STATEMENT", level=2)
     b.field("Account", fake.numerify("****####"), key="account")
-    b.table(["Date", "Description", "Amount", "Balance"], rows, key="txns")
+    b.table(["Date", "Description", "Amount", "Balance"], rows, key="txns",
+            region="the transaction table")
     b.field("Closing balance", f"${bal:.2f}", key="closing_balance", spot=True)
     b.task("Convert the transaction table to HTML (TEDS) and read the closing balance.")
     b.qa("What is the closing balance?", [f"${bal:.2f}", f"{bal:.2f}"], answer_type="kie")
-    emit("bank_statement", b, "scan", do_degrade)
+    # model-free understanding GT: locate the closing balance (table region is auto)
+    b.ask_where(f"${bal:.2f}", label="the closing balance")
+    emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
 def case_rtl_arabic(do_degrade):
@@ -289,6 +322,7 @@ def case_webtoon(do_degrade):
     b.task("Transcribe speech bubbles in reading order (top to bottom).")
     b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
          metric="ned", answer_type="reading-order")
+    b.ask_where(lines[0], label="the first speech bubble")
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -309,6 +343,7 @@ def case_prescription(do_degrade):
     b.task("Transcribe the handwritten medication line (CER).")
     b.qa("Transcribe the handwritten medication line.", drug, metric="ned", answer_type="handwriting")
     b.probe("abstain", "What is the refill count?", "not legible / not present — abstain")
+    b.ask_where(drug, label="the handwritten medication line")
     emit("prescription", b, "fax", do_degrade)
 
 
@@ -340,6 +375,7 @@ def case_cheque(do_degrade):
          rationale=f"Numeric '{amt_num}' equals legal 'one thousand four hundred fifty' → they agree.")
     b.probe("consistency", "Do the numeric and written amounts agree?",
             "yes (1450.00 == one thousand four hundred fifty)")
+    b.ask_where(amt_num, label="the courtesy (numeric) amount")
     emit("cheque", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -364,6 +400,7 @@ def case_ancient(do_degrade):
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
+    b.ask_where(poem[:4], label="the right-hand column")
     emit("ancient", b, "historical", do_degrade)
 
 
@@ -412,6 +449,8 @@ def case_website(do_degrade):
          metric="ned", answer_type="ui")
     b.qa("What is the main headline?", headline, metric="ned", answer_type="ui")
     b.probe("abstain", "What is the user's logged-in email?", "logged-out page — abstain")
+    b.ask_where(cta, label="the call-to-action button")
+    b.ask_region("the feature cards", [t for t, _ in cards])
     emit("website", b, "screenshot", do_degrade)
 
 
@@ -442,6 +481,8 @@ def case_mobile_app(do_degrade):
     b.qa("Transcribe the chat messages in order, one per line.", "\n".join(t for _, t in msgs),
          metric="ned", answer_type="reading-order")
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
+    b.ask_where(msgs[0][1], label="the first chat message")
+    b.ask_count("INV-2025-0042")
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
@@ -485,6 +526,8 @@ def case_pdf_paper(do_degrade):
          answer_type="reading-order")
     b.probe("order", "Does text read across both columns row-by-row?",
             "no — each column reads top-to-bottom independently")
+    b.ask_where(title, label="the paper title")
+    b.ask_region("the figure", [cap])
     emit("pdf_paper", b, "scan", do_degrade)
 
 

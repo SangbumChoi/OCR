@@ -1,13 +1,13 @@
 # Synthetic data: the ground-truth DTO and config-driven ablation control
 
 This document explains how we generate fine-tuning data whose **distribution matches reality** and
-whose **ground truth carries every factor the Part-2 ablations want to vary**
-([`part2_ablation_plan.md`](part2_ablation_plan.md)). One config file fully determines a dataset
+whose **ground truth carries every factor the ablations want to vary**
+([`ablation_plan.md`](ablation_plan.md)). One config file fully determines a dataset
 variant, so each ablation arm is reproducible and differs from its control in exactly one factor.
 
 Reading order: [`document_type_taxonomy.md`](document_type_taxonomy.md) (what documents exist and
 their stressors) → this file (how we synthesise them with built-in GT) →
-[`part2_ablation_plan.md`](part2_ablation_plan.md) (how the GT factors are switched per experiment).
+[`ablation_plan.md`](ablation_plan.md) (how the GT factors are switched per experiment).
 
 ## 1. Why synthetic, and how we match the real distribution
 
@@ -54,6 +54,30 @@ pipeline already read. Existing loaders keep working unchanged.
 `ablation_support` lets a sampler filter the corpus to documents that *can* exercise a given factor
 (e.g. "only docs with a rationale" for an A2 arm), so arms stay balanced.
 
+## 2b. The model-free understanding layer (the part that isn't OCR)
+
+The OCR ground truth (what string is where) falls out of the render for free. The harder, more
+valuable GT is **non-OCR understanding** — *where is this word / table?*, *how many times does it
+appear?*, *what is the total?* — and the **reasoning** behind each. `docvlm_eval.synth.derive`
+produces all of it **with no external model**, from the rendered PDF's exact text positions
+(PyMuPDF) + the values the generator already knows. Each derivation is one `DocBuilder.ask_*` call,
+resolved against the open render at build time, and emits a QA with answer **and** rationale:
+
+| Primitive | GT type | Question it answers | Derived from | Metric |
+| --- | --- | --- | --- | --- |
+| `ask_where(text)` | `L1-locate` | *Where is this word?* | the text's exact box | grounding (IoU) |
+| `ask_region(label, texts)` | `L1-region` | *Where is the table/region?* | union of the member strings' boxes | grounding (IoU) |
+| `ask_count(text)` | `H-count` | *How many times does X appear?* | count of the word's hits | exact |
+| `ask_aggregate(label, values, op)` | `H1-aggregate` | *What is the total/…?* | arithmetic over known values | relaxed-acc |
+
+Because it is geometry + arithmetic only, every answer is **gold by construction**; derivers
+**validate** (warn + skip when a requested word is absent, so GT is never silently wrong) and the
+whole layer is one config switch (`emit_understanding`, ablation `U_understanding_on/off`). Under an
+A7 resize, derived boxes (and the coordinates inside their rationales) are rescaled with the image so
+they stay exact. Browse it interactively in
+[`notebooks/synthetic_data_design.ipynb`](../../notebooks/synthetic_data_design.ipynb), which shows
+each case's GT image with box overlays and the derived *question → answer → reasoning*.
+
 ## 3. Ablation factor → DTO/config mapping
 
 | Ablation | What varies | Where it lives in the GT | Config knob |
@@ -96,5 +120,5 @@ doc, so the mix is realised across the corpus). The resolved config is also writ
 - **Boxes survive degradation and resize:** degradation is photometric; the A7 resize rescales all
   boxes by the same factor (`scripts/make_realistic_cases.py::_resize_with_boxes`).
 - **One factor at a time:** an ablation override touches only its knob family; everything else
-  inherits from `base`, so a measured Δ is attributable (the staircase in `part2_ablation_plan.md`).
+  inherits from `base`, so a measured Δ is attributable (the staircase in `ablation_plan.md`).
 - **Reproducible:** seeded Faker + recorded `gen_config` → byte-stable regeneration.
