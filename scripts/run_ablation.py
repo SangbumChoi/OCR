@@ -111,9 +111,9 @@ def main() -> None:
                    help="A0 memorization test: also eval on a realistic set generated with THIS seed "
                         "(different from training) -> unseen content; reports the train/held-out gap")
     # --- A0 (PREREQUISITE) memorization-vs-understanding size sweep (configs/ablations.yaml A0) ---
-    p.add_argument("--a0-sizes", type=int, nargs="+", default=[25, 50, 100, 200],
-                   help="A0: train-data scale sweep = variants/case (x14 cases = #images). The config's "
-                        "intended curve is 50/200/800/3200; defaults here are lighter for a first run.")
+    p.add_argument("--a0-sizes", type=int, nargs="+", default=[50, 100, 200, 400, 800],
+                   help="A0: train-data scale sweep = variants/case (x14 cases = #images). Span a wide "
+                        "range so the held-out plateau is visible; the config's full curve adds 3200.")
     p.add_argument("--a0-epochs", type=int, default=3,
                    help="A0: epochs per size (FIXED across sizes so each example is seen equally -> the "
                         "only thing changing is dataset size). Train-to-fit reveals memorization.")
