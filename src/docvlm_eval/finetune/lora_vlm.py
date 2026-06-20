@@ -126,6 +126,8 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
 
     torch.manual_seed(cfg.seed)
     device, dt = _device_dtype(cfg.dtype)
+    print(f"[lora_vlm.train] device={device} dtype={dt}"
+          + ("" if device == "cuda" else "  (CPU — training will be slow; expected a GPU?)"))
     proc = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
     model = _AutoVLM.from_pretrained(cfg.model_id, torch_dtype=dt,
                                      trust_remote_code=True).to(device)
@@ -202,6 +204,8 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
     from docvlm_eval.schema import Prediction
 
     device, dt = _device_dtype(dtype)
+    print(f"[lora_vlm.eval] device={device} dtype={dt}"
+          + ("" if device == "cuda" else "  (CPU — eval will be slow; expected a GPU?)"))
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)
     model = _AutoVLM.from_pretrained(model_id, torch_dtype=dt,
                                      trust_remote_code=True).to(device).eval()

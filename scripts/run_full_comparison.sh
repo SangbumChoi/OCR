@@ -75,8 +75,8 @@ for m in "${PADDLE[@]}"; do run "$m" "$CAP"; run "$m" "$SCP"; run "$m" "$CEV"; d
 
 STAGE="pass3/new@tf-latest"
 echo "== ${STAGE}: ${#NEW[@]} models x ${NEW_BENCHES} benchmarks =="
-# newest releases want a recent transformers; upgrade and let per-model failures be captured as data
-pip -q install -U transformers accelerate timm >/dev/null 2>&1 || true
+# newest releases NEED transformers>=5 (qwen3_5 / lfm2_vl are unknown to <5); force the upgrade
+pip -q install -U "transformers>=5" accelerate timm >/dev/null 2>&1 || true
 for m in "${NEW[@]}"; do run "$m" "$CAP"; run "$m" "$SCP"; run "$m" "$CEV"; done
 
 echo "== aggregate + analysis =="
