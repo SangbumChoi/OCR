@@ -12,6 +12,7 @@
   "emit_rationale": true,
   "emit_understanding": true,
   "jitter": true,
+  "text_source": "offline",
   "languages": [
     "en"
   ],

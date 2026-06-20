@@ -21,10 +21,10 @@
       "value": "6,438.46",
       "role": "value",
       "bbox": [
-        771,
+        747,
         92,
         863,
-        118
+        119
       ],
       "language": "en",
       "script": "latin",
@@ -66,10 +66,10 @@
       "metric": "anls",
       "rationale": null,
       "answer_bbox": [
-        771,
+        747,
         92,
         863,
-        118
+        119
       ],
       "languages": [
         "en"
@@ -108,16 +108,16 @@
     {
       "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
       "answers": [
-        "771,92,863,118;945,414"
+        "747,92,863,119;945,414"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the courtesy (numeric) amount is rendered at [771, 92, 863, 118] on the 945x414px page.",
+      "rationale": "the courtesy (numeric) amount is rendered at [747, 92, 863, 119] on the 945x414px page.",
       "answer_bbox": [
-        771,
+        747,
         92,
         863,
-        118
+        119
       ],
       "languages": [
         "en"
@@ -170,6 +170,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -186,10 +187,10 @@
   },
   "spotting": {
     "amount_numeric": [
-      771,
+      747,
       92,
       863,
-      118
+      119
     ]
   },
   "qa": [
@@ -227,11 +228,11 @@
       "key": null,
       "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
       "answers": [
-        "771,92,863,118;945,414"
+        "747,92,863,119;945,414"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the courtesy (numeric) amount is rendered at [771, 92, 863, 118] on the 945x414px page."
+      "rationale": "the courtesy (numeric) amount is rendered at [747, 92, 863, 119] on the 945x414px page."
     }
   ],
   "probes": [

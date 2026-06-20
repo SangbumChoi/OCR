@@ -44,16 +44,16 @@
     {
       "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "143,140,238,160;875,1241"
+        "132,106,241,127;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the subject is rendered at [143, 140, 238, 160] on the 875x1241px page.",
+      "rationale": "the subject is rendered at [132, 106, 241, 127] on the 875x1241px page.",
       "answer_bbox": [
-        143,
-        140,
-        238,
-        160
+        132,
+        106,
+        241,
+        127
       ],
       "languages": [
         "en"
@@ -106,6 +106,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -132,11 +133,11 @@
       "key": null,
       "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "143,140,238,160;875,1241"
+        "132,106,241,127;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the subject is rendered at [143, 140, 238, 160] on the 875x1241px page."
+      "rationale": "the subject is rendered at [132, 106, 241, 127] on the 875x1241px page."
     }
   ],
   "redacted": {

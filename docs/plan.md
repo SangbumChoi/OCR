@@ -138,6 +138,9 @@ added factor lifting the score a step, ending well above the baseline.
   carries every ablation factor (see [`report/synthetic_data_dto.md`](report/synthetic_data_dto.md)
   for the DTO + config-driven factor control, and
   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
+  diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
+  and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
+  (simulation-only; LLM generators kept as future-optional seams);
   legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
@@ -168,5 +171,7 @@ added factor lifting the score a step, ending well above the baseline.
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md)
-6. [`report/ablation_plan.md`](report/ablation_plan.md) →
+6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
+   [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
+   [`report/synth_generation_survey.md`](report/synth_generation_survey.md) →
    [`report/technical_report.md`](report/technical_report.md)

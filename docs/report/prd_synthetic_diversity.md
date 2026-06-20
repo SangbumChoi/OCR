@@ -2,6 +2,7 @@
 
 **Status:** living document (iterate in-session). **Owner:** docvlm_eval synth.
 **Related:** [`synthetic_data_dto.md`](synthetic_data_dto.md) · [`ablation_plan.md`](ablation_plan.md) ·
+[`synth_generation_survey.md`](synth_generation_survey.md) (open-source technique survey) ·
 generator `scripts/make_realistic_cases.py` + `src/docvlm_eval/synth/`.
 
 ## 1. Problem & goal

@@ -32,9 +32,9 @@
       "role": "region",
       "bbox": [
         41,
-        167,
-        322,
-        194
+        164,
+        251,
+        188
       ],
       "language": "en",
       "script": "latin",
@@ -108,16 +108,16 @@
     {
       "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
       "answers": [
-        "41,167,322,194;610,1319"
+        "41,164,251,188;610,1319"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the first chat message is rendered at [41, 167, 322, 194] on the 610x1319px page.",
+      "rationale": "the first chat message is rendered at [41, 164, 251, 188] on the 610x1319px page.",
       "answer_bbox": [
         41,
-        167,
-        322,
-        194
+        164,
+        251,
+        188
       ],
       "languages": [
         "en"
@@ -170,6 +170,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -185,9 +186,9 @@
   "spotting": {
     "bubble_first": [
       41,
-      167,
-      322,
-      194
+      164,
+      251,
+      188
     ]
   },
   "qa": [
@@ -238,11 +239,11 @@
       "key": null,
       "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
       "answers": [
-        "41,167,322,194;610,1319"
+        "41,164,251,188;610,1319"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the first chat message is rendered at [41, 167, 322, 194] on the 610x1319px page."
+      "rationale": "the first chat message is rendered at [41, 164, 251, 188] on the 610x1319px page."
     }
   ],
   "reading_order": [

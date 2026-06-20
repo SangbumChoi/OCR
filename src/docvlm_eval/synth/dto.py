@@ -190,6 +190,12 @@ class GenConfig:
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
 
+    # --- textual source (future-optional seam; see docs/report/synth_generation_survey.md §4). ---
+    # "offline" = Faker/locale + curated pools, NO network/LLM at generation time (the only mode wired
+    # now). "corpus" (local real-text dump) and "llm" (explicit opt-in gateway) are reserved for future
+    # use and raise NotImplementedError until a backend is enabled, so the default build stays LLM-free.
+    text_source: str = "offline"
+
     # --- A4 multilingual ---
     languages: list[str] = field(default_factory=lambda: ["en"])
     language_weights: dict[str, float] | None = None
