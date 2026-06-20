@@ -80,7 +80,21 @@ parallel supervision signals that both feed the composite, placement (A5) and HP
 
 ![Ablation relationship](figures/ablation_relationship.png)
 
+## Data generation for the ablations
+
+Each ablation arm is a **synthetic dataset variant** whose ground truth carries the factor being
+varied. The generator stores every factor as typed GT (`DocSample` DTO) and exposes one knob per
+factor in a single config, so an arm differs from its control in exactly one factor family:
+
+- **Read:** [`synthetic_data_dto.md`](synthetic_data_dto.md) — the GT DTO, the realism/distribution
+  matching (digital-native PDF → exact boxes; degradation = acquisition modality; language mix), and
+  the **ablation-factor → DTO/config mapping** (A1→`bbox`, A2→`rationale`, A4→`language`, A7→render).
+- **Generate:** `python scripts/make_realistic_cases.py --config configs/synth_data.yaml
+  --ablation <id>` — `configs/synth_data.yaml` holds `base:` + `ablation_overrides:` (A1/A2/A3/A4/A7).
+
 ## Outputs & reproducibility
+- `configs/synth_data.yaml` — data-generation config: `base` knobs + per-ablation `ablation_overrides`
+  (binds to `docvlm_eval.synth.dto.GenConfig`); one file = one dataset variant.
 - `configs/ablations.yaml` — declarative ablation registry (factor, control, metric, hypothesis).
 - `scripts/plot_ablation.py` — staircase + per-ablation Δ bars + language-correlation heatmap +
   relationship diagram, from a results JSON (a committed demo shows the format until real runs).

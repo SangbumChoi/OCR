@@ -1,5 +1,9 @@
 {
+  "doc_id": "invoice/receipt",
   "type": "invoice/receipt",
+  "doc_type": "invoice/receipt",
+  "domain": "finance",
+  "acquisition": "scan",
   "stressors": [
     "layout",
     "table",
@@ -7,21 +11,165 @@
     "hallucination"
   ],
   "anchor_metric": "KIE F1 + spotting IoU",
-  "fields": {
-    "invoice_no": "INV-2025-1791",
-    "date": "1977-07-09",
-    "lines_rows": 4,
-    "total": "$847.00",
-    "_task": "Extract invoice number, date and total; convert the line-item table to HTML."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "invoice_no",
+      "value": "INV-2025-1791",
+      "role": "kie-value",
+      "bbox": [
+        181,
+        195,
+        296,
+        214
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "date",
+      "value": "1977-07-09",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "lines_rows",
+      "value": "4",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "total",
+      "value": "$847.00",
+      "role": "kie-value",
+      "bbox": [
+        174,
+        434,
+        258,
+        460
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "What is the invoice number? Answer concisely, no explanation.",
+      "answers": [
+        "INV-2025-1791"
+      ],
+      "answer_type": "kie",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": [
+        181,
+        195,
+        296,
+        214
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": "invoice_no"
+    },
+    {
+      "question": "What is the total amount? Answer concisely, no explanation.",
+      "answers": [
+        "$847.00",
+        "847.00",
+        "847.00"
+      ],
+      "answer_type": "kie",
+      "metric": "anls",
+      "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00.",
+      "answer_bbox": [
+        174,
+        434,
+        258,
+        460
+      ],
+      "languages": [
+        "en"
+      ],
+      "key": "total"
+    }
+  ],
   "render": {
+    "source": "scan",
     "dpi": 150,
     "size_px": [
       875,
       1241
     ],
-    "page_count": 1
+    "page_size": "A5",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7051
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": true,
+    "multilingual": false,
+    "small_text": false,
+    "table": true,
+    "abstain": true,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 947,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "invoice_no": "INV-2025-1791",
+    "date": "1977-07-09",
+    "lines_rows": "4",
+    "total": "$847.00"
   },
   "spotting": {
     "invoice_no": [
@@ -37,10 +185,9 @@
       460
     ]
   },
-  "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",
   "qa": [
     {
-      "key": null,
+      "key": "invoice_no",
       "question": "What is the invoice number? Answer concisely, no explanation.",
       "answers": [
         "INV-2025-1791"
@@ -49,7 +196,7 @@
       "answer_type": "kie"
     },
     {
-      "key": null,
+      "key": "total",
       "question": "What is the total amount? Answer concisely, no explanation.",
       "answers": [
         "$847.00",
@@ -57,15 +204,16 @@
         "847.00"
       ],
       "metric": "anls",
-      "answer_type": "kie"
+      "answer_type": "kie",
+      "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00."
     }
   ],
+  "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",
   "probes": [
     {
       "kind": "abstain",
       "question": "What is the shipping tracking number?",
       "expected": "not present — abstain"
     }
-  ],
-  "degraded_preset": "scan"
+  ]
 }

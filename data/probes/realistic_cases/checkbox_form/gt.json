@@ -1,23 +1,228 @@
 {
+  "doc_id": "checkbox form",
   "type": "checkbox form",
+  "doc_type": "checkbox form",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "selection-marks",
     "layout",
     "hallucination"
   ],
   "anchor_metric": "selection-mark accuracy + F1",
-  "fields": {
-    "applicant": "Michael Elliott",
-    "_task": "List ONLY the checked (☒) options per group."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "applicant",
+      "value": "Chris Curtis",
+      "role": "kie-value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "contact:Email",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        205,
+        170,
+        228
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "contact:SMS",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        237,
+        163,
+        260
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "contact:Phone call",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        270,
+        214,
+        293
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "contact:Postal mail",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        302,
+        219,
+        325
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "language:English",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        382,
+        186,
+        405
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "language:Korean",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        415,
+        185,
+        437
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "language:Spanish",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        119,
+        447,
+        193,
+        470
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Which contact methods are checked? Answer concisely, no explanation.",
+      "answers": [
+        "Email, Phone call"
+      ],
+      "answer_type": "selection",
+      "metric": "anls",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Which notification language is checked? Answer concisely, no explanation.",
+      "answers": [
+        "English"
+      ],
+      "answer_type": "selection",
+      "metric": "anls",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       875,
       1241
     ],
-    "page_count": 1
+    "page_size": "A5",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.7051
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": true,
+    "reading_order": false
+  },
+  "degradation": {
+    "preset": "scan",
+    "severity": 1.0,
+    "seed": 708,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "scan",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "applicant": "Chris Curtis"
   },
   "spotting": {
     "contact:Email": [
@@ -98,6 +303,5 @@
       "question": "Is 'Fax' selected?",
       "expected": "option not present"
     }
-  ],
-  "degraded_preset": "scan"
+  ]
 }

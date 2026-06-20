@@ -1,23 +1,118 @@
 {
+  "doc_id": "webtoon / manga",
   "type": "webtoon / manga",
+  "doc_type": "webtoon / manga",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "read-order",
     "direction(vertical)",
     "art-text"
   ],
   "anchor_metric": "read-order + direction + NED",
-  "fields": {
-    "n_panels": 4,
-    "_task": "Transcribe speech bubbles in reading order (top to bottom)."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "n_panels",
+      "value": "4",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "bubble_1",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        86,
+        97,
+        224,
+        120
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Transcribe the speech bubbles top to bottom, one per line. Answer concisely, no explanation.",
+      "answers": [
+        "Are you ready?\nI think so...\nThen let's begin!\nWait — look over there!"
+      ],
+      "answer_type": "reading-order",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       473,
       1182
     ],
-    "page_count": 1
+    "page_size": "80mm 200mm",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.4002
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": false,
+    "reading_order": true
+  },
+  "degradation": {
+    "preset": "photo",
+    "severity": 1.0,
+    "seed": 414,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "photo",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "n_panels": "4"
   },
   "spotting": {
     "bubble_1": [
@@ -43,6 +138,5 @@
     "I think so...",
     "Then let's begin!",
     "Wait — look over there!"
-  ],
-  "degraded_preset": "photo"
+  ]
 }

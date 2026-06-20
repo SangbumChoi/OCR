@@ -3,7 +3,7 @@
   "name": "Custom capability probe",
   "category": "F1. Custom capability axes",
   "metric": "anls / relaxed_acc / exact / grounding",
-  "purpose": "Capability axes T1/T2 (text), H1/H2/H3 (hybrid: content-reasoning sum/compare + chart-value), L1 (location grounding). S/C (spatial & context) are the separate spatial_context probe. See docs/report/capability_axes.md.",
+  "purpose": "Capability axes T1/T2 (text), H1/H2/H3 (hybrid: content-reasoning sum/compare + chart-value), L1 (location grounding). L2-L4 / H4-H7 (spatial & context) are the separate spatial_context probe. See docs/report/capability_axes.md.",
   "source": "SYNTHETIC (scripts/make_capability_probe.py); GT incl. exact pixel boxes",
   "ground_truth": {
     "n_samples": 6,

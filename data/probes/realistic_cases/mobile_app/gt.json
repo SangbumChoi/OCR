@@ -1,29 +1,118 @@
 {
+  "doc_id": "mobile app / phone screenshot",
   "type": "mobile app / phone screenshot",
+  "doc_type": "mobile app / phone screenshot",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "layout(mobile)",
     "reflow(vertical)",
     "read-order"
   ],
   "anchor_metric": "NED + read-order",
-  "fields": {
-    "messages": [
-      "Hi! Is my invoice ready?",
-      "Yes — INV-2025-0042, total $145.50.",
-      "Great, can you email it?",
-      "Sent to your inbox ✅",
-      "Thanks!"
-    ],
-    "_task": "Transcribe chat messages in order; mark incoming vs outgoing."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "messages",
+      "value": "['Hi! Is my invoice ready?', 'Yes — INV-2025-0042, total $145.50.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "bubble_first",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        41,
+        166,
+        289,
+        192
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "Transcribe the chat messages in order, one per line. Answer concisely, no explanation.",
+      "answers": [
+        "Hi! Is my invoice ready?\nYes — INV-2025-0042, total $145.50.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
+      ],
+      "answer_type": "reading-order",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       610,
       1319
     ],
-    "page_count": 1
+    "page_size": "390px 844px",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 0.4625
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": false,
+    "reading_order": true
+  },
+  "degradation": {
+    "preset": "screenshot",
+    "severity": 1.0,
+    "seed": 634,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "screenshot",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-0042, total $145.50.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']"
   },
   "spotting": {
     "bubble_first": [
@@ -57,6 +146,5 @@
       "question": "Which messages are the user's?",
       "expected": "right/blue bubbles = user (outgoing)"
     }
-  ],
-  "degraded_preset": "screenshot"
+  ]
 }

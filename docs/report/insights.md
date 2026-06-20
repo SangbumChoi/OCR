@@ -1,13 +1,13 @@
 # Cross-model insights (auto-generated)
 
-Synthesized by `scripts/build_insights.py` from `results/`. Run it after a full sweep (GPU) to populate every section; partial data degrades gracefully.
+Synthesized by `scripts/build_insights.py` from `docs/results/`. Run it after a full sweep (GPU) to populate every section; partial data degrades gracefully.
 
 ## Top findings
 
 - **Relational reasoning** is cleared by: internvl3-1b, internvl2_5-1b (emerges around ~1B; smaller models fail).
 - **No model grounds**: spatial localisation (bbox) is ~0 for the tested general VLMs — a systemic gap, motivating spotting-capable models.
 
-**Models with results:** dummy-echo, florence2-base, florence2-large, got-ocr2, h2ovl-0.8b, internvl2-1b, internvl2_5-1b, internvl3-1b, smoldocling-256m, smolvlm-256m, smolvlm-500m
+**Models with results:** florence2-base, florence2-large, got-ocr2, h2ovl-0.8b, internvl2-1b, internvl2_5-1b, internvl3-1b, llava-ov-0.5b, smoldocling-256m, smolvlm-256m, smolvlm-500m
 
 ## 1. Capability leaders (capability probe)
 
@@ -21,7 +21,6 @@ Synthesized by `scripts/build_insights.py` from `results/`. Run it after a full 
 | cap_ground    | smoldocling-256m | 0.02  |
 
 **Reasoning emergence vs size:** integrative axes by model (params from summaries):
-- dummy-echo (~0M): sum=0.0, rel=0.0
 - florence2-base (~230M): sum=0.0, rel=0.0
 - florence2-large (~770M): sum=0.0, rel=0.0
 - got-ocr2 (~580M): sum=0.0, rel=0.0
@@ -29,6 +28,7 @@ Synthesized by `scripts/build_insights.py` from `results/`. Run it after a full 
 - internvl2-1b (~938M): sum=1.0, rel=0.0
 - internvl2_5-1b (~938M): sum=1.0, rel=1.0
 - internvl3-1b (~938M): sum=1.0, rel=1.0
+- llava-ov-0.5b (~894M): sum=1.0, rel=0.0
 - smoldocling-256m (~256M): sum=0.0, rel=0.0
 - smolvlm-256m (~256M): sum=0.0, rel=0.0
 - smolvlm-500m (~500M): sum=1.0, rel=0.0
@@ -42,7 +42,6 @@ Best grounding score: **smoldocling-256m = 0.02**. No model produces usable boxe
 
 | model            | params(M) | mean score | avg lat(s) | peak CPU(MB) | peak GPU(MB) |
 | ---------------- | --------- | ---------- | ---------- | ------------ | ------------ |
-| dummy-echo       | –         | 0.040      | –          | 217.7        | –            |
 | florence2-base   | 230.0     | 0.000      | 2.474      | –            | –            |
 | florence2-large  | 770.0     | 0.167      | 7.374      | –            | –            |
 | got-ocr2         | 580.0     | 0.167      | 12.473     | –            | –            |
@@ -50,8 +49,9 @@ Best grounding score: **smoldocling-256m = 0.02**. No model produces usable boxe
 | internvl2-1b     | 938.0     | 0.500      | 74.127     | –            | –            |
 | internvl2_5-1b   | 938.0     | 0.667      | 77.384     | –            | –            |
 | internvl3-1b     | 938.0     | 0.667      | 77.254     | –            | –            |
+| llava-ov-0.5b    | 894.0     | 0.478      | –          | –            | –            |
 | smoldocling-256m | 256.0     | 0.161      | 40.466     | –            | –            |
-| smolvlm-256m     | 256.0     | 0.319      | 19.304     | 3093.7       | –            |
+| smolvlm-256m     | 256.0     | 0.319      | 72.576     | 3091.0       | –            |
 | smolvlm-500m     | 500.0     | 0.452      | –          | –            | –            |
 
 ## 4. Custom-eval leaders (class / language)
@@ -62,11 +62,3 @@ Best grounding score: **smoldocling-256m = 0.02**. No model produces usable boxe
 
 **By language:**
 - en: dummy-echo (0.028)
-
-## 6. OOV fallback behaviour (un-tokenizable glyphs)
-
-How models respond to glyphs absent from their tokenizer (fallback), and whether an in-image legend lets them decode (reasoning).
-
-| model      | fallback distribution | legend-decode |
-| ---------- | --------------------- | ------------- |
-| dummy-echo | {'latin/guess': 2}    | 0.1429        |

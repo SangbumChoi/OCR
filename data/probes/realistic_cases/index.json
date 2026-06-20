@@ -1,36 +1,299 @@
 [
   {
+    "key": "invoice",
+    "variant": null,
+    "type": "invoice/receipt",
+    "language": "en",
+    "stressors": [
+      "layout",
+      "table",
+      "spotting",
+      "hallucination"
+    ],
+    "anchor_metric": "KIE F1 + spotting IoU",
+    "support": {
+      "spotting": true,
+      "rationale": true,
+      "multilingual": false,
+      "small_text": false,
+      "table": true,
+      "abstain": true,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "id_card",
+    "variant": null,
+    "type": "ID / passport",
+    "language": "en",
+    "stressors": [
+      "language",
+      "MRZ",
+      "hallucination",
+      "spotting"
+    ],
+    "anchor_metric": "KIE F1 + abstain + IoU",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": true,
+      "table": false,
+      "abstain": true,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "checkbox_form",
+    "variant": null,
+    "type": "checkbox form",
+    "language": "en",
+    "stressors": [
+      "selection-marks",
+      "layout",
+      "hallucination"
+    ],
+    "anchor_metric": "selection-mark accuracy + F1",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": true,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "redacted",
+    "variant": null,
+    "type": "redacted document",
+    "language": "en",
+    "stressors": [
+      "hallucination",
+      "spotting"
+    ],
+    "anchor_metric": "abstain (no-hallucination)",
+    "support": {
+      "spotting": false,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": true,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "bank_statement",
+    "variant": null,
+    "type": "bank statement / payslip",
+    "language": "en",
+    "stressors": [
+      "layout",
+      "table",
+      "spotting"
+    ],
+    "anchor_metric": "TEDS + F1",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": true,
+      "abstain": false,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "rtl_arabic",
+    "variant": null,
+    "type": "RTL doc (Arabic)",
+    "language": "en",
+    "stressors": [
+      "read-direction(RTL)",
+      "language",
+      "script"
+    ],
+    "anchor_metric": "direction + per-lang NED",
+    "support": {
+      "spotting": false,
+      "rationale": false,
+      "multilingual": true,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "webtoon",
+    "variant": null,
+    "type": "webtoon / manga",
+    "language": "en",
+    "stressors": [
+      "read-order",
+      "direction(vertical)",
+      "art-text"
+    ],
+    "anchor_metric": "read-order + direction + NED",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": true
+    }
+  },
+  {
     "key": "prescription",
     "variant": null,
     "type": "prescription",
+    "language": "en",
     "stressors": [
       "handwriting",
       "hallucination",
       "degradation"
     ],
-    "anchor_metric": "CER(hand) + abstain"
+    "anchor_metric": "CER(hand) + abstain",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": true,
+      "reading_order": false
+    }
   },
   {
     "key": "cheque",
     "variant": null,
     "type": "cheque",
+    "language": "en",
     "stressors": [
       "handwriting",
       "dual-amount",
       "hallucination",
       "spotting"
     ],
-    "anchor_metric": "dual-amount F1 + sign detect"
+    "anchor_metric": "dual-amount F1 + sign detect",
+    "support": {
+      "spotting": true,
+      "rationale": true,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": false
+    }
   },
   {
     "key": "ancient",
     "variant": null,
     "type": "ancient manuscript",
+    "language": "en",
     "stressors": [
       "direction(vertical)",
       "language(classical)",
       "degradation(fade/stain)"
     ],
-    "anchor_metric": "NED + robustness"
+    "anchor_metric": "NED + robustness",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": false
+    }
+  },
+  {
+    "key": "website",
+    "variant": null,
+    "type": "website / desktop screenshot",
+    "language": "en",
+    "stressors": [
+      "layout(web)",
+      "reflow",
+      "icons/links",
+      "spotting"
+    ],
+    "anchor_metric": "NED + spotting",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": true,
+      "reading_order": true
+    }
+  },
+  {
+    "key": "mobile_app",
+    "variant": null,
+    "type": "mobile app / phone screenshot",
+    "language": "en",
+    "stressors": [
+      "layout(mobile)",
+      "reflow(vertical)",
+      "read-order"
+    ],
+    "anchor_metric": "NED + read-order",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": true
+    }
+  },
+  {
+    "key": "pdf_paper",
+    "variant": null,
+    "type": "PDF research paper (2-col)",
+    "language": "en",
+    "stressors": [
+      "layout(multi-column)",
+      "read-order",
+      "figure",
+      "header/footer"
+    ],
+    "anchor_metric": "read-order + NED + TEDS",
+    "support": {
+      "spotting": true,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": true
+    }
+  },
+  {
+    "key": "lcd_7seg",
+    "variant": null,
+    "type": "LCD / meter / 7-seg",
+    "language": "en",
+    "stressors": [
+      "non-font digits",
+      "glare"
+    ],
+    "anchor_metric": "exact + IoU",
+    "support": {
+      "spotting": false,
+      "rationale": false,
+      "multilingual": false,
+      "small_text": false,
+      "table": false,
+      "abstain": false,
+      "reading_order": false
+    }
   }
 ]

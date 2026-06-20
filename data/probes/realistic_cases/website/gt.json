@@ -1,5 +1,9 @@
 {
+  "doc_id": "website / desktop screenshot",
   "type": "website / desktop screenshot",
+  "doc_type": "website / desktop screenshot",
+  "domain": null,
+  "acquisition": null,
   "stressors": [
     "layout(web)",
     "reflow",
@@ -7,26 +11,159 @@
     "spotting"
   ],
   "anchor_metric": "NED + spotting",
-  "fields": {
-    "brand": "Ware-Fuentes",
-    "nav_items": [
-      "Product",
-      "Pricing",
-      "Docs",
-      "Sign in"
-    ],
-    "headline": "Ship documents, not paperwork.",
-    "cta": "Start free trial",
-    "_task": "List the navigation items in order, then the main headline."
-  },
+  "languages": [
+    "en"
+  ],
   "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
+  "fields_detailed": [
+    {
+      "key": "brand",
+      "value": "Gould-Foster",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "nav_items",
+      "value": "['Product', 'Pricing', 'Docs', 'Sign in']",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "headline",
+      "value": "Ship documents, not paperwork.",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "cta",
+      "value": "Start free trial",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
+      "key": "cta_button",
+      "value": "",
+      "role": "region",
+      "bbox": [
+        1673,
+        98,
+        1825,
+        125
+      ],
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    }
+  ],
+  "qa_detailed": [
+    {
+      "question": "List the navigation menu items in order. Answer concisely, no explanation.",
+      "answers": [
+        "Product, Pricing, Docs, Sign in"
+      ],
+      "answer_type": "ui",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the main headline? Answer concisely, no explanation.",
+      "answers": [
+        "Ship documents, not paperwork."
+      ],
+      "answer_type": "ui",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    }
+  ],
   "render": {
+    "source": "digital-native-pdf",
     "dpi": 150,
     "size_px": [
       2000,
       1407
     ],
-    "page_count": 1
+    "page_size": "1280px 900px",
+    "page_count": 1,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling": null,
+    "fonts": [],
+    "aspect_ratio": 1.4215
+  },
+  "ablation_support": {
+    "spotting": true,
+    "rationale": false,
+    "multilingual": false,
+    "small_text": false,
+    "table": false,
+    "abstain": true,
+    "reading_order": true
+  },
+  "degradation": {
+    "preset": "screenshot",
+    "severity": 1.0,
+    "seed": 23,
+    "geometry_preserved": true
+  },
+  "degraded_preset": "screenshot",
+  "gen_config": {
+    "name": "base",
+    "ablation": null,
+    "seed": 7,
+    "count": 1,
+    "dpi": 150,
+    "target_long_side": null,
+    "keep_aspect": true,
+    "tiling_n_max": null,
+    "small_text_px": 10.0,
+    "emit_spotting": true,
+    "emit_rationale": true,
+    "languages": [
+      "en"
+    ],
+    "language_weights": null,
+    "degrade_prob": 1.0,
+    "degrade_presets": null,
+    "degrade_severity": 1.0,
+    "doc_type_weights": null
+  },
+  "fields": {
+    "brand": "Gould-Foster",
+    "nav_items": "['Product', 'Pricing', 'Docs', 'Sign in']",
+    "headline": "Ship documents, not paperwork.",
+    "cta": "Start free trial"
   },
   "spotting": {
     "cta_button": [
@@ -69,6 +206,5 @@
       "question": "What is the user's logged-in email?",
       "expected": "logged-out page — abstain"
     }
-  ],
-  "degraded_preset": "screenshot"
+  ]
 }

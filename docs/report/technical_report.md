@@ -2,7 +2,7 @@
 
 **A systematic evaluation and improvement strategy**
 
-Author: Sangbum Choi · Date: 2026-06-17
+Author: Sangbum Choi · Date: 2026-06-19
 
 ---
 
@@ -35,6 +35,16 @@ improvement strategy in Part 2.
 > scores, they are **published reference figures** (model papers / cards) with explicit
 > source and caveat, and the comparison table clearly separates "published reference" from
 > "reproduced".
+
+**What *is* reproduced here.** Beyond the public benchmarks, the report contributes a
+**capability-axis lens** — a taxonomy of what a document reader must actually do (text,
+location, hybrid reasoning) instantiated as two small **controlled probes** with built-in
+ground truth (§Part 1.2b). These run on CPU, so their results are genuinely *measured in this
+repo* (directional, one sample per axis — not a leaderboard). The reproduced signal:
+**hybrid content-reasoning (sum & compare) emerges around ~1B (InternVL2.5/3-1B) while no
+small model grounds (bbox ≈ 0)** — which sharpens, on owned data, the same gap the published
+InfoVQA figures point to. See [`results_analysis.md`](results_analysis.md) /
+[`insights.md`](insights.md).
 
 ---
 
@@ -92,6 +102,14 @@ they need task-specific harnessing rather than the shared VQA loop. **Out of <1B
 (flagged for completeness): MonkeyOCR-pro-1.2B, Kosmos-2.5 (~1.3B), dots.ocr (~1.7B),
 Janus-Pro-1B (~1.5B, non-permissive license), Qwen2-VL-2B, Ovis2-2B, InternVL2.5/3.5-2B.
 
+**Newer 2025-26 additions (registered for the Colab sweep).** Five further recent releases were
+added so the comparison tracks the moving field: **Qwen3.5-0.8B** (the VL variant — config carries
+a vision tower; the only genuinely sub-1B one), **LightOnOCR-1B** (`lightonai/LightOnOCR-1B-1025`,
+Mistral3/Pixtral-style OCR specialist, ~1.16B), and — slightly over the <1B line but kept as
+stronger reference points — **MiniCPM-V-4.6** (~1.3B), **LFM2.5-VL-1.6B** (~1.6B), and
+**Ovis2.5-2B** (~2.6B; Ovis2.5 has *no* 1B variant). *Shakti-VLM-1B* was requested but is not
+publicly available on the Hub (no accessible repo), so it could not be registered.
+
 > Architecture / pretraining / capability profiles for each model are in **Appendix A**.
 
 ### 2. Benchmark selection & design
@@ -129,6 +147,33 @@ baseline plus controlled perturbations — so failures are *attributable*:
 
 Robustness is reported as **retention = score(perturbed) / score(clean)** per family, which
 separates "accurate" from "accurate *and stable*".
+
+### 2b. Capability-axis probes — isolating *what* a reader must do
+
+Public benchmarks bundle many skills into one ANLS number, so a low score does not say *which*
+ability failed. To make the gap analysis falsifiable on **owned, GT-exact data**, the suite adds
+a capability-axis catalogue and two controlled probes (full design in
+[`capability_axes.md`](capability_axes.md)). The axes are grouped into three families with
+sequential codes:
+
+| Family                      | Axes                                                                                                                                   | What it isolates                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **T · Text**                | T1 text-recognition · T2 KIE-localized                                                                                                 | read an exact string / one field's value       |
+| **L · Location & space**    | L1 grounding · L2 absolute-region · L3 relative-position · L4 box-tracking                                                             | *where* things are, and spatial relations      |
+| **H · Reasoning & context** | H1 content-sum · H2 content-compare · H3 chart-value · H4 consistency · H5 anti-hallucination · H6 disambiguation · H7 cross-reference | reasoning *over* read values + context control |
+
+- **`capability_probe`** — measured-score axes (T1/T2, H1/H2/H3, L1) on a synthetic invoice +
+  chart whose pixel boxes are known exactly. Content reasoning (H1/H2) is kept **strictly
+  independent** of position/context: it is arithmetic/comparison over read *values*, not layout.
+- **`spatial_context_probe`** — the signal axes (L2–L4 / H4–H7), each paired with a **shortcut
+  control** (counterfactual / distractor / position-bias) so a pass means the model *cleared the
+  control*, not that it guessed from a language prior. For grounding (L1) every model gets the
+  same normalised "return [x1,y1,x2,y2]" instruction, with native-spotting outputs mapped back
+  to pixels — a fair comparison across chat VLMs and spotting-capable specialists.
+
+Because both probes are rendered here (HTML/CSS → digital-native PDF → exact boxes), they double
+as **fine-tuning supervision** in Part 2 — the same generator produces evaluation *and* training
+GT (§Part 2.3).
 
 ### 3. Evaluation metrics — beyond accuracy
 
@@ -178,6 +223,31 @@ accuracy and is referenced for cross-checking. But calibration (ECE) and the pai
 probe are not in its metric set, and they are central to the document deployment story — hence
 the small, tested `docvlm_eval` package, whose single `evaluate.py` "loads any model, runs the
 benchmark, outputs per-model scores" exactly as the PoC requires.
+
+### 6. What actually ran (reproduced, CPU)
+
+This environment has no GPU, but the capability probes are light enough to run on CPU, so **11
+models produce real, committed results** on the capability probe (`docs/results/<model>/`),
+re-scored to the T/L/H taxonomy directly from cached `predictions.jsonl` — no model re-run
+needed when the taxonomy changes (`run_matrix.py --rescore`). Full read-out:
+[`results_analysis.md`](results_analysis.md) · [`insights.md`](insights.md) ·
+[`../results/matrix_capability.md`](../results/matrix_capability.md).
+
+- **Reproduced signal (directional, 1 sample/axis):** hybrid reasoning **H1 (sum) + H2
+  (compare) = 1.00 for InternVL2.5-1B / 3-1B** — the only models clearing *both* — while
+  SmolVLM tops out at sum-only (500M) or neither (256M). **L1 grounding ≈ 0 for every general
+  VLM** (no spotting head). On the spatial/context probe even 500M clears only coarse absolute
+  quadrant (L2) and distractor disambiguation (H6); relative position, box-tracking, consistency
+  and cross-reference fail their controls.
+- **Honesty about coverage:** numbers are CPU runs *re-scored*, not re-run, for the recode;
+  **Ovis2-1B and PaddleOCR-VL(-1.5) have no cached predictions** (remote-code GPU-only /
+  conflicting transformers pin) and are marked **pending a fresh GPU extraction**
+  (`scripts/run_checkpointed.sh ovis2-1b paddleocr-vl paddleocr-vl-1.5`), as is the full
+  spatial/context table for the non-SmolVLM models. The full public-benchmark sweep
+  (DocVQA/InfoVQA/ChartQA/OCRBench) likewise needs a T4.
+
+This reproduced picture is consistent with the published-figure gap analysis below: the small
+models' deficit is **reasoning/grounding over recognised content**, not recognition.
 
 ---
 
@@ -253,15 +323,51 @@ the reasoning the small LM lacks; augmentation + temperature scaling convert cle
 into *deployable* wins. The plan is *surgical* — it spends capacity on the one axis the
 evidence says is weak (InfoVQA/layout reasoning), not on already-saturated OCR.
 
+### 2b. From strategy to controlled ablations (one factor at a time)
+
+The steps above are not run as one big change — each is an **isolated ablation** with a held-out
+control, then the winners are stacked into a cumulative **staircase** (full registry and
+dependency graph in [`part2_ablation_plan.md`](part2_ablation_plan.md), `configs/ablations.yaml`):
+
+| Step / question                    | Ablation | Factor varied                               | Data switch      |
+| ---------------------------------- | -------- | ------------------------------------------- | ---------------- |
+| Spotting supervision (where)       | **A1**   | target `value + [x1,y1,x2,y2]` vs `value`   | `emit_spotting`  |
+| Reasoning distillation (Step 2)    | **A2**   | target `rationale → answer` vs `answer`     | `emit_rationale` |
+| Are the signals complementary?     | **A3**   | the four corners of {spot}×{reason}         | both flags       |
+| Multilingual mix & transfer        | **A4**   | `{en}`,`{en+es}`,`{ko+en}`,… equal totals   | `languages`      |
+| LoRA placement (Step 1)            | **A5**   | vision / connector / LLM-attn / LLM-MLP     | (training)       |
+| Hyperparameters (Step 1)           | **A6**   | rank/alpha/lr/epochs                        | (training)       |
+| Preprocessing/resize (keep tiling) | **A7**   | dynamic tiling vs fixed; resolution; aspect | render knobs     |
+
+**Data & experiment machinery.** Each arm is a synthetic dataset variant whose ground truth
+*carries the factor being varied*, generated by the same digital-native pipeline that backs the
+probes — so labels (incl. exact boxes) are free and a degraded/resized copy keeps valid GT. The
+factors are stored as a typed **`DocSample` DTO** and controlled by a single config, so an arm
+differs from its control in exactly one factor family (design:
+[`synthetic_data_dto.md`](synthetic_data_dto.md)):
+
+```bash
+python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablation A1_spotting_on
+python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablation A2_reasoning_on
+# …A3_*, A4_ko_en, A7_dynamic_tiling — base + ablation_overrides in one file
+```
+
+Every variant is scored by the **same** Part-1 pipeline (capability probe, spatial/context
+signals, public-benchmark suite), so the staircase is apples-to-apples and each step's height is
+that factor's marginal contribution. Steps 3–4 (robustness augmentation, temperature-scaling
+calibration) are layered on top of the chosen training arm and re-measured the same way.
+
 ### 3. Expected outcomes & measurement
 
-| Axis                            | Baseline (published ref.) | Target after plan      | Measured by                |
-| ------------------------------- | ------------------------: | ---------------------: | -------------------------- |
-| InfoVQA (val ANLS)              | ~56                       | **+6–10 ANLS**         | `evaluate.py` on InfoVQA   |
-| ChartQA (relaxed)               | ~76                       | +2–4                   | `evaluate.py` on ChartQA   |
-| DocVQA (val ANLS)               | ~85                       | **no regression** (±1) | `evaluate.py` on DocVQA    |
-| Robustness worst-case retention | TBD (pipeline)            | **+0.1–0.2**           | robustness probe retention |
-| Calibration (ECE)               | TBD (pipeline)            | **halved**             | ECE in `summary.json`      |
+| Axis                            | Baseline (published ref.)           | Target after plan               | Measured by                |
+| ------------------------------- | ----------------------------------: | ------------------------------: | -------------------------- |
+| InfoVQA (val ANLS)              | ~56                                 | **+6–10 ANLS**                  | `evaluate.py` on InfoVQA   |
+| ChartQA (relaxed)               | ~76                                 | +2–4                            | `evaluate.py` on ChartQA   |
+| DocVQA (val ANLS)               | ~85                                 | **no regression** (±1)          | `evaluate.py` on DocVQA    |
+| H2 content-compare (probe)      | 1.00 @1B / 0.00 @≤0.5B (reproduced) | hold @1B; **lift ≤0.5B via A2** | capability probe           |
+| L1 grounding (probe)            | ~0 (reproduced)                     | **>0 via A1 spotting**          | capability probe IoU       |
+| Robustness worst-case retention | TBD (pipeline)                      | **+0.1–0.2**                    | robustness probe retention |
+| Calibration (ECE)               | TBD (pipeline)                      | **halved**                      | ECE in `summary.json`      |
 
 Expected magnitudes are deliberately modest and InfoVQA-focused because that is where the
 headroom is; the success criterion is **InfoVQA up materially with DocVQA/OCRBench held**,

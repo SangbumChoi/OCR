@@ -38,6 +38,7 @@ def build_model(key: str, **kwargs) -> ModelAdapter:
         paddleocr_vl,
         h2ovl,
         ovis,
+        extra_vlms,
     )
 
     if key not in _REGISTRY:
@@ -55,6 +56,7 @@ def list_models() -> list[str]:
         paddleocr_vl,
         h2ovl,
         ovis,
+        extra_vlms,
     )
 
     return sorted(_REGISTRY)

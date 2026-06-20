@@ -53,6 +53,10 @@ class DocBuilder:
         self.qas: list[dict] = []
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
+        # per-field metadata consumed by DocSample.from_builder_gt (A4 language, A7 small-text)
+        self.field_lang: dict[str, str] = {}
+        self.field_role: dict[str, str] = {}
+        self.field_font_px: dict[str, float] = {}
 
     # -- low level ---------------------------------------------------------
     def raw(self, html: str) -> None:
@@ -76,18 +80,30 @@ class DocBuilder:
         self.raw(f"<p class='{cls}'>{html}</p>")
 
     def field(self, label: str | None, value: str, *, key: str, spot: bool = False,
-              cls: str = "", lang: str = "en") -> None:
-        """A labelled value. Registers fields[key]=value; optionally a spotting box on the value."""
+              cls: str = "", lang: str = "en", role: str = "kie-value",
+              font_px: float | None = None) -> None:
+        """A labelled value. Registers fields[key]=value; optionally a spotting box on the value.
+
+        ``lang`` (A4) and ``font_px`` (A7 small-text slice) are recorded as per-field metadata."""
         self.fields[key] = value
+        self.field_lang[key] = lang
+        self.field_role[key] = role
+        if font_px is not None:
+            self.field_font_px[key] = font_px
         lab = f"<b>{esc(label)}:</b> " if label else ""
         self.raw(f"<p class='fld {cls}' lang='{lang}'>{lab}<span class=v>{esc(value)}</span></p>")
         if spot:
             self._spot(key, value)
 
     def transcript(self, text: str, *, key: str = "transcript", cls: str = "", lang: str = "en",
-                   spot: bool = False) -> None:
+                   spot: bool = False, role: str = "transcript",
+                   font_px: float | None = None) -> None:
         """A block of text whose exact string is the GT (for NED/CER)."""
         self.fields[key] = text
+        self.field_lang[key] = lang
+        self.field_role[key] = role
+        if font_px is not None:
+            self.field_font_px[key] = font_px
         self.raw(f"<p class='tx {cls}' lang='{lang}'>{esc(text)}</p>")
         if spot:
             self._spot(key, text)
@@ -154,15 +170,21 @@ class DocBuilder:
         return text
 
     def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
-           key: str | None = None, concise: bool = True) -> None:
+           key: str | None = None, concise: bool = True, rationale: str | None = None,
+           languages: list[str] | None = None) -> None:
         """Register an answerable (question, answer) pair over content already rendered, so the case
-        can be turned into eval Samples. `answer` may be a string or a list of acceptable strings."""
+        can be turned into eval Samples. `answer` may be a string or a list of acceptable strings.
+
+        ``rationale`` is the A2 chain-of-thought supervision target; ``key`` (if it matches a
+        registered spot) links the answer to its A1 bounding box."""
         ans = answer if isinstance(answer, list) else [answer]
         q = question
         if concise and metric not in ("grounding", "teds"):
             q += " Answer concisely, no explanation."
         self.qas.append({"key": key, "question": q, "answers": ans,
-                         "metric": metric, "answer_type": answer_type})
+                         "metric": metric, "answer_type": answer_type,
+                         **({"rationale": rationale} if rationale else {}),
+                         **({"languages": languages} if languages else {})})
 
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})

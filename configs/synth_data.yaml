@@ -1,0 +1,82 @@
+# Synthetic-data generation config (binds to docvlm_eval.synth.dto.GenConfig).
+#
+# One file = one dataset variant. `base` holds the default knobs; `ablation_overrides` holds the
+# per-experiment deltas for the Part-2 study (docs/report/part2_ablation_plan.md). Generate with:
+#
+#   python scripts/make_realistic_cases.py --config configs/synth_data.yaml                # base
+#   python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablation A1_spotting
+#
+# Each ablation changes EXACTLY ONE family of factors vs. base, so a measured gain is attributable.
+# Data-side factors map onto the GT DTO as: A1->bbox, A2->rationale, A4->language/script,
+# A7->render(dpi/target_long_side/keep_aspect/tiling)+small-text. A5/A6 are training-side.
+
+base:
+  name: base
+  seed: 7
+  count: 1
+
+  # --- A7 render / preprocessing (recorded in RenderSpec; controls the IMAGE distribution) ---
+  dpi: 150                  # digital-native PDF rasterised at this DPI
+  target_long_side: null    # null = native render size; set e.g. 1024 to resize longest side
+  keep_aspect: true
+  tiling_n_max: null        # set e.g. 12 to record dynamic-tiling metadata (n_max tiles)
+  small_text_px: 10.0       # fields rendered at/below this px are the small-text slice (e.g. MRZ)
+
+  # --- A1 / A2 supervision targets to EMIT in the GT ---
+  emit_spotting: true       # A1: include bbox targets (Field.bbox / QAItem.answer_bbox)
+  emit_rationale: true      # A2: include chain-of-thought rationales
+
+  # --- A4 multilingual mix (real-world script distribution) ---
+  languages: [en]
+  language_weights: null    # e.g. {en: 0.5, es: 0.2, ko: 0.15, ja: 0.1, zh: 0.05}
+
+  # --- realism / distribution matching (real-world acquisition mix) ---
+  degrade_prob: 1.0         # fraction of docs that also get a degraded copy
+  degrade_severity: 1.0
+  degrade_presets: null     # null = each case's default preset; or per-type override, e.g.
+                            #   invoice: [scan, photo]   prescription: [fax]
+  doc_type_weights: null    # null = uniform over the requested cases
+
+# ----------------------------------------------------------------------------------------------
+# Ablation overrides — applied on top of `base` (deep-merged) when --ablation <id> is passed.
+# These are the *data-side* arms; the paired control is `base` itself unless noted.
+# ----------------------------------------------------------------------------------------------
+ablation_overrides:
+
+  # A1 — spotting supervision. Arm = boxes ON (base), control = boxes OFF (this override).
+  A1_spotting_off:
+    emit_spotting: false
+    emit_rationale: false   # isolate spotting: turn reasoning off too so only boxes differ vs A1 arm
+
+  A1_spotting_on:
+    emit_spotting: true
+    emit_rationale: false
+
+  # A2 — reasoning supervision. Arm = rationale ON, control = rationale OFF.
+  A2_reasoning_off:
+    emit_spotting: false
+    emit_rationale: false
+
+  A2_reasoning_on:
+    emit_spotting: false
+    emit_rationale: true
+
+  # A3 — spot+reason vs combined-direct: the four corners of {spot} x {reason}.
+  A3_answer_only:     {emit_spotting: false, emit_rationale: false}
+  A3_spot_only:       {emit_spotting: true,  emit_rationale: false}
+  A3_reason_only:     {emit_spotting: false, emit_rationale: true}
+  A3_spot_and_reason: {emit_spotting: true,  emit_rationale: true}
+
+  # A4 — multilingual mixing & language correlation. Equal total samples across arms (count fixed).
+  A4_en:        {languages: [en]}
+  A4_en_es:     {languages: [en, es]}
+  A4_en_ja:     {languages: [en, ja]}
+  A4_ko_en:     {languages: [ko, en]}
+  A4_en_zh:     {languages: [en, zh]}
+  A4_all:       {languages: [en, es, ko, ja, zh]}
+
+  # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
+  A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}
+  A7_highres:         {target_long_side: 1536, keep_aspect: true,  tiling_n_max: null, dpi: 200}
+  A7_dynamic_tiling:  {target_long_side: 1536, keep_aspect: true,  tiling_n_max: 12,   dpi: 200}
+  A7_squash_aspect:   {target_long_side: 1024, keep_aspect: false, tiling_n_max: null, dpi: 150}

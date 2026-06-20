@@ -1,10 +1,10 @@
 {
   "n_samples": 6,
   "primary_metric": "anls",
-  "score": 0.6667,
-  "accuracy": 0.6667,
-  "answer_rate": 1.0,
-  "ece": null,
+  "score": 0.4777,
+  "accuracy": 0.5,
+  "answer_rate": 0.5,
+  "ece": 0.2481,
   "by_answer_type": {
     "H1": {
       "n": 1,
@@ -12,11 +12,11 @@
     },
     "H2": {
       "n": 1,
-      "score": 1.0
+      "score": 0.0
     },
     "H3": {
       "n": 1,
-      "score": 1.0
+      "score": 0.0
     },
     "L1": {
       "n": 1,
@@ -24,19 +24,15 @@
     },
     "T1": {
       "n": 1,
-      "score": 0.0
+      "score": 0.9286
     },
     "T2": {
       "n": 1,
-      "score": 1.0
+      "score": 0.9375
     }
   },
-  "model": "internvl3-1b",
-  "hf_id": "OpenGVLab/InternVL3-1B",
-  "param_count_m": 938.0,
+  "model": "llava-ov-0.5b",
   "benchmark": "capability",
-  "device": "cpu",
-  "dtype": "float32",
-  "load_seconds": 5.02,
-  "avg_latency_s": 77.254
+  "param_count_m": 894.0,
+  "hf_id": "llava-hf/llava-onevision-qwen2-0.5b-ov-hf"
 }

@@ -1,75 +1,75 @@
 {
   "smolvlm-256m": {
-    "S1_absolute_spatial": {
+    "L2_absolute_spatial": {
       "acc": 0.25,
       "n": 4,
       "distinct_preds": 2,
       "PASS": false
     },
-    "S2_relative_spatial": {
+    "L3_relative_spatial": {
       "normal_correct": false,
       "counterfactual_correct": true,
       "prior_reliance_gap": -1.0,
       "PASS": false
     },
-    "S3_box_tracking": {
+    "L4_box_tracking": {
       "center_y_corr": 0.0,
       "mean_iou": 0.0,
       "PASS": false
     },
-    "C1_consistency": {
+    "H4_consistency": {
       "consistent_correct": true,
       "inconsistent_caught": false,
       "PASS": false
     },
-    "C2_anti_hallucination": {
+    "H5_anti_hallucination": {
       "answered_none": false,
       "prediction": "$20.50.",
       "PASS": false
     },
-    "C3_disambiguation": {
+    "H6_disambiguation": {
       "score": 1.0,
       "PASS": true
     },
-    "C4_context_sensitivity": {
+    "H7_context_sensitivity": {
       "bob_correct": true,
       "alice_correct": false,
       "PASS": false
     }
   },
   "smolvlm-500m": {
-    "S1_absolute_spatial": {
+    "L2_absolute_spatial": {
       "acc": 0.75,
       "n": 4,
       "distinct_preds": 3,
       "PASS": true
     },
-    "S2_relative_spatial": {
+    "L3_relative_spatial": {
       "normal_correct": false,
       "counterfactual_correct": true,
       "prior_reliance_gap": -1.0,
       "PASS": false
     },
-    "S3_box_tracking": {
+    "L4_box_tracking": {
       "center_y_corr": 0.0,
       "mean_iou": 0.01,
       "PASS": false
     },
-    "C1_consistency": {
+    "H4_consistency": {
       "consistent_correct": true,
       "inconsistent_caught": false,
       "PASS": false
     },
-    "C2_anti_hallucination": {
+    "H5_anti_hallucination": {
       "answered_none": false,
       "prediction": "0.",
       "PASS": false
     },
-    "C3_disambiguation": {
+    "H6_disambiguation": {
       "score": 1.0,
       "PASS": true
     },
-    "C4_context_sensitivity": {
+    "H7_context_sensitivity": {
       "bob_correct": false,
       "alice_correct": true,
       "PASS": false
