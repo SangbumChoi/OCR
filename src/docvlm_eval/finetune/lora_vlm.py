@@ -89,6 +89,15 @@ class LoraVLMConfig:
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
 
 
+def _device_dtype(prefer_dtype: str):
+    """Pick a device + a safe dtype: GPU keeps the requested dtype; CPU forces float32
+    (bf16/fp16 matmul is slow/unsupported for some ops on CPU)."""
+    import torch
+    if torch.cuda.is_available():
+        return "cuda", getattr(torch, prefer_dtype)
+    return "cpu", torch.float32
+
+
 def _target_text(sample: dict) -> str:
     """Supervision target: rationale (if present, A2) then the gold answer."""
     ans = sample["answers"][0]
@@ -116,9 +125,10 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
     from PIL import Image
 
     torch.manual_seed(cfg.seed)
+    device, dt = _device_dtype(cfg.dtype)
     proc = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
-    model = _AutoVLM.from_pretrained(cfg.model_id, torch_dtype=getattr(torch, cfg.dtype),
-                                     trust_remote_code=True).cuda()
+    model = _AutoVLM.from_pretrained(cfg.model_id, torch_dtype=dt,
+                                     trust_remote_code=True).to(device)
 
     targets = resolve_lora_targets(model.named_modules(), cfg.placement)
     if not targets:
@@ -149,7 +159,7 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
         labels = full["input_ids"].clone()
         labels[:, : prompt["input_ids"].shape[1]] = -100      # supervise only the answer span
         full["labels"] = labels
-        return {k: (v.cuda() if hasattr(v, "cuda") else v) for k, v in full.items()}
+        return {k: (v.to(device) if hasattr(v, "to") else v) for k, v in full.items()}
 
     dl = DataLoader(_DS(), batch_size=1, shuffle=True, collate_fn=collate)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
@@ -191,12 +201,13 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
     from docvlm_eval.metrics import aggregate
     from docvlm_eval.schema import Prediction
 
+    device, dt = _device_dtype(dtype)
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)
-    model = _AutoVLM.from_pretrained(model_id, torch_dtype=getattr(torch, dtype),
-                                     trust_remote_code=True).cuda().eval()
+    model = _AutoVLM.from_pretrained(model_id, torch_dtype=dt,
+                                     trust_remote_code=True).to(device).eval()
     if adapter_path:
         from peft import PeftModel
-        model = PeftModel.from_pretrained(model, adapter_path).cuda().eval()
+        model = PeftModel.from_pretrained(model, adapter_path).to(device).eval()
 
     samples = load_jsonl(jsonl)
     preds: dict[str, Prediction] = {}
@@ -205,7 +216,7 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
         msgs = [{"role": "user", "content": [{"type": "image", "image": img},
                                              {"type": "text", "text": s.question}]}]
         inputs = proc.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
-                                          return_dict=True, return_tensors="pt").to("cuda")
+                                          return_dict=True, return_tensors="pt").to(device)
         n = inputs["input_ids"].shape[1]
         with torch.no_grad():
             out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
