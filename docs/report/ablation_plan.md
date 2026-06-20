@@ -8,10 +8,18 @@ control — then **stack the winners** and show a **staircase** of cumulative ga
 *which-module-to-adapt* hypotheses these arms test are laid out in
 [`research_novelty.md`](research_novelty.md).
 
-Target model: **InternVL2.5-1B** (best in evaluation). Base data: document-parsing/generation pairs
-(image → structured text), augmented per-ablation. Every ablation is scored on the **same
-evaluation suite** (capability probe, custom_eval per-axis, spatial/context signals) so gains are
-attributable to a capability, not a single number.
+Target models: **Qwen3.5-0.8B** (strongest genuinely sub-1B) and **LFM2.5-VL-1.6B** (best overall +
+fastest), chosen from the full GPU comparison. The two are carried side-by-side so each ablation's
+effect is read per architecture. Base data: document-parsing/generation pairs (image → structured
+text), augmented per-ablation. Every ablation is scored on the **same evaluation suite** (capability
+probe, custom_eval per-axis, spatial/context signals) so gains are attributable to a capability, not
+a single number.
+
+**Measured baseline gaps the ablations must close** (from the GPU run): *both* — L1 grounding/
+spotting ≈ 0, L4 box-tracking = 0, 180° rotation collapse; *qwen3.5* — H2 relational-compare = 0,
+slow latency; *lfm2.5-vl* — grounding (best but low). The hypotheses mapping each gap to a module +
+ablation arm are in [`research_novelty.md`](research_novelty.md) and visualised side-by-side in
+[`../../notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb).
 
 ## Method: one factor at a time → integrate → staircase
 
@@ -37,14 +45,19 @@ We don't just ask "is multilingual better" — we measure **pairwise transfer**:
 zh↔en via shared doc structure) vs. interference (possible negative: en↔ja if capacity is split).
 This guides the final training mix (include synergistic languages, drop interfering ones).
 
-## A5 detail — where to put LoRA (InternVL module map)
+## A5 detail — where to put LoRA (resolved by introspection, not hardcoded)
 
-| Target group   | Modules (InternVL2.5)                           | Capability it should move                  |
-| -------------- | ----------------------------------------------- | ------------------------------------------ |
-| Vision encoder | `vision_model.encoder.layers.*.attn.{qkv,proj}` | recognition, small-text, layout perception |
-| Connector      | `mlp1.*` (pixel-shuffle MLP projector)          | visual→text alignment, grounding           |
-| LLM attention  | `language_model.*.self_attn.{q,k,v,o}_proj`     | reasoning, cross-region attention          |
-| LLM MLP        | `language_model.*.mlp.{gate,up,down}_proj`      | knowledge, language/CJK                    |
+Because the two bases have different module names (Qwen3.5-VL vs LFM2-VL), the placement groups are
+resolved at **runtime** from the loaded model
+(`docvlm_eval.finetune.lora_vlm.resolve_lora_targets(model, group)`): every `nn.Linear` is bucketed
+by its path into one of the groups below, so the same A5 ablation runs unchanged on either model.
+
+| Target group   | Bucketed by path                                  | Capability it should move                  |
+| -------------- | ------------------------------------------------- | ------------------------------------------ |
+| Vision encoder | `visual* / vision_tower / siglip / navit / aimv2` | recognition, small-text, layout perception |
+| Connector      | `merger / projector / multi_modal / resampler`    | visual→text alignment, **grounding**       |
+| LLM attention  | LLM side, leaf `{q,k,v,o}_proj`                    | **reasoning**, cross-region attention      |
+| LLM MLP        | LLM side, leaf `{gate,up,down}_proj`              | knowledge, **language/CJK**                |
 
 Each group is a separate LoRA run; we attribute per-axis gains to placement (e.g., if grounding
 only improves when the connector+vision are adapted, that confirms the spatial pathway).
@@ -94,11 +107,24 @@ factor in a single config, so an arm differs from its control in exactly one fac
 - **Generate:** `python scripts/make_realistic_cases.py --config configs/synth_data.yaml
   --ablation <id>` — `configs/synth_data.yaml` holds `base:` + `ablation_overrides:` (A1/A2/A3/A4/A7).
 
+## Run one arm end-to-end (GPU)
+
+```bash
+# baseline (eval only) for both bases, then e.g. the A1 spotting arm on the connector:
+python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm baseline
+python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm A1_spotting_on --placement connector
+```
+`run_ablation.py` generates the arm's data → LoRA-fine-tunes (`docvlm_eval.finetune.lora_vlm`,
+placement resolved by introspection) → evaluates on the probe suite → appends to
+`docs/results/ablation_results.json`, which
+[`notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb) reads for the
+**side-by-side before/after** of both models.
+
 ## Outputs & reproducibility
 - `configs/synth_data.yaml` — data-generation config: `base` knobs + per-ablation `ablation_overrides`
   (binds to `docvlm_eval.synth.dto.GenConfig`); one file = one dataset variant.
-- `configs/ablations.yaml` — declarative ablation registry (factor, control, metric, hypothesis).
-- `scripts/plot_ablation.py` — staircase + per-ablation Δ bars + language-correlation heatmap +
-  relationship diagram, from a results JSON (a committed demo shows the format until real runs).
-- Training uses the repo's LoRA scaffold (`src/docvlm_eval/finetune`); each ablation is one config.
-- Every variant is scored by the **same** Part-1 eval pipeline, so the staircase is apples-to-apples.
+- `configs/ablations.yaml` — declarative ablation registry (two bases, factor, control, metric, gap).
+- `scripts/run_ablation.py` — gen → LoRA train → eval → record (per model, per arm).
+- `docvlm_eval.finetune.lora_vlm` — model-agnostic LoRA (chat-template) + the A5 placement resolver.
+- `scripts/plot_ablation.py` — staircase + Δ bars + transfer heatmap from the results JSON.
+- Every variant is scored by the **same** eval pipeline, so the staircase is apples-to-apples.
