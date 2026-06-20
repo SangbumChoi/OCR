@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visualise the Part-2 ablation study (see docs/report/part2_ablation_plan.md):
+"""Visualise the ablation study (see docs/report/ablation_plan.md):
   1. ablation_staircase.png     - cumulative gain as winners are stacked (the "staircase")
   2. ablation_deltas.png        - marginal Δ per ablation (which factor helps how much)
   3. ablation_lang_transfer.png - language-pair transfer heatmap (A4)

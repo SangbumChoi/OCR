@@ -40,10 +40,10 @@ pixels. The rest of the plan follows from that one decision.
 4 evaluate ALL models × ALL metrics ───────►  report/results_analysis.md · insights.md · results/*
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
         │
-5 decide ARCHITECTURE: integrate, don't ───►  report/research_novelty.md · part2_ablation_plan.md
+5 decide ARCHITECTURE: integrate, don't ───►  report/research_novelty.md · ablation_plan.md
    pipeline  (orientation = TODO)
         │
-6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · part2_ablation_plan.md
+6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
    → cumulative "staircase" report             report/figures/ablation_staircase.png
 ```
 
@@ -122,7 +122,7 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   left as a TODO, not yet committed.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
   capability × scale, grounding-supervision causality (does "where" improve "whether"?).
-- **Read:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md) — A1 spotting,
+- **Read:** [`report/ablation_plan.md`](report/ablation_plan.md) — A1 spotting,
   A7 preprocessing, A5 LoRA placement are exactly the "fold the pipeline into the model" moves.
 
 ## 6. Build/collect data → ablate → **combine** → the staircase report
@@ -139,7 +139,7 @@ added factor lifting the score a step, ending well above the baseline.
   for the DTO + config-driven factor control, and
   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
   legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
-- **Ablate & combine:** [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md)
+- **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
 - **Deliverable:** the cumulative staircase
   [`report/figures/ablation_staircase.png`](report/figures/ablation_staircase.png) +
@@ -154,7 +154,7 @@ added factor lifting the score a step, ending well above the baseline.
 | --- | --- |
 | "Document" includes screens / UX surfaces (not just OCR) | this plan §0; realistic_cases `website`/`mobile_app` |
 | Data/evaluation survey before model survey | §1–3 before §4 |
-| Integrate capabilities into the model, **not** a specialist pipeline | §5; part2_ablation_plan A1/A5/A7 |
+| Integrate capabilities into the model, **not** a specialist pipeline | §5; ablation_plan A1/A5/A7 |
 | **Orientation as an explicit signal — TODO** (not yet committed) | §5 |
 | Report's headline = cumulative ablation **staircase** | §6 |
 
@@ -168,5 +168,5 @@ added factor lifting the score a step, ending well above the baseline.
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md)
-6. [`report/part2_ablation_plan.md`](report/part2_ablation_plan.md) →
+6. [`report/ablation_plan.md`](report/ablation_plan.md) →
    [`report/technical_report.md`](report/technical_report.md)

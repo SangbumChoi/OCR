@@ -329,7 +329,7 @@ evidence says is weak (InfoVQA/layout reasoning), not on already-saturated OCR.
 
 The steps above are not run as one big change — each is an **isolated ablation** with a held-out
 control, then the winners are stacked into a cumulative **staircase** (full registry and
-dependency graph in [`part2_ablation_plan.md`](part2_ablation_plan.md), `configs/ablations.yaml`):
+dependency graph in [`ablation_plan.md`](ablation_plan.md), `configs/ablations.yaml`):
 
 | Step / question                    | Ablation | Factor varied                               | Data switch      |
 | ---------------------------------- | -------- | ------------------------------------------- | ---------------- |

@@ -4,8 +4,8 @@ This is the **single source of truth** that ties three things together:
 
   1. *what is drawn* on the page (fields, tables, reading order),
   2. *the ground truth* for every capability axis (boxes, rationales, languages), and
-  3. *the ablation factors* the Part-2 study wants to vary (see
-     ``docs/report/part2_ablation_plan.md`` and ``configs/synth_data.yaml``).
+  3. *the ablation factors* the ablation study wants to vary (see
+     ``docs/report/ablation_plan.md`` and ``configs/synth_data.yaml``).
 
 The design rule: every value the ablations need to switch on/off is **stored in the GT** and
 **controlled by a single :class:`GenConfig`**, so one config file fully determines a dataset

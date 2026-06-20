@@ -2,12 +2,12 @@
 
 This document explains how we generate fine-tuning data whose **distribution matches reality** and
 whose **ground truth carries every factor the ablations want to vary**
-([`part2_ablation_plan.md`](part2_ablation_plan.md)). One config file fully determines a dataset
+([`ablation_plan.md`](ablation_plan.md)). One config file fully determines a dataset
 variant, so each ablation arm is reproducible and differs from its control in exactly one factor.
 
 Reading order: [`document_type_taxonomy.md`](document_type_taxonomy.md) (what documents exist and
 their stressors) → this file (how we synthesise them with built-in GT) →
-[`part2_ablation_plan.md`](part2_ablation_plan.md) (how the GT factors are switched per experiment).
+[`ablation_plan.md`](ablation_plan.md) (how the GT factors are switched per experiment).
 
 ## 1. Why synthetic, and how we match the real distribution
 
@@ -96,5 +96,5 @@ doc, so the mix is realised across the corpus). The resolved config is also writ
 - **Boxes survive degradation and resize:** degradation is photometric; the A7 resize rescales all
   boxes by the same factor (`scripts/make_realistic_cases.py::_resize_with_boxes`).
 - **One factor at a time:** an ablation override touches only its knob family; everything else
-  inherits from `base`, so a measured Δ is attributable (the staircase in `part2_ablation_plan.md`).
+  inherits from `base`, so a measured Δ is attributable (the staircase in `ablation_plan.md`).
 - **Reproducible:** seeded Faker + recorded `gen_config` → byte-stable regeneration.

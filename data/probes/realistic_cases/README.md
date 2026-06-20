@@ -65,7 +65,7 @@ docvlm-eval --model <id> --benchmark data/probes/realistic_cases/realistic_cases
 reproducible), so the same generator produces a large GT-exact training set at zero labelling
 cost. The loader/benchmark builder handle both layouts automatically. Every generation factor is
 controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`base` + per-ablation
-`ablation_overrides`), so each Part-2 ablation arm is one `--ablation` flag:
+`ablation_overrides`), so each ablation arm is one `--ablation` flag:
 
 ```bash
 python scripts/make_realistic_cases.py --count 500                       # 14 * 500 = 7000 labelled docs

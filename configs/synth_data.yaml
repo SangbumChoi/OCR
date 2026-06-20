@@ -1,7 +1,7 @@
 # Synthetic-data generation config (binds to docvlm_eval.synth.dto.GenConfig).
 #
 # One file = one dataset variant. `base` holds the default knobs; `ablation_overrides` holds the
-# per-experiment deltas for the Part-2 study (docs/report/part2_ablation_plan.md). Generate with:
+# per-experiment deltas for the ablation study (docs/report/ablation_plan.md). Generate with:
 #
 #   python scripts/make_realistic_cases.py --config configs/synth_data.yaml                # base
 #   python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablation A1_spotting

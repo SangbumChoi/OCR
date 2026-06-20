@@ -5,7 +5,7 @@
 > moved to:
 > - the unified **`src/docvlm_eval/finetune`** subpackage (install with `pip install -e ".[finetune]"`),
 > - the literature-grounded **Part-2 plan** in
->   [`docs/report/part2_ablation_plan.md`](report/part2_ablation_plan.md) (A1–A7 ablations → staircase), and
+>   [`docs/report/ablation_plan.md`](report/ablation_plan.md) (A1–A7 ablations → staircase), and
 > - the **synthetic training-data generator** with built-in ground truth
 >   ([`scripts/make_realistic_cases.py --count N`](../scripts/make_realistic_cases.py), see
 >   [`data/probes/realistic_cases/`](../data/probes/realistic_cases/README.md)).

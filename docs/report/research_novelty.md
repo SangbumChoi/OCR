@@ -37,7 +37,7 @@ repo) are unusually well-suited to isolate them. Below, each direction lists *wh
 
   Corollary: at 1B the **connector may be the bottleneck** (too little capacity to both align and
   serialise), so adapting it could matter *more* than at ≥7B — **inverting** the LLM-centric folklore.
-  These per-capability bets are exactly the arms of the [**Ablation plan**](part2_ablation_plan.md):
+  These per-capability bets are exactly the arms of the [**Ablation plan**](ablation_plan.md):
   **A5** places LoRA per module, while **A1/A2/A4/A7** supply the matching supervision and inputs.
 - **Repo asset.** Ablation **A5** (`configs/ablations.yaml`) × the capability probe + custom_eval
   per-axis. Single-module LoRA at matched trainable-param budget → `plot_ablation.py` placement bars.
