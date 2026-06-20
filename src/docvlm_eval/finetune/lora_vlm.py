@@ -82,11 +82,15 @@ class LoraVLMConfig:
     learning_rate: float = 1e-4
     epochs: int = 1
     max_steps: int | None = None
-    batch_size: int = 1
+    batch_size: int = 1                    # micro-batch (one image/forward); effective batch = grad_accum
     grad_accum: int = 8
     dtype: str = "bfloat16"
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
+    # --- OOM controls (a single full-page doc -> ~1000+ vision tokens dominates memory, not batch) ---
+    grad_checkpointing: bool = True        # trade compute for ~big activation-memory savings
+    max_image_long_side: int | None = 1024 # downscale the image's long side before the processor
+                                           # (caps vision-token count; None = native resolution)
     # --- per-epoch logging / Weights & Biases (optional; no-op if unset or wandb missing) ---
     wandb_project: str | None = None       # set -> log loss + per-epoch eval metrics to W&B
     wandb_run: str | None = None           # W&B run name (e.g. "A0-qwen3_5-0.8b-n200")
@@ -107,6 +111,20 @@ def _target_text(sample: dict) -> str:
     ans = sample["answers"][0]
     rat = sample.get("rationale")
     return f"{rat}\nAnswer: {ans}" if rat else ans
+
+
+def _cap_image(img, long_side: int | None):
+    """Downscale a PIL image so its longest side <= long_side (keeps aspect). The #vision tokens — and
+    thus prefill/activation memory — scales with image area, so this is the main OOM lever for VLMs."""
+    if not long_side:
+        return img
+    w, h = img.size
+    m = max(w, h)
+    if m <= long_side:
+        return img
+    from PIL import Image as _Image
+    s = long_side / m
+    return img.resize((max(1, round(w * s)), max(1, round(h * s))), _Image.LANCZOS)
 
 
 def _to_model(inputs, device, dt):
@@ -131,7 +149,8 @@ def _auto_vlm():
     return _AutoVLM
 
 
-def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64) -> dict:
+def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
+           max_image_long_side: int | None = 1024) -> dict:
     """Generate on every sample of ``jsonl`` with the (already-loaded) model and return the project's
     aggregate summary. Shared by ``eval_vlm`` and the per-epoch eval inside ``train_lora_vlm`` so we
     never reload the model just to score it (the reload was a needless OOM risk)."""
@@ -152,7 +171,7 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64) -> dict:
     samples = load_jsonl(jsonl)
     preds: dict[str, Prediction] = {}
     for s in samples:
-        img = Image.open(s.image_path).convert("RGB")
+        img = _cap_image(Image.open(s.image_path).convert("RGB"), max_image_long_side)
         msgs = [{"role": "user", "content": [{"type": "image", "image": img},
                                              {"type": "text", "text": s.question}]}]
         inputs = proc.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
@@ -221,6 +240,11 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
         bias="none", target_modules=targets, task_type="CAUSAL_LM"))
     model.print_trainable_parameters()
+    if cfg.grad_checkpointing:                 # big activation-memory saver (the main OOM lever)
+        if hasattr(model, "config"):
+            model.config.use_cache = False     # incompatible with checkpointing
+        model.enable_input_require_grads()     # needed so grads flow with a frozen embedding + PEFT
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     rows = [json.loads(l) for l in Path(cfg.train_jsonl).read_text().splitlines() if l.strip()]
     rows = [r for r in rows if r.get("answers")]
@@ -233,7 +257,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
 
     def collate(batch):
         b = batch[0]   # batch_size=1 keeps the variable image sizes simple
-        img = Image.open(b["image_path"]).convert("RGB")
+        img = _cap_image(Image.open(b["image_path"]).convert("RGB"), cfg.max_image_long_side)
         tgt = _target_text(b) if cfg.use_rationale else b["answers"][0]
         user = [{"role": "user", "content": [{"type": "image", "image": img},
                                              {"type": "text", "text": b["question"]}]}]
@@ -270,7 +294,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                 break
         log = {"epoch": epoch, "train/loss_epoch": sum(losses) / max(len(losses), 1)}
         for name, path in (eval_specs or []):          # per-epoch eval (loss AND metrics)
-            summ = _score(model, proc, device, path, cfg.eval_max_new_tokens)
+            summ = _score(model, proc, device, path, cfg.eval_max_new_tokens, cfg.max_image_long_side)
             last_eval[name] = summ
             if summ.get("score") is not None:
                 log[f"{name}/score"] = summ["score"]
@@ -292,7 +316,8 @@ def train_lora_vlm(cfg: LoraVLMConfig,
 
 
 def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
-             dtype: str = "bfloat16", max_new_tokens: int = 64) -> dict:
+             dtype: str = "bfloat16", max_new_tokens: int = 64,
+             max_image_long_side: int | None = 1024) -> dict:
     """Score a base (optionally LoRA-adapted) VLM on a probe jsonl and return the aggregate summary
     + per-axis (by answer_type) breakdown — the before/after measurement for an ablation arm.
 
@@ -309,4 +334,4 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
     if adapter_path:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter_path).to(device).eval()
-    return _score(model, proc, device, jsonl, max_new_tokens)
+    return _score(model, proc, device, jsonl, max_new_tokens, max_image_long_side)
