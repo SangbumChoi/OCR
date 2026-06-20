@@ -1,14 +1,16 @@
-# Part 2 — Improvement via fine-tuning: ablation study plan
+# Ablation plan — improvement via fine-tuning
 
-After Part 1 localises the **best small model's weaknesses** (for InternVL2.5-1B: no spotting/
-grounding, weaker InfoVQA layout-reasoning, CJK < EN, rotation/robustness drop), Part 2 improves
-it by fine-tuning on a document-generation–style dataset (uploaded later). Rather than changing
-many things at once, we run **isolated ablations** — each answers one research question with a
-held-out control — then **stack the winners** and show a **staircase** of cumulative gain.
+Once evaluation localises the **best small model's weaknesses** (for InternVL2.5-1B: no spotting/
+grounding, weaker InfoVQA layout-reasoning, CJK < EN, rotation/robustness drop), we improve it by
+fine-tuning on a document-generation–style dataset (uploaded later). Rather than changing many
+things at once, we run **isolated ablations** — each answers one research question with a held-out
+control — then **stack the winners** and show a **staircase** of cumulative gain. The per-capability
+*which-module-to-adapt* hypotheses these arms test are laid out in
+[`research_novelty.md`](research_novelty.md).
 
-Target model: **InternVL2.5-1B** (best per Part 1). Base data: document-parsing/generation pairs
-(image → structured text), augmented per-ablation. Every ablation is scored on the **same Part-1
-eval suite** (capability probe, custom_eval per-axis, spatial/context signals) so gains are
+Target model: **InternVL2.5-1B** (best in evaluation). Base data: document-parsing/generation pairs
+(image → structured text), augmented per-ablation. Every ablation is scored on the **same
+evaluation suite** (capability probe, custom_eval per-axis, spatial/context signals) so gains are
 attributable to a capability, not a single number.
 
 ## Method: one factor at a time → integrate → staircase

@@ -1,7 +1,7 @@
 # Synthetic data: the ground-truth DTO and config-driven ablation control
 
 This document explains how we generate fine-tuning data whose **distribution matches reality** and
-whose **ground truth carries every factor the Part-2 ablations want to vary**
+whose **ground truth carries every factor the ablations want to vary**
 ([`part2_ablation_plan.md`](part2_ablation_plan.md)). One config file fully determines a dataset
 variant, so each ablation arm is reproducible and differs from its control in exactly one factor.
 

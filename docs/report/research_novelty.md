@@ -21,10 +21,24 @@ repo) are unusually well-suited to isolate them. Below, each direction lists *wh
   non-uniform optimal rank across VLM layers.
 - **Gap.** *No* paper crosses {vision enc, connector, LLM-attn, LLM-MLP} × {grounding, integrative
   reasoning, language/CJK} with a controlled per-module ablation on a **sub-1B document** model.
-- **Hypothesis (ours).** Capability is *module-localised*: vision+connector → spatial grounding /
-  small-text; **LLM-MLP → numeric/integrative reasoning**; LLM-attn → CJK/language routing — a
-  capability×module interaction, not "LLM wins". At 1B the connector may become the bottleneck,
-  *inverting* the ≥7B story.
+- **Hypothesis (ours) — capability is *module-localised*: fine-tune the module whose job the
+  capability most resembles.** The intuition is mechanistic — *where* a capability physically lives
+  in the encoder→connector→LLM stack tells you *where* to spend adapter capacity. So the best place
+  to fine-tune **differs by capability**; "adapt the LLM" is not a universal answer.
+
+  | Capability (probe axis) | Adapt this module | Why — the intuition | Ablation |
+  | --- | --- | --- | --- |
+  | spatial grounding, region & relative position (L1–L4) | **vision encoder** (+ connector) | "where" is a geometric/perceptual property formed in pixel space *before* language; boxes are a vision-tower output | A1, A5(vision) |
+  | small-text / dense recognition (T1) | **vision encoder** + input resolution | legibility is an encoder + resolution property, not a language one | A7, A5(vision) |
+  | reading order / layout serialization | **connector / projector** | the projector decides how 2-D visual tokens are flattened into the 1-D LM sequence — it *is* the ordering step | A5(connector) |
+  | language diversity / OOV / unseen script | **LLM** (MLP + token embeddings) | genuinely new vocabulary must be *stored* in the LM and *emitted* by the decoder — the encoder can see a glyph it can't name | A4, A5(llm-mlp) |
+  | integrative & numeric reasoning (H1–H3) | **LLM** (attention + MLP) | multi-region binding (attn) + arithmetic/compute (MLP) is a language-model computation over already-read values | A2, A5(llm-attn/mlp) |
+  | structured emission / abstention (output side) | **LLM** (decoder) | when the model must *produce* structure (DocTags/JSON) or say "not present", that is a decoder generation behaviour | A2, A5(llm) |
+
+  Corollary: at 1B the **connector may be the bottleneck** (too little capacity to both align and
+  serialise), so adapting it could matter *more* than at ≥7B — **inverting** the LLM-centric folklore.
+  These per-capability bets are exactly the arms of the [**Ablation plan**](part2_ablation_plan.md):
+  **A5** places LoRA per module, while **A1/A2/A4/A7** supply the matching supervision and inputs.
 - **Repo asset.** Ablation **A5** (`configs/ablations.yaml`) × the capability probe + custom_eval
   per-axis. Single-module LoRA at matched trainable-param budget → `plot_ablation.py` placement bars.
 
