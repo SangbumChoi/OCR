@@ -89,6 +89,23 @@
       "key": null
     },
     {
+      "question": "Based on the last message, what should the support agent do next? Answer concisely, no explanation.",
+      "answers": [
+        "nothing",
+        "no action",
+        "the issue is resolved",
+        "wait"
+      ],
+      "answer_type": "H-action",
+      "metric": "anls",
+      "rationale": "The invoice was already sent and the user replied 'Thanks!' -> no further action is needed.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
       "answers": [
         "41,166,289,192;610,1319"
@@ -202,6 +219,19 @@
       "metric": "anls",
       "answer_type": "H-comprehension",
       "rationale": "The user asks if their invoice is ready and to email it -> the topic is the invoice."
+    },
+    {
+      "key": null,
+      "question": "Based on the last message, what should the support agent do next? Answer concisely, no explanation.",
+      "answers": [
+        "nothing",
+        "no action",
+        "the issue is resolved",
+        "wait"
+      ],
+      "metric": "anls",
+      "answer_type": "H-action",
+      "rationale": "The invoice was already sent and the user replied 'Thanks!' -> no further action is needed."
     },
     {
       "key": null,

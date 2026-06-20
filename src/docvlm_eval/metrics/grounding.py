@@ -8,11 +8,27 @@ permissive: it extracts the first four numbers it can find and, if they look nor
 
 Gold format (in ``Sample.answers[0]``): ``"x1,y1,x2,y2;W,H"`` (pixel box + image size).
 Score = IoU in [0,1]; the pipeline thresholds it (>=0.5) for "correct".
+
+Coordinate-frame caveat (Qwen-VL family, incl. Qwen3.5-VL): these models **smart-resize** the input
+(preprocessor: total pixels in [shortest_edge, longest_edge], dims rounded to patch*merge) and emit
+boxes in **absolute pixels of that resized image**, NOT the original. So a Qwen box is offset/scaled
+vs. our original-pixel gold. To score it, rescale the predicted box from the model's processed size
+back to the original with :func:`rescale_box` (the processed H/W come from the processor's
+``image_grid_thw`` * patch_size). ``parse_pred_box(text, size, model_size=...)`` does this when given
+the model frame.
 """
 
 from __future__ import annotations
 
 import re
+
+
+def rescale_box(box: list[float], from_wh: tuple[int, int], to_wh: tuple[int, int]) -> list[float]:
+    """Linearly map a box from one image frame to another (e.g. Qwen's smart-resized frame -> original)."""
+    fw, fh = from_wh
+    tw, th = to_wh
+    sx, sy = (tw / fw if fw else 1.0), (th / fh if fh else 1.0)
+    return [box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy]
 
 
 def parse_gold_box(gold: str) -> tuple[list[float], tuple[int, int]] | None:
@@ -28,8 +44,13 @@ def parse_gold_box(gold: str) -> tuple[list[float], tuple[int, int]] | None:
     return None
 
 
-def parse_pred_box(text: str, size: tuple[int, int]) -> list[float] | None:
-    """Extract a 4-number box from arbitrary model text and return pixel coords."""
+def parse_pred_box(text: str, size: tuple[int, int],
+                   model_size: tuple[int, int] | None = None) -> list[float] | None:
+    """Extract a 4-number box from arbitrary model text and return pixel coords in ``size`` (the
+    original-image frame the gold uses).
+
+    ``model_size`` (the model's processed/smart-resized W,H) handles the Qwen-VL convention: the box
+    is in absolute pixels of the resized image, so we rescale it from ``model_size`` to ``size``."""
     nums = re.findall(r"-?\d+(?:\.\d+)?", text.replace("loc_", " "))
     if len(nums) < 4:
         return None
@@ -40,7 +61,9 @@ def parse_pred_box(text: str, size: tuple[int, int]) -> list[float] | None:
         vals = [vals[0] * w, vals[1] * h, vals[2] * w, vals[3] * h]
     elif mx <= 1000 and (w > 1000 or h > 1000 or mx <= 1.0):
         vals = [vals[0] / 1000 * w, vals[1] / 1000 * h, vals[2] / 1000 * w, vals[3] / 1000 * h]
-    # else: assume already pixels
+    elif model_size and model_size != size:   # absolute pixels in the model's resized frame (Qwen-VL)
+        vals = rescale_box(vals, model_size, size)
+    # else: assume already pixels in the original frame
     x1, y1, x2, y2 = vals
     return [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
 

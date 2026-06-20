@@ -9,6 +9,26 @@ Reading order: [`document_type_taxonomy.md`](document_type_taxonomy.md) (what do
 their stressors) → this file (how we synthesise them with built-in GT) →
 [`ablation_plan.md`](ablation_plan.md) (how the GT factors are switched per experiment).
 
+## 0. The two quality axes we scale (and the memorization guard)
+
+A synthetic corpus is only useful for fine-tuning if we can grow it along the two axes that make a
+document *hard*, while proving the model **understands** rather than **memorizes** the templates:
+
+- **Visual diversity** — the *image* distribution: document kinds (14 types), acquisition modality,
+  lighting, colour cast, contrast, resolution, script. Knobs: `degrade_presets`/`degrade_prob`
+  (acquisition + lighting; arm `D_visual_diverse`), `languages` (script), `dpi`/`target_long_side`.
+- **Annotation difficulty** — the *label* distribution: not just extraction but *understanding* —
+  accountant-style multi-step calc (sum → +tax), MRZ field-parse (surname only), table-extremes
+  *difference*, next-action/affordance, conversation comprehension/turn-count. These live in the
+  model-free understanding layer (`derive`) + the harder per-case QAs; toggle via `emit_understanding`.
+
+**Memorization vs understanding (A0, the prerequisite).** Because the generator is *infinite*, we
+first verify learning generalises: train at increasing scale and evaluate on a **held-out split
+generated with a different seed** (`run_ablation.py --heldout-seed`). Understanding ⇒ held-out keeps
+improving with scale and the train/held-out gap stays small; memorization ⇒ train → ~1.0 while
+held-out plateaus. A0's outcome trades the two axes (more *diversity* vs more *count*) and fixes the
+data scale used by the downstream ablations ([`ablation_plan.md`](ablation_plan.md)).
+
 ## 1. Why synthetic, and how we match the real distribution
 
 The generator's premise (`src/docvlm_eval/synth/`): **render the document from a single source so

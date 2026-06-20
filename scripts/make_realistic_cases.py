@@ -184,7 +184,18 @@ def case_invoice(do_degrade):
     # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
     b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
     b.ask_count("$")                                                  # H: count currency symbols (table region is auto)
-    b.ask_aggregate("the sum of all line-item amounts", [q * p for _, q, p in items], op="sum")
+    amounts = [q * p for _, q, p in items]
+    b.ask_aggregate("the sum of all line-item amounts", amounts, op="sum")
+    # higher-level reasoning over table extremes (top vs bottom row), not plain extraction
+    b.ask_aggregate("the sum of the first and last line-item amounts", [amounts[0], amounts[-1]], op="sum")
+    b.ask_aggregate("the difference between the largest and smallest line-item amounts",
+                    amounts, op="diff")
+    # harder annotation: accountant-style multi-step calc (sum then apply 10% tax), not plain extraction
+    grand = round(total * 1.10, 2)
+    b.qa("What would the grand total be after adding 10% sales tax to the total?",
+         [f"{grand:.2f}", f"{grand:,.2f}", f"${grand:,.2f}"], metric="relaxed_acc",
+         answer_type="H-accounting",
+         rationale=f"Total {total:.2f} × 1.10 (10% tax) = {grand:.2f}.")
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -226,6 +237,10 @@ def case_id_card(do_degrade):
     b.probe("abstain", "What is the cardholder's blood type?", "not present — abstain")
     b.ask_where(idn, label="the document number")
     b.ask_region("the machine-readable zone (MRZ)", [mrz1, mrz2])
+    # harder annotation: pull ONLY the surname out of the MRZ encoding (parse, don't just transcribe)
+    b.qa("Extract only the surname from the MRZ (the part right after the country code, before '<<').",
+         surname, metric="exact", answer_type="H-extract-strict",
+         rationale=f"MRZ line 1 encodes 'P<USA{surname}<<...'; the surname before '<<' is {surname}.")
     emit("id_card", b, "photo", do_degrade)
 
 
@@ -282,6 +297,9 @@ def case_bank_statement(do_degrade):
     b.qa("What is the closing balance?", [f"${bal:.2f}", f"{bal:.2f}"], answer_type="kie")
     # model-free understanding GT: locate the closing balance (table region is auto)
     b.ask_where(f"${bal:.2f}", label="the closing balance")
+    # reasoning over the balance column extremes (highest vs lowest)
+    bals = [float(r[3]) for r in rows]
+    b.ask_aggregate("the difference between the highest and lowest balance", bals, op="diff")
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -457,6 +475,10 @@ def case_website(do_degrade):
     b.probe("abstain", "What is the user's logged-in email?", "logged-out page — abstain")
     b.ask_where(cta, label="the call-to-action button")
     b.ask_region("the feature cards", [t for t, _ in cards])
+    # UI affordance reasoning: what should the user do next?
+    b.qa("What is the primary action this page wants the visitor to take?",
+         [cta, cta.lower()], metric="anls", answer_type="H-action",
+         rationale=f"The prominent call-to-action button reads '{cta}', so that is the next action.")
     emit("website", b, "screenshot", do_degrade)
 
 
@@ -494,6 +516,10 @@ def case_mobile_app(do_degrade):
     b.qa("What is the conversation about?", ["invoice", "the invoice", "an invoice"],
          metric="anls", answer_type="H-comprehension",
          rationale="The user asks if their invoice is ready and to email it -> the topic is the invoice.")
+    b.qa("Based on the last message, what should the support agent do next?",
+         ["nothing", "no action", "the issue is resolved", "wait"], metric="anls",
+         answer_type="H-action",
+         rationale="The invoice was already sent and the user replied 'Thanks!' -> no further action is needed.")
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
@@ -599,7 +625,7 @@ def _choose_lang(rng: random.Random) -> str:
 
 
 def main():
-    global CURRENT_VARIANT, CFG, CURRENT_LANG, fake
+    global CURRENT_VARIANT, CFG, CURRENT_LANG, fake, OUT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", choices=list(CASES))
     ap.add_argument("--no-degrade", action="store_true")
@@ -610,7 +636,12 @@ def main():
     ap.add_argument("--count", type=int, default=None,
                     help="variants per case (overrides config.count; >1 fans out into <key>/<NNNN>/)")
     ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
+    ap.add_argument("--out", default=None,
+                    help="output dir (default data/probes/realistic_cases) — use a different dir + "
+                         "--seed for a held-out TEST split (memorization-vs-understanding, A0)")
     args = ap.parse_args()
+    if args.out:
+        OUT = Path(args.out)
 
     CFG = GenConfig.from_yaml(args.config, ablation=args.ablation)
     if args.count is not None:

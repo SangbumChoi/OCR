@@ -107,6 +107,21 @@
       "key": null
     },
     {
+      "question": "What is the primary action this page wants the visitor to take? Answer concisely, no explanation.",
+      "answers": [
+        "Start free trial",
+        "start free trial"
+      ],
+      "answer_type": "H-action",
+      "metric": "anls",
+      "rationale": "The prominent call-to-action button reads 'Start free trial', so that is the next action.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the call-to-action button located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 2000x1407 pixels.",
       "answers": [
         "1673,98,1825,125;2000,1407"
@@ -230,6 +245,17 @@
       ],
       "metric": "ned",
       "answer_type": "ui"
+    },
+    {
+      "key": null,
+      "question": "What is the primary action this page wants the visitor to take? Answer concisely, no explanation.",
+      "answers": [
+        "Start free trial",
+        "start free trial"
+      ],
+      "metric": "anls",
+      "answer_type": "H-action",
+      "rationale": "The prominent call-to-action button reads 'Start free trial', so that is the next action."
     },
     {
       "key": null,

@@ -113,8 +113,14 @@ def _op_count(ns):  # count of values (arithmetic counterpart of count_occurrenc
     return float(len(ns)), f"there are {len(ns)} value(s)"
 
 
+def _op_diff(ns):   # difference of the extremes (e.g. top vs bottom row of a column)
+    r = max(ns) - min(ns)
+    return r, f"{_fmt(max(ns))} − {_fmt(min(ns))} = {_fmt(r)}"
+
+
 _OPS: dict[str, Callable[[list[float]], tuple[float, str]]] = {
-    "sum": _op_sum, "max": _op_max, "min": _op_min, "mean": _op_mean, "count": _op_count,
+    "sum": _op_sum, "max": _op_max, "min": _op_min, "mean": _op_mean,
+    "count": _op_count, "diff": _op_diff,
 }
 
 

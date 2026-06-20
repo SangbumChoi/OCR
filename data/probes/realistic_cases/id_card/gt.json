@@ -118,6 +118,20 @@
       "key": null
     },
     {
+      "question": "Extract only the surname from the MRZ (the part right after the country code, before '<<'). Answer concisely, no explanation.",
+      "answers": [
+        "CURTIS"
+      ],
+      "answer_type": "H-extract-strict",
+      "metric": "exact",
+      "rationale": "MRZ line 1 encodes 'P<USACURTIS<<...'; the surname before '<<' is CURTIS.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
         "138,111,224,130;532,343"
@@ -243,6 +257,16 @@
       ],
       "metric": "ned",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Extract only the surname from the MRZ (the part right after the country code, before '<<'). Answer concisely, no explanation.",
+      "answers": [
+        "CURTIS"
+      ],
+      "metric": "exact",
+      "answer_type": "H-extract-strict",
+      "rationale": "MRZ line 1 encodes 'P<USACURTIS<<...'; the surname before '<<' is CURTIS."
     },
     {
       "key": null,

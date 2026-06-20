@@ -113,6 +113,22 @@
       "key": "total"
     },
     {
+      "question": "What would the grand total be after adding 10% sales tax to the total? Answer concisely, no explanation.",
+      "answers": [
+        "931.70",
+        "931.70",
+        "$931.70"
+      ],
+      "answer_type": "H-accounting",
+      "metric": "relaxed_acc",
+      "rationale": "Total 847.00 × 1.10 (10% tax) = 931.70.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
         "78,259,732,420;875,1241"
@@ -173,6 +189,36 @@
       "answer_type": "H1-aggregate",
       "metric": "relaxed_acc",
       "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
+      "answers": [
+        "322",
+        "322"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The sum of the first and last line-item amounts: 197.5 + 124.5 = 322.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
+      "answers": [
+        "168",
+        "168"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The difference between the largest and smallest line-item amounts: 292.5 − 124.5 = 168.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -276,6 +322,18 @@
       "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00."
     },
     {
+      "key": null,
+      "question": "What would the grand total be after adding 10% sales tax to the total? Answer concisely, no explanation.",
+      "answers": [
+        "931.70",
+        "931.70",
+        "$931.70"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H-accounting",
+      "rationale": "Total 847.00 × 1.10 (10% tax) = 931.70."
+    },
+    {
       "key": "lines_region",
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
@@ -315,6 +373,28 @@
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
       "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847."
+    },
+    {
+      "key": null,
+      "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
+      "answers": [
+        "322",
+        "322"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The sum of the first and last line-item amounts: 197.5 + 124.5 = 322."
+    },
+    {
+      "key": null,
+      "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
+      "answers": [
+        "168",
+        "168"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The difference between the largest and smallest line-item amounts: 292.5 − 124.5 = 168."
     }
   ],
   "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",

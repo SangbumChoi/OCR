@@ -107,6 +107,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "answers": [
+        "981.25"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The difference between the highest and lowest balance: 2144.5 − 1163.25 = 981.25.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -205,6 +219,16 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the closing balance is rendered at [226, 383, 297, 402] on the 875x1241px page."
+    },
+    {
+      "key": null,
+      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "answers": [
+        "981.25"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The difference between the highest and lowest balance: 2144.5 − 1163.25 = 981.25."
     }
   ],
   "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>07/11</td><td>Strategize Scalable </td><td>+163.25</td><td>1163.25</td></tr><tr><td>04/26</td><td>Benchmark Leading-Ed</td><td>+597.25</td><td>1760.50</td></tr><tr><td>02/13</td><td>Brand Next-Generatio</td><td>-60.75</td><td>1699.75</td></tr><tr><td>02/14</td><td>Brand Leading-Edge N</td><td>-7.75</td><td>1692.00</td></tr><tr><td>07/02</td><td>Whiteboard Leading-E</td><td>-246.75</td><td>1445.25</td></tr><tr><td>05/26</td><td>Enhance Revolutionar</td><td>+699.25</td><td>2144.50</td></tr></table>"
