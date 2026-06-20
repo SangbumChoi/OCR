@@ -87,6 +87,10 @@ class LoraVLMConfig:
     dtype: str = "bfloat16"
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
+    # --- per-epoch logging / Weights & Biases (optional; no-op if unset or wandb missing) ---
+    wandb_project: str | None = None       # set -> log loss + per-epoch eval metrics to W&B
+    wandb_run: str | None = None           # W&B run name (e.g. "A0-qwen3_5-0.8b-n200")
+    eval_max_new_tokens: int = 64          # generation length for the per-epoch eval
 
 
 def _device_dtype(prefer_dtype: str):
@@ -105,12 +109,78 @@ def _target_text(sample: dict) -> str:
     return f"{rat}\nAnswer: {ans}" if rat else ans
 
 
-def train_lora_vlm(cfg: LoraVLMConfig) -> str:
-    """LoRA-fine-tune one VLM on the synthetic data. GPU-only; returns the adapter dir.
+def _auto_vlm():
+    try:
+        from transformers import AutoModelForImageTextToText as _AutoVLM
+    except ImportError:
+        from transformers import AutoModelForVision2Seq as _AutoVLM
+    return _AutoVLM
 
-    Kept deliberately small: builds (image, question) -> target with prompt-masked labels via the
-    processor's chat template, applies LoRA on the A5-resolved modules, runs a short loop, saves
-    the adapter. Heavy imports are local so importing this module stays cheap."""
+
+def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64) -> dict:
+    """Generate on every sample of ``jsonl`` with the (already-loaded) model and return the project's
+    aggregate summary. Shared by ``eval_vlm`` and the per-epoch eval inside ``train_lora_vlm`` so we
+    never reload the model just to score it (the reload was a needless OOM risk)."""
+    import sys
+    from pathlib import Path
+
+    import torch
+    from PIL import Image
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+    from docvlm_eval.benchmarks import load_jsonl
+    from docvlm_eval.metrics import aggregate
+    from docvlm_eval.schema import Prediction
+
+    was_training = model.training
+    model.eval()
+    samples = load_jsonl(jsonl)
+    preds: dict[str, Prediction] = {}
+    for s in samples:
+        img = Image.open(s.image_path).convert("RGB")
+        msgs = [{"role": "user", "content": [{"type": "image", "image": img},
+                                             {"type": "text", "text": s.question}]}]
+        inputs = proc.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
+                                          return_dict=True, return_tensors="pt").to(device)
+        n = inputs["input_ids"].shape[1]
+        try:
+            with torch.no_grad():
+                out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+            text = proc.batch_decode(out[:, n:], skip_special_tokens=True)[0].strip()
+        except torch.cuda.OutOfMemoryError:        # skip the offending sample, keep scoring the rest
+            torch.cuda.empty_cache(); text = ""
+        preds[s.sample_id] = Prediction(sample_id=s.sample_id, prediction=text, raw=text)
+    if was_training:
+        model.train()
+    return aggregate(samples, preds)["summary"]
+
+
+def _wandb_init(cfg: "LoraVLMConfig"):
+    """Start a W&B run if cfg.wandb_project is set and wandb is importable+logged-in; else None."""
+    if not cfg.wandb_project:
+        return None
+    try:
+        import wandb
+    except ImportError:
+        print("[wandb] not installed (pip install wandb) -> training without logging"); return None
+    try:
+        return wandb.init(project=cfg.wandb_project, name=cfg.wandb_run, reinit=True,
+                          config={"model": cfg.model_id, "placement": cfg.placement,
+                                  "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
+                                  "train_jsonl": cfg.train_jsonl})
+    except Exception as e:                          # not logged in / offline / network -> continue
+        print(f"[wandb] init failed ({e}) -> training without logging"); return None
+
+
+def train_lora_vlm(cfg: LoraVLMConfig,
+                   eval_specs: list[tuple[str, str]] | None = None) -> tuple[str, dict]:
+    """LoRA-fine-tune one VLM on the synthetic data. GPU-only. Returns (adapter_dir, last_eval).
+
+    Builds (image, question) -> target with prompt-masked labels via the processor's chat template,
+    applies LoRA on the A5-resolved modules, then runs an EPOCH loop. Each epoch logs the mean train
+    loss and — for every (name, jsonl) in ``eval_specs`` (e.g. train + held-out) — an in-process eval
+    summary, to stdout and to Weights & Biases (when cfg.wandb_project is set). ``last_eval`` maps
+    each spec name to its final-epoch summary so callers can record it without reloading the model."""
     import json
     from pathlib import Path
 
@@ -118,10 +188,6 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
     from peft import LoraConfig, get_peft_model
     from torch.utils.data import DataLoader, Dataset
     from transformers import AutoProcessor
-    try:
-        from transformers import AutoModelForImageTextToText as _AutoVLM
-    except ImportError:
-        from transformers import AutoModelForVision2Seq as _AutoVLM
     from PIL import Image
 
     torch.manual_seed(cfg.seed)
@@ -129,8 +195,8 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
     print(f"[lora_vlm.train] device={device} dtype={dt}"
           + ("" if device == "cuda" else "  (CPU — training will be slow; expected a GPU?)"))
     proc = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
-    model = _AutoVLM.from_pretrained(cfg.model_id, torch_dtype=dt,
-                                     trust_remote_code=True).to(device)
+    model = _auto_vlm().from_pretrained(cfg.model_id, torch_dtype=dt,
+                                        trust_remote_code=True).to(device)
 
     targets = resolve_lora_targets(model.named_modules(), cfg.placement)
     if not targets:
@@ -142,6 +208,8 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
 
     rows = [json.loads(l) for l in Path(cfg.train_jsonl).read_text().splitlines() if l.strip()]
     rows = [r for r in rows if r.get("answers")]
+    if not rows:
+        raise RuntimeError(f"no trainable rows (with answers) in {cfg.train_jsonl}")
 
     class _DS(Dataset):
         def __len__(self): return len(rows)
@@ -165,20 +233,46 @@ def train_lora_vlm(cfg: LoraVLMConfig) -> str:
 
     dl = DataLoader(_DS(), batch_size=1, shuffle=True, collate_fn=collate)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
-    model.train()
-    step, total = 0, cfg.max_steps or (cfg.epochs * len(dl))
-    while step < total:
+    run = _wandb_init(cfg)
+    cap = cfg.max_steps or float("inf")               # optional hard step cap (control factor)
+    gstep = 0; last_eval: dict = {}
+    for epoch in range(cfg.epochs):
+        model.train(); losses = []
         for batch in dl:
             out = model(**batch)
+            if out.loss is None:
+                raise RuntimeError("model returned loss=None — labels/inputs not accepted by this "
+                                   "model's forward; check the processor chat-template / image keys")
             (out.loss / cfg.grad_accum).backward()
-            if (step + 1) % cfg.grad_accum == 0:
+            if (gstep + 1) % cfg.grad_accum == 0:
                 opt.step(); opt.zero_grad()
-            step += 1
-            if step >= total:
+            losses.append(float(out.loss.detach()))
+            if run:                                # auto-step; carry 'epoch' so it can be the x-axis
+                run.log({"train/loss": losses[-1], "epoch": epoch})
+            gstep += 1
+            if gstep >= cap:
                 break
+        log = {"epoch": epoch, "train/loss_epoch": sum(losses) / max(len(losses), 1)}
+        for name, path in (eval_specs or []):          # per-epoch eval (loss AND metrics)
+            summ = _score(model, proc, device, path, cfg.eval_max_new_tokens)
+            last_eval[name] = summ
+            if summ.get("score") is not None:
+                log[f"{name}/score"] = summ["score"]
+            for ax, info in (summ.get("by_answer_type") or {}).items():
+                if isinstance(info, dict) and info.get("score") is not None:
+                    log[f"{name}/{ax}"] = info["score"]
+        if run:
+            run.log(log)
+        print("  [epoch %d] " % epoch
+              + " ".join(f"{k}={v:.3f}" for k, v in log.items() if isinstance(v, float)))
+        if gstep >= cap:
+            break
+
     out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out_dir); proc.save_pretrained(out_dir)
-    return str(out_dir)
+    if run:
+        run.finish()
+    return str(out_dir), last_eval
 
 
 def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
@@ -187,43 +281,16 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
     + per-axis (by answer_type) breakdown — the before/after measurement for an ablation arm.
 
     GPU-only. Reuses the project's metrics so scores are comparable to the eval pipeline."""
-    import sys
-    from pathlib import Path
-
-    import torch
-    from PIL import Image
-    from transformers import AutoProcessor
-    try:
-        from transformers import AutoModelForImageTextToText as _AutoVLM
-    except ImportError:
-        from transformers import AutoModelForVision2Seq as _AutoVLM
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
-    from docvlm_eval.benchmarks import load_jsonl
-    from docvlm_eval.metrics import aggregate
-    from docvlm_eval.schema import Prediction
+    import torch  # noqa: F401  (ensures a clear error if torch is missing)
 
     device, dt = _device_dtype(dtype)
     print(f"[lora_vlm.eval] device={device} dtype={dt}"
           + ("" if device == "cuda" else "  (CPU — eval will be slow; expected a GPU?)"))
+    from transformers import AutoProcessor
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)
-    model = _AutoVLM.from_pretrained(model_id, torch_dtype=dt,
-                                     trust_remote_code=True).to(device).eval()
+    model = _auto_vlm().from_pretrained(model_id, torch_dtype=dt,
+                                        trust_remote_code=True).to(device).eval()
     if adapter_path:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter_path).to(device).eval()
-
-    samples = load_jsonl(jsonl)
-    preds: dict[str, Prediction] = {}
-    for s in samples:
-        img = Image.open(s.image_path).convert("RGB")
-        msgs = [{"role": "user", "content": [{"type": "image", "image": img},
-                                             {"type": "text", "text": s.question}]}]
-        inputs = proc.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
-                                          return_dict=True, return_tensors="pt").to(device)
-        n = inputs["input_ids"].shape[1]
-        with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-        text = proc.batch_decode(out[:, n:], skip_special_tokens=True)[0].strip()
-        preds[s.sample_id] = Prediction(sample_id=s.sample_id, prediction=text, raw=text)
-    return aggregate(samples, preds)["summary"]
+    return _score(model, proc, device, jsonl, max_new_tokens)

@@ -81,12 +81,15 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                   f"epochs={args.a0_epochs}")
             train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
             n_train = _n_samples(train_jsonl)
-            adapter = train_lora_vlm(LoraVLMConfig(
+            # per-epoch eval on BOTH train (memorization) and held-out (understanding) -> W&B curves
+            _, last = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
                 epochs=args.a0_epochs, max_steps=None,
-                output_dir=f"outputs/{model}/A0_n{n}"))
-            train_s = eval_vlm(hf, train_jsonl, adapter_path=adapter)
-            held_s = eval_vlm(hf, test_jsonl, adapter_path=adapter)
+                output_dir=f"outputs/{model}/A0_n{n}",
+                wandb_project=args.wandb_project,
+                wandb_run=f"{args.wandb_run_prefix}A0-{model}-n{n}"),
+                eval_specs=[("train", train_jsonl), ("heldout", test_jsonl)])
+            train_s, held_s = last["train"], last["heldout"]   # final-epoch eval (no model reload)
             ts, hs = train_s.get("score"), held_s.get("score")
             gap = (ts - hs) if (ts is not None and hs is not None) else None
             rec["sizes"][str(n)] = {"variants_per_case": n, "n_train_samples": n_train,
@@ -121,7 +124,19 @@ def main() -> None:
     p.add_argument("--a0-test-count", type=int, default=5,
                    help="A0: held-out TEST scale (variants/case). FIXED across sizes so the test set is "
                         "identical for every training size -> comparable held-out curve.")
+    # --- Weights & Biases (optional): log per-epoch loss + train/held-out eval metrics ---
+    p.add_argument("--wandb-project", default=None,
+                   help="W&B project to log per-epoch loss + eval metrics to (needs `wandb login`). "
+                        "Omit to train without logging.")
+    p.add_argument("--wandb-run-prefix", default="",
+                   help="prefix for the W&B run name (run = <prefix><arm>-<model>[-n<size>])")
     args = p.parse_args()
+
+    # Fail fast with one actionable line instead of a deep 'model type qwen3_5 not recognized' trace.
+    import transformers
+    if int(transformers.__version__.split(".")[0]) < 5:
+        sys.exit(f"[run_ablation] needs transformers>=5 for Qwen3.5-VL (got {transformers.__version__}). "
+                 f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
 
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
 
@@ -163,10 +178,13 @@ def main() -> None:
                             "--ablation", args.arm, "--count", str(args.count)], cwd=ROOT, check=True)
             subprocess.run([sys.executable, "scripts/build_realistic_benchmark.py"], cwd=ROOT, check=True)
             train_jsonl = str(ROOT / PROBES["realistic"])
-            # 2) LoRA fine-tune (steps = the fixed iteration control)
-            out = train_lora_vlm(LoraVLMConfig(
+            # 2) LoRA fine-tune (steps = the fixed iteration control); per-epoch loss/train-score -> W&B
+            out, _ = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                max_steps=args.steps, output_dir=f"outputs/{model}/{args.arm}_{args.placement}"))
+                max_steps=args.steps, output_dir=f"outputs/{model}/{args.arm}_{args.placement}",
+                wandb_project=args.wandb_project,
+                wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}"),
+                eval_specs=[("train", train_jsonl)])
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
             payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement},
                        "probes": eval_all(hf, adapter=out)}
