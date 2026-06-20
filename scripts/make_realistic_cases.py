@@ -522,7 +522,9 @@ def case_ancient(do_degrade):
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
-    b.ask_where("古文書", label="the title")
+    # locate the ASCII part of the title — robust regardless of CJK font availability (a missing CJK
+    # font would drop "古文書" from the searchable text layer -> "locate found nothing").
+    b.ask_where("Classical manuscript", label="the title")
     emit("ancient", b, "historical", do_degrade)
 
 
