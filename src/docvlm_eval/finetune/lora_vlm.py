@@ -200,12 +200,12 @@ def _wandb_init(cfg: "LoraVLMConfig"):
     except ImportError:
         print("[wandb] not installed (pip install wandb) -> training without logging"); return None
     try:
-        if wandb.run is not None:           # a previous size that crashed left a run open -> close it
-            wandb.finish()
+        if wandb.run is not None:           # close any run left open by a previous size, THEN init a
+            wandb.finish()                  # fresh one — this replaces the now-deprecated reinit=True
     except Exception:
         pass
     try:
-        run = wandb.init(project=cfg.wandb_project, name=cfg.wandb_run, reinit=True,
+        run = wandb.init(project=cfg.wandb_project, name=cfg.wandb_run,
                          config={"model": cfg.model_id, "placement": cfg.placement,
                                  "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
                                  "train_jsonl": cfg.train_jsonl})
