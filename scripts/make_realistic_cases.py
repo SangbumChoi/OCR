@@ -98,6 +98,76 @@ def _apply_emit_toggles(gt: dict) -> None:
     # DocSample.to_dict (which rebuilds qa from QAItem), so they never reach the saved gt.json.
 
 
+# --- visual-diversity themes (per-doc, deterministic). Photometric/typographic only -> boxes stay
+#     valid because geometry is re-resolved from each render. ---
+_PAPERS = ["#ffffff", "#fbfaf6", "#f5f7fb", "#fdf6ee", "#f7f4ee", "#eef3fb", "#fbf7f4", "#f2f5f2"]
+_ACCENTS = ["#2a5bd7", "#a0202a", "#1b6b4a", "#7a3aa0", "#b8761a", "#0f5e8a", "#444444"]
+_BODY_FONTS = ["'Liberation Sans',sans-serif", "'DejaVu Sans',sans-serif",
+               "'Noto Sans',sans-serif", "'EB Garamond','Liberation Serif',serif"]
+
+
+# Fixed-size cases: their page IS a single physical artefact (card / phone / screen / cheque) sized to
+# the content, so @page-margin and body-font-size jitter would spill the content onto a 2nd page and
+# drop its bottom strip (e.g. the ID MRZ). They get colour/font-family jitter only (no layout jitter).
+_FIXED_LAYOUT = {"id_card", "cheque", "mobile_app", "website", "lcd", "webtoon"}
+
+
+def _theme_css(rng: random.Random, *, structural: bool = True) -> str:
+    """A randomised paper/accent/font (+ optional margin/alignment) theme appended to a case's CSS
+    (later rules win). Photometric+typographic (+margin when ``structural``) only -> text geometry is
+    re-resolved so boxes stay exact; the jitter shifts layout so docs aren't near-duplicate templates.
+
+    ``structural=False`` (fixed-size cases) keeps the page geometry untouched: no @page-margin and no
+    body font-size change — only paper colour, accent colour and font family vary."""
+    paper, accent = rng.choice(_PAPERS), rng.choice(_ACCENTS)
+    font = rng.choice(_BODY_FONTS)
+    out = (f"\nbody{{ background:{paper}; font-family:{font}; }}"
+           f"\nh1,h2{{ color:{accent}; }} h3{{ color:{accent}; }}"
+           f" .total{{ color:{accent}; }} a.btn,.btn{{ background:{accent}; }} .num{{ border-color:{accent}; }}")
+    if not structural:
+        return out
+    fs = rng.choice([10, 11, 11, 12])
+    margin = rng.choice(["8mm", "12mm", "14mm", "16mm 12mm", "10mm 18mm"])
+    align = rng.choice(["left", "left", "center"])
+    return (f"\n@page{{ margin:{margin}; }}"
+            f"\nbody{{ font-size:{fs}px; }}"
+            f"\nh1,h2{{ text-align:{align}; }}" + out)
+
+
+def _doc_rng(key: str) -> random.Random:
+    """Deterministic per-(seed,case,variant) RNG for visual jitter."""
+    return random.Random(f"{CFG.seed}:{key}:{CURRENT_VARIANT}:{CURRENT_LANG}")
+
+
+# --- content randomisers (avoid constant-content templates -> true duplicates -> memorization) ---
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+         "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+
+def _int_words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        return _TENS[n // 10] + (f"-{_ONES[n % 10]}" if n % 10 else "")
+    if n < 1000:
+        return _ONES[n // 100] + " hundred" + (f" {_int_words(n % 100)}" if n % 100 else "")
+    return _int_words(n // 1000) + " thousand" + (f" {_int_words(n % 1000)}" if n % 1000 else "")
+
+
+_AR_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
+_POEMS = ["山重水複疑無路", "柳暗花明又一村", "白日依山盡", "黃河入海流", "春眠不覺曉",
+          "處處聞啼鳥", "夜來風雨聲", "花落知多少", "千山鳥飛絕", "萬徑人蹤滅",
+          "孤舟蓑笠翁", "獨釣寒江雪", "床前明月光", "疑是地上霜", "舉頭望明月", "低頭思故鄉"]
+_DIALOGUES = [
+    ["Are you ready?", "I think so...", "Then let's begin!", "Wait — look over there!"],
+    ["Did you hear that?", "It came from inside.", "We should run.", "Too late..."],
+    ["The map points here.", "But there's nothing.", "Dig deeper!", "I found something!"],
+    ["Good morning!", "You're early today.", "Big day ahead.", "Let's not waste it."],
+]
+
+
 def _pick_preset(key: str, default: str) -> str:
     """Choose a degradation preset for this doc-type honouring config overrides + severity-as-rng."""
     presets = (CFG.degrade_presets or {}).get(key)
@@ -113,6 +183,8 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     Writes the structured DocSample DTO (a superset of the legacy flat gt schema)."""
     if gt is None:
         builder = builder_or_img
+        if getattr(CFG, "jitter", False):       # per-doc visual theme (paper/accent/font/margin)
+            builder.css += _theme_css(_doc_rng(key), structural=key not in _FIXED_LAYOUT)
         img, gt = builder.build(dpi=CFG.dpi)
     else:
         img = builder_or_img
@@ -164,7 +236,7 @@ def case_invoice(do_degrade):
     company = fake.company()
     inv_no = f"INV-2025-{fake.random_int(1000,9999)}"
     items = [(fake.bs().title()[:22], fake.random_int(1, 5), round(fake.random_int(10, 400) + 0.5, 2))
-             for _ in range(4)]
+             for _ in range(fake.random_int(3, 6))]   # variable #rows -> layout diversity
     rows = [[n, str(q), f"${p:.2f}", f"${q*p:.2f}"] for n, q, p in items]
     total = sum(q * p for _, q, p in items)
     total_str = f"${total:,.2f}"
@@ -206,17 +278,21 @@ def case_id_card(do_degrade):
     surname, given = name.split()[-1], " ".join(name.split()[:-1])
     mrz1 = f"P<USA{surname}<<{given.replace(' ', '<')}".ljust(44, "<")[:44]
     mrz2 = f"{idn}<4USA{fake.numerify('######')}M310614<<<<<<<<<<<<<<00".ljust(44, "<")[:44]
+    # Flex column with the MRZ pushed to the bottom by margin-top:auto. (We deliberately do NOT use
+    # `position:absolute; bottom:0` for the MRZ: in WeasyPrint a page-tall card spills its
+    # absolutely-positioned bottom strip onto a 2nd page, so the MRZ vanished from the rasterised
+    # page-0 image and its region GT resolved to nothing. Normal-flow flex keeps it on the page.)
     css = """
     @page{ size:90mm 58mm; margin:0;}
-    .card{ width:90mm; height:58mm; padding:6mm; position:relative;
-        background:linear-gradient(135deg,#eef3fb,#dbe6f5);}
-    .photo{ position:absolute; right:6mm; top:6mm; width:20mm; height:26mm;
+    .card{ width:90mm; height:58mm; padding:4mm 6mm; position:relative; overflow:hidden;
+        font-size:11px; background:linear-gradient(135deg,#eef3fb,#dbe6f5);}
+    .card .t{ font-size:13px; line-height:15px; margin:0 0 3mm;}
+    .photo{ position:absolute; right:6mm; top:4mm; width:18mm; height:22mm;
         background:#9fb0c8; border:1px solid #6b7c96;}
-    .fld{ margin:1mm 0;} .fld b{ color:#345; font-size:7px; text-transform:uppercase; font-weight:normal;}
+    .fld{ margin:0; line-height:15px; font-size:11px;} .fld b{ color:#345; font-size:7px; text-transform:uppercase; font-weight:normal;}
     .v{ font-weight:bold; font-size:11px;}
-    .mrz{ position:absolute; left:0; bottom:0; width:100%; padding:2mm 6mm; background:#f4f4f4;
-        border-top:1px solid #bbb;}
-    .mrz .tx{ font-family:'Liberation Mono',monospace; font-size:10px; letter-spacing:1px; margin:0;}
+    .mrz{ margin:4mm -6mm 0; padding:1.4mm 6mm; background:#f4f4f4; border-top:1px solid #bbb;}
+    .mrz .tx{ font-family:'Liberation Mono',monospace; font-size:9px; letter-spacing:0.5px; line-height:13px; margin:0;}
     """
     b = DocBuilder("ID / passport", ["language", "MRZ", "hallucination", "spotting"],
                    "KIE F1 + abstain + IoU", page="90mm 58mm", margin="0", css=css)
@@ -245,8 +321,14 @@ def case_id_card(do_degrade):
 
 
 def case_checkbox_form(do_degrade):
-    contact = [("Email", True), ("SMS", False), ("Phone call", True), ("Postal mail", False)]
-    langs = [("English", True), ("Korean", False), ("Spanish", False)]
+    # randomised selections (constant checks -> identical labels -> duplicates)
+    _opts = ["Email", "SMS", "Phone call", "Postal mail"]
+    contact = [(o, fake.boolean(60)) for o in _opts]
+    if not any(c for _, c in contact):                 # ensure >=1 checked
+        contact[fake.random_int(0, 3)] = (contact[fake.random_int(0, 3)][0], True)
+    _langs = ["English", "Korean", "Spanish", "Japanese"]
+    _chosen = fake.random_int(0, len(_langs) - 1)
+    langs = [(l, i == _chosen) for i, l in enumerate(_langs)]
     b = DocBuilder("checkbox form", ["selection-marks", "layout", "hallucination"],
                    "selection-mark accuracy + F1", page="A5")
     b.title("SERVICE ENROLLMENT FORM", level=2)
@@ -283,7 +365,7 @@ def case_redacted(do_degrade):
 
 def case_bank_statement(do_degrade):
     rows, bal = [], 1000.0
-    for _ in range(6):
+    for _ in range(fake.random_int(4, 8)):           # variable #rows -> layout diversity
         amt = round(fake.random_int(-500, 800) + 0.25, 2)
         bal += amt
         rows.append([fake.date("%m/%d"), fake.bs().title()[:20], f"{amt:+.2f}", f"{bal:.2f}"])
@@ -304,7 +386,9 @@ def case_bank_statement(do_degrade):
 
 
 def case_rtl_arabic(do_degrade):
-    text = "إشعار استلام رقم ٤٢ — المبلغ الإجمالي ١٤٥ ريالاً"
+    _no = str(fake.random_int(10, 99)).translate(_AR_DIGITS)         # randomised -> no constant dup
+    _amt = str(fake.random_int(100, 990)).translate(_AR_DIGITS)
+    text = f"إشعار استلام رقم {_no} — المبلغ الإجمالي {_amt} ريالاً"
     css = "body{direction:rtl;font-family:'Amiri','Noto Naskh Arabic',serif;font-size:16px;}"
     b = DocBuilder("RTL doc (Arabic)", ["read-direction(RTL)", "language", "script"],
                    "direction + per-lang NED", page="A5", css=css)
@@ -321,7 +405,9 @@ def case_rtl_arabic(do_degrade):
 
 
 def case_webtoon(do_degrade):
-    lines = ["Are you ready?", "I think so...", "Then let's begin!", "Wait — look over there!"]
+    # random short dialogue lines (unlimited variety -> no constant-content duplicate)
+    lines = [fake.sentence(nb_words=fake.random_int(2, 5)).rstrip(".") + random.choice(["!", "?", "..."])
+             for _ in range(4)]
     css = """
     @page{ size:80mm 200mm; margin:4mm;}
     .panel{ position:relative; height:44mm; border:2px solid #111; margin-bottom:3mm;
@@ -368,7 +454,9 @@ def case_prescription(do_degrade):
 
 def case_cheque(do_degrade):
     payee = fake.name()
-    amt_num, amt_words = "1,450.00", "One thousand four hundred fifty and 00/100"
+    _dollars, _cents = fake.random_int(105, 9985), fake.random_int(0, 99)   # randomised -> no dup
+    amt_num = f"{_dollars:,}.{_cents:02d}"
+    amt_words = f"{_int_words(_dollars).capitalize()} and {_cents:02d}/100"
     css = """
     @page{ size:160mm 70mm; margin:6mm;}
     .cheque{ border:2px solid #1b3a6b; padding:5mm; height:100%; background:#f3f7fc;}
@@ -386,21 +474,22 @@ def case_cheque(do_degrade):
     b.transcript(amt_words, key="amount_words", cls="words")
     b.raw("<p class=micr>⑆000123456⑆ 0987654321⑈ 4421</p></div>")
     b.task("Read the courtesy (numeric) and legal (written) amounts and check they agree.")
-    b.qa("What is the numeric (courtesy) amount on the cheque?", [amt_num, "1450.00"],
+    b.qa("What is the numeric (courtesy) amount on the cheque?", [amt_num, f"{_dollars}.{_cents:02d}"],
          answer_type="kie", key="amount_numeric")
     b.qa("Who is the payee?", payee, metric="ned", answer_type="kie", key="payee")
     b.qa("Do the numeric and written amounts agree?", ["yes", "they agree"], metric="anls",
          answer_type="consistency",
-         rationale=f"Numeric '{amt_num}' equals legal 'one thousand four hundred fifty' → they agree.")
+         rationale=f"Numeric '{amt_num}' equals legal '{amt_words.lower()}' → they agree.")
     b.probe("consistency", "Do the numeric and written amounts agree?",
-            "yes (1450.00 == one thousand four hundred fifty)")
+            f"yes ({amt_num} == {amt_words.lower()})")
     b.ask_where(amt_num, label="the courtesy (numeric) amount")
     emit("cheque", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
 def case_ancient(do_degrade):
-    poem = "山重水複疑無路"
-    cols = [poem[:4], poem[4:]]      # right-to-left columns; each stacked top->bottom
+    poem = random.choice(_POEMS)     # randomised classical line -> no constant-content duplicate
+    mid = (len(poem) + 1) // 2
+    cols = [poem[:mid], poem[mid:]]  # right-to-left columns; each stacked top->bottom
     # Stack characters one-per-line (WeasyPrint ignores writing-mode:vertical-rl), so it renders as a
     # true vertical classical manuscript. row-reverse puts the first column on the RIGHT.
     css = """
@@ -431,10 +520,22 @@ def case_ancient(do_degrade):
 # ============================================================ digital-native surfaces
 def case_website(do_degrade):
     brand = fake.company().split()[0]
-    nav = ["Product", "Pricing", "Docs", "Sign in"]
-    cta, headline = "Start free trial", "Ship documents, not paperwork."
-    cards = [("Fast", "Parse a page in milliseconds."), ("Secure", "SOC-2 encrypted storage."),
-             ("Global", "40+ languages out of the box.")]
+    # randomise nav (pool + count) AND feature cards so the GOLD LABELS vary doc-to-doc, not just the
+    # pixels — otherwise near-identical screenshots share identical answers and read as memorised dupes.
+    _NAV_POOL = ["Product", "Pricing", "Docs", "Sign in", "Features", "Customers", "Blog",
+                 "About", "Contact", "Login", "Solutions", "Developers", "Support"]
+    nav = random.sample(_NAV_POOL, random.randint(3, 5)) + ["Sign in"]
+    cta = random.choice(["Start free trial", "Get started", "Try it free", "Book a demo",
+                         "Sign up free", "Request access", "See pricing", "Talk to sales"])
+    headline = random.choice(["Ship documents, not paperwork.", "Parsing made simple.",
+                              "Read any document, instantly.", "Your documents, understood.",
+                              "Automate the paperwork.", "Documents in, data out.",
+                              "Stop retyping your PDFs.", "From scan to structured data."])
+    _CARD_POOL = [("Fast", "Parse a page in milliseconds."), ("Secure", "SOC-2 encrypted storage."),
+                  ("Global", "40+ languages out of the box."), ("Accurate", "99% field-level precision."),
+                  ("Simple", "One API call, structured JSON."), ("Scalable", "Millions of pages a day."),
+                  ("Private", "Your data never leaves the EU."), ("Flexible", "Any layout, any template.")]
+    cards = random.sample(_CARD_POOL, 3)
     css = """
     @page{ size:1280px 900px; margin:0;}
     body{ margin:0;} .chrome{ background:#e7eaef; height:38px; display:flex; align-items:center;
@@ -483,7 +584,9 @@ def case_website(do_degrade):
 
 
 def case_mobile_app(do_degrade):
-    msgs = [("in", "Hi! Is my invoice ready?"), ("out", "Yes — INV-2025-0042, total $145.50."),
+    _inv = f"INV-2025-{fake.random_int(1000, 9999)}"                 # randomised -> no constant dup
+    _amt = f"${fake.random_int(40, 980)}.{fake.random_int(0, 99):02d}"
+    msgs = [("in", "Hi! Is my invoice ready?"), ("out", f"Yes — {_inv}, total {_amt}."),
             ("in", "Great, can you email it?"), ("out", "Sent to your inbox ✅"), ("in", "Thanks!")]
     css = """
     @page{ size:390px 844px; margin:0;}
@@ -524,7 +627,10 @@ def case_mobile_app(do_degrade):
 
 
 def case_pdf_paper(do_degrade):
-    title = "Sub-1B Vision-Language Models for Document Understanding"
+    _adj = random.choice(["Efficient", "Sub-1B", "Robust", "Multilingual", "Lightweight", "End-to-End"])
+    _topic = random.choice(["Vision-Language Models", "Document Parsing", "Layout Analysis",
+                            "Table Recognition", "Scene-Text Reading", "Chart Understanding"])
+    title = f"{_adj} {_topic} for Document Understanding"   # randomised title -> no constant dup
     authors = f"{fake.name()}, {fake.name()}"
     secs = ["1. Introduction", "2. Related Work", "3. Method", "4. Experiments", "5. Conclusion"]
     para = " ".join(fake.sentence() for _ in range(6)) + " "
@@ -659,12 +765,17 @@ def main():
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
         rng = random.Random(CFG.seed + v)
-        random.seed(CFG.seed + v)            # used by emit() preset choice + degrade rng
         for k in keys:
             CURRENT_LANG = _choose_lang(rng)
+            # Reseed BOTH global random and Faker per (variant, case) with a stable, well-spread seed.
+            # Seeding once per variant let late cases (e.g. website) inherit a cumulative RNG state that
+            # aliased across variants -> near-identical renders + identical gold labels (memorisation).
+            # A per-(seed,variant,case) hash gives every case an independent, reproducible stream.
+            case_seed = int(hashlib.md5(f"{CFG.seed}:{v}:{k}".encode()).hexdigest(), 16) % (2**31)
+            random.seed(case_seed)           # used by case content + emit() preset/degrade rng
             # reseed Faker to the doc's locale so multilingual content is real + reproducible
             fake = Faker(LOCALE.get(CURRENT_LANG, "en_US"))
-            Faker.seed(CFG.seed + v)
+            Faker.seed(case_seed)
             CASES[k](do_degrade=not args.no_degrade)
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")

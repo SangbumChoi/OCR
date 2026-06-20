@@ -11,6 +11,7 @@
   "emit_spotting": true,
   "emit_rationale": true,
   "emit_understanding": true,
+  "jitter": true,
   "languages": [
     "en"
   ],

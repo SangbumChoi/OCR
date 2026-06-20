@@ -17,7 +17,7 @@
   "fields_detailed": [
     {
       "key": "patient",
-      "value": "Chris Curtis",
+      "value": "Jose Mcguire",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -31,10 +31,10 @@
       "value": "Amoxicillin 500mg — 1 cap TID x7d",
       "role": "transcript",
       "bbox": [
-        83,
-        316,
-        627,
-        362
+        106,
+        294,
+        650,
+        340
       ],
       "language": "en",
       "script": "latin",
@@ -61,16 +61,16 @@
     {
       "question": "Where is the handwritten medication line located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "83,316,627,362;875,1241"
+        "106,294,650,340;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the handwritten medication line is rendered at [83, 316, 627, 362] on the 875x1241px page.",
+      "rationale": "the handwritten medication line is rendered at [106, 294, 650, 340] on the 875x1241px page.",
       "answer_bbox": [
-        83,
-        316,
-        627,
-        362
+        106,
+        294,
+        650,
+        340
       ],
       "languages": [
         "en"
@@ -122,6 +122,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -132,15 +133,15 @@
     "doc_type_weights": null
   },
   "fields": {
-    "patient": "Chris Curtis",
+    "patient": "Jose Mcguire",
     "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d"
   },
   "spotting": {
     "rx_handwritten": [
-      83,
-      316,
-      627,
-      362
+      106,
+      294,
+      650,
+      340
     ]
   },
   "qa": [
@@ -157,11 +158,11 @@
       "key": null,
       "question": "Where is the handwritten medication line located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "83,316,627,362;875,1241"
+        "106,294,650,340;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the handwritten medication line is rendered at [83, 316, 627, 362] on the 875x1241px page."
+      "rationale": "the handwritten medication line is rendered at [106, 294, 650, 340] on the 875x1241px page."
     }
   ],
   "probes": [

@@ -18,13 +18,13 @@
   "fields_detailed": [
     {
       "key": "amount_numeric",
-      "value": "1,450.00",
+      "value": "6,438.46",
       "role": "value",
       "bbox": [
-        759,
-        104,
-        850,
-        130
+        771,
+        92,
+        863,
+        118
       ],
       "language": "en",
       "script": "latin",
@@ -34,7 +34,7 @@
     },
     {
       "key": "payee",
-      "value": "Chris Curtis",
+      "value": "Melinda White",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -45,7 +45,7 @@
     },
     {
       "key": "amount_words",
-      "value": "One thousand four hundred fifty and 00/100",
+      "value": "Six thousand four hundred thirty-eight and 46/100",
       "role": "transcript",
       "bbox": null,
       "language": "en",
@@ -59,17 +59,17 @@
     {
       "question": "What is the numeric (courtesy) amount on the cheque? Answer concisely, no explanation.",
       "answers": [
-        "1,450.00",
-        "1450.00"
+        "6,438.46",
+        "6438.46"
       ],
       "answer_type": "kie",
       "metric": "anls",
       "rationale": null,
       "answer_bbox": [
-        759,
-        104,
-        850,
-        130
+        771,
+        92,
+        863,
+        118
       ],
       "languages": [
         "en"
@@ -79,7 +79,7 @@
     {
       "question": "Who is the payee? Answer concisely, no explanation.",
       "answers": [
-        "Chris Curtis"
+        "Melinda White"
       ],
       "answer_type": "kie",
       "metric": "ned",
@@ -98,7 +98,7 @@
       ],
       "answer_type": "consistency",
       "metric": "anls",
-      "rationale": "Numeric '1,450.00' equals legal 'one thousand four hundred fifty' → they agree.",
+      "rationale": "Numeric '6,438.46' equals legal 'six thousand four hundred thirty-eight and 46/100' → they agree.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -108,16 +108,16 @@
     {
       "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
       "answers": [
-        "759,104,850,130;945,414"
+        "771,92,863,118;945,414"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the courtesy (numeric) amount is rendered at [759, 104, 850, 130] on the 945x414px page.",
+      "rationale": "the courtesy (numeric) amount is rendered at [771, 92, 863, 118] on the 945x414px page.",
       "answer_bbox": [
-        759,
-        104,
-        850,
-        130
+        771,
+        92,
+        863,
+        118
       ],
       "languages": [
         "en"
@@ -169,6 +169,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -179,16 +180,16 @@
     "doc_type_weights": null
   },
   "fields": {
-    "amount_numeric": "1,450.00",
-    "payee": "Chris Curtis",
-    "amount_words": "One thousand four hundred fifty and 00/100"
+    "amount_numeric": "6,438.46",
+    "payee": "Melinda White",
+    "amount_words": "Six thousand four hundred thirty-eight and 46/100"
   },
   "spotting": {
     "amount_numeric": [
-      759,
-      104,
-      850,
-      130
+      771,
+      92,
+      863,
+      118
     ]
   },
   "qa": [
@@ -196,8 +197,8 @@
       "key": "amount_numeric",
       "question": "What is the numeric (courtesy) amount on the cheque? Answer concisely, no explanation.",
       "answers": [
-        "1,450.00",
-        "1450.00"
+        "6,438.46",
+        "6438.46"
       ],
       "metric": "anls",
       "answer_type": "kie"
@@ -206,7 +207,7 @@
       "key": "payee",
       "question": "Who is the payee? Answer concisely, no explanation.",
       "answers": [
-        "Chris Curtis"
+        "Melinda White"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -220,24 +221,24 @@
       ],
       "metric": "anls",
       "answer_type": "consistency",
-      "rationale": "Numeric '1,450.00' equals legal 'one thousand four hundred fifty' → they agree."
+      "rationale": "Numeric '6,438.46' equals legal 'six thousand four hundred thirty-eight and 46/100' → they agree."
     },
     {
       "key": null,
       "question": "Where is the courtesy (numeric) amount located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 945x414 pixels.",
       "answers": [
-        "759,104,850,130;945,414"
+        "771,92,863,118;945,414"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the courtesy (numeric) amount is rendered at [759, 104, 850, 130] on the 945x414px page."
+      "rationale": "the courtesy (numeric) amount is rendered at [771, 92, 863, 118] on the 945x414px page."
     }
   ],
   "probes": [
     {
       "kind": "consistency",
       "question": "Do the numeric and written amounts agree?",
-      "expected": "yes (1450.00 == one thousand four hundred fifty)"
+      "expected": "yes (6,438.46 == six thousand four hundred thirty-eight and 46/100)"
     }
   ]
 }

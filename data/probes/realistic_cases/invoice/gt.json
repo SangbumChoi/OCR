@@ -18,13 +18,13 @@
   "fields_detailed": [
     {
       "key": "invoice_no",
-      "value": "INV-2025-1791",
+      "value": "INV-2025-9198",
       "role": "kie-value",
       "bbox": [
-        181,
-        195,
-        296,
-        214
+        178,
+        153,
+        267,
+        168
       ],
       "language": "en",
       "script": "latin",
@@ -34,7 +34,7 @@
     },
     {
       "key": "date",
-      "value": "1977-07-09",
+      "value": "1988-11-26",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -45,7 +45,7 @@
     },
     {
       "key": "lines_rows",
-      "value": "4",
+      "value": "3",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -56,13 +56,13 @@
     },
     {
       "key": "total",
-      "value": "$847.00",
+      "value": "$2,305.00",
       "role": "kie-value",
       "bbox": [
-        174,
-        434,
-        258,
-        460
+        189,
+        347,
+        270,
+        370
       ],
       "language": "en",
       "script": "latin",
@@ -75,16 +75,16 @@
     {
       "question": "What is the invoice number? Answer concisely, no explanation.",
       "answers": [
-        "INV-2025-1791"
+        "INV-2025-9198"
       ],
       "answer_type": "kie",
       "metric": "ned",
       "rationale": null,
       "answer_bbox": [
-        181,
-        195,
-        296,
-        214
+        178,
+        153,
+        267,
+        168
       ],
       "languages": [
         "en"
@@ -94,18 +94,18 @@
     {
       "question": "What is the total amount? Answer concisely, no explanation.",
       "answers": [
-        "$847.00",
-        "847.00",
-        "847.00"
+        "$2,305.00",
+        "2305.00",
+        "2,305.00"
       ],
       "answer_type": "kie",
       "metric": "anls",
-      "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00.",
+      "rationale": "Sum the line amounts: 4×$323.50 + 4×$155.50 + 2×$194.50 = $2,305.00.",
       "answer_bbox": [
-        174,
-        434,
-        258,
-        460
+        189,
+        347,
+        270,
+        370
       ],
       "languages": [
         "en"
@@ -115,13 +115,13 @@
     {
       "question": "What would the grand total be after adding 10% sales tax to the total? Answer concisely, no explanation.",
       "answers": [
-        "931.70",
-        "931.70",
-        "$931.70"
+        "2535.50",
+        "2,535.50",
+        "$2,535.50"
       ],
       "answer_type": "H-accounting",
       "metric": "relaxed_acc",
-      "rationale": "Total 847.00 × 1.10 (10% tax) = 931.70.",
+      "rationale": "Total 2305.00 × 1.10 (10% tax) = 2535.50.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -131,16 +131,16 @@
     {
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "78,259,732,420;875,1241"
+        "101,207,710,332;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the line-item table is rendered at [78, 259, 732, 420] on the 875x1241px page.",
+      "rationale": "the line-item table is rendered at [101, 207, 710, 332] on the 875x1241px page.",
       "answer_bbox": [
-        78,
-        259,
-        732,
-        420
+        101,
+        207,
+        710,
+        332
       ],
       "languages": [
         "en"
@@ -150,16 +150,16 @@
     {
       "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "83,434,159,460;875,1241"
+        "106,347,180,370;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the TOTAL row is rendered at [83, 434, 159, 460] on the 875x1241px page.",
+      "rationale": "the TOTAL row is rendered at [106, 347, 180, 370] on the 875x1241px page.",
       "answer_bbox": [
-        83,
-        434,
-        159,
-        460
+        106,
+        347,
+        180,
+        370
       ],
       "languages": [
         "en"
@@ -169,11 +169,11 @@
     {
       "question": "How many times does '$' appear in the document? Answer with a number.",
       "answers": [
-        "9"
+        "7"
       ],
       "answer_type": "H-count",
       "metric": "exact",
-      "rationale": "'$' is found 9 time(s), at [522,302]; [658,302]; [522,330]; [658,330]; [522,359]; [658,359]; [522,387]; [658,387]; [174,434].",
+      "rationale": "'$' is found 7 time(s), at [529,248]; [643,248]; [529,275]; [643,275]; [529,301]; [643,301]; [189,347].",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -183,12 +183,12 @@
     {
       "question": "What is the sum of all line-item amounts? Answer with a number.",
       "answers": [
-        "847",
-        "847"
+        "2305",
+        "2305"
       ],
       "answer_type": "H1-aggregate",
       "metric": "relaxed_acc",
-      "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847.",
+      "rationale": "The sum of all line-item amounts: 1294 + 622 + 389 = 2305.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -198,12 +198,12 @@
     {
       "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
       "answers": [
-        "322",
-        "322"
+        "1683",
+        "1683"
       ],
       "answer_type": "H1-aggregate",
       "metric": "relaxed_acc",
-      "rationale": "The sum of the first and last line-item amounts: 197.5 + 124.5 = 322.",
+      "rationale": "The sum of the first and last line-item amounts: 1294 + 389 = 1683.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -213,12 +213,12 @@
     {
       "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
       "answers": [
-        "168",
-        "168"
+        "905",
+        "905"
       ],
       "answer_type": "H1-aggregate",
       "metric": "relaxed_acc",
-      "rationale": "The difference between the largest and smallest line-item amounts: 292.5 − 124.5 = 168.",
+      "rationale": "The difference between the largest and smallest line-item amounts: 1294 − 389 = 905.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -270,6 +270,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -280,23 +281,23 @@
     "doc_type_weights": null
   },
   "fields": {
-    "invoice_no": "INV-2025-1791",
-    "date": "1977-07-09",
-    "lines_rows": "4",
-    "total": "$847.00"
+    "invoice_no": "INV-2025-9198",
+    "date": "1988-11-26",
+    "lines_rows": "3",
+    "total": "$2,305.00"
   },
   "spotting": {
     "invoice_no": [
-      181,
-      195,
-      296,
-      214
+      178,
+      153,
+      267,
+      168
     ],
     "total": [
-      174,
-      434,
-      258,
-      460
+      189,
+      347,
+      270,
+      370
     ]
   },
   "qa": [
@@ -304,7 +305,7 @@
       "key": "invoice_no",
       "question": "What is the invoice number? Answer concisely, no explanation.",
       "answers": [
-        "INV-2025-1791"
+        "INV-2025-9198"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -313,91 +314,91 @@
       "key": "total",
       "question": "What is the total amount? Answer concisely, no explanation.",
       "answers": [
-        "$847.00",
-        "847.00",
-        "847.00"
+        "$2,305.00",
+        "2305.00",
+        "2,305.00"
       ],
       "metric": "anls",
       "answer_type": "kie",
-      "rationale": "Sum the line amounts: 5×$39.50 + 1×$232.50 + 1×$292.50 + 1×$124.50 = $847.00."
+      "rationale": "Sum the line amounts: 4×$323.50 + 4×$155.50 + 2×$194.50 = $2,305.00."
     },
     {
       "key": null,
       "question": "What would the grand total be after adding 10% sales tax to the total? Answer concisely, no explanation.",
       "answers": [
-        "931.70",
-        "931.70",
-        "$931.70"
+        "2535.50",
+        "2,535.50",
+        "$2,535.50"
       ],
       "metric": "relaxed_acc",
       "answer_type": "H-accounting",
-      "rationale": "Total 847.00 × 1.10 (10% tax) = 931.70."
+      "rationale": "Total 2305.00 × 1.10 (10% tax) = 2535.50."
     },
     {
       "key": "lines_region",
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "78,259,732,420;875,1241"
+        "101,207,710,332;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the line-item table is rendered at [78, 259, 732, 420] on the 875x1241px page."
+      "rationale": "the line-item table is rendered at [101, 207, 710, 332] on the 875x1241px page."
     },
     {
       "key": null,
       "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "83,434,159,460;875,1241"
+        "106,347,180,370;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the TOTAL row is rendered at [83, 434, 159, 460] on the 875x1241px page."
+      "rationale": "the TOTAL row is rendered at [106, 347, 180, 370] on the 875x1241px page."
     },
     {
       "key": null,
       "question": "How many times does '$' appear in the document? Answer with a number.",
       "answers": [
-        "9"
+        "7"
       ],
       "metric": "exact",
       "answer_type": "H-count",
-      "rationale": "'$' is found 9 time(s), at [522,302]; [658,302]; [522,330]; [658,330]; [522,359]; [658,359]; [522,387]; [658,387]; [174,434]."
+      "rationale": "'$' is found 7 time(s), at [529,248]; [643,248]; [529,275]; [643,275]; [529,301]; [643,301]; [189,347]."
     },
     {
       "key": null,
       "question": "What is the sum of all line-item amounts? Answer with a number.",
       "answers": [
-        "847",
-        "847"
+        "2305",
+        "2305"
       ],
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
-      "rationale": "The sum of all line-item amounts: 197.5 + 232.5 + 292.5 + 124.5 = 847."
+      "rationale": "The sum of all line-item amounts: 1294 + 622 + 389 = 2305."
     },
     {
       "key": null,
       "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
       "answers": [
-        "322",
-        "322"
+        "1683",
+        "1683"
       ],
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
-      "rationale": "The sum of the first and last line-item amounts: 197.5 + 124.5 = 322."
+      "rationale": "The sum of the first and last line-item amounts: 1294 + 389 = 1683."
     },
     {
       "key": null,
       "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
       "answers": [
-        "168",
-        "168"
+        "905",
+        "905"
       ],
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
-      "rationale": "The difference between the largest and smallest line-item amounts: 292.5 − 124.5 = 168."
+      "rationale": "The difference between the largest and smallest line-item amounts: 1294 − 389 = 905."
     }
   ],
-  "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Optimize Mission-Criti</td><td>5</td><td>$39.50</td><td>$197.50</td></tr><tr><td>Redefine Killer Paradi</td><td>1</td><td>$232.50</td><td>$232.50</td></tr><tr><td>Deploy Innovative Acti</td><td>1</td><td>$292.50</td><td>$292.50</td></tr><tr><td>Brand Leading-Edge Net</td><td>1</td><td>$124.50</td><td>$124.50</td></tr></table>",
+  "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Incubate Dot-Com Model</td><td>4</td><td>$323.50</td><td>$1294.00</td></tr><tr><td>Facilitate Open-Source</td><td>4</td><td>$155.50</td><td>$622.00</td></tr><tr><td>Transition End-To-End </td><td>2</td><td>$194.50</td><td>$389.00</td></tr></table>",
   "probes": [
     {
       "kind": "abstain",

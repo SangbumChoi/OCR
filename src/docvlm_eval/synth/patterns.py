@@ -239,6 +239,7 @@ class DocBuilder:
         base = f"""
         @page {{ size: {self.page}; margin: {self.margin}; }}
         * {{ box-sizing: border-box; }}
+        html, body {{ margin:0; padding:0; }}  /* drop UA 8px body margin: a page-tall card (ID/passport) would otherwise overflow to page 2 and lose its bottom strip (e.g. the MRZ) */
         body {{ font-family:'Liberation Sans',sans-serif; color:#111; font-size:11px; }}
         h1,h2,h3 {{ margin:0 0 6px; }}
         table {{ border-collapse:collapse; width:100%; font-size:10px; }}

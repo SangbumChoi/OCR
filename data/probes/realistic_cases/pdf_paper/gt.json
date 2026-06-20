@@ -18,7 +18,7 @@
   "fields_detailed": [
     {
       "key": "title",
-      "value": "Sub-1B Vision-Language Models for Document Understanding",
+      "value": "Efficient Layout Analysis for Document Understanding",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -29,7 +29,7 @@
     },
     {
       "key": "authors",
-      "value": "Chris Curtis, Joshua Diaz",
+      "value": "Diana Moore, Amanda Drake",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -54,10 +54,10 @@
       "value": "",
       "role": "region",
       "bbox": [
-        789,
-        361,
-        991,
-        373
+        778,
+        417,
+        1032,
+        434
       ],
       "language": "en",
       "script": "latin",
@@ -70,7 +70,7 @@
     {
       "question": "What is the paper title? Answer concisely, no explanation.",
       "answers": [
-        "Sub-1B Vision-Language Models for Document Understanding"
+        "Efficient Layout Analysis for Document Understanding"
       ],
       "answer_type": "ui",
       "metric": "ned",
@@ -98,16 +98,16 @@
     {
       "question": "Where is the paper title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
       "answers": [
-        "301,119,939,145;1241,1754"
+        "71,94,793,131;1241,1754"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the paper title is rendered at [301, 119, 939, 145] on the 1241x1754px page.",
+      "rationale": "the paper title is rendered at [71, 94, 793, 131] on the 1241x1754px page.",
       "answer_bbox": [
-        301,
-        119,
-        939,
-        145
+        71,
+        94,
+        793,
+        131
       ],
       "languages": [
         "en"
@@ -117,16 +117,16 @@
     {
       "question": "Where is the figure located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
       "answers": [
-        "789,361,991,373;1241,1754"
+        "778,417,1032,434;1241,1754"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the figure is rendered at [789, 361, 991, 373] on the 1241x1754px page.",
+      "rationale": "the figure is rendered at [778, 417, 1032, 434] on the 1241x1754px page.",
       "answer_bbox": [
-        789,
-        361,
-        991,
-        373
+        778,
+        417,
+        1032,
+        434
       ],
       "languages": [
         "en"
@@ -178,6 +178,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -188,16 +189,16 @@
     "doc_type_weights": null
   },
   "fields": {
-    "title": "Sub-1B Vision-Language Models for Document Understanding",
-    "authors": "Chris Curtis, Joshua Diaz",
+    "title": "Efficient Layout Analysis for Document Understanding",
+    "authors": "Diana Moore, Amanda Drake",
     "sections": "['1. Introduction', '2. Related Work', '3. Method', '4. Experiments', '5. Conclusion']"
   },
   "spotting": {
     "figure_caption": [
-      789,
-      361,
-      991,
-      373
+      778,
+      417,
+      1032,
+      434
     ]
   },
   "qa": [
@@ -205,7 +206,7 @@
       "key": null,
       "question": "What is the paper title? Answer concisely, no explanation.",
       "answers": [
-        "Sub-1B Vision-Language Models for Document Understanding"
+        "Efficient Layout Analysis for Document Understanding"
       ],
       "metric": "ned",
       "answer_type": "ui"
@@ -223,21 +224,21 @@
       "key": null,
       "question": "Where is the paper title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
       "answers": [
-        "301,119,939,145;1241,1754"
+        "71,94,793,131;1241,1754"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the paper title is rendered at [301, 119, 939, 145] on the 1241x1754px page."
+      "rationale": "the paper title is rendered at [71, 94, 793, 131] on the 1241x1754px page."
     },
     {
       "key": null,
       "question": "Where is the figure located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 1241x1754 pixels.",
       "answers": [
-        "789,361,991,373;1241,1754"
+        "778,417,1032,434;1241,1754"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the figure is rendered at [789, 361, 991, 373] on the 1241x1754px page."
+      "rationale": "the figure is rendered at [778, 417, 1032, 434] on the 1241x1754px page."
     }
   ],
   "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",

@@ -17,7 +17,7 @@
   "fields_detailed": [
     {
       "key": "messages",
-      "value": "['Hi! Is my invoice ready?', 'Yes — INV-2025-0042, total $145.50.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']",
+      "value": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -32,9 +32,9 @@
       "role": "region",
       "bbox": [
         41,
-        166,
-        289,
-        192
+        167,
+        322,
+        194
       ],
       "language": "en",
       "script": "latin",
@@ -47,7 +47,7 @@
     {
       "question": "Transcribe the chat messages in order, one per line. Answer concisely, no explanation.",
       "answers": [
-        "Hi! Is my invoice ready?\nYes — INV-2025-0042, total $145.50.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
+        "Hi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
       ],
       "answer_type": "reading-order",
       "metric": "ned",
@@ -108,16 +108,16 @@
     {
       "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
       "answers": [
-        "41,166,289,192;610,1319"
+        "41,167,322,194;610,1319"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the first chat message is rendered at [41, 166, 289, 192] on the 610x1319px page.",
+      "rationale": "the first chat message is rendered at [41, 167, 322, 194] on the 610x1319px page.",
       "answer_bbox": [
         41,
-        166,
-        289,
-        192
+        167,
+        322,
+        194
       ],
       "languages": [
         "en"
@@ -169,6 +169,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -179,14 +180,14 @@
     "doc_type_weights": null
   },
   "fields": {
-    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-0042, total $145.50.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']"
+    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']"
   },
   "spotting": {
     "bubble_first": [
       41,
-      166,
-      289,
-      192
+      167,
+      322,
+      194
     ]
   },
   "qa": [
@@ -194,7 +195,7 @@
       "key": null,
       "question": "Transcribe the chat messages in order, one per line. Answer concisely, no explanation.",
       "answers": [
-        "Hi! Is my invoice ready?\nYes — INV-2025-0042, total $145.50.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
+        "Hi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!"
       ],
       "metric": "ned",
       "answer_type": "reading-order"
@@ -237,16 +238,16 @@
       "key": null,
       "question": "Where is the first chat message located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 610x1319 pixels.",
       "answers": [
-        "41,166,289,192;610,1319"
+        "41,167,322,194;610,1319"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the first chat message is rendered at [41, 166, 289, 192] on the 610x1319px page."
+      "rationale": "the first chat message is rendered at [41, 167, 322, 194] on the 610x1319px page."
     }
   ],
   "reading_order": [
     "Hi! Is my invoice ready?",
-    "Yes — INV-2025-0042, total $145.50.",
+    "Yes — INV-2025-1776, total $754.29.",
     "Great, can you email it?",
     "Sent to your inbox ✅",
     "Thanks!"

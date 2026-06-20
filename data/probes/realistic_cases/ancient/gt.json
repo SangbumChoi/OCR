@@ -17,7 +17,7 @@
   "fields_detailed": [
     {
       "key": "transcript",
-      "value": "山重水複疑無路",
+      "value": "黃河入海流",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -43,9 +43,9 @@
       "role": "region",
       "bbox": [
         390,
-        162,
+        119,
         440,
-        234
+        182
       ],
       "language": "en",
       "script": "latin",
@@ -58,7 +58,7 @@
     {
       "question": "Transcribe the characters (top→bottom, right→left). Answer concisely, no explanation.",
       "answers": [
-        "山重水複疑無路"
+        "黃河入海流"
       ],
       "answer_type": "multilingual",
       "metric": "ned",
@@ -72,16 +72,16 @@
     {
       "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "95,90,173,127;709,886"
+        "47,42,125,79;709,886"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the title is rendered at [95, 90, 173, 127] on the 709x886px page.",
+      "rationale": "the title is rendered at [47, 42, 125, 79] on the 709x886px page.",
       "answer_bbox": [
-        95,
-        90,
-        173,
-        127
+        47,
+        42,
+        125,
+        79
       ],
       "languages": [
         "en"
@@ -133,6 +133,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -143,15 +144,15 @@
     "doc_type_weights": null
   },
   "fields": {
-    "transcript": "山重水複疑無路",
+    "transcript": "黃河入海流",
     "reading_direction": "vertical-rtl"
   },
   "spotting": {
     "first_glyph": [
       390,
-      162,
+      119,
       440,
-      234
+      182
     ]
   },
   "qa": [
@@ -159,7 +160,7 @@
       "key": null,
       "question": "Transcribe the characters (top→bottom, right→left). Answer concisely, no explanation.",
       "answers": [
-        "山重水複疑無路"
+        "黃河入海流"
       ],
       "metric": "ned",
       "answer_type": "multilingual"
@@ -168,11 +169,11 @@
       "key": null,
       "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "95,90,173,127;709,886"
+        "47,42,125,79;709,886"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the title is rendered at [95, 90, 173, 127] on the 709x886px page."
+      "rationale": "the title is rendered at [47, 42, 125, 79] on the 709x886px page."
     }
   ]
 }

@@ -16,7 +16,7 @@
   "fields_detailed": [
     {
       "key": "subject",
-      "value": "Chris Curtis",
+      "value": "Lauren Hunt",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -30,7 +30,7 @@
     {
       "question": "Who is the subject of the memo? Answer concisely, no explanation.",
       "answers": [
-        "Chris Curtis"
+        "Lauren Hunt"
       ],
       "answer_type": "kie",
       "metric": "ned",
@@ -44,16 +44,16 @@
     {
       "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "156,129,246,149;875,1241"
+        "143,140,238,160;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the subject is rendered at [156, 129, 246, 149] on the 875x1241px page.",
+      "rationale": "the subject is rendered at [143, 140, 238, 160] on the 875x1241px page.",
       "answer_bbox": [
-        156,
-        129,
-        246,
-        149
+        143,
+        140,
+        238,
+        160
       ],
       "languages": [
         "en"
@@ -105,6 +105,7 @@
     "emit_spotting": true,
     "emit_rationale": true,
     "emit_understanding": true,
+    "jitter": true,
     "languages": [
       "en"
     ],
@@ -115,14 +116,14 @@
     "doc_type_weights": null
   },
   "fields": {
-    "subject": "Chris Curtis"
+    "subject": "Lauren Hunt"
   },
   "qa": [
     {
       "key": null,
       "question": "Who is the subject of the memo? Answer concisely, no explanation.",
       "answers": [
-        "Chris Curtis"
+        "Lauren Hunt"
       ],
       "metric": "ned",
       "answer_type": "kie"
@@ -131,16 +132,16 @@
       "key": null,
       "question": "Where is the subject located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "156,129,246,149;875,1241"
+        "143,140,238,160;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the subject is rendered at [156, 129, 246, 149] on the 875x1241px page."
+      "rationale": "the subject is rendered at [143, 140, 238, 160] on the 875x1241px page."
     }
   ],
   "redacted": {
-    "account_number": "18159083016",
-    "authorising_officer": "David Arnold"
+    "account_number": "36053925500",
+    "authorising_officer": "Teresa Johns"
   },
   "probes": [
     {
