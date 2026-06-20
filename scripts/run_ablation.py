@@ -41,12 +41,67 @@ def _record(model: str, arm: str, payload: dict) -> None:
     RESULTS.write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
 
+def _gen_realistic(out_dir: Path, seed: int, count: int) -> str:
+    """Generate a realistic_cases set into out_dir and build its benchmark jsonl; return the jsonl."""
+    subprocess.run([sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
+                    "--seed", str(seed), "--count", str(count), "--out", str(out_dir)],
+                   cwd=ROOT, check=True)
+    from docvlm_eval.benchmarks import save_jsonl
+    from docvlm_eval.synth import load_realistic_samples
+    jsonl = str(out_dir / "realistic_cases.jsonl")
+    save_jsonl(load_realistic_samples(out_dir), jsonl)
+    return jsonl
+
+
+def _n_samples(jsonl: str) -> int:
+    return sum(1 for ln in Path(jsonl).read_text().splitlines() if ln.strip())
+
+
+def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
+    """A0 PREREQUISITE — memorization vs understanding as a function of training-data SIZE.
+
+    For each size N (variants/case): train LoRA for a FIXED #epochs on seed=7 data, then score BOTH
+    (a) the TRAIN set it just fit (memorization signal) and (b) a FIXED held-out set on a DIFFERENT
+    seed (understanding/generalization signal). A big train≫held-out gap that grows as N shrinks =
+    memorization; the held-out curve flattening = the recommended synthetic size. Result lands in
+    ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite section."""
+    # held-out TEST built ONCE so every training size is scored on the identical unseen set.
+    test_jsonl = _gen_realistic(ROOT / "data" / "probes" / "_a0_heldout",
+                                seed=args.a0_test_seed, count=args.a0_test_count)
+    n_test = _n_samples(test_jsonl)
+    sizes = sorted(set(args.a0_sizes))
+    total = len(args.models) * len(sizes); done = 0
+    for model in args.models:
+        hf = HF_ID[model]
+        rec = {"epochs": args.a0_epochs, "test_seed": args.a0_test_seed,
+               "n_test_samples": n_test, "sizes": {}}
+        for n in sizes:
+            done += 1
+            print(f"[{done}/{total}] ({total-done} left) {model} :: A0 size={n} (x14 cases) "
+                  f"epochs={args.a0_epochs}")
+            train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
+            n_train = _n_samples(train_jsonl)
+            adapter = train_lora_vlm(LoraVLMConfig(
+                model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
+                epochs=args.a0_epochs, max_steps=None,
+                output_dir=f"outputs/{model}/A0_n{n}"))
+            train_s = eval_vlm(hf, train_jsonl, adapter_path=adapter)
+            held_s = eval_vlm(hf, test_jsonl, adapter_path=adapter)
+            ts, hs = train_s.get("score"), held_s.get("score")
+            gap = (ts - hs) if (ts is not None and hs is not None) else None
+            rec["sizes"][str(n)] = {"variants_per_case": n, "n_train_samples": n_train,
+                                    "train": train_s, "heldout": held_s, "gap": gap}
+            print(f"    train={ts}  heldout={hs}  gap(train-heldout)={gap}")
+            _record(model, "A0", rec)   # checkpoint after every size
+    print(f"[done] A0 -> {RESULTS}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--models", nargs="+", default=list(HF_ID))
     p.add_argument("--arm", required=True,
-                   help="'baseline' (eval only) or a configs/synth_data.yaml ablation id "
-                        "(e.g. A1_spotting_on, A2_reasoning_on, A4_ko_en, A7_dynamic_tiling)")
+                   help="'baseline' (eval only), 'A0' (memorization-vs-size prerequisite sweep), or a "
+                        "configs/synth_data.yaml ablation id (e.g. A1_spotting_on, A4_ko_en)")
     p.add_argument("--placement", default="all", help="A5 LoRA group: vision|connector|llm_attn|llm_mlp|all")
     # CONTROL FACTOR — held fixed across arms so a delta is attributable to the factor alone:
     p.add_argument("--count", type=int, default=50,
@@ -55,9 +110,24 @@ def main() -> None:
     p.add_argument("--heldout-seed", type=int, default=None,
                    help="A0 memorization test: also eval on a realistic set generated with THIS seed "
                         "(different from training) -> unseen content; reports the train/held-out gap")
+    # --- A0 (PREREQUISITE) memorization-vs-understanding size sweep (configs/ablations.yaml A0) ---
+    p.add_argument("--a0-sizes", type=int, nargs="+", default=[25, 50, 100, 200],
+                   help="A0: train-data scale sweep = variants/case (x14 cases = #images). The config's "
+                        "intended curve is 50/200/800/3200; defaults here are lighter for a first run.")
+    p.add_argument("--a0-epochs", type=int, default=3,
+                   help="A0: epochs per size (FIXED across sizes so each example is seen equally -> the "
+                        "only thing changing is dataset size). Train-to-fit reveals memorization.")
+    p.add_argument("--a0-test-seed", type=int, default=999, help="A0: held-out TEST seed (never trained on)")
+    p.add_argument("--a0-test-count", type=int, default=5,
+                   help="A0: held-out TEST scale (variants/case). FIXED across sizes so the test set is "
+                        "identical for every training size -> comparable held-out curve.")
     args = p.parse_args()
 
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
+
+    if args.arm == "A0":
+        run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig)
+        return
 
     heldout_jsonl = None
     if args.heldout_seed is not None:    # build a held-out TEST split with a different seed

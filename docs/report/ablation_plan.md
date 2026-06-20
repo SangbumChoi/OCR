@@ -22,11 +22,14 @@ comparable). Every arm is scored on the **whole suite** (capability, spatial, re
 hurt EN? (`scripts/run_ablation.py`).
 
 **A0 — memorization vs understanding (run this first).** Because synthetic data is *infinite*, the
-first experiment separates understanding from template-memorization: train at increasing data scale
-(seed 7) and evaluate on a **held-out set generated with a different seed** (unseen content, same
-distribution; `run_ablation.py --heldout-seed`). Understanding → held-out keeps rising with scale and
-the train/held-out gap stays small; memorization → train→~1.0 while held-out plateaus. **A0's result
-fixes the data scale used by A1–A7.**
+first experiment separates understanding from template-memorization: at each data scale (seed 7),
+LoRA-train for a fixed #epochs and score BOTH the train set (memorization) and a **held-out set
+generated with a different seed** (unseen content, same distribution; identical for every scale).
+Understanding → held-out keeps rising with scale and the train/held-out gap stays small; memorization
+→ train→~1.0 while held-out plateaus. The recommended synthetic size is where held-out plateaus.
+Run the size sweep with `scripts/run_ablation.py --arm A0 --a0-sizes 25 50 100 200` (full curve:
+`50 200 800 3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` plots the
+learning curve + gap and reads off the size. **A0's result fixes the data scale used by A1–A7.**
 
 **Two synthetic-quality axes we scale** (see [`synthetic_data_dto.md`](synthetic_data_dto.md)):
 *visual diversity* (14 doc types × acquisition/lighting/colour — `D_visual_diverse`) and *annotation
