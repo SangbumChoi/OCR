@@ -54,6 +54,7 @@ class DocBuilder:
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
         self._derivations: list = []   # model-free understanding-GT requests (resolved in build)
+        self._fulltext_q: str | None = None   # full-document OCR target (answer filled from render)
         # per-field metadata consumed by DocSample.from_builder_gt (A4 language, A7 small-text)
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
@@ -185,6 +186,13 @@ class DocBuilder:
                  f"<div class='bubble {side}'>{esc(text)}</div></div>")
         return text
 
+    def want_fulltext(self, question: str = "Transcribe all the text in this document in reading order.") -> None:
+        """Request a FULL-DOCUMENT OCR target. The answer is filled in ``build()`` from the rendered
+        page's exact text layer (PyMuPDF), so the GT is correct by construction — this trains/evaluates
+        whole-page reading (the bulk of document understanding), not just field spotting. Best for
+        digital-native / clean-Latin docs where the text layer extracts faithfully."""
+        self._fulltext_q = question
+
     def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
            key: str | None = None, concise: bool = True, rationale: str | None = None,
            languages: list[str] | None = None) -> None:
@@ -264,6 +272,14 @@ class DocBuilder:
                               f"in {self.doc_type} — skipped")
                         continue
                     self.qas.append(qa)
+            if self._fulltext_q:                       # full-document OCR target from the exact render
+                txt = rr.full_text()
+                if txt:
+                    self.fields["full_text"] = txt
+                    self.qas.append({"key": "full_text", "question": self._fulltext_q,
+                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full"})
+                else:
+                    print(f"  [warn] full_text empty for {self.doc_type} — skipped")
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),

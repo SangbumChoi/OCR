@@ -69,6 +69,17 @@
       "font_px": null,
       "is_small": false,
       "reading_index": null
+    },
+    {
+      "key": "full_text",
+      "value": "INVOICE\nForbes-Lee\n67534 Perez Trail Suite 069\nInvoice No: INV-2025-9198\nDate: 1988-11-26\nItem\nQty\nUnit\nAmount\nIncubate Dot-Com Model\n4\n$323.50\n$1294.00\nFacilitate Open-Source\n4\n$155.50\n$622.00\nTransition End-To-End\n2\n$194.50\n$389.00\nTOTAL: $2,305.00",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
     }
   ],
   "qa_detailed": [
@@ -224,6 +235,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "INVOICE\nForbes-Lee\n67534 Perez Trail Suite 069\nInvoice No: INV-2025-9198\nDate: 1988-11-26\nItem\nQty\nUnit\nAmount\nIncubate Dot-Com Model\n4\n$323.50\n$1294.00\nFacilitate Open-Source\n4\n$155.50\n$622.00\nTransition End-To-End\n2\n$194.50\n$389.00\nTOTAL: $2,305.00"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -285,7 +310,8 @@
     "invoice_no": "INV-2025-9198",
     "date": "1988-11-26",
     "lines_rows": "3",
-    "total": "$2,305.00"
+    "total": "$2,305.00",
+    "full_text": "INVOICE\nForbes-Lee\n67534 Perez Trail Suite 069\nInvoice No: INV-2025-9198\nDate: 1988-11-26\nItem\nQty\nUnit\nAmount\nIncubate Dot-Com Model\n4\n$323.50\n$1294.00\nFacilitate Open-Source\n4\n$155.50\n$622.00\nTransition End-To-End\n2\n$194.50\n$389.00\nTOTAL: $2,305.00"
   },
   "spotting": {
     "invoice_no": [
@@ -397,6 +423,15 @@
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
       "rationale": "The difference between the largest and smallest line-item amounts: 1294 − 389 = 905."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "INVOICE\nForbes-Lee\n67534 Perez Trail Suite 069\nInvoice No: INV-2025-9198\nDate: 1988-11-26\nItem\nQty\nUnit\nAmount\nIncubate Dot-Com Model\n4\n$323.50\n$1294.00\nFacilitate Open-Source\n4\n$155.50\n$622.00\nTransition End-To-End\n2\n$194.50\n$389.00\nTOTAL: $2,305.00"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "table_html": "<table><tr><td>Item</td><td>Qty</td><td>Unit</td><td>Amount</td></tr><tr><td>Incubate Dot-Com Model</td><td>4</td><td>$323.50</td><td>$1294.00</td></tr><tr><td>Facilitate Open-Source</td><td>4</td><td>$155.50</td><td>$622.00</td></tr><tr><td>Transition End-To-End </td><td>2</td><td>$194.50</td><td>$389.00</td></tr></table>",

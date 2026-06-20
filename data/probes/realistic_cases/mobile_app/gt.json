@@ -27,6 +27,17 @@
       "reading_index": null
     },
     {
+      "key": "full_text",
+      "value": "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
       "key": "bubble_first",
       "value": "",
       "role": "region",
@@ -123,6 +134,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -181,7 +206,8 @@
     "doc_type_weights": null
   },
   "fields": {
-    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']"
+    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']",
+    "full_text": "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
   },
   "spotting": {
     "bubble_first": [
@@ -244,6 +270,15 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the first chat message is rendered at [41, 164, 251, 188] on the 610x1319px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "reading_order": [

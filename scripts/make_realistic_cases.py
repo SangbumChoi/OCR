@@ -277,6 +277,7 @@ def case_invoice(do_degrade):
          [f"{grand:.2f}", f"{grand:,.2f}", f"${grand:,.2f}"], metric="relaxed_acc",
          answer_type="H-accounting",
          rationale=f"Total {total:.2f} × 1.10 (10% tax) = {grand:.2f}.")
+    b.want_fulltext()
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -353,6 +354,7 @@ def case_checkbox_form(do_degrade):
          answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
     b.ask_where("Email", label="the Email option")
+    b.want_fulltext()
     emit("checkbox_form", b, "scan", do_degrade)
 
 
@@ -391,6 +393,7 @@ def case_bank_statement(do_degrade):
     # reasoning over the balance column extremes (highest vs lowest)
     bals = [float(r[3]) for r in rows]
     b.ask_aggregate("the difference between the highest and lowest balance", bals, op="diff")
+    b.want_fulltext()
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -458,6 +461,7 @@ def case_prescription(do_degrade):
     b.qa("Transcribe the handwritten medication line.", drug, metric="ned", answer_type="handwriting")
     b.probe("abstain", "What is the refill count?", "not legible / not present — abstain")
     b.ask_where(drug, label="the handwritten medication line")
+    b.want_fulltext()
     emit("prescription", b, "fax", do_degrade)
 
 
@@ -591,6 +595,7 @@ def case_website(do_degrade):
     b.qa("What is the primary action this page wants the visitor to take?",
          [cta, cta.lower()], metric="anls", answer_type="H-action",
          rationale=f"The prominent call-to-action button reads '{cta}', so that is the next action.")
+    b.want_fulltext()
     emit("website", b, "screenshot", do_degrade)
 
 
@@ -634,6 +639,7 @@ def case_mobile_app(do_degrade):
          ["nothing", "no action", "the issue is resolved", "wait"], metric="anls",
          answer_type="H-action",
          rationale="The invoice was already sent and the user replied 'Thanks!' -> no further action is needed.")
+    b.want_fulltext()
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
@@ -682,6 +688,7 @@ def case_pdf_paper(do_degrade):
             "no — each column reads top-to-bottom independently")
     b.ask_where(title, label="the paper title")
     b.ask_region("the figure", [cap])
+    b.want_fulltext()
     emit("pdf_paper", b, "scan", do_degrade)
 
 

@@ -50,6 +50,17 @@
       "reading_index": null
     },
     {
+      "key": "full_text",
+      "value": "Efficient Layout Analysis for Document Understanding\nDiana Moore, Amanda Drake\nAbstract. Crime eye line family. Trade the room capital many. Throughout must seek ask serious safe. The maybe watch step career pay. Use expect professor to\ntree. Everything play foreign agreement today think key.\n1. Introduction\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n2. Related Work\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n3. Method\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nFigure 1: The proposed evaluation pipeline.\n4. Experiments\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n5. Conclusion\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nProc. of the Synthetic Document Workshop, 2025\n1",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
       "key": "figure_caption",
       "value": "",
       "role": "region",
@@ -132,6 +143,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "Efficient Layout Analysis for Document Understanding\nDiana Moore, Amanda Drake\nAbstract. Crime eye line family. Trade the room capital many. Throughout must seek ask serious safe. The maybe watch step career pay. Use expect professor to\ntree. Everything play foreign agreement today think key.\n1. Introduction\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n2. Related Work\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n3. Method\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nFigure 1: The proposed evaluation pipeline.\n4. Experiments\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n5. Conclusion\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nProc. of the Synthetic Document Workshop, 2025\n1"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -192,7 +217,8 @@
   "fields": {
     "title": "Efficient Layout Analysis for Document Understanding",
     "authors": "Diana Moore, Amanda Drake",
-    "sections": "['1. Introduction', '2. Related Work', '3. Method', '4. Experiments', '5. Conclusion']"
+    "sections": "['1. Introduction', '2. Related Work', '3. Method', '4. Experiments', '5. Conclusion']",
+    "full_text": "Efficient Layout Analysis for Document Understanding\nDiana Moore, Amanda Drake\nAbstract. Crime eye line family. Trade the room capital many. Throughout must seek ask serious safe. The maybe watch step career pay. Use expect professor to\ntree. Everything play foreign agreement today think key.\n1. Introduction\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n2. Related Work\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n3. Method\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nFigure 1: The proposed evaluation pipeline.\n4. Experiments\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n5. Conclusion\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nProc. of the Synthetic Document Workshop, 2025\n1"
   },
   "spotting": {
     "figure_caption": [
@@ -240,6 +266,15 @@
       "metric": "grounding",
       "answer_type": "L1-region",
       "rationale": "the figure is rendered at [782, 423, 1027, 437] on the 1241x1754px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "Efficient Layout Analysis for Document Understanding\nDiana Moore, Amanda Drake\nAbstract. Crime eye line family. Trade the room capital many. Throughout must seek ask serious safe. The maybe watch step career pay. Use expect professor to\ntree. Everything play foreign agreement today think key.\n1. Introduction\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n2. Related Work\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n3. Method\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nFigure 1: The proposed evaluation pipeline.\n4. Experiments\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\n5. Conclusion\nCrime eye line family. Trade the room capital many. Throughout\nmust seek ask serious safe. The maybe watch step career pay.\nUse expect professor to tree. Everything play foreign agreement\ntoday think key. Crime eye line family. Trade the room capital\nmany. Throughout must seek ask serious safe. The maybe watch\nstep career pay. Use expect professor to tree. Everything play\nforeign agreement today think key.\nProc. of the Synthetic Document Workshop, 2025\n1"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "reading_order": "left column top→bottom, then right column (NOT row-wise across columns)",

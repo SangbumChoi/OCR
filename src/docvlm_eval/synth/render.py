@@ -42,6 +42,14 @@ class RenderResult:
         return [[round(r.x0 * z), round(r.y0 * z), round(r.x1 * z), round(r.y1 * z)]
                 for r in self._page0.search_for(text)]
 
+    def full_text(self) -> str:
+        """The page's complete text in reading order (PyMuPDF) — the exact rendered text, so a
+        correct-by-construction full-document OCR target (no hand-assembly)."""
+        if not self._page0:
+            return ""
+        raw = self._page0.get_text("text") or ""
+        return "\n".join(ln.strip() for ln in raw.splitlines() if ln.strip())
+
     def close(self) -> None:
         if self._doc:
             self._doc.close()

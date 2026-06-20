@@ -27,6 +27,17 @@
       "reading_index": null
     },
     {
+      "key": "full_text",
+      "value": "SERVICE ENROLLMENT FORM\nApplicant: Vicki Vega\nPreferred contact methods:\n☒ Email\n☐ SMS\n☒ Phone call\n☒ Postal mail\nNotification language:\n☒ English\n☐ Korean\n☐ Spanish\n☐ Japanese",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
       "key": "contact:Email",
       "value": "",
       "role": "region",
@@ -202,6 +213,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "SERVICE ENROLLMENT FORM\nApplicant: Vicki Vega\nPreferred contact methods:\n☒ Email\n☐ SMS\n☒ Phone call\n☒ Postal mail\nNotification language:\n☒ English\n☐ Korean\n☐ Spanish\n☐ Japanese"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -260,7 +285,8 @@
     "doc_type_weights": null
   },
   "fields": {
-    "applicant": "Vicki Vega"
+    "applicant": "Vicki Vega",
+    "full_text": "SERVICE ENROLLMENT FORM\nApplicant: Vicki Vega\nPreferred contact methods:\n☒ Email\n☐ SMS\n☒ Phone call\n☒ Postal mail\nNotification language:\n☒ English\n☐ Korean\n☐ Spanish\n☐ Japanese"
   },
   "spotting": {
     "contact:Email": [
@@ -340,6 +366,15 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the Email option is rendered at [115, 219, 165, 241] on the 875x1241px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "SERVICE ENROLLMENT FORM\nApplicant: Vicki Vega\nPreferred contact methods:\n☒ Email\n☐ SMS\n☒ Phone call\n☒ Postal mail\nNotification language:\n☒ English\n☐ Korean\n☐ Spanish\n☐ Japanese"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "selection": {

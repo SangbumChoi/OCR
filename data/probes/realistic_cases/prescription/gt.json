@@ -41,6 +41,17 @@
       "font_px": null,
       "is_small": false,
       "reading_index": null
+    },
+    {
+      "key": "full_text",
+      "value": "Deanna Patterson, M.D. — Internal Medicine\nPatient: Jose Mcguire\n℞\nAmoxicillin 500mg — 1 cap TID x7d\nSig: take with food",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
     }
   ],
   "qa_detailed": [
@@ -76,6 +87,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "Deanna Patterson, M.D. — Internal Medicine\nPatient: Jose Mcguire\n℞\nAmoxicillin 500mg — 1 cap TID x7d\nSig: take with food"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -135,7 +160,8 @@
   },
   "fields": {
     "patient": "Jose Mcguire",
-    "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d"
+    "rx_handwritten": "Amoxicillin 500mg — 1 cap TID x7d",
+    "full_text": "Deanna Patterson, M.D. — Internal Medicine\nPatient: Jose Mcguire\n℞\nAmoxicillin 500mg — 1 cap TID x7d\nSig: take with food"
   },
   "spotting": {
     "rx_handwritten": [
@@ -164,6 +190,15 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the handwritten medication line is rendered at [71, 358, 634, 403] on the 875x1241px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "Deanna Patterson, M.D. — Internal Medicine\nPatient: Jose Mcguire\n℞\nAmoxicillin 500mg — 1 cap TID x7d\nSig: take with food"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "probes": [
