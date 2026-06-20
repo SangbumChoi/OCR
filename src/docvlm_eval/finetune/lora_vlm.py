@@ -200,12 +200,20 @@ def _wandb_init(cfg: "LoraVLMConfig"):
     except ImportError:
         print("[wandb] not installed (pip install wandb) -> training without logging"); return None
     try:
-        return wandb.init(project=cfg.wandb_project, name=cfg.wandb_run, reinit=True,
-                          config={"model": cfg.model_id, "placement": cfg.placement,
-                                  "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
-                                  "train_jsonl": cfg.train_jsonl})
-    except Exception as e:                          # not logged in / offline / network -> continue
-        print(f"[wandb] init failed ({e}) -> training without logging"); return None
+        if wandb.run is not None:           # a previous size that crashed left a run open -> close it
+            wandb.finish()
+    except Exception:
+        pass
+    try:
+        run = wandb.init(project=cfg.wandb_project, name=cfg.wandb_run, reinit=True,
+                         config={"model": cfg.model_id, "placement": cfg.placement,
+                                 "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
+                                 "train_jsonl": cfg.train_jsonl})
+        print(f"[wandb] logging to project={cfg.wandb_project} run={cfg.wandb_run}")
+        return run
+    except Exception as e:                  # not logged in / offline / no API key -> continue, no crash
+        print(f"[wandb] init failed ({type(e).__name__}: {e}); set WANDB_API_KEY or run "
+              f"`wandb login` -> training WITHOUT logging"); return None
 
 
 def train_lora_vlm(cfg: LoraVLMConfig,
@@ -276,13 +284,12 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
     cap = cfg.max_steps or float("inf")               # optional hard step cap (control factor)
     run = _wandb_init(cfg)
-    if run:                                            # clean axes: loss vs step, eval vs epoch
+    if run:        # distinct namespaces so define_metric globs don't collide: loss vs step, eval vs epoch
         import wandb
         wandb.define_metric("train/global_step"); wandb.define_metric("epoch")
         wandb.define_metric("train/loss", step_metric="train/global_step")
-        wandb.define_metric("train/loss_epoch", step_metric="epoch")
-        wandb.define_metric("*/score", step_metric="epoch")
-        wandb.define_metric("*/*", step_metric="epoch")
+        wandb.define_metric("epoch/*", step_metric="epoch")
+        wandb.define_metric("eval/*", step_metric="epoch")
     import time
     steps_per_epoch = len(dl)
     total = int(min(cap, cfg.epochs * steps_per_epoch))
@@ -291,46 +298,48 @@ def train_lora_vlm(cfg: LoraVLMConfig,
           f"img_cap={cfg.max_image_long_side} grad_ckpt={cfg.grad_checkpointing}", flush=True)
     t0 = time.time()
     gstep = 0; last_eval: dict = {}
-    for epoch in range(cfg.epochs):
-        model.train(); losses = []
-        for batch in dl:
-            out = model(**batch)
-            if out.loss is None:
-                raise RuntimeError("model returned loss=None — labels/inputs not accepted by this "
-                                   "model's forward; check the processor chat-template / image keys")
-            (out.loss / cfg.grad_accum).backward()
-            if (gstep + 1) % cfg.grad_accum == 0:
-                opt.step(); opt.zero_grad()
-            losses.append(float(out.loss.detach()))
-            gstep += 1
-            if gstep == 1 or gstep % cfg.log_every == 0 or gstep >= total:
-                el = time.time() - t0; rate = gstep / max(el, 1e-9); eta = (total - gstep) / max(rate, 1e-9)
-                print(f"    step {gstep}/{total} (ep {epoch+1}/{cfg.epochs}) loss={losses[-1]:.3f} "
-                      f"| {rate:.2f} it/s | elapsed {el/60:.1f}m | eta {eta/60:.1f}m", flush=True)
-                if run:
-                    run.log({"train/loss": losses[-1], "train/global_step": gstep, "epoch": epoch})
+    try:
+        for epoch in range(cfg.epochs):
+            model.train(); losses = []
+            for batch in dl:
+                out = model(**batch)
+                if out.loss is None:
+                    raise RuntimeError("model returned loss=None — labels/inputs not accepted by this "
+                                       "model's forward; check the processor chat-template / image keys")
+                (out.loss / cfg.grad_accum).backward()
+                if (gstep + 1) % cfg.grad_accum == 0:
+                    opt.step(); opt.zero_grad()
+                losses.append(float(out.loss.detach()))
+                gstep += 1
+                if gstep == 1 or gstep % cfg.log_every == 0 or gstep >= total:
+                    el = time.time() - t0; rate = gstep / max(el, 1e-9); eta = (total - gstep) / max(rate, 1e-9)
+                    print(f"    step {gstep}/{total} (ep {epoch+1}/{cfg.epochs}) loss={losses[-1]:.3f} "
+                          f"| {rate:.2f} it/s | elapsed {el/60:.1f}m | eta {eta/60:.1f}m", flush=True)
+                    if run:
+                        run.log({"train/loss": losses[-1], "train/global_step": gstep, "epoch": epoch})
+                if gstep >= cap:
+                    break
+            log = {"epoch": epoch, "epoch/loss": sum(losses) / max(len(losses), 1)}
+            for name, path in (eval_specs or []):          # per-epoch eval (loss AND metrics)
+                summ = _score(model, proc, device, path, cfg.eval_max_new_tokens, cfg.max_image_long_side)
+                last_eval[name] = summ
+                if summ.get("score") is not None:
+                    log[f"eval/{name}_score"] = summ["score"]
+                for ax, info in (summ.get("by_answer_type") or {}).items():
+                    if isinstance(info, dict) and info.get("score") is not None:
+                        log[f"eval/{name}_{ax}"] = info["score"]
+            if run:
+                run.log(log)
+            print("  [epoch %d/%d done] " % (epoch + 1, cfg.epochs)
+                  + " ".join(f"{k}={v:.3f}" for k, v in log.items() if isinstance(v, float)), flush=True)
             if gstep >= cap:
                 break
-        log = {"epoch": epoch, "train/loss_epoch": sum(losses) / max(len(losses), 1)}
-        for name, path in (eval_specs or []):          # per-epoch eval (loss AND metrics)
-            summ = _score(model, proc, device, path, cfg.eval_max_new_tokens, cfg.max_image_long_side)
-            last_eval[name] = summ
-            if summ.get("score") is not None:
-                log[f"{name}/score"] = summ["score"]
-            for ax, info in (summ.get("by_answer_type") or {}).items():
-                if isinstance(info, dict) and info.get("score") is not None:
-                    log[f"{name}/{ax}"] = info["score"]
-        if run:
-            run.log(log)
-        print("  [epoch %d/%d done] " % (epoch + 1, cfg.epochs)
-              + " ".join(f"{k}={v:.3f}" for k, v in log.items() if isinstance(v, float)), flush=True)
-        if gstep >= cap:
-            break
 
-    out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(out_dir); proc.save_pretrained(out_dir)
-    if run:
-        run.finish()
+        out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(out_dir); proc.save_pretrained(out_dir)
+    finally:
+        if run:                                            # always close, even on OOM/crash, so the
+            run.finish()                                   # next sweep size's wandb.init() is clean
     return str(out_dir), last_eval
 
 
