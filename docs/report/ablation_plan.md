@@ -38,6 +38,9 @@ the understanding layer). They are the levers A0 trades off (more diversity vs m
 hypotheses mapping each gap to a module + ablation arm are in
 [`research_novelty.md`](research_novelty.md) and shown in
 [`../../notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb).
+The **latency** gap is dissected per-stage/per-layer (why the *smaller* Qwen3.5-0.8B is slower than
+LFM2.5-VL-1.6B — vision-token count vs hybrid-conv per-layer cost) in
+[`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb).
 
 > **Spotting coordinate caveat (Qwen3.5-VL).** It smart-resizes the input and emits boxes in the
 > *resized* frame's absolute pixels, so a predicted box is offset/scaled vs our original-pixel GT;
