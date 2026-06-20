@@ -24,8 +24,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 RESULTS = ROOT / "docs" / "results" / "ablation_results.json"
-# Single base (compute): qwen3_5-0.8b. (LFM2.5-VL dropped for our compute budget.)
-HF_ID = {"qwen3_5-0.8b": "Qwen/Qwen3.5-0.8B"}
+# Part-2 bases (select with --models). LFM2.5-VL is ~10x faster to fine-tune than Qwen3.5-VL on a T4
+# (Qwen's full-attention prefill ~0.05 it/s vs LFM's hybrid-conv) — see notebooks/latency_profile.ipynb.
+HF_ID = {"qwen3_5-0.8b": "Qwen/Qwen3.5-0.8B",
+         "lfm2_5-vl-1.6b": "LiquidAI/LFM2.5-VL-1.6B"}
 PROBES = {"capability": "data/probes/capability_probe/capability.jsonl",
           "spatial": "data/probes/spatial_context_probe/probe.jsonl",
           "realistic": "data/probes/realistic_cases/realistic_cases.jsonl"}
