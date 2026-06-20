@@ -33,8 +33,8 @@
       "bbox": [
         73,
         85,
-        239,
-        108
+        262,
+        109
       ],
       "language": "en",
       "script": "latin",
@@ -75,16 +75,16 @@
     {
       "question": "Where is the first speech bubble located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 473x1182 pixels.",
       "answers": [
-        "73,85,239,108;473,1182"
+        "73,85,262,109;473,1182"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the first speech bubble is rendered at [73, 85, 239, 108] on the 473x1182px page.",
+      "rationale": "the first speech bubble is rendered at [73, 85, 262, 109] on the 473x1182px page.",
       "answer_bbox": [
         73,
         85,
-        239,
-        108
+        262,
+        109
       ],
       "languages": [
         "en"
@@ -137,6 +137,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -153,8 +154,8 @@
     "bubble_1": [
       73,
       85,
-      239,
-      108
+      262,
+      109
     ]
   },
   "qa": [
@@ -180,11 +181,11 @@
       "key": null,
       "question": "Where is the first speech bubble located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 473x1182 pixels.",
       "answers": [
-        "73,85,239,108;473,1182"
+        "73,85,262,109;473,1182"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the first speech bubble is rendered at [73, 85, 239, 108] on the 473x1182px page."
+      "rationale": "the first speech bubble is rendered at [73, 85, 262, 109] on the 473x1182px page."
     }
   ],
   "reading_order": [

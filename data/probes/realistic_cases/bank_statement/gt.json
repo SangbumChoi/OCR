@@ -42,10 +42,10 @@
       "value": "$561.50",
       "role": "kie-value",
       "bbox": [
-        190,
-        347,
-        252,
-        366
+        249,
+        372,
+        311,
+        391
       ],
       "language": "en",
       "script": "latin",
@@ -73,16 +73,16 @@
     {
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "42,121,753,339;875,1241"
+        "101,137,717,362;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the transaction table is rendered at [42, 121, 753, 339] on the 875x1241px page.",
+      "rationale": "the transaction table is rendered at [101, 137, 717, 362] on the 875x1241px page.",
       "answer_bbox": [
-        42,
-        121,
-        753,
-        339
+        101,
+        137,
+        717,
+        362
       ],
       "languages": [
         "en"
@@ -92,16 +92,16 @@
     {
       "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "190,347,252,366;875,1241"
+        "249,372,311,391;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the closing balance is rendered at [190, 347, 252, 366] on the 875x1241px page.",
+      "rationale": "the closing balance is rendered at [249, 372, 311, 391] on the 875x1241px page.",
       "answer_bbox": [
-        190,
-        347,
-        252,
-        366
+        249,
+        372,
+        311,
+        391
       ],
       "languages": [
         "en"
@@ -169,6 +169,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -185,10 +186,10 @@
   },
   "spotting": {
     "closing_balance": [
-      190,
-      347,
-      252,
-      366
+      249,
+      372,
+      311,
+      391
     ]
   },
   "qa": [
@@ -206,21 +207,21 @@
       "key": "txns_region",
       "question": "Where is the transaction table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "42,121,753,339;875,1241"
+        "101,137,717,362;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the transaction table is rendered at [42, 121, 753, 339] on the 875x1241px page."
+      "rationale": "the transaction table is rendered at [101, 137, 717, 362] on the 875x1241px page."
     },
     {
       "key": null,
       "question": "Where is the closing balance located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "190,347,252,366;875,1241"
+        "249,372,311,391;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the closing balance is rendered at [190, 347, 252, 366] on the 875x1241px page."
+      "rationale": "the closing balance is rendered at [249, 372, 311, 391] on the 875x1241px page."
     },
     {
       "key": null,

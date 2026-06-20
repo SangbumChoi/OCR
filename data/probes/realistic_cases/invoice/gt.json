@@ -21,10 +21,10 @@
       "value": "INV-2025-9198",
       "role": "kie-value",
       "bbox": [
-        178,
-        153,
-        267,
-        168
+        148,
+        187,
+        263,
+        209
       ],
       "language": "en",
       "script": "latin",
@@ -59,10 +59,10 @@
       "value": "$2,305.00",
       "role": "kie-value",
       "bbox": [
-        189,
-        347,
-        270,
-        370
+        145,
+        448,
+        253,
+        480
       ],
       "language": "en",
       "script": "latin",
@@ -81,10 +81,10 @@
       "metric": "ned",
       "rationale": null,
       "answer_bbox": [
-        178,
-        153,
-        267,
-        168
+        148,
+        187,
+        263,
+        209
       ],
       "languages": [
         "en"
@@ -102,10 +102,10 @@
       "metric": "anls",
       "rationale": "Sum the line amounts: 4×$323.50 + 4×$155.50 + 2×$194.50 = $2,305.00.",
       "answer_bbox": [
-        189,
-        347,
-        270,
-        370
+        145,
+        448,
+        253,
+        480
       ],
       "languages": [
         "en"
@@ -131,16 +131,16 @@
     {
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "101,207,710,332;875,1241"
+        "42,263,758,427;875,1241"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the line-item table is rendered at [101, 207, 710, 332] on the 875x1241px page.",
+      "rationale": "the line-item table is rendered at [42, 263, 758, 427] on the 875x1241px page.",
       "answer_bbox": [
-        101,
-        207,
-        710,
-        332
+        42,
+        263,
+        758,
+        427
       ],
       "languages": [
         "en"
@@ -150,16 +150,16 @@
     {
       "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "106,347,180,370;875,1241"
+        "47,448,129,480;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the TOTAL row is rendered at [106, 347, 180, 370] on the 875x1241px page.",
+      "rationale": "the TOTAL row is rendered at [47, 448, 129, 480] on the 875x1241px page.",
       "answer_bbox": [
-        106,
-        347,
-        180,
-        370
+        47,
+        448,
+        129,
+        480
       ],
       "languages": [
         "en"
@@ -173,7 +173,7 @@
       ],
       "answer_type": "H-count",
       "metric": "exact",
-      "rationale": "'$' is found 7 time(s), at [529,248]; [643,248]; [529,275]; [643,275]; [529,301]; [643,301]; [189,347].",
+      "rationale": "'$' is found 7 time(s), at [534,316]; [676,316]; [534,353]; [676,353]; [534,391]; [676,391]; [145,448].",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -271,6 +271,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -288,16 +289,16 @@
   },
   "spotting": {
     "invoice_no": [
-      178,
-      153,
-      267,
-      168
+      148,
+      187,
+      263,
+      209
     ],
     "total": [
-      189,
-      347,
-      270,
-      370
+      145,
+      448,
+      253,
+      480
     ]
   },
   "qa": [
@@ -338,21 +339,21 @@
       "key": "lines_region",
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "101,207,710,332;875,1241"
+        "42,263,758,427;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the line-item table is rendered at [101, 207, 710, 332] on the 875x1241px page."
+      "rationale": "the line-item table is rendered at [42, 263, 758, 427] on the 875x1241px page."
     },
     {
       "key": null,
       "question": "Where is the TOTAL row located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "106,347,180,370;875,1241"
+        "47,448,129,480;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the TOTAL row is rendered at [106, 347, 180, 370] on the 875x1241px page."
+      "rationale": "the TOTAL row is rendered at [47, 448, 129, 480] on the 875x1241px page."
     },
     {
       "key": null,
@@ -362,7 +363,7 @@
       ],
       "metric": "exact",
       "answer_type": "H-count",
-      "rationale": "'$' is found 7 time(s), at [529,248]; [643,248]; [529,275]; [643,275]; [529,301]; [643,301]; [189,347]."
+      "rationale": "'$' is found 7 time(s), at [534,316]; [676,316]; [534,353]; [676,353]; [534,391]; [676,391]; [145,448]."
     },
     {
       "key": null,

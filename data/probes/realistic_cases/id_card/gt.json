@@ -32,10 +32,10 @@
       "value": "204791382",
       "role": "kie-value",
       "bbox": [
-        118,
-        93,
-        182,
-        110
+        125,
+        91,
+        212,
+        114
       ],
       "language": "en",
       "script": "latin",
@@ -134,16 +134,16 @@
     {
       "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "118,93,182,110;532,343"
+        "125,91,212,114;532,343"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the document number is rendered at [118, 93, 182, 110] on the 532x343px page.",
+      "rationale": "the document number is rendered at [125, 91, 212, 114] on the 532x343px page.",
       "answer_bbox": [
-        118,
-        93,
-        182,
-        110
+        125,
+        91,
+        212,
+        114
       ],
       "languages": [
         "en"
@@ -153,16 +153,16 @@
     {
       "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "35,200,440,236;532,343"
+        "35,204,440,240;532,343"
       ],
       "answer_type": "L1-region",
       "metric": "grounding",
-      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 200, 440, 236] on the 532x343px page.",
+      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 204, 440, 240] on the 532x343px page.",
       "answer_bbox": [
         35,
-        200,
+        204,
         440,
-        236
+        240
       ],
       "languages": [
         "en"
@@ -215,6 +215,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -234,10 +235,10 @@
   },
   "spotting": {
     "doc_no": [
-      118,
-      93,
-      182,
-      110
+      125,
+      91,
+      212,
+      114
     ]
   },
   "qa": [
@@ -273,21 +274,21 @@
       "key": null,
       "question": "Where is the document number located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "118,93,182,110;532,343"
+        "125,91,212,114;532,343"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the document number is rendered at [118, 93, 182, 110] on the 532x343px page."
+      "rationale": "the document number is rendered at [125, 91, 212, 114] on the 532x343px page."
     },
     {
       "key": null,
       "question": "Where is the machine-readable zone (MRZ) located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 532x343 pixels.",
       "answers": [
-        "35,200,440,236;532,343"
+        "35,204,440,240;532,343"
       ],
       "metric": "grounding",
       "answer_type": "L1-region",
-      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 200, 440, 236] on the 532x343px page."
+      "rationale": "the machine-readable zone (MRZ) is rendered at [35, 204, 440, 240] on the 532x343px page."
     }
   ],
   "probes": [

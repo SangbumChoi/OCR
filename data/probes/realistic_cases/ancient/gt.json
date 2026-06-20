@@ -43,9 +43,9 @@
       "role": "region",
       "bbox": [
         390,
-        119,
+        185,
         440,
-        182
+        248
       ],
       "language": "en",
       "script": "latin",
@@ -72,16 +72,16 @@
     {
       "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "47,42,125,79;709,886"
+        "83,103,161,140;709,886"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the title is rendered at [47, 42, 125, 79] on the 709x886px page.",
+      "rationale": "the title is rendered at [83, 103, 161, 140] on the 709x886px page.",
       "answer_bbox": [
-        47,
-        42,
-        125,
-        79
+        83,
+        103,
+        161,
+        140
       ],
       "languages": [
         "en"
@@ -134,6 +134,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -150,9 +151,9 @@
   "spotting": {
     "first_glyph": [
       390,
-      119,
+      185,
       440,
-      182
+      248
     ]
   },
   "qa": [
@@ -169,11 +170,11 @@
       "key": null,
       "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
-        "47,42,125,79;709,886"
+        "83,103,161,140;709,886"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the title is rendered at [47, 42, 125, 79] on the 709x886px page."
+      "rationale": "the title is rendered at [83, 103, 161, 140] on the 709x886px page."
     }
   ]
 }

@@ -31,10 +31,10 @@
       "value": "Amoxicillin 500mg — 1 cap TID x7d",
       "role": "transcript",
       "bbox": [
-        106,
-        294,
-        650,
-        340
+        71,
+        358,
+        634,
+        403
       ],
       "language": "en",
       "script": "latin",
@@ -61,16 +61,16 @@
     {
       "question": "Where is the handwritten medication line located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "106,294,650,340;875,1241"
+        "71,358,634,403;875,1241"
       ],
       "answer_type": "L1-locate",
       "metric": "grounding",
-      "rationale": "the handwritten medication line is rendered at [106, 294, 650, 340] on the 875x1241px page.",
+      "rationale": "the handwritten medication line is rendered at [71, 358, 634, 403] on the 875x1241px page.",
       "answer_bbox": [
-        106,
-        294,
-        650,
-        340
+        71,
+        358,
+        634,
+        403
       ],
       "languages": [
         "en"
@@ -123,6 +123,7 @@
     "emit_rationale": true,
     "emit_understanding": true,
     "jitter": true,
+    "text_source": "offline",
     "languages": [
       "en"
     ],
@@ -138,10 +139,10 @@
   },
   "spotting": {
     "rx_handwritten": [
-      106,
-      294,
-      650,
-      340
+      71,
+      358,
+      634,
+      403
     ]
   },
   "qa": [
@@ -158,11 +159,11 @@
       "key": null,
       "question": "Where is the handwritten medication line located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
-        "106,294,650,340;875,1241"
+        "71,358,634,403;875,1241"
       ],
       "metric": "grounding",
       "answer_type": "L1-locate",
-      "rationale": "the handwritten medication line is rendered at [106, 294, 650, 340] on the 875x1241px page."
+      "rationale": "the handwritten medication line is rendered at [71, 358, 634, 403] on the 875x1241px page."
     }
   ],
   "probes": [

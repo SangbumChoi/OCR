@@ -30,6 +30,10 @@ base:
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true
 
+  # --- textual source. "offline" = Faker/locale + curated pools, NO network/LLM (the only wired mode).
+  #     "corpus"/"llm" are future-optional seams (docs/report/synth_generation_survey.md §4). ---
+  text_source: offline
+
   # --- A4 multilingual mix (real-world script distribution) ---
   languages: [en]
   language_weights: null    # e.g. {en: 0.5, es: 0.2, ko: 0.15, ja: 0.1, zh: 0.05}

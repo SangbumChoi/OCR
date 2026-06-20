@@ -102,8 +102,12 @@ def _apply_emit_toggles(gt: dict) -> None:
 #     valid because geometry is re-resolved from each render. ---
 _PAPERS = ["#ffffff", "#fbfaf6", "#f5f7fb", "#fdf6ee", "#f7f4ee", "#eef3fb", "#fbf7f4", "#f2f5f2"]
 _ACCENTS = ["#2a5bd7", "#a0202a", "#1b6b4a", "#7a3aa0", "#b8761a", "#0f5e8a", "#444444"]
+# Broadened font pool (genalog emphasises font-family variety as a primary diversity lever). Mix of
+# sans / serif / mono families that ship with the notebooks' font install (Liberation, DejaVu, Noto).
 _BODY_FONTS = ["'Liberation Sans',sans-serif", "'DejaVu Sans',sans-serif",
-               "'Noto Sans',sans-serif", "'EB Garamond','Liberation Serif',serif"]
+               "'Noto Sans',sans-serif", "'EB Garamond','Liberation Serif',serif",
+               "'Liberation Serif',serif", "'DejaVu Serif',serif", "'Noto Serif',serif",
+               "'Liberation Mono',monospace"]
 
 
 # Fixed-size cases: their page IS a single physical artefact (card / phone / screen / cheque) sized to
@@ -126,11 +130,16 @@ def _theme_css(rng: random.Random, *, structural: bool = True) -> str:
            f" .total{{ color:{accent}; }} a.btn,.btn{{ background:{accent}; }} .num{{ border-color:{accent}; }}")
     if not structural:
         return out
-    fs = rng.choice([10, 11, 11, 12])
-    margin = rng.choice(["8mm", "12mm", "14mm", "16mm 12mm", "10mm 18mm"])
+    # Spatial diversity (DoGe-style per-document layout parameters): vary font-size, line-height,
+    # letter-spacing, page margin and heading alignment so the rendered layout itself shifts — not just
+    # colour/font. Boxes stay exact because every render re-resolves geometry from the PDF.
+    fs = rng.choice([10, 10, 11, 11, 12, 13])
+    line_h = rng.choice([1.2, 1.35, 1.5, 1.7])               # vertical spread -> moves all content
+    letter_sp = rng.choice(["normal", "normal", "0.2px", "0.4px"])
+    margin = rng.choice(["8mm", "12mm", "14mm", "16mm 12mm", "10mm 18mm", "18mm 14mm"])
     align = rng.choice(["left", "left", "center"])
     return (f"\n@page{{ margin:{margin}; }}"
-            f"\nbody{{ font-size:{fs}px; }}"
+            f"\nbody{{ font-size:{fs}px; line-height:{line_h}; letter-spacing:{letter_sp}; }}"
             f"\nh1,h2{{ text-align:{align}; }}" + out)
 
 
@@ -756,6 +765,14 @@ def main():
         CFG.seed = args.seed
     if args.no_degrade:
         CFG.degrade_prob = 0.0
+
+    # Simulation-only guard: keep generation LLM-/network-free by default. The "corpus"/"llm" text
+    # sources are documented future seams (docs/report/synth_generation_survey.md §4), not yet wired.
+    if getattr(CFG, "text_source", "offline") != "offline":
+        raise NotImplementedError(
+            f"text_source={CFG.text_source!r} is a future-optional seam and is not wired yet; "
+            "this task is simulation-only. Use text_source: offline (Faker/curated pools). "
+            "See docs/report/synth_generation_survey.md §4 for the planned corpus/LLM backends.")
 
     OUT.mkdir(parents=True, exist_ok=True)
     keys = args.only or list(CASES)
