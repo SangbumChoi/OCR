@@ -352,6 +352,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         wandb.define_metric("train/loss", step_metric="train/global_step")
         wandb.define_metric("epoch/*", step_metric="epoch")
         wandb.define_metric("eval/*", step_metric="epoch")
+        wandb.define_metric("eval_by_axis/*", step_metric="epoch")
     import time
     steps_per_epoch = len(dl)
     total = int(min(cap, cfg.epochs * steps_per_epoch))
@@ -388,9 +389,11 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                 last_eval[name] = summ
                 if summ.get("score") is not None:
                     log[f"eval/{name}_score"] = summ["score"]
+                    log[f"eval_by_axis/score/{name}"] = summ["score"]
                 for ax, info in (summ.get("by_answer_type") or {}).items():
                     if isinstance(info, dict) and info.get("score") is not None:
                         log[f"eval/{name}_{ax}"] = info["score"]
+                        log[f"eval_by_axis/{ax}/{name}"] = info["score"]
             if run:
                 run.log(log)
             print("  [epoch %d/%d done] " % (epoch + 1, cfg.epochs)
