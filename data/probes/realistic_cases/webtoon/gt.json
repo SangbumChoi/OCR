@@ -59,13 +59,44 @@
       "key": null
     },
     {
-      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "question": "How many speech bubbles are there in total? Answer concisely, no explanation.",
       "answers": [
         "4"
       ],
       "answer_type": "H-count",
       "metric": "exact",
-      "rationale": null,
+      "rationale": "There are 4 speech bubbles.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many speech bubbles are on the left? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "2 of the 4 speech bubbles are on the left.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Which group has more speech bubbles, on the left or on the right? Answer concisely, no explanation.",
+      "answers": [
+        "equal",
+        "the same",
+        "neither",
+        "tie"
+      ],
+      "answer_type": "H-comprehension",
+      "metric": "anls",
+      "rationale": "both groups are equal.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -170,12 +201,36 @@
     },
     {
       "key": null,
-      "question": "How many panels are in the comic? Answer concisely, no explanation.",
+      "question": "How many speech bubbles are there in total? Answer concisely, no explanation.",
       "answers": [
         "4"
       ],
       "metric": "exact",
-      "answer_type": "H-count"
+      "answer_type": "H-count",
+      "rationale": "There are 4 speech bubbles."
+    },
+    {
+      "key": null,
+      "question": "How many speech bubbles are on the left? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "2 of the 4 speech bubbles are on the left."
+    },
+    {
+      "key": null,
+      "question": "Which group has more speech bubbles, on the left or on the right? Answer concisely, no explanation.",
+      "answers": [
+        "equal",
+        "the same",
+        "neither",
+        "tie"
+      ],
+      "metric": "anls",
+      "answer_type": "H-comprehension",
+      "rationale": "both groups are equal."
     },
     {
       "key": null,

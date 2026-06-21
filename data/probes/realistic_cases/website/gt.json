@@ -61,6 +61,17 @@
       "reading_index": null
     },
     {
+      "key": "full_text",
+      "value": "https://preston,.example/app\n◆ Preston,\nSign in\nProduct\nContact\nLogin\nCustomers\nSign in\nGet started\nDocuments in, data out.\nThe document API for small teams.\nFast\nParse a page in milliseconds.\nAccurate\n99% field-level precision.\nPrivate\nYour data never leaves the EU.\n© 2025 Preston, · Terms · Privacy · Status",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
       "key": "cta_button",
       "value": "",
       "role": "region",
@@ -158,6 +169,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "https://preston,.example/app\n◆ Preston,\nSign in\nProduct\nContact\nLogin\nCustomers\nSign in\nGet started\nDocuments in, data out.\nThe document API for small teams.\nFast\nParse a page in milliseconds.\nAccurate\n99% field-level precision.\nPrivate\nYour data never leaves the EU.\n© 2025 Preston, · Terms · Privacy · Status"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -219,7 +244,8 @@
     "brand": "Preston,",
     "nav_items": "['Sign in', 'Product', 'Contact', 'Login', 'Customers', 'Sign in']",
     "headline": "Documents in, data out.",
-    "cta": "Get started"
+    "cta": "Get started",
+    "full_text": "https://preston,.example/app\n◆ Preston,\nSign in\nProduct\nContact\nLogin\nCustomers\nSign in\nGet started\nDocuments in, data out.\nThe document API for small teams.\nFast\nParse a page in milliseconds.\nAccurate\n99% field-level precision.\nPrivate\nYour data never leaves the EU.\n© 2025 Preston, · Terms · Privacy · Status"
   },
   "spotting": {
     "cta_button": [
@@ -278,6 +304,15 @@
       "metric": "grounding",
       "answer_type": "L1-region",
       "rationale": "the feature cards is rendered at [191, 583, 1422, 606] on the 2000x1407px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "https://preston,.example/app\n◆ Preston,\nSign in\nProduct\nContact\nLogin\nCustomers\nSign in\nGet started\nDocuments in, data out.\nThe document API for small teams.\nFast\nParse a page in milliseconds.\nAccurate\n99% field-level precision.\nPrivate\nYour data never leaves the EU.\n© 2025 Preston, · Terms · Privacy · Status"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "reading_order": [

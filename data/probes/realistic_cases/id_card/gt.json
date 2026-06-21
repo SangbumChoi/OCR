@@ -45,7 +45,7 @@
     },
     {
       "key": "dob",
-      "value": "21 FEB 1964",
+      "value": "22 FEB 1964",
       "role": "kie-value",
       "bbox": null,
       "language": "en",
@@ -228,7 +228,7 @@
   "fields": {
     "name": "DANIEL SMITH",
     "doc_no": "204791382",
-    "dob": "21 FEB 1964",
+    "dob": "22 FEB 1964",
     "expiry": "14 JUN 2031",
     "mrz1": "P<USASMITH<<DANIEL<<<<<<<<<<<<<<<<<<<<<<<<<<",
     "mrz2": "204791382<4USA537219M310614<<<<<<<<<<<<<<00<"

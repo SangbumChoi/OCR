@@ -27,6 +27,17 @@
       "reading_index": null
     },
     {
+      "key": "full_text",
+      "value": "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
+    },
+    {
       "key": "bubble_first",
       "value": "",
       "role": "region",
@@ -59,13 +70,41 @@
       "key": null
     },
     {
-      "question": "How many messages are in the conversation? Answer concisely, no explanation.",
+      "question": "How many messages are from the user? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "2 of the 5 messages are from the user.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many messages are from support? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "3 of the 5 messages are from support.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many messages are there in total? Answer concisely, no explanation.",
       "answers": [
         "5"
       ],
       "answer_type": "H-count",
       "metric": "exact",
-      "rationale": null,
+      "rationale": "There are 5 messages.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -123,6 +162,20 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
+      ],
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": "full_text"
     }
   ],
   "render": {
@@ -181,7 +234,8 @@
     "doc_type_weights": null
   },
   "fields": {
-    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']"
+    "messages": "['Hi! Is my invoice ready?', 'Yes — INV-2025-1776, total $754.29.', 'Great, can you email it?', 'Sent to your inbox ✅', 'Thanks!']",
+    "full_text": "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
   },
   "spotting": {
     "bubble_first": [
@@ -203,12 +257,33 @@
     },
     {
       "key": null,
-      "question": "How many messages are in the conversation? Answer concisely, no explanation.",
+      "question": "How many messages are from the user? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "2 of the 5 messages are from the user."
+    },
+    {
+      "key": null,
+      "question": "How many messages are from support? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "3 of the 5 messages are from support."
+    },
+    {
+      "key": null,
+      "question": "How many messages are there in total? Answer concisely, no explanation.",
       "answers": [
         "5"
       ],
       "metric": "exact",
-      "answer_type": "H-count"
+      "answer_type": "H-count",
+      "rationale": "There are 5 messages."
     },
     {
       "key": null,
@@ -244,6 +319,15 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the first chat message is rendered at [41, 164, 251, 188] on the 610x1319px page."
+    },
+    {
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
+      "answers": [
+        "9:41\n▮▮▮ 5G 87%\n‹ Support Chat\nHi! Is my invoice ready?\nYes — INV-2025-1776, total $754.29.\nGreat, can you email it?\nSent to your inbox ✅\nThanks!\nType a message…"
+      ],
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
   "reading_order": [

@@ -78,6 +78,21 @@
         "en"
       ],
       "key": null
+    },
+    {
+      "question": "What language is this document written in? Answer concisely, no explanation.",
+      "answers": [
+        "Arabic",
+        "arabic"
+      ],
+      "answer_type": "multilingual",
+      "metric": "anls",
+      "rationale": "The script is the Arabic abjad, written right-to-left -> Arabic.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
     }
   ],
   "render": {
@@ -97,7 +112,7 @@
   },
   "ablation_support": {
     "spotting": false,
-    "rationale": false,
+    "rationale": true,
     "multilingual": true,
     "small_text": false,
     "table": false,
@@ -159,6 +174,17 @@
       ],
       "metric": "exact",
       "answer_type": "direction"
+    },
+    {
+      "key": null,
+      "question": "What language is this document written in? Answer concisely, no explanation.",
+      "answers": [
+        "Arabic",
+        "arabic"
+      ],
+      "metric": "anls",
+      "answer_type": "multilingual",
+      "rationale": "The script is the Arabic abjad, written right-to-left -> Arabic."
     }
   ],
   "probes": [

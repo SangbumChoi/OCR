@@ -44,7 +44,7 @@ pixels. The rest of the plan follows from that one decision.
    pipeline  (orientation = TODO)
         │
 6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
-   → cumulative "staircase" report             report/figures/ablation_staircase.png
+   → spotting for human-in-the-loop verify     report/technical_report.md §Part 2.1b/1c
 ```
 
 ---
@@ -102,8 +102,8 @@ properties (parameters, pretraining data, architecture) so the numbers have a *w
 - **Run:** [`../scripts/run_matrix.py`](../scripts/run_matrix.py) (and
   [`build_realistic_benchmark.py`](../scripts/build_realistic_benchmark.py) to turn the synth GT
   into a benchmark) → matrices under [`results/`](results/).
-- **Read:** [`report/results_analysis.md`](report/results_analysis.md) — real CPU runs, inference
-  bugs fixed, scoring flaws, per-model capability vectors.
+- **Read:** [`report/results_analysis.md`](report/results_analysis.md) — measured GPU sweep (19
+  models on a T4), inference bugs fixed, scoring flaws, per-model capability vectors.
 - **Read:** [`report/insights.md`](report/insights.md) — auto cross-model insights (capability
   leaders, reasoning-emergence, grounding gap, efficiency frontier, OOV fallback).
 - **Read:** [`report/technical_report.md`](report/technical_report.md) — the synthesis + Appendix
@@ -140,14 +140,14 @@ added factor lifting the score a step, ending well above the baseline.
   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
   diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
   and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
-  (simulation-only; LLM generators kept as future-optional seams);
-  legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
+  (simulation-only; LLM generators kept as future-optional seams).
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
-- **Deliverable:** the cumulative staircase
-  [`report/figures/ablation_staircase.png`](report/figures/ablation_staircase.png) +
-  relationship diagram, folded back into
-  [`report/technical_report.md`](report/technical_report.md).
+- **Deliverable (updated):** the report is now **refocused on the single selected objective —
+  spotting / grounding (L1) for human-in-the-loop verification** (see
+  [`report/technical_report.md`](report/technical_report.md) §Part 2.1b/1c). The earlier
+  **cumulative "staircase" is deprecated** as the headline; the deliverable is the before/after on
+  **held-out spot-IoU** (the `plot_ablation.py` staircase stays in-repo for optional later use).
 
 ---
 
@@ -159,7 +159,7 @@ added factor lifting the score a step, ending well above the baseline.
 | Data/evaluation survey before model survey | §1–3 before §4 |
 | Integrate capabilities into the model, **not** a specialist pipeline | §5; ablation_plan A1/A5/A7 |
 | **Orientation as an explicit signal — TODO** (not yet committed) | §5 |
-| Report's headline = cumulative ablation **staircase** | §6 |
+| Report's headline = **spotting/grounding for human-in-the-loop verification** (cumulative staircase **deprecated**) | §6; technical_report §Part 2.1b/1c |
 
 ## Reading order (index)
 

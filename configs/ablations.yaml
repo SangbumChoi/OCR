@@ -1,9 +1,10 @@
 # Ablation registry (see docs/report/ablation_plan.md). Declarative so each ablation is
 # one fine-tuning config + the eval axis it targets. Train variants differ ONLY in `factor`.
 
-# Single fine-tuning base (compute-constrained): qwen3_5-0.8b — strongest genuinely sub-1B
-# (text + multilingual/CJK + chart) from the full GPU comparison. LFM2.5-VL dropped for compute.
-target_models: [qwen3_5-0.8b]
+# Fine-tuning base: lfm2_5-vl-1.6b — its hybrid-conv backbone trains ~10x faster on a T4 than
+# qwen3_5-0.8b (whose full-attention prefill runs ~0.05 it/s; see notebooks/latency_profile.ipynb).
+# qwen3_5-0.8b remains selectable (run_ablation --models / notebook MODEL) but LFM is the default base.
+target_models: [lfm2_5-vl-1.6b]
 base_task: document-generation (image -> structured text); per-ablation augmentation from
            data/probes/realistic_cases (configs/synth_data.yaml)
 
@@ -22,15 +23,22 @@ control:
 # transfer — e.g. does spotting also help CER/KIE/reasoning? does multilingual hurt EN?
 eval_suite: [capability, spatial, realistic]   # cap_*, L2-L7 signals, realistic per-axis (CER/KIE/reason)
 
-# Measured baseline gaps the ablations must close (qwen3.5, from the GPU run; control-robust):
+# Baseline gaps the ablations must close.
+#   qwen3_5-0.8b: MEASURED on the original GPU eval (control-robust).
+#   lfm2_5-vl-1.6b: PROVISIONAL — the default base moved to LFM, whose vision stack + tokenizer differ,
+#     so the Qwen gap profile may be deprecated. Re-measure on LFM before interpreting the arms:
+#       python scripts/run_ablation.py --arm baseline   # refreshes gaps.lfm2_5-vl-1.6b
 gaps:
+  lfm2_5-vl-1.6b: [L1_grounding, spot_iou]   # provisional (carried over from qwen; not yet re-measured on LFM)
   qwen3_5-0.8b: [L1_grounding, L4_box_tracking, H2_relational, rotation_180, latency]
 
 ablations:
-  # A0 is the PREREQUISITE: synthetic data is infinite, so first separate "the model UNDERSTANDS the
-  # task" from "it MEMORISED the templates". Train at increasing data scale on seed S, evaluate on a
-  # HELD-OUT test set generated with a DIFFERENT seed (same distribution, unseen content). The
-  # train-vs-held-out gap is the memorization signal; the held-out learning curve is the
+  # A0 is the PREREQUISITE: synthetic data only LOOKS infinite — the context x layout product is
+  # finite and closed (no LLM in the loop, on cost grounds), so a high-capacity model can MEMORISE the
+  # templates instead of learning the task. Separate "the model UNDERSTANDS" from "it MEMORISED" by
+  # training at increasing data scale on seed S and scoring BOTH the TRAIN split (memorization: climbs
+  # to ~100%) and a HELD-OUT val/test split generated with a DIFFERENT seed (same distribution, unseen
+  # content). The train-vs-held-out gap is the memorization signal; the held-out learning curve is the
   # understanding signal. Its result fixes the data scale ("how many images") used by A1-A7.
   - id: A0_generalization
     question: "Does the model UNDERSTAND or just MEMORISE the synthetic templates?"

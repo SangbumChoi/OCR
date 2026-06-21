@@ -265,18 +265,15 @@ def case_invoice(do_degrade):
     # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
     b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
     b.ask_count("$")                                                  # H: count currency symbols (table region is auto)
-    amounts = [q * p for _, q, p in items]
-    b.ask_aggregate("the sum of all line-item amounts", amounts, op="sum")
-    # higher-level reasoning over table extremes (top vs bottom row), not plain extraction
-    b.ask_aggregate("the sum of the first and last line-item amounts", [amounts[0], amounts[-1]], op="sum")
-    b.ask_aggregate("the difference between the largest and smallest line-item amounts",
-                    amounts, op="diff")
-    # harder annotation: accountant-style multi-step calc (sum then apply 10% tax), not plain extraction
+    # accountant-style multi-step calc (domain-specific): sum then +10% tax
     grand = round(total * 1.10, 2)
     b.qa("What would the grand total be after adding 10% sales tax to the total?",
          [f"{grand:.2f}", f"{grand:,.2f}", f"${grand:,.2f}"], metric="relaxed_acc",
          answer_type="H-accounting",
          rationale=f"Total {total:.2f} × 1.10 (10% tax) = {grand:.2f}.")
+    # SYSTEM: varied model-free reasoning over the line-item table (count/sum/extreme/argmax/...)
+    b.table_reason(["Item", "Qty", "Unit", "Amount"], rows, label="the invoice line items", n=4)
+    b.want_fulltext()
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -353,6 +350,13 @@ def case_checkbox_form(do_degrade):
          answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
     b.ask_where("Email", label="the Email option")
+    # count-reasoning over the checkboxes (checked vs unchecked)
+    _nchk = sum(1 for _, c in contact if c)
+    b.qa("How many contact methods are checked?", str(_nchk), metric="exact", answer_type="H-count",
+         rationale=f"{_nchk} of the {len(contact)} contact boxes are ticked (☒).")
+    b.qa("How many contact methods are left unchecked?", str(len(contact) - _nchk), metric="exact",
+         answer_type="H-count")
+    b.want_fulltext()
     emit("checkbox_form", b, "scan", do_degrade)
 
 
@@ -389,8 +393,9 @@ def case_bank_statement(do_degrade):
     # model-free understanding GT: locate the closing balance (table region is auto)
     b.ask_where(f"${bal:.2f}", label="the closing balance")
     # reasoning over the balance column extremes (highest vs lowest)
-    bals = [float(r[3]) for r in rows]
-    b.ask_aggregate("the difference between the highest and lowest balance", bals, op="diff")
+    # SYSTEM: varied model-free reasoning over the transaction table (count/sum/extreme/argmax/date/...)
+    b.table_reason(["Date", "Description", "Amount", "Balance"], rows, label="the transactions", n=4)
+    b.want_fulltext()
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
 
@@ -409,6 +414,9 @@ def case_rtl_arabic(do_degrade):
     b.qa("Transcribe the Arabic text in the image.", text, metric="ned", answer_type="multilingual")
     b.qa("Is the text right-to-left or left-to-right?", ["right-to-left", "rtl"],
          metric="exact", answer_type="direction")
+    b.qa("What language is this document written in?", ["Arabic", "arabic"],
+         metric="anls", answer_type="multilingual",
+         rationale="The script is the Arabic abjad, written right-to-left -> Arabic.")
     b.probe("direction", "Is this text right-to-left or left-to-right?", "right-to-left")
     emit("rtl_arabic", b, "scan", do_degrade)
 
@@ -436,7 +444,10 @@ def case_webtoon(do_degrade):
     b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
          metric="ned", answer_type="reading-order")
     b.ask_where(lines[0], label="the first speech bubble")
-    b.qa("How many panels are in the comic?", str(len(lines)), metric="exact", answer_type="H-count")
+    # SYSTEM: spatial-count reasoning over the panels' sides (left/right) — total, per-side, which more
+    sides = [("left",) if i % 2 else ("right",) for i in range(1, len(lines) + 1)]
+    b.seq_reason(sides, attr="side", label="speech bubbles",
+                 value_names={"left": "on the left", "right": "on the right"}, n=3)
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -458,6 +469,7 @@ def case_prescription(do_degrade):
     b.qa("Transcribe the handwritten medication line.", drug, metric="ned", answer_type="handwriting")
     b.probe("abstain", "What is the refill count?", "not legible / not present — abstain")
     b.ask_where(drug, label="the handwritten medication line")
+    b.want_fulltext()
     emit("prescription", b, "fax", do_degrade)
 
 
@@ -522,7 +534,12 @@ def case_ancient(do_degrade):
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
-    b.ask_where("古文書", label="the title")
+    b.qa("What script/language is this manuscript written in?",
+         ["Chinese", "classical Chinese", "Han", "CJK"], metric="anls", answer_type="multilingual",
+         rationale="Vertical columns of Han characters read right-to-left -> classical Chinese.")
+    # locate the ASCII part of the title — robust regardless of CJK font availability (a missing CJK
+    # font would drop "古文書" from the searchable text layer -> "locate found nothing").
+    b.ask_where("Classical manuscript", label="the title")
     emit("ancient", b, "historical", do_degrade)
 
 
@@ -589,6 +606,7 @@ def case_website(do_degrade):
     b.qa("What is the primary action this page wants the visitor to take?",
          [cta, cta.lower()], metric="anls", answer_type="H-action",
          rationale=f"The prominent call-to-action button reads '{cta}', so that is the next action.")
+    b.want_fulltext()
     emit("website", b, "screenshot", do_degrade)
 
 
@@ -623,8 +641,9 @@ def case_mobile_app(do_degrade):
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
     b.ask_where(msgs[0][1], label="the first chat message")
     # diverse / contextual tasks: how many turns, and what the conversation is about
-    b.qa("How many messages are in the conversation?", str(len(msgs)), metric="exact",
-         answer_type="H-count")
+    # SYSTEM: who-sent-more reasoning over message senders (incoming=support / outgoing=user)
+    b.seq_reason([(s,) for s, _ in msgs], attr="sender", label="messages",
+                 value_names={"in": "from support", "out": "from the user"}, n=3)
     b.qa("What is the conversation about?", ["invoice", "the invoice", "an invoice"],
          metric="anls", answer_type="H-comprehension",
          rationale="The user asks if their invoice is ready and to email it -> the topic is the invoice.")
@@ -632,6 +651,7 @@ def case_mobile_app(do_degrade):
          ["nothing", "no action", "the issue is resolved", "wait"], metric="anls",
          answer_type="H-action",
          rationale="The invoice was already sent and the user replied 'Thanks!' -> no further action is needed.")
+    b.want_fulltext()
     emit("mobile_app", b, "screenshot", do_degrade)
 
 
@@ -680,6 +700,7 @@ def case_pdf_paper(do_degrade):
             "no — each column reads top-to-bottom independently")
     b.ask_where(title, label="the paper title")
     b.ask_region("the figure", [cap])
+    b.want_fulltext()
     emit("pdf_paper", b, "scan", do_degrade)
 
 
@@ -779,6 +800,15 @@ def main():
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob}")
+    # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
+    # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
+    # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).
+    if {"ko", "ja", "zh"} & set(CFG.languages or []):
+        from docvlm_eval.benchmarks.fonts import have_cjk
+        if not have_cjk():
+            print("[warn] CJK language(s) requested but NO Noto CJK font found on this system — CJK "
+                  "glyphs will not render into the text layer, so spotting/locate on CJK values will "
+                  "be skipped. Install it (apt-get install -y fonts-noto-cjk) to fix.", flush=True)
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
         rng = random.Random(CFG.seed + v)
@@ -794,6 +824,9 @@ def main():
             fake = Faker(LOCALE.get(CURRENT_LANG, "en_US"))
             Faker.seed(case_seed)
             CASES[k](do_degrade=not args.no_degrade)
+        # generation heartbeat for the variant fan-out (~20 lines total) so a big sweep isn't silent
+        if CFG.count > 1 and (v == 0 or (v + 1) % max(1, CFG.count // 20) == 0 or v + 1 == CFG.count):
+            print(f"[gen] variant {v+1}/{CFG.count}  (~{(v+1)*len(keys)} docs)", flush=True)
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")
     print(f"\n[done] {len(keys)} cases x {CFG.count} variant(s) = {len(records)} docs -> {OUT}")

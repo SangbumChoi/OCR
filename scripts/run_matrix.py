@@ -154,7 +154,8 @@ def main() -> None:
     models = sorted(set(models) | set(per_model_scores))
     lines = ["# Cross-benchmark result matrix (preview set)\n",
              f"Models run: {len(per_model_scores)}/{len(models)} · benchmarks: {len(benches)}\n",
-             "Per-cell = task score (ANLS / relaxed-acc / OCRBench / exact). One preview sample"
+             "Per-cell = task score, each scored by its sample's own metric (ANLS / NED / relaxed-acc"
+             " / exact / grounding-IoU / TEDS). One preview sample"
              " per benchmark, so treat as a *plumbing + sanity* matrix, not leaderboard accuracy.\n"]
     header = ["model"] + benches
     lines.append("| " + " | ".join(header) + " |")

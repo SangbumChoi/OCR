@@ -52,6 +52,17 @@
       "font_px": null,
       "is_small": false,
       "reading_index": null
+    },
+    {
+      "key": "full_text",
+      "value": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50",
+      "role": "value",
+      "bbox": null,
+      "language": "en",
+      "script": "latin",
+      "font_px": null,
+      "is_small": false,
+      "reading_index": null
     }
   ],
   "qa_detailed": [
@@ -64,6 +75,66 @@
       "answer_type": "kie",
       "metric": "anls",
       "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Which Description has the latest Date? Answer concisely, no explanation.",
+      "answers": [
+        "Re-Intermediate Clic"
+      ],
+      "answer_type": "H-comprehension",
+      "metric": "ned",
+      "rationale": "The latest Date (12/21) is row 3, whose Description is 'Re-Intermediate Clic'.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the average (mean) Balance in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "828.54",
+        "$828.54"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Mean Balance = 4971.25 / 6 = 828.54.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the 2nd-largest value in the Amount column? Answer concisely, no explanation.",
+      "answers": [
+        "176.25",
+        "$176.25"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sorted Amount descending, the 2nd is 176.25.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the total of the Amount column in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "-438.5",
+        "-438.50",
+        "$-438.50"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sum the Amount column: 176.25 + -115.75 + 79.25 + -470.75 + -304.75 + 197.25 = -438.5.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -109,19 +180,18 @@
       "key": null
     },
     {
-      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "question": "Transcribe all the text in this document in reading order.",
       "answers": [
-        "812",
-        "812"
+        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
       ],
-      "answer_type": "H1-aggregate",
-      "metric": "relaxed_acc",
-      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812.",
+      "answer_type": "ocr-full",
+      "metric": "ned",
+      "rationale": null,
       "answer_bbox": null,
       "languages": [
         "en"
       ],
-      "key": null
+      "key": "full_text"
     }
   ],
   "render": {
@@ -182,7 +252,8 @@
   "fields": {
     "account": "****1780",
     "txns_rows": "6",
-    "closing_balance": "$561.50"
+    "closing_balance": "$561.50",
+    "full_text": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
   },
   "spotting": {
     "closing_balance": [
@@ -202,6 +273,50 @@
       ],
       "metric": "anls",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "Which Description has the latest Date? Answer concisely, no explanation.",
+      "answers": [
+        "Re-Intermediate Clic"
+      ],
+      "metric": "ned",
+      "answer_type": "H-comprehension",
+      "rationale": "The latest Date (12/21) is row 3, whose Description is 'Re-Intermediate Clic'."
+    },
+    {
+      "key": null,
+      "question": "What is the average (mean) Balance in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "828.54",
+        "$828.54"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Mean Balance = 4971.25 / 6 = 828.54."
+    },
+    {
+      "key": null,
+      "question": "What is the 2nd-largest value in the Amount column? Answer concisely, no explanation.",
+      "answers": [
+        "176.25",
+        "$176.25"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sorted Amount descending, the 2nd is 176.25."
+    },
+    {
+      "key": null,
+      "question": "What is the total of the Amount column in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "-438.5",
+        "-438.50",
+        "$-438.50"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sum the Amount column: 176.25 + -115.75 + 79.25 + -470.75 + -304.75 + 197.25 = -438.5."
     },
     {
       "key": "txns_region",
@@ -224,16 +339,14 @@
       "rationale": "the closing balance is rendered at [249, 372, 311, 391] on the 875x1241px page."
     },
     {
-      "key": null,
-      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
+      "key": "full_text",
+      "question": "Transcribe all the text in this document in reading order.",
       "answers": [
-        "812",
-        "812"
+        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
       ],
-      "metric": "relaxed_acc",
-      "answer_type": "H1-aggregate",
-      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812."
+      "metric": "ned",
+      "answer_type": "ocr-full"
     }
   ],
-  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>02/03</td><td>Drive Bricks-And-Cli</td><td>+176.25</td><td>1176.25</td></tr><tr><td>11/15</td><td>Embrace Back-End Ini</td><td>-115.75</td><td>1060.50</td></tr><tr><td>12/20</td><td>Re-Intermediate Clic</td><td>+79.25</td><td>1139.75</td></tr><tr><td>12/16</td><td>Matrix Distributed S</td><td>-470.75</td><td>669.00</td></tr><tr><td>09/26</td><td>Aggregate Visionary </td><td>-304.75</td><td>364.25</td></tr><tr><td>07/05</td><td>Whiteboard Strategic</td><td>+197.25</td><td>561.50</td></tr></table>"
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>02/03</td><td>Drive Bricks-And-Cli</td><td>+176.25</td><td>1176.25</td></tr><tr><td>11/15</td><td>Embrace Back-End Ini</td><td>-115.75</td><td>1060.50</td></tr><tr><td>12/21</td><td>Re-Intermediate Clic</td><td>+79.25</td><td>1139.75</td></tr><tr><td>12/17</td><td>Matrix Distributed S</td><td>-470.75</td><td>669.00</td></tr><tr><td>09/26</td><td>Aggregate Visionary </td><td>-304.75</td><td>364.25</td></tr><tr><td>07/05</td><td>Whiteboard Strategic</td><td>+197.25</td><td>561.50</td></tr></table>"
 }

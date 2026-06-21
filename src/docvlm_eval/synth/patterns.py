@@ -54,6 +54,7 @@ class DocBuilder:
         self._spots: list[tuple[str, str, int]] = []   # (key, text, occurrence)
         self._occ: Counter = Counter()
         self._derivations: list = []   # model-free understanding-GT requests (resolved in build)
+        self._fulltext_q: str | None = None   # full-document OCR target (answer filled from render)
         # per-field metadata consumed by DocSample.from_builder_gt (A4 language, A7 small-text)
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
@@ -185,6 +186,13 @@ class DocBuilder:
                  f"<div class='bubble {side}'>{esc(text)}</div></div>")
         return text
 
+    def want_fulltext(self, question: str = "Transcribe all the text in this document in reading order.") -> None:
+        """Request a FULL-DOCUMENT OCR target. The answer is filled in ``build()`` from the rendered
+        page's exact text layer (PyMuPDF), so the GT is correct by construction — this trains/evaluates
+        whole-page reading (the bulk of document understanding), not just field spotting. Best for
+        digital-native / clean-Latin docs where the text layer extracts faithfully."""
+        self._fulltext_q = question
+
     def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
            key: str | None = None, concise: bool = True, rationale: str | None = None,
            languages: list[str] | None = None) -> None:
@@ -201,6 +209,25 @@ class DocBuilder:
                          "metric": metric, "answer_type": answer_type,
                          **({"rationale": rationale} if rationale else {}),
                          **({"languages": languages} if languages else {})})
+
+    def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:
+        """Auto-generate ``n`` varied, model-free REASONING QAs over a typed table (count / sum / mean
+        / extreme / argmax-lookup / threshold / ordinal / row-compare / date-extreme), each with a
+        rationale. Driven by ``synth.reasoning`` — the question subset varies per document."""
+        from .reasoning import table_questions
+        for d in table_questions(header, rows, label=label, n=n):
+            self.qa(d["question"], d["answers"], metric=d["metric"], answer_type=d["answer_type"],
+                    rationale=d.get("rationale"))
+
+    def seq_reason(self, items: list, *, attr: str, label: str = "items",
+                   value_names: dict | None = None, n: int = 3) -> None:
+        """Auto-generate model-free reasoning over a labelled SEQUENCE (e.g. chat bubbles by sender,
+        comic panels by side): total, count-per-group, which group has more. ``items`` = list of
+        (group_value, ...); ``value_names`` maps raw values to friendly words."""
+        from .reasoning import sequence_questions
+        for d in sequence_questions(items, attr=attr, label=label, value_names=value_names, n=n):
+            self.qa(d["question"], d["answers"], metric=d["metric"], answer_type=d["answer_type"],
+                    rationale=d.get("rationale"))
 
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})
@@ -240,7 +267,12 @@ class DocBuilder:
         @page {{ size: {self.page}; margin: {self.margin}; }}
         * {{ box-sizing: border-box; }}
         html, body {{ margin:0; padding:0; }}  /* drop UA 8px body margin: a page-tall card (ID/passport) would otherwise overflow to page 2 and lose its bottom strip (e.g. the MRZ) */
-        body {{ font-family:'Liberation Sans',sans-serif; color:#111; font-size:11px; }}
+        /* CJK/Arabic fallbacks are named explicitly (not just the `sans-serif` generic) so multilingual
+           content — e.g. a Korean name in any case, not only the CJK-specific ones — renders into the
+           searchable text layer reliably across environments; otherwise glyphs tofu and box derivation
+           (ask_where/locate) silently finds nothing. */
+        body {{ font-family:'Liberation Sans','Noto Sans CJK KR','Noto Sans CJK JP','Noto Sans CJK SC',
+                'Noto Sans Arabic','Noto Sans Hebrew',sans-serif; color:#111; font-size:11px; }}
         h1,h2,h3 {{ margin:0 0 6px; }}
         table {{ border-collapse:collapse; width:100%; font-size:10px; }}
         td,th {{ border:1px solid #888; padding:3px 5px; text-align:left; }}
@@ -264,6 +296,14 @@ class DocBuilder:
                               f"in {self.doc_type} — skipped")
                         continue
                     self.qas.append(qa)
+            if self._fulltext_q:                       # full-document OCR target from the exact render
+                txt = rr.full_text()
+                if txt:
+                    self.fields["full_text"] = txt
+                    self.qas.append({"key": "full_text", "question": self._fulltext_q,
+                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full"})
+                else:
+                    print(f"  [warn] full_text empty for {self.doc_type} — skipped")
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),

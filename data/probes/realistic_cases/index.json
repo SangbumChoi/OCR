@@ -118,7 +118,7 @@
     "anchor_metric": "direction + per-lang NED",
     "support": {
       "spotting": false,
-      "rationale": false,
+      "rationale": true,
       "multilingual": true,
       "small_text": false,
       "table": false,

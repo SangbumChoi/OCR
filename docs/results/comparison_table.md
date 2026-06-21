@@ -74,31 +74,32 @@ comparable, with stronger-but-larger models for context:
 
 ---
 
-## 2. Reproduced results (filled by the pipeline)
+## 2. Reproduced results (measured on a free T4)
 
-> Run on a free Colab/Kaggle T4 (see `README.md` / `notebooks` section), then run
-> `python scripts/make_comparison_table.py`. It overwrites the block below with measured
-> ANLS/relaxed-acc/OCRBench **plus ECE and robustness retention**.
+These are **measured** by our pipeline on a single T4 (`scripts/run_full_comparison.sh`, captured
+in [`../../notebooks/colab_full_comparison.ipynb`](../../notebooks/colab_full_comparison.ipynb)) on
+our **controlled probes** (capability / spatial-context / proposed custom-eval) — the apples-to-apples
+"beyond-accuracy" comparison the public DocVQA/InfoVQA columns above cannot give. The full DocVQA/
+InfoVQA/ChartQA/OCRBench sweep + ECE columns are produced by `scripts/make_comparison_table.py` after
+running `scripts/evaluate.py` on those datasets. **Cap-composite** = mean of the 6 capability axes;
+**spot-IoU** / **rot-180** / **dir-acc** from the custom-eval; **lat** = avg s/sample.
 
-| Model            | Params (M) | DocVQA | InfoVQA | ChartQA | OCRBench | Robustness | Mean ECE |
-| ---------------- | ---------: | :----: | :-----: | :-----: | :------: | :--------: | :------: |
-| internvl2_5-1b   | 938        | –      | –       | –       | –        | –          | –        |
-| internvl3-1b     | 938        | –      | –       | –       | –        | –          | –        |
-| internvl2-1b     | 938        | –      | –       | –       | –        | –          | –        |
-| ovis2-1b         | 1000       | –      | –       | –       | –        | –          | –        |
-| h2ovl-0.8b       | 800        | –      | –       | –       | –        | –          | –        |
-| smolvlm-500m     | 500        | –      | –       | –       | –        | –          | –        |
-| smolvlm-256m     | 256        | –      | –       | –       | –        | –          | –        |
-| smoldocling-256m | 256        | –      | –       | –       | –        | –          | –        |
-| llava-ov-0.5b    | 894        | –      | –       | –       | –        | –          | –        |
-| got-ocr2         | 580        | –      | –       | –       | –        | –          | –        |
-| florence2-large  | 770        | –      | –       | –       | –        | –          | –        |
-| florence2-base   | 230        | –      | –       | –       | –        | –          | –        |
-| paddleocr-vl     | 900        | –      | –       | –       | –        | –          | –        |
-| paddleocr-vl-1.5 | 900        | –      | –       | –       | –        | –          | –        |
+| Model            | Params (M) | Cap-composite | H2 (relational) | spot-IoU | rot-180 | dir-acc | lat (s) |
+| ---------------- | ---------: | :-----------: | :-------------: | :------: | :-----: | :-----: | :-----: |
+| lfm2_5-vl-1.6b   | 1597       | **0.83**      | ✅ 1.00         | **0.229** | **1.00** | **1.00** | **0.98** |
+| minicpm-v-4_6    | 1300       | 0.82          | ✅ 1.00         | 0.00     | 1.00    | 1.00    | 2.27    |
+| qwen3_5-0.8b     | 873        | 0.67 *(best <1B)* | ❌ 0.00     | 0.008    | 0.71    | 1.00    | 13.91   |
+| internvl2-1b     | 938        | 0.66          | ❌ 0.00         | 0.00     | 0.06    | 0.33    | 6.51    |
+| smolvlm-500m     | 500        | 0.65          | ✅ 1.00         | 0.00     | 0.10    | 0.33    | 3.01    |
+| internvl2_5-1b   | 938        | 0.62          | ❌ 0.00         | 0.042    | 0.10    | 0.33    | 8.00    |
+| internvl3-1b     | 938        | 0.49          | ❌ 0.00         | 0.00     | 0.08    | 0.33    | 8.10    |
+| smolvlm-256m     | 256        | 0.42          | ❌ 0.00         | 0.002    | 0.13    | 0.33    | 2.63    |
+| smoldocling-256m | 256        | 0.31²         | ❌ 0.00         | 0.015    | 0.37    | 0.00    | 2.87    |
+| got-ocr2         | 580        | 0.17²         | ❌ 0.00         | 0.00     | 0.86    | 0.00    | 4.11    |
+| florence2-large  | 770        | 0.17²         | ❌ 0.00         | 0.00     | 0.39    | 0.00    | 2.55    |
+| lightonocr-1b    | 1161       | 0.00²         | ❌ 0.00         | 0.010    | 1.00    | 0.00    | 1.31    |
+| paddleocr-vl-1.5 | 900        | 0.17²         | ❌ 0.00         | 0.00     | 1.00    | 0.00    | 110.9   |
 
-### Robustness retention (perturbed ANLS / clean ANLS) — filled by the pipeline
-
-| Model          | downscale | jpeg | blur | rotate | noise | term_paraphrase | Worst |
-| -------------- | :-------: | :--: | :--: | :----: | :---: | :-------------: | :---: |
-| internvl2_5-1b | –         | –    | –    | –      | –     | –               | –     |
+² OCR/parsing specialists score low on short-answer cells by interface, not incapacity (they
+transcribe/parse, not answer). Full 19-model grids: [`matrix_capability.md`](matrix_capability.md),
+[`custom_eval_breakdown.md`](custom_eval_breakdown.md), [`probe_signals.md`](probe_signals.md).
