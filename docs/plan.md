@@ -144,10 +144,11 @@ added factor lifting the score a step, ending well above the baseline.
   legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
-- **Deliverable:** the cumulative staircase
-  [`report/figures/ablation_staircase.png`](report/figures/ablation_staircase.png) +
-  relationship diagram, folded back into
-  [`report/technical_report.md`](report/technical_report.md).
+- **Deliverable (updated):** the report is now **refocused on the single selected objective —
+  spotting / grounding (L1) for human-in-the-loop verification** (see
+  [`report/technical_report.md`](report/technical_report.md) §Part 2.1b/1c). The earlier
+  **cumulative "staircase" is deprecated** as the headline; the deliverable is the before/after on
+  **held-out spot-IoU** (the `plot_ablation.py` staircase stays in-repo for optional later use).
 
 ---
 
@@ -159,7 +160,7 @@ added factor lifting the score a step, ending well above the baseline.
 | Data/evaluation survey before model survey | §1–3 before §4 |
 | Integrate capabilities into the model, **not** a specialist pipeline | §5; ablation_plan A1/A5/A7 |
 | **Orientation as an explicit signal — TODO** (not yet committed) | §5 |
-| Report's headline = cumulative ablation **staircase** | §6 |
+| Report's headline = **spotting/grounding for human-in-the-loop verification** (cumulative staircase **deprecated**) | §6; technical_report §Part 2.1b/1c |
 
 ## Reading order (index)
 

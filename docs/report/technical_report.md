@@ -37,15 +37,18 @@ latency on a T4) thanks to its hybrid-conv backbone.
 falsifiable deficits: **box-tracking (L4) is unsolved by every model**; **grounding (L1) ≈ 0**
 for all but LFM; **relational reasoning (H2)** fails for most sub-1B models; and **180°-rotation
 robustness collapses** for most. These — not raw recognition, which is largely solved — are what
-the Part-2 improvement strategy attacks.
+the Part-2 improvement strategy attacks. **Part 2 selects one of these as its primary objective:
+spotting / grounding (L1)** — because the extracted fields drive a downstream *action* (DB write,
+API payload) that needs a **partly-human verification** step, and a reviewer can only check a field
+efficiently if the model points at the **localised region** the answer came from (§Part 2.1b).
 
 > **Reproducibility note.** Results here are **measured on a free Colab/Kaggle T4** (the
 > resource the task allows), with cached `predictions.jsonl` so re-scoring never re-runs a model
-> and runs are resumable. The evaluation pipeline is complete and tested; the **fine-tuning
-> "staircase" (Part 2) is the remaining step** — its data machinery and ablation runner are
-> implemented and smoke-tested, and projected gains are flagged as *expected*, not measured.
-> Where published figures are cited (e.g. authors' DocVQA/OCRBench numbers), they are labelled as
-> such and separated from our measured probe scores in the comparison table.
+> and runs are resumable. The evaluation pipeline is complete and tested; the **Part-2 fine-tuning
+> is preliminary** — runs so far are brief (small A0/A1, few images/epochs), enough to read the
+> *direction* of an effect but **not** an effect size (§Part 2.1c), so its findings are stated as
+> weakly-held hypotheses. Where published figures are cited (e.g. authors' DocVQA/OCRBench numbers),
+> they are labelled as such and separated from our measured probe scores in the comparison table.
 
 **What is measured in this repo.** Beyond the public benchmarks, the report contributes a
 **capability-axis lens** — a taxonomy of what a document reader must actually do (text,
@@ -316,7 +319,59 @@ is already the strongest base on exactly the gap axes (only model with non-trivi
 both reasoning axes + rotation robustness), so adapting it is the highest-leverage,
 lowest-regression target. The same arms run on Qwen3.5-0.8B with `--models qwen3_5-0.8b`.
 
-### 2. Improvement strategy (concrete, justified)
+### 1b. The selected metric — spotting / grounding (and why)
+
+Of the gaps above we **select grounding / spotting (L1, scored by box IoU)** as the primary metric to
+improve and report. The reason is the *downstream use*, not just that the number is low:
+
+- Document understanding rarely ends at "read the value" — the extracted fields drive an **action**:
+  writing a row to a **database**, populating an **API header/payload**, triggering a workflow. Any
+  such write needs a **consistency / validation step**, and in practice that step is *partly human*:
+  a reviewer signs off on the fields before they are committed.
+- When a human verifies a field, the answer almost never spans the whole page — it lives in a **very
+  localised region** (one cell, one stamp, one line). Making the reviewer hunt the whole document is
+  the bottleneck. What helps is a **"where" clue**: the model pointing at the exact region its answer
+  came from — i.e. a **spotting box** (and, secondarily, a short **rationale** naming the region).
+- So spotting is not a cosmetic add-on: it is the signal that makes the model's output **auditable**,
+  turning "trust the answer" into "verify the answer here". That is why we improve and measure L1
+  grounding (and pair it with the A2 reasoning-clue), rather than chasing already-near-saturated OCR.
+
+This makes **A1 spotting** the lead ablation, with **A2 reasoning** as the supporting "which region /
+why" clue; the other arms (A4/A5/A7) remain available but secondary to this objective.
+
+### 1c. Preliminary fine-tuning observations (W&B — brief, not yet conclusive)
+
+> ⚠️ **Caveat (read first).** The fine-tuning experiments run so far are **brief and small** — short
+> A0/A1 runs on a single T4, few images and few epochs. The numbers below are **preliminary**; they
+> are enough to sanity-check direction, **not** to claim an effect size. They should be re-run at
+> larger scale before any firm conclusion. (Live curves:
+> [W&B project `docvlm-ablation`](https://wandb.ai/sbdc/docvlm-ablation); metric meanings in
+> [`wandb_metrics.md`](wandb_metrics.md).)
+
+Spotting-focused read-out (fill from the W&B runs — values intentionally left blank rather than
+guessed):
+
+| Signal (from W&B)                              | Baseline | + A1 spotting | Reading (hedged) |
+| ---------------------------------------------- | :------: | :-----------: | ---------------- |
+| `eval/heldout_grounding` (spot-IoU)            |   _TBD_  |     _TBD_     | does adding box targets *seem* to lift held-out grounding? |
+| `eval/train_grounding` (memorization ref.)     |   _TBD_  |     _TBD_     | train ≫ heldout would *suggest* it is fitting boxes, not localising |
+| `eval/heldout_kie` / `_T1` (transfer)          |   _TBD_  |     _TBD_     | did "where" supervision *appear* to cost / help "what"? |
+| `epoch/loss` trend                             |   _TBD_  |     _TBD_     | a clean downward trend = the box target is at least learnable |
+
+**Working hypotheses (weakly held, to be tested at scale):**
+
+- *H1 (tentative).* Adding bbox targets (A1) **may** raise held-out spot-IoU above the ~0.23 ceiling
+  the base LFM shows — i.e. spotting *might* be teachable with a small LoRA, not an architectural wall.
+- *H2 (tentative).* The lift, if any, **could** come with little cost to `kie`/`T1` (the boxes are an
+  *added* target, not a replaced one) — but a small drop is plausible and worth watching.
+- *H3 (tentative).* A large `train`–`heldout` grounding gap **would suggest** the model is memorising
+  box coordinates rather than localising, in which case the lever is more *diverse* layouts, not more
+  steps (the A0 logic applied to grounding).
+
+These are framed as conjectures on purpose: with the current brief runs we can observe *direction*,
+not magnitude. We flag this so the report does not overclaim.
+
+
 
 A staged plan, each step tied to a gap and to literature, all runnable on a single T4 — and
 backed by the **model-agnostic LoRA fine-tuning subpackage already in this repo**
@@ -416,22 +471,18 @@ calibration) are layered on top of the chosen training arm and re-measured the s
 | Robustness worst-case retention | TBD (pipeline)                                | **+0.1–0.2**                     | robustness probe retention |
 | Calibration (ECE)               | TBD (pipeline)                                | **halved**                       | ECE in `summary.json`      |
 
-The success criterion is **grounding/box-tracking and relational reasoning lifted with
-recognition held**, plus measurable reliability gains — and, as a *prerequisite* (A0), evidence
-that gains reflect *understanding* (held-out keeps rising) rather than memorising the finite
-synthetic templates. Everything is verified by re-running the *same* pipeline, so before/after is
-apples-to-apples. Fine-tuning numbers are **projected** until the staircase run lands.
+The success criterion is **held-out spotting (L1 / spot-IoU) materially above the base**, with
+recognition (`T1`/`kie`) held and the A2 reasoning-clue improving region attribution — and, as a
+*prerequisite* (A0), evidence that the gain reflects *localising* rather than memorising box
+coordinates. Everything is verified by re-running the *same* pipeline, so before/after is
+apples-to-apples. Fine-tuning numbers are **preliminary** (see §1c) until larger runs land.
 
-**Headline deliverable — the cumulative improvement curve.** Winners are stacked in dependency
-order (`baseline → +A7 → +A1 → +A2 → +A4 → +A5 → +A6`) and re-evaluated after each addition, so the
-headline figure is a **monotone staircase**: each step's height is that factor's marginal
-contribution, and a flat/negative step is itself a finding (drop the component). The figures below
-use **illustrative DEMO numbers**; they are regenerated with measured scores by
-`python scripts/plot_ablation.py` once `docs/results/ablation_results.json` is filled by the
-ablation runs.
-
-![Projected cumulative staircase](figures/ablation_staircase.png)
-![Per-ablation marginal gain](figures/ablation_deltas.png)
+> **Deprecated: the cumulative "staircase".** Earlier drafts proposed a headline figure stacking
+> A1–A7 winners into a monotone staircase on a composite metric. With the report **refocused on the
+> single selected objective — spotting for human-in-the-loop verification** — that multi-arm
+> composite is **no longer the headline** and is retired (the `plot_ablation.py` staircase remains in
+> the repo for optional later use, but is not part of this report's claim). The deliverable is now the
+> **before/after on held-out spot-IoU** (§1c table), not a cumulative curve.
 
 ---
 

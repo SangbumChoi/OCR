@@ -158,6 +158,12 @@ only improves when the connector+vision are adapted, that confirms the spatial p
 
 ## 9. Integration → the staircase
 
+> ⚠️ **Deprecated as the report headline.** The technical report is now refocused on a single
+> selected objective — **spotting / grounding (L1) for human-in-the-loop verification**
+> ([`technical_report.md`](technical_report.md) §Part 2.1b/1c). The cumulative staircase below is
+> **retained for optional later use** (the `plot_ablation.py` tooling still works) but is **no longer
+> the deliverable**; the headline is the before/after on held-out spot-IoU.
+
 Compose winners in dependency order and re-evaluate after each addition:
 
 ```
