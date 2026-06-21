@@ -14,6 +14,7 @@ unbounded (lower = better).
 | `epoch/loss`              | `epoch`                | once per epoch           | Mean `train/loss` over the epoch — the smoothed "is it still learning?" line. |
 | `eval/<split>_score`      | `epoch`                | once per epoch, per eval split | **Overall** score on that split (mean over its samples), using each sample's own metric. |
 | `eval/<split>_<axis>`     | `epoch`                | once per epoch, per (split × answer_type) | **Per-capability** score: the same split sliced by `answer_type` (T/L/H axes). This is where you see *which* ability moved. |
+| `eval_by_axis/<axis>/<split>` | `epoch`            | once per epoch, per (axis × split)       | **The same numbers, regrouped by axis** (e.g. `eval_by_axis/grounding/train` + `…/heldout` on one chart). Use this to read train-vs-heldout *for a single capability* side by side; `eval_by_axis/score/<split>` is the overall. |
 
 There is **one W&B run per training job**. In the A0 sweep, each data size is its own run
 (`A0-<model>-n<size>`); each arm is its own run (`<arm>-<model>-<placement>`).
@@ -94,7 +95,13 @@ epoch/loss            ← epoch-mean training loss         (x = epoch)
 eval/train_score      ← overall score on the train set   (x = epoch)   [memorization]
 eval/heldout_score    ← overall score on the held-out set(x = epoch)   [generalization]
 eval/<split>_<axis>   ← that split, sliced by capability (x = epoch)   [which ability moved]
+eval_by_axis/<axis>/<split>  ← same numbers regrouped by axis (x = epoch) [train-vs-heldout per capability on one chart]
 ```
+
+> **Two groupings, same data.** `eval/<split>_<axis>` is keyed *split-first* (good for "how does the
+> heldout set look across all axes?"); `eval_by_axis/<axis>/<split>` is keyed *axis-first* (good for
+> "for grounding specifically, how do train and heldout compare?"). Pick whichever W&B panel grouping
+> you want — the values are identical.
 
 ## 7. Glossary — every term you'll see
 
