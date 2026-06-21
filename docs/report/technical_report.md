@@ -2,7 +2,7 @@
 
 **A systematic evaluation and improvement strategy**
 
-Author: Sangbum Choi · Date: 2026-06-19
+Author: Sangbum Choi · Date: 2026-06-21
 
 ---
 
@@ -13,38 +13,48 @@ are high-volume, privacy-sensitive, and increasingly processed on-device or at t
 exactly where a 3B+ model is too expensive. But their document capabilities are
 under-characterised: most public leaderboards focus on 3B–70B models.
 
-This report (1) selects eight sub-1B VLMs spanning *generalists*, *edge models* and *OCR
+This report (1) selects ~19 sub-1B-centric VLMs spanning *generalists*, *edge models* and *OCR
 specialists*; (2) defines a document-understanding benchmark suite anchored on **DocVQA,
-InfoVQA, ChartQA and OCRBench**, plus a **custom robustness probe**; (3) evaluates them with
-metrics that go beyond accuracy — **ANLS / relaxed accuracy / OCRBench score**, plus
-**calibration (ECE)** and **robustness retention**; and (4) turns the resulting gap analysis
-into a concrete, literature-grounded improvement plan.
+InfoVQA, ChartQA and OCRBench**, plus **controlled capability/spatial probes** and a **custom
+robustness probe**; (3) evaluates them with metrics that go beyond accuracy — **ANLS / relaxed
+accuracy / OCRBench score**, plus **calibration (ECE)**, **robustness retention**, and
+**shortcut-robust spatial/context signals**; and (4) turns the resulting gap analysis into a
+concrete, literature-grounded improvement plan that is implemented as a fine-tuning PoC.
 
-**Headline finding (from published reference figures, to be reproduced with the included
-pipeline):** the **InternVL family at ~0.9B (InternVL2.5-1B / InternVL3-1B)** is the
-strongest document generalist in this size class — DocVQA ≈ 82–85 ANLS, OCRBench ≈ 785–790,
-ChartQA ≈ 75 — yet it has a **clear, consistent weak spot on InfoVQA (≈ 54–56)**:
-multi-element, layout-and-numeric reasoning over infographics. This — not raw text
-recognition — is where the best small model falls short, and it is the target of the
-improvement strategy in Part 2.
+**Headline finding (measured — full GPU sweep on a free T4).** All registered models were run
+end-to-end (`scripts/run_full_comparison.sh`, captured in
+[`../../notebooks/colab_full_comparison.ipynb`](../../notebooks/colab_full_comparison.ipynb)).
+Among **strictly sub-1B** models, **Qwen3.5-0.8B** is the strongest generalist (clears text
+recognition, KIE, numeric-sum and chart axes), with the **InternVL-1B family (~0.94B)** close
+behind. The **overall standout is LFM2.5-VL-1.6B** (just over 1B, kept as the upper-bound
+reference and the Part-2 fine-tuning base): it is the **only model clearing both reasoning axes
+(numeric-sum H1 *and* relational-compare H2)**, has the **best grounding** on the proposed
+custom-eval (spot-IoU 0.229 vs ≤0.04 for every other model), is **rotation-180 robust** (1.0
+retention where most collapse), and is **~14× faster than Qwen3.5-0.8B** (0.98 s vs 13.9 s avg
+latency on a T4) thanks to its hybrid-conv backbone.
 
-> **Reproducibility note.** This environment has **no GPU**, so the report does not present
-> numbers I ran myself as if they were measured here. The **evaluation pipeline is complete,
-> tested, and runnable** (CPU smoke-tested end-to-end; metric code unit-tested); the GPU runs
-> are intended for a free Colab/Kaggle T4, for which exact commands are provided. Where I cite
-> scores, they are **published reference figures** (model papers / cards) with explicit
-> source and caveat, and the comparison table clearly separates "published reference" from
-> "reproduced".
+**The measured knowledge gap (Part 2 target).** Even the strongest models share concrete,
+falsifiable deficits: **box-tracking (L4) is unsolved by every model**; **grounding (L1) ≈ 0**
+for all but LFM; **relational reasoning (H2)** fails for most sub-1B models; and **180°-rotation
+robustness collapses** for most. These — not raw recognition, which is largely solved — are what
+the Part-2 improvement strategy attacks.
 
-**What *is* reproduced here.** Beyond the public benchmarks, the report contributes a
+> **Reproducibility note.** Results here are **measured on a free Colab/Kaggle T4** (the
+> resource the task allows), with cached `predictions.jsonl` so re-scoring never re-runs a model
+> and runs are resumable. The evaluation pipeline is complete and tested; the **fine-tuning
+> "staircase" (Part 2) is the remaining step** — its data machinery and ablation runner are
+> implemented and smoke-tested, and projected gains are flagged as *expected*, not measured.
+> Where published figures are cited (e.g. authors' DocVQA/OCRBench numbers), they are labelled as
+> such and separated from our measured probe scores in the comparison table.
+
+**What is measured in this repo.** Beyond the public benchmarks, the report contributes a
 **capability-axis lens** — a taxonomy of what a document reader must actually do (text,
-location, hybrid reasoning) instantiated as two small **controlled probes** with built-in
-ground truth (§Part 1.2b). These run on CPU, so their results are genuinely *measured in this
-repo* (directional, one sample per axis — not a leaderboard). The reproduced signal:
-**hybrid content-reasoning (sum & compare) emerges around ~1B (InternVL2.5/3-1B) while no
-small model grounds (bbox ≈ 0)** — which sharpens, on owned data, the same gap the published
-InfoVQA figures point to. See [`results_analysis.md`](results_analysis.md) /
-[`insights.md`](insights.md).
+location, hybrid reasoning) instantiated as **controlled probes** with built-in ground truth
+(§Part 1.2b), plus a **proposed custom-eval** sliced by content-class / language / rotation /
+reading-direction / spotting. The reproduced signal: **hybrid content-reasoning (sum & compare)
+is cleared only by LFM2.5-VL-1.6B and MiniCPM-V-4.6, recognition is largely solved across the
+field, and grounding/box-tracking remain the systemic gap.** See
+[`results_analysis.md`](results_analysis.md) / [`insights.md`](insights.md).
 
 ---
 
@@ -226,30 +236,36 @@ probe are not in its metric set, and they are central to the document deployment
 the small, tested `docvlm_eval` package, whose single `evaluate.py` "loads any model, runs the
 benchmark, outputs per-model scores" exactly as the PoC requires.
 
-### 6. What actually ran (reproduced, CPU)
+### 6. What actually ran (measured, GPU)
 
-This environment has no GPU, but the capability probes are light enough to run on CPU, so **11
-models produce real, committed results** on the capability probe (`docs/results/<model>/`),
-re-scored to the T/L/H taxonomy directly from cached `predictions.jsonl` — no model re-run
-needed when the taxonomy changes (`run_matrix.py --rescore`). Full read-out:
+The full comparison was run on a **free T4** (`scripts/run_full_comparison.sh`, captured in
+[`../../notebooks/colab_full_comparison.ipynb`](../../notebooks/colab_full_comparison.ipynb)):
+**19/19 models** produce committed results across the capability probe, the spatial/context
+probe, and the proposed custom-eval, scored with the T/L/H taxonomy. Full read-out:
 [`results_analysis.md`](results_analysis.md) · [`insights.md`](insights.md) ·
-[`../results/matrix_capability.md`](../results/matrix_capability.md).
+[`../results/matrix_capability.md`](../results/matrix_capability.md) ·
+[`../results/probe_signals.md`](../results/probe_signals.md) ·
+[`../results/custom_eval_breakdown.md`](../results/custom_eval_breakdown.md).
 
-- **Reproduced signal (directional, 1 sample/axis):** hybrid reasoning **H1 (sum) + H2
-  (compare) = 1.00 for InternVL2.5-1B / 3-1B** — the only models clearing *both* — while
-  SmolVLM tops out at sum-only (500M) or neither (256M). **L1 grounding ≈ 0 for every general
-  VLM** (no spotting head). On the spatial/context probe even 500M clears only coarse absolute
-  quadrant (L2) and distractor disambiguation (H6); relative position, box-tracking, consistency
-  and cross-reference fail their controls.
-- **Honesty about coverage:** numbers are CPU runs *re-scored*, not re-run, for the recode;
-  **Ovis2-1B and PaddleOCR-VL(-1.5) have no cached predictions** (remote-code GPU-only /
-  conflicting transformers pin) and are marked **pending a fresh GPU extraction**
-  (`scripts/run_checkpointed.sh ovis2-1b paddleocr-vl paddleocr-vl-1.5`), as is the full
-  spatial/context table for the non-SmolVLM models. The full public-benchmark sweep
-  (DocVQA/InfoVQA/ChartQA/OCRBench) likewise needs a T4.
+- **Reasoning (capability probe, 1 sample/axis — directional):** numeric-sum **H1** is cleared by
+  many (Qwen3.5, LFM, MiniCPM, InternVL2/2.5, SmolVLM-500M), but relational-compare **H2** is
+  cleared by **only LFM2.5-VL-1.6B, MiniCPM-V-4.6 and SmolVLM-500M** — and *both* H1+H2 only by
+  **LFM and MiniCPM**. (Note: the earlier CPU re-score had credited InternVL2.5/3 with both; the
+  measured GPU run does not — a correction this revision applies.) Recognition (T1/T2) and clean
+  chart-read (H3) are largely solved across the field.
+- **Grounding / space:** **L1 grounding ≈ 0** for every model on the capability probe; on the
+  proposed custom-eval only **LFM reaches a usable spot-IoU (0.229)** vs ≤0.04 for all others.
+  On the spatial/context probe, **box-tracking L4 is unsolved by every model**; the strongest
+  shortcut-robust profiles are **LFM and MiniCPM** (clear L2/L3/H5/H6/H7), then InternVL2.5-1B;
+  the best **sub-1B** is **Qwen3.5-0.8B** (L2/H5/H6).
+- **Efficiency frontier:** LFM2.5-VL-1.6B (0.98 s/sample) and the Florence/H2OVL specialists are
+  the only fast options; the InternVL-1B family is 6–8 s, Qwen3.5-0.8B ~13.9 s, and the
+  PaddleOCR-VL parsers 80–115 s (full-page parsing, not short-answer). This latency spread — and
+  *why* the smaller Qwen is slower than the larger LFM — is dissected in
+  [`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb).
 
-This reproduced picture is consistent with the published-figure gap analysis below: the small
-models' deficit is **reasoning/grounding over recognised content**, not recognition.
+This measured picture confirms the gap analysis below: the small models' deficit is
+**grounding/box-tracking and relational reasoning over recognised content**, not recognition.
 
 ---
 
@@ -257,49 +273,69 @@ models' deficit is **reasoning/grounding over recognised content**, not recognit
 
 ### 1. Knowledge-gap analysis (evidence-based)
 
-Using **published reference figures** for the sub-1B models (sources & caveats in the
-comparison table) and the structure of the benchmark suite, three gaps emerge. The
-improvement strategy targets the **best model, InternVL2.5-1B**, against its own weakest axis.
+Grounded in the **measured** GPU sweep (capability/spatial probes + custom-eval) and corroborated
+by published figures, four gaps emerge — and they are *capability* gaps, not recognition gaps.
 
-**Gap A — InfoVQA ≪ DocVQA (the primary gap).** Across *every* model the InfoVQA score sits
-far below DocVQA (InternVL2.5-1B: **56.0 vs 84.8**; InternVL3-1B: 53.7 vs 81.9; LLaVA-OV-0.5B:
-46.3 vs 73.7). InfoVQA is not harder to *read* — it is harder to *reason over*: dense
-infographics demand (i) parsing many spatially-scattered elements, (ii) fusing text with
-embedded charts/icons, and (iii) multi-step numeric reasoning. The 0.5B language model is the
-bottleneck: recognition is solved, *layout-grounded reasoning* is not.
+**Gap A — grounding & box-tracking (the primary, systemic gap).** **L1 grounding ≈ 0** on the
+capability probe for every model; on the proposed custom-eval only LFM reaches a usable
+**spot-IoU 0.229** (all others ≤ 0.04). **L4 box-tracking is unsolved by every model.** General
+small VLMs have no usable spotting head, yet field-localisation/parsing is central to document
+understanding — this is the highest-leverage gap.
 
-**Gap B — recognition ≠ reasoning.** OCR specialists (GOT, Florence-2) are built for
-transcription and report **no** DocVQA/InfoVQA/OCRBench-VQA scores because they cannot answer
-questions; PaddleOCR-VL is evaluated only on parsing (OmniDocBench edit-distance), not VQA.
-This confirms that pushing OCR quality alone will *not* close the document-QA gap — the deficit
-is in reasoning over recognised content, exactly where Gap A points.
+**Gap B — relational reasoning over read values (H2).** Numeric-sum (H1) is widely solved, but
+relational-compare (**H2**, "which is largest?") is cleared by only **LFM and MiniCPM**; most
+sub-1B models answer the *first* item. The bottleneck is multi-region comparison, not OCR — and
+it tracks the well-known **InfoVQA ≪ DocVQA** layout-reasoning deficit (InternVL2.5-1B 56.0 vs
+84.8 published).
 
-**Gap C — reliability is unmeasured by leaderboards.** No public card reports **calibration**
-or **degraded-input robustness** for these models, yet both decide deployability. Small LMs are
-known to be over-confident; our pipeline measures ECE and per-perturbation retention to expose
-it. (These are produced by running the provided pipeline; they are the columns leaderboards
-omit.)
+**Gap C — orientation / robustness.** **180°-rotation retention collapses** for most models
+(InternVL ≈ 0.06–0.10, SmolVLM ≈ 0.1–0.13) while LFM/MiniCPM/PaddleOCR hold 1.0. Combined with
+the degraded-input robustness probe, this is the deployment-stability axis leaderboards ignore.
 
-**Why InternVL2.5-1B is the target.** It is the strongest published small document model
-(DocVQA 84.8, OCRBench 785, ChartQA 75.9, InfoVQA 56.0). Its DocVQA/OCRBench/ChartQA are
-near-saturated for the size, so the **highest-leverage, lowest-risk** improvement is its worst
-axis — **InfoVQA / layout-grounded numeric reasoning** (Gap A) — while hardening reliability
-(Gap C).
+**Gap D — reliability is unmeasured by leaderboards.** No public card reports **calibration
+(ECE)** or per-perturbation **retention**, yet both decide deployability; our pipeline measures
+them. Recognition ≠ reasoning is confirmed by the OCR specialists (GOT/Florence-2/PaddleOCR-VL),
+which transcribe well but cannot answer questions — pushing OCR alone will not close these gaps.
+
+**Which model do we improve, and why LFM is the fine-tuning base.** Per the task, Part 1 ranks
+**strictly sub-1B** models and the best is **Qwen3.5-0.8B** (with InternVL3-1B close). The
+improvement *methodology* (synthetic GT-exact supervision + LoRA placement, §2) is
+**model-agnostic** — the A5 placement resolver buckets any model's modules by introspection — so
+it transfers to the sub-1B winner. We **demonstrate it on LFM2.5-VL-1.6B** because: (i) on a free
+T4 it is the *only* base that fine-tunes at a feasible rate — Qwen3.5-VL's full-attention prefill
+runs ~0.05 it/s (hours/epoch) vs LFM's hybrid-conv ~10–14× faster (see
+[`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb)); and (ii) LFM
+is already the strongest base on exactly the gap axes (only model with non-trivial grounding +
+both reasoning axes + rotation robustness), so adapting it is the highest-leverage,
+lowest-regression target. The same arms run on Qwen3.5-0.8B with `--models qwen3_5-0.8b`.
 
 ### 2. Improvement strategy (concrete, justified)
 
 A staged plan, each step tied to a gap and to literature, all runnable on a single T4 — and
-backed by the **LoRA fine-tuning subpackage already in this repo**
-(`src/docvlm_eval/finetune`, `scripts/finetune_lora.py`).
+backed by the **model-agnostic LoRA fine-tuning subpackage already in this repo**
+(`src/docvlm_eval/finetune`, driven by `scripts/run_ablation.py`).
 
-**Step 1 — Targeted LoRA SFT on layout-reasoning data (attacks Gap A).**
-Parameter-efficient **LoRA** (Hu et al., 2021) / **QLoRA** (Dettmers et al., 2023) on the LM +
-projector, freezing InternViT. Train on a *reasoning-heavy* document mix: **InfographicVQA
-train**, **DocVQA train**, **ChartQA**, **Docmatix** (the doc instruction set behind SmolVLM),
-and **TabMWP/PlotQA-style** numeric items. Rationale: the recognition stack is already strong;
-LoRA cheaply re-weights the *reasoning* pathway toward multi-element/numeric questions without
-catastrophic forgetting, and fits a T4. *Keep dynamic high-res tiling on* — it is what lets a
-0.5B LM see small infographic text.
+**Two complementary data sources** feed the plan, each with a dedicated notebook:
+- **Synthetic, GT-exact** (`scripts/make_realistic_cases.py`): HTML/CSS → digital-native PDF →
+  exact pixel boxes → Augraphy degradation. Because the generator *authors* every value, it is the
+  **only source that carries spotting boxes (A1) and chain-of-thought rationales (A2) by
+  construction** — and a model-free reasoning engine (`docvlm_eval.synth.reasoning`) emits varied
+  count/aggregate/compare questions per document. Ablations run in
+  [`../../notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb).
+- **Real public benchmarks** (`scripts/build_benchmark_trainset.py`): a small subset (<200
+  images/benchmark) of every catalog dataset normalised into our training DTO, used to
+  **train-on-public / validate-on-synthetic** in
+  [`../../notebooks/finetune_ablation(public_dataset).ipynb`](../../notebooks/finetune_ablation(public_dataset).ipynb).
+  Public data is **feasibility-gated**: it has no boxes/rationale, so it can run A0/A5/A7 but not
+  A1/A2 — exactly the division of labour the two notebooks make explicit.
+
+**Step 1 — Targeted LoRA SFT on reasoning/grounding data (attacks Gaps A & B).**
+Parameter-efficient **LoRA** (Hu et al., 2021) / **QLoRA** (Dettmers et al., 2023), placement
+resolved per-model by introspection (vision / connector / LM-attn / LM-MLP). Train on the
+reasoning-and-spotting-rich synthetic mix (and the public benchmark subset for real-distribution
+coverage). Rationale: recognition is already strong; LoRA cheaply re-weights the *reasoning* and
+*grounding* pathways without catastrophic forgetting, and fits a T4. *Keep high-res handling on*
+— small-text legibility is what the A7 preprocessing arm controls.
 
 **Step 2 — Reasoning distillation from a larger teacher (amplifies Gap A).**
 Generate **chain-of-thought rationales** for InfoVQA/ChartQA train questions with a larger
@@ -333,6 +369,7 @@ dependency graph in [`ablation_plan.md`](ablation_plan.md), `configs/ablations.y
 
 | Step / question                    | Ablation | Factor varied                               | Data switch      |
 | ---------------------------------- | -------- | ------------------------------------------- | ---------------- |
+| **Memorization vs understanding** (prerequisite) | **A0** | training-data **scale** (curve); train-set vs held-out gap | data size |
 | Spotting supervision (where)       | **A1**   | target `value + [x1,y1,x2,y2]` vs `value`   | `emit_spotting`  |
 | Reasoning distillation (Step 2)    | **A2**   | target `rationale → answer` vs `answer`     | `emit_rationale` |
 | Are the signals complementary?     | **A3**   | the four corners of {spot}×{reason}         | both flags       |
@@ -361,20 +398,22 @@ calibration) are layered on top of the chosen training arm and re-measured the s
 
 ### 3. Expected outcomes & measurement
 
-| Axis                            | Baseline (published ref.)           | Target after plan               | Measured by                |
-| ------------------------------- | ----------------------------------: | ------------------------------: | -------------------------- |
-| InfoVQA (val ANLS)              | ~56                                 | **+6–10 ANLS**                  | `evaluate.py` on InfoVQA   |
-| ChartQA (relaxed)               | ~76                                 | +2–4                            | `evaluate.py` on ChartQA   |
-| DocVQA (val ANLS)               | ~85                                 | **no regression** (±1)          | `evaluate.py` on DocVQA    |
-| H2 content-compare (probe)      | 1.00 @1B / 0.00 @≤0.5B (reproduced) | hold @1B; **lift ≤0.5B via A2** | capability probe           |
-| L1 grounding (probe)            | ~0 (reproduced)                     | **>0 via A1 spotting**          | capability probe IoU       |
-| Robustness worst-case retention | TBD (pipeline)                      | **+0.1–0.2**                    | robustness probe retention |
-| Calibration (ECE)               | TBD (pipeline)                      | **halved**                      | ECE in `summary.json`      |
+| Axis                            | Baseline (measured, T4)                       | Target after plan                | Measured by                |
+| ------------------------------- | --------------------------------------------: | -------------------------------: | -------------------------- |
+| L1 grounding / spot-IoU         | LFM 0.229; ≤0.04 all others; probe ≈ 0        | **materially > baseline via A1**  | capability probe / custom-eval IoU |
+| L4 box-tracking (probe)         | **0.00 every model**                          | **first non-zero via A1**        | spatial probe              |
+| H2 content-compare (probe)      | LFM/MiniCPM pass; most sub-1B fail            | **lift the base via A2**         | capability probe           |
+| 180°-rotation retention         | LFM/MiniCPM 1.0; InternVL ≈ 0.06–0.10         | **lift the base via A7**         | custom-eval rotation       |
+| InfoVQA (val ANLS, published)   | ~56 (InternVL2.5-1B)                          | **+6–10 ANLS**                   | `evaluate.py` on InfoVQA   |
+| DocVQA (val ANLS)               | ~85 (InternVL2.5-1B)                          | **no regression** (±1)           | `evaluate.py` on DocVQA    |
+| Robustness worst-case retention | TBD (pipeline)                                | **+0.1–0.2**                     | robustness probe retention |
+| Calibration (ECE)               | TBD (pipeline)                                | **halved**                       | ECE in `summary.json`      |
 
-Expected magnitudes are deliberately modest and InfoVQA-focused because that is where the
-headroom is; the success criterion is **InfoVQA up materially with DocVQA/OCRBench held**,
-plus measurable reliability gains. Everything is verified by re-running the *same* pipeline,
-so before/after is apples-to-apples.
+The success criterion is **grounding/box-tracking and relational reasoning lifted with
+recognition held**, plus measurable reliability gains — and, as a *prerequisite* (A0), evidence
+that gains reflect *understanding* (held-out keeps rising) rather than memorising the finite
+synthetic templates. Everything is verified by re-running the *same* pipeline, so before/after is
+apples-to-apples. Fine-tuning numbers are **projected** until the staircase run lands.
 
 ---
 

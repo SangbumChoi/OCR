@@ -13,75 +13,60 @@ lists the flaws found — split into **inference bugs**, **harness/scoring flaws
 > **cached `predictions.jsonl` was re-scored against the new codes without re-running the model**
 > (`scripts/run_matrix.py --rescore`), so the numbers here reflect the current taxonomy exactly.
 
-## What actually ran (and what couldn't)
+## What actually ran (full GPU sweep)
 
-This environment has **no GPU**. We installed CPU torch + **transformers 4.49** (`<5`, the version
-the models' `trust_remote_code` expects) plus `peft`/`protobuf`, and attempted **every registered
-model** on CPU over the capability probe. The matrix runner stores per-model results + a
-**run-status**, so failures are captured as data.
+The full comparison was run on a **free T4** (`scripts/run_full_comparison.sh`, captured in
+[`../../notebooks/colab_full_comparison.ipynb`](../../notebooks/colab_full_comparison.ipynb)):
+**all 19 registered models** produced committed results across the capability probe, the
+spatial/context probe and the proposed custom-eval, scored against the T/L/H taxonomy. Chat VLMs
+ran at transformers 4.49 and PaddleOCR-VL at 4.57; predictions are cached so re-scoring never
+re-runs a model. (An earlier interim run on this CPU-only container covered 11 models and is
+superseded by the GPU numbers below.)
 
-**11 models have cached, committed `predictions.jsonl` for the capability probe** and are therefore
-fully re-scoreable against the current taxonomy **without a GPU**:
-
-| Model            | params(M) | capability run                                                              |
-| ---------------- | --------: | --------------------------------------------------------------------------- |
-| SmolVLM-256M     |       256 | ✅ real (~5–10 s/sample)                                                     |
-| SmolVLM-500M     |       500 | ✅ real                                                                      |
-| SmolDocling-256M |       256 | ✅ real — emits **DocTags**, so short-answer cells read ~0 (interface, not incapacity) |
-| GOT-OCR2.0       |       580 | ✅ real (transcription; scores on read-off cells like the chart number)      |
-| Florence-2-base  |       230 | ✅ real                                                                      |
-| Florence-2-large |       770 | ✅ real                                                                      |
-| InternVL2-1B     |       938 | ✅ real                                                                      |
-| InternVL2.5-1B   |       938 | ✅ real                                                                      |
-| InternVL3-1B     |       938 | ✅ real                                                                      |
-| H2OVL-0.8B       |       800 | ⚠ loads but emits empty output (remote-code chat returns "")                |
-| LLaVA-OV-0.5B    |       894 | ⏳ **partial** — ~8 min/sample on CPU → only **3/6** samples (T1/T2/H1) ran   |
-
-**3 models still need a fresh GPU extraction** — they have *no* cached predictions, so they are
-absent from the matrix and must be run before they appear:
-
-| Model           | params(M) | why it needs GPU                                                                                    |
-| --------------- | --------: | --------------------------------------------------------------------------------------------------- |
-| Ovis2-1B        |      1000 | remote code hard-requires CUDA `flash_attn` → GPU-only                                              |
-| PaddleOCR-VL    |       900 | needs *newer* transformers (`masking_utils`/`use_kernel_forward_from_hub`) conflicting with the `<5` pin → separate env |
-| PaddleOCR-VL-1.5 |       900 | same as PaddleOCR-VL                                                                                |
-
-To extract them, run the checkpointed sweep on a GPU box (it pulls, runs each model, commits +
-pushes predictions/summary so a GPU-limit interruption can resume):
-
-```bash
-bash scripts/run_checkpointed.sh ovis2-1b paddleocr-vl paddleocr-vl-1.5
-```
-
-**Capability matrix** (`docs/results/matrix_capability.md`, real CPU runs, re-scored to T/L/H):
+**Capability matrix** (`docs/results/matrix_capability.md`, measured on a T4, T1=cap_text,
+T2=cap_kie, H1=cap_integ_sum, H2=cap_integ_rel, H3=cap_chart, L1=cap_ground):
 
 | model            | params(M) |  T1   |  T2   |  H1   |  H2   |  H3   |  L1   |
 | ---------------- | --------: | :---: | :---: | :---: | :---: | :---: | :---: |
-| internvl3-1b     |       938 | 0.00¹ | 1.00  | **1.00** | **1.00** | 1.00 | 0.00  |
-| internvl2_5-1b   |       938 | 0.00¹ | 1.00  | **1.00** | **1.00** | 1.00 | 0.00  |
-| internvl2-1b     |       938 | 0.00¹ | 1.00  | 1.00  | 0.00  | 1.00  | 0.00  |
-| smolvlm-500m     |       500 | 0.93  | 0.94  | 1.00  | 0.00  | 1.00  | 0.00  |
-| smolvlm-256m     |       256 | 0.93  | 0.94  | 0.00  | 0.00  | 1.00  | 0.00  |
-| llava-ov-0.5b    |       894 | 0.93  | 0.94  | 1.00  |  —⁴   |  —⁴   |  —⁴   |
-| florence2-large  |       770 | 0.00² | 0.00² | 0.00  | 0.00  | 1.00  | 0.00  |
+| lfm2_5-vl-1.6b   |      1597 | 1.00  | 1.00  | **1.00** | **1.00** | 1.00 | 0.00  |
+| minicpm-v-4_6    |      1300 | 0.93  | 1.00  | **1.00** | **1.00** | 1.00 | 0.00  |
+| qwen3_5-0.8b     |       873 | 1.00  | 1.00  | 1.00  | 0.00  | 1.00  | 0.00  |
+| internvl2-1b     |       938 | 0.93  | 1.00  | 1.00  | 0.00  | 1.00  | 0.01  |
+| internvl2_5-1b   |       938 | 0.69  | 1.00  | 1.00  | 0.00  | 1.00  | 0.00  |
+| internvl3-1b     |       938 | 0.93  | 1.00  | 0.00  | 0.00  | 1.00  | 0.00  |
+| smolvlm-500m     |       500 | 0.93  | 0.94  | 0.00  | **1.00** | 1.00 | 0.00  |
+| smolvlm-256m     |       256 | 0.59  | 0.94  | 0.00  | 0.00  | 1.00  | 0.00  |
+| llava-ov-0.5b    |       894 | 0.00² | 0.00² | 0.00  | 0.00  | 1.00  | 0.00  |
 | got-ocr2         |       580 | 0.00² | 0.00² | 0.00  | 0.00  | 1.00  | 0.00  |
-| smoldocling-256m |       256 | 0.00² | 0.94  | 0.00  | 0.00  | 0.00  | 0.02  |
+| florence2-large  |       770 | 0.00² | 0.00² | 0.00  | 0.00  | 1.00  | 0.00  |
+| smoldocling-256m |       256 | 0.93  | 0.00² | 0.00  | 0.00  | 0.00  | 0.02  |
+| lightonocr-1b    |      1161 | 0.00² | 0.00² | 0.00  | 0.00  | 0.00  | 0.01  |
+| paddleocr-vl-1.5 |       900 | 0.00² | 0.00² | 0.00  | 0.00  | 1.00  | 0.00  |
+| paddleocr-vl     |       900 | 0.00² | 0.00² | 0.00  | 0.00  | 0.00  | 0.00  |
+| paddleocr-vl-1.6 |       900 | 0.00² | 0.00² | 0.00  | 0.00  | 0.00  | 0.00  |
 | h2ovl-0.8b       |       800 | 0.00³ | 0.00³ | 0.00³ | 0.00³ | 0.00³ | 0.00³ |
 | florence2-base   |       230 | 0.00² | 0.00² | 0.00  | 0.00  | 0.00  | 0.00  |
-| **ovis2-1b**     |      1000 | pending fresh GPU extraction — see `run_checkpointed.sh` above |||||
-| **paddleocr-vl** |       900 | pending fresh GPU extraction |||||
-| **paddleocr-vl-1.5** |   900 | pending fresh GPU extraction |||||
 
-¹ InternVL answered partially ("2025" for the invoice no.) → low ANLS on T1, not a reasoning
-failure. ² OCR/transcription specialists output the whole page / task-token format → low on the
-short-answer cells (interface mismatch), but read the chart number. ³ H2OVL emits empty text.
-⁴ LLaVA-OV ran only 3/6 samples on CPU (timeout); H2/H3/L1 were never executed (shown `—`, not 0).
+² OCR/transcription/parsing specialists output the whole page / task-token / DocTags format → low
+on the short-answer cells (interface mismatch), even when they read correctly. ³ H2OVL emits empty
+text. Full 19×6 grid + efficiency in [`../results/matrix_capability.md`](../results/matrix_capability.md).
 
-**Headline finding:** **InternVL2.5-1B / 3-1B clear the hybrid-reasoning axes (H1 sum AND H2
-compare = 1.00)** that *no* SmolVLM reaches — concrete evidence that multi-region content
-reasoning emerges around 1B, while ≤0.5B models stay at sum-only (500M) or neither (256M). **All
-models still score ~0 on L1 grounding** (no spotting head). This is exactly the gap the report's
-Part-2 improvement plan targets.
+**Headline finding (corrected by the GPU run):** **only LFM2.5-VL-1.6B and MiniCPM-V-4.6 clear
+*both* hybrid-reasoning axes** (numeric-sum H1 *and* relational-compare H2 = 1.00). Notably the
+interim CPU re-score had credited InternVL2.5/3-1B with both; the measured GPU run does **not**
+(internvl2_5 H2 = 0.00, internvl3 H1 = 0.00) — a correction applied here. The best **strictly
+sub-1B** generalist is **Qwen3.5-0.8B** (T1/T2/H1/H3 = 1.0, H2 = 0). **L1 grounding ≈ 0 on the
+capability probe for every model**, but on the proposed custom-eval **LFM reaches a usable
+spot-IoU of 0.229** (all others ≤ 0.04) and is **180°-rotation robust** — so grounding,
+box-tracking and relational reasoning are the real gaps the Part-2 plan targets.
+
+### Efficiency frontier (measured, T4)
+
+LFM2.5-VL-1.6B (avg **0.98 s/sample**) is the only *capable* fast option; the InternVL-1B family
+is 6–8 s, **Qwen3.5-0.8B ~13.9 s** (full-attention prefill), and the PaddleOCR-VL parsers 80–115 s
+(full-page parsing). This is why Part-2 fine-tuning uses LFM as the base — Qwen3.5-VL at ~0.05 it/s
+is infeasible to iterate on a free T4. The per-layer reason is dissected in
+[`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb).
 
 ## A. Inference bugs (the "inference doesn't work" cases — found via real runs)
 
@@ -144,29 +129,32 @@ Regenerate after any re-score or fresh sweep.
 
 The spatial-context probe is scored with **shortcut-robust criteria** (`analyze_probe_signals.py`
 → `docs/results/probe_signals.md`): a model must clear a control pair (counterfactual / distractor
-/ position-bias), not just hit raw accuracy. Cached predictions exist for the two SmolVLM sizes:
+/ position-bias), not just hit raw accuracy. The full GPU sweep populates all 19 models; the
+strongest profiles:
 
-| model        | L2 (abs) | L3 (rel) | L4 (box) | H4 (consist.) | H5 (absence) | H6 (distractor) | H7 (xref) |
-| ------------ | :------: | :------: | :------: | :-----------: | :----------: | :-------------: | :-------: |
-| smolvlm-256m |   FAIL   |   FAIL   |   FAIL   |     FAIL      |     FAIL     |     **PASS**    |   FAIL    |
-| smolvlm-500m | **PASS** |   FAIL   |   FAIL   |     FAIL      |     FAIL     |     **PASS**    |   FAIL    |
+| model          | L2 (abs) | L3 (rel) | L4 (box) | H4 (consist.) | H5 (absence) | H6 (distractor) | H7 (xref) |
+| -------------- | :------: | :------: | :------: | :-----------: | :----------: | :-------------: | :-------: |
+| lfm2_5-vl-1.6b | **PASS** | **PASS** |   FAIL   |     FAIL      |   **PASS**   |     **PASS**    | **PASS**  |
+| minicpm-v-4_6  | **PASS** | **PASS** |   FAIL   |     FAIL      |   **PASS**   |     **PASS**    | **PASS**  |
+| internvl2_5-1b | **PASS** |   FAIL   |   FAIL   |    **PASS**   |   **PASS**   |     **PASS**    | **PASS**  |
+| qwen3_5-0.8b   | **PASS** |   FAIL   |   FAIL   |     FAIL      |   **PASS**   |     **PASS**    |   FAIL    |
+| smolvlm-500m   | **PASS** |   FAIL   |   FAIL   |     FAIL      |     FAIL     |     **PASS**    |   FAIL    |
 
-Reading: even at 500M the only robust signals are coarse **absolute quadrant** (L2) and
-**distractor disambiguation** (H6). Relative position (L3), box-tracking (L4), consistency (H4),
-anti-hallucination on absent fields (H5) and cross-reference (H7) all fail their controls — these
-are the spatial/context capabilities Part-2 must inject. The remaining models need a GPU run on
-this probe to fill the table.
+Reading: **box-tracking (L4) is unsolved by every model** — the single hardest spatial axis and a
+prime Part-2 target. The most spatially-robust models are **LFM2.5-VL-1.6B and MiniCPM-V-4.6**
+(clear L2/L3/H5/H6/H7); the best **sub-1B** is **Qwen3.5-0.8B** (L2/H5/H6). Full 19-model table:
+[`../results/probe_signals.md`](../results/probe_signals.md).
 
 ## F. Honest limitations of this run
 
 - The **all_preview** matrix is **one sample per benchmark** → a *sanity/plumbing* matrix, not
-  leaderboard accuracy; treat trends, not absolute numbers. The capability probe has one sample
-  per axis too — directional, not a leaderboard.
-- **Capability numbers are CPU runs re-scored to the current taxonomy.** No model was re-run for
-  the recode; the predictions are frozen and only the scorer changed.
-- **3 models (Ovis2-1B, PaddleOCR-VL, PaddleOCR-VL-1.5) and the full spatial/context table for the
-  9 non-SmolVLM models still need a GPU.** Their adapters are import-clean; only runtime numbers
-  are missing. Use `scripts/run_checkpointed.sh` on free GPU.
+  leaderboard accuracy; treat trends, not absolute numbers. The capability/spatial probes have one
+  sample per axis too — directional, not a leaderboard. Scale to many samples for tighter numbers.
+- **Numbers are a single T4 sweep** with cached predictions; latencies vary with cold/warm load
+  (two runs in the notebook differ by ~2× on load time). Treat efficiency as order-of-magnitude.
+- **Ovis2.5-2B is excluded** from the default sweep (custom interface, well over the <1B budget);
+  opt in with `--models ovis2_5-2b`. The **fine-tuning staircase (Part 2) is not yet run** — its
+  machinery is implemented and smoke-tested; projected gains are flagged as expected.
 
 ## How to reproduce / extend
 ```bash

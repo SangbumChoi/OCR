@@ -102,8 +102,8 @@ properties (parameters, pretraining data, architecture) so the numbers have a *w
 - **Run:** [`../scripts/run_matrix.py`](../scripts/run_matrix.py) (and
   [`build_realistic_benchmark.py`](../scripts/build_realistic_benchmark.py) to turn the synth GT
   into a benchmark) → matrices under [`results/`](results/).
-- **Read:** [`report/results_analysis.md`](report/results_analysis.md) — real CPU runs, inference
-  bugs fixed, scoring flaws, per-model capability vectors.
+- **Read:** [`report/results_analysis.md`](report/results_analysis.md) — measured GPU sweep (19
+  models on a T4), inference bugs fixed, scoring flaws, per-model capability vectors.
 - **Read:** [`report/insights.md`](report/insights.md) — auto cross-model insights (capability
   leaders, reasoning-emergence, grounding gap, efficiency frontier, OOV fallback).
 - **Read:** [`report/technical_report.md`](report/technical_report.md) — the synthesis + Appendix
