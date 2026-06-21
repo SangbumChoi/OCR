@@ -159,6 +159,56 @@ So **"comprehension"** (`H-comprehension`) = *understand a cross-cell relation a
 answer* (compare/lookup), and **"action"** (`H-action`) = *infer what to do next* (the agentic /
 UX-affordance axis) — distinct from plain arithmetic (`H1-aggregate`) or counting (`H-count`).
 
+#### The 14 tags, spelled out
+
+- **kie** — *key information extraction*: read one named field's value. "What is the invoice number?"
+  → `INV-2024-019`. (≈ T2; metric `anls`.)
+- **ocr-full** — *full-page transcription*: return all the text on the page, in order (≈ T1; `ned`).
+- **multilingual** — the answer is in a **non-Latin script** (Korean/Japanese/Chinese/Arabic); it
+  measures language coverage, not a different task. "Transcribe the characters." (`ned`.)
+- **direction** — *reading-direction recognition*: is the text left-to-right, right-to-left, or
+  vertical? "Is this text right-to-left or left-to-right?" → `right-to-left`. (`exact`/`anls`.)
+- **selection** — *which option/checkbox/state is chosen*. "Which shipping speed is selected?" →
+  `Express`. (`anls`.)
+- **H-count** — *count occurrences*. "How many contact methods are checked?" → `3`. (`exact`.)
+- **H1-aggregate** — *aggregate arithmetic over a column*: sum / mean / min / max. "What is the total
+  of the Amount column?" → `60.00`. (`relaxed_acc`.)
+- **H-accounting** — *multi-step accountant calc* on top of the table. "What is the grand total after
+  adding 10% sales tax to the total?" (`relaxed_acc`/`anls`.)
+- **H-extract-strict** — *exact substring, no paraphrase tolerated*. "Extract only the surname from
+  the MRZ (after the country code, before `<<`)." Scored `exact`, so near-misses get 0.
+- **H-comprehension** — *understand a relation and pick*: compare two rows, argmax-lookup ("in the row
+  with the highest amount, what is the item?"). (`anls`/`exact`.)
+- **H-action** — *next-action / affordance reasoning*: "What is the primary action this page wants?" →
+  the CTA; "what should the support agent do next?" (`anls`.)
+- **consistency** — *do the parts agree?* line items vs the printed total (≈ H4). "Do the line items
+  add up to the total?" → `yes`/`no`. (`anls`.)
+- **reading-order** — *the correct sequence of regions*. "List the sections top-to-bottom." (`anls`.)
+- **ui** — *web/app UI element understanding*: locate/name the nav, button, or field on a screen
+  (the UX-as-document axis). (`anls`/`grounding`.)
+- **infographic** — *dense infographic QA*: layout + embedded chart + text + numeric fusion (the
+  hardest layout-reasoning slice). (`anls`.)
+- **form/total** — the *total* field on a form/receipt specifically. "What is the total due?" (`anls`.)
+
+### Control-probe tags (`probe:<kind>`) — the shortcut-robust checks
+
+Some samples are **control probes**: questions deliberately written so a model can't pass by guessing
+from a language prior — it must read the pixels (and sometimes *refuse*). They carry the answer_type
+`probe:<kind>` (e.g. **`probe:abstain`**, **`probe:direction`**) and are all scored with `anls`
+against an accept-set. The `probe:` prefix just marks "this is the falsifiable control variant".
+
+| Tag | What it tests | Correct answer is… |
+| --- | ------------- | ------------------ |
+| **probe:abstain** | **anti-hallucination**: the field is *absent / not legible*, so inventing a value is the failure. "What is the shipping tracking number?" on a doc with none. | an abstention — any of `not present`, `none`, `n/a`, `redacted`, `unknown`, … (`ABSTAIN_OK`) |
+| **probe:direction** | **reading direction** read off the pixels, not assumed. "Is this text right-to-left or left-to-right?" | `right-to-left` / `left-to-right` / `vertical` |
+| **probe:consistency** | **cross-check**: do two stated quantities agree? "Do the line items match the total?" | `yes`/`agree` or `no`/`disagree` |
+| **probe:order** | **reading-order** of regions as a control | the described correct sequence |
+
+> Why they exist: a model that always echoes a plausible number scores fine on ordinary `kie` but
+> **fails `probe:abstain`** (it hallucinates a tracking number that isn't there). Watching
+> `eval/heldout_probe:abstain` separately tells you whether fine-tuning improved *honesty*, not just
+> recall. (`spotting`/`grounding` samples likewise get the `grounding` answer_type, scored by box IoU.)
+
 ### Metrics (how each axis's score is computed — all 0–1)
 
 - **ned** — *normalized edit distance similarity* = 1 − (edits / length). Forgiving, character-level;
