@@ -112,15 +112,22 @@ they need task-specific harnessing rather than the shared VQA loop. **Out of <1B
 (flagged for completeness): MonkeyOCR-pro-1.2B, Kosmos-2.5 (~1.3B), dots.ocr (~1.7B),
 Janus-Pro-1B (~1.5B, non-permissive license), Qwen2-VL-2B, Ovis2-2B, InternVL2.5/3.5-2B.
 
-**Newer 2025-26 additions (registered for the Colab sweep).** Four further recent releases were
-added so the comparison tracks the moving field, all verified runnable on CPU: **Qwen3.5-0.8B**
-(the VL variant — config carries a vision tower; the only genuinely sub-1B one), **LightOnOCR-1B**
-(`lightonai/LightOnOCR-1B-1025`, Mistral3/Pixtral-style OCR specialist, ~1.16B), and — slightly
-over the <1B line but kept as stronger reference points — **MiniCPM-V-4.6** (~1.3B) and
-**LFM2.5-VL-1.6B** (~1.6B). *Ovis2.5-2B* (~2.6B; Ovis2.5 has no 1B variant) has an adapter but is
-**excluded from the default sweep** (custom interface, well over budget); opt in with
-`--models ovis2_5-2b`. *Shakti-VLM-1B* was requested but is not publicly available on the Hub (no
-accessible repo), so it could not be registered.
+**Newer 2025-26 additions (registered for the sweep).** Further recent releases were added so the
+comparison tracks the moving field — including the two models that the measured GPU run made central
+(the best **strictly sub-1B** generalist and the **Part-2 fine-tuning base**):
+
+| Model                  | Params | Vision encoder + LM                          | Archetype                | Why included                                                                 |
+| ---------------------- | -----: | -------------------------------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| **Qwen3.5-0.8B (VL)**  | ~0.87B | Qwen3.5-VL vision tower + 0.8B LM            | Generalist (sub-1B)      | **Best strictly-sub-1B generalist** in our sweep (T1/T2/H1/H3 = 1.0); the Part-2 fallback base |
+| **LFM2.5-VL-1.6B**     | ~1.6B  | SigLIP2 + LFM2 hybrid-conv backbone          | Efficient generalist     | **Part-2 fine-tuning base**: only model clearing H1+H2, best grounding (spot-IoU 0.229), rotation-180 robust, ~14× faster than Qwen3.5 on a T4 |
+| **MiniCPM-V-4.6**      | ~1.3B  | SigLIP + MiniCPM LM                          | Strong reference (>1B)   | Co-leader on reasoning (H1+H2) and spatial signals — upper-bound reference   |
+| **LightOnOCR-1B**      | ~1.16B | Mistral3/Pixtral-style                       | OCR specialist           | Recent OCR specialist (`lightonai/LightOnOCR-1B-1025`)                       |
+
+Qwen3.5-0.8B is the only genuinely sub-1B entry of these; MiniCPM/LFM/LightOnOCR sit just over the
+<1B line and are kept as **stronger reference points / the efficient deployment frontier**.
+*Ovis2.5-2B* (~2.6B; no 1B variant) has an adapter but is **excluded from the default sweep** (custom
+interface, well over budget); opt in with `--models ovis2_5-2b`. *Shakti-VLM-1B* was requested but is
+not publicly available on the Hub, so it could not be registered.
 
 > Architecture / pretraining / capability profiles for each model are in **Appendix A**.
 
@@ -189,14 +196,14 @@ GT (§Part 2.3).
 
 ### 3. Evaluation metrics — beyond accuracy
 
-| Metric                   | Definition                                             | Why it matters for documents                                                                                               |     |      |                       |                                                                                                                                                                                                      |
-| ------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | --- | ---- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ANLS**                 | 1 − normalised edit distance to best gold; 0 below 0.5 | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses |     |      |                       |                                                                                                                                                                                                      |
-| **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match         | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                |     |      |                       |                                                                                                                                                                                                      |
-| **OCRBench score**       | Gold string ⊆ prediction, summed /1000                 | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                         |     |      |                       |                                                                                                                                                                                                      |
-| **Calibration — ECE**    | Σ                                                      | acc(bin) − conf(bin)                                                                                                       | ·\  | bin\ | /N over 10 conf. bins | A deployable reader must *know when it is unsure* so low-confidence fields route to human review. Two models with equal accuracy but different ECE are **not** equally useful. (Guo et al., ICML'17) |
-| **Robustness retention** | score(perturbed)/score(clean) per family               | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                              |     |      |                       |                                                                                                                                                                                                      |
-| **Operational**          | answer-rate, load time, avg latency/sample             | Edge viability: a model that's accurate but 10× slower may be unusable                                                     |     |      |                       |                                                                                                                                                                                                      |
+| Metric                   | Definition                                                                   | Why it matters for documents                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ANLS**                 | 1 − normalised edit distance to best gold; 0 below 0.5                       | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses                                                  |
+| **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match                              | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                                                                 |
+| **OCRBench score**       | Gold string ⊆ prediction, summed /1000                                      | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                                                                          |
+| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     |
+| **Robustness retention** | score(perturbed) / score(clean), per perturbation family                    | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                                                                               |
+| **Operational**          | answer-rate, load time, avg latency/sample                                  | Edge viability: a model that's accurate but 10× slower may be unusable                                                                                                      |
 
 Confidence for ECE is the **mean token probability** of the generated answer, read from HF
 `generate(output_scores=True)`. Genuinely autoregressive backends (InternVL, SmolVLM,
@@ -414,6 +421,17 @@ recognition held**, plus measurable reliability gains — and, as a *prerequisit
 that gains reflect *understanding* (held-out keeps rising) rather than memorising the finite
 synthetic templates. Everything is verified by re-running the *same* pipeline, so before/after is
 apples-to-apples. Fine-tuning numbers are **projected** until the staircase run lands.
+
+**Headline deliverable — the cumulative improvement curve.** Winners are stacked in dependency
+order (`baseline → +A7 → +A1 → +A2 → +A4 → +A5 → +A6`) and re-evaluated after each addition, so the
+headline figure is a **monotone staircase**: each step's height is that factor's marginal
+contribution, and a flat/negative step is itself a finding (drop the component). The figures below
+use **illustrative DEMO numbers**; they are regenerated with measured scores by
+`python scripts/plot_ablation.py` once `docs/results/ablation_results.json` is filled by the
+ablation runs.
+
+![Projected cumulative staircase](figures/ablation_staircase.png)
+![Per-ablation marginal gain](figures/ablation_deltas.png)
 
 ---
 

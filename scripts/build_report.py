@@ -30,6 +30,7 @@ th { background: #eef2f8; }
 code { background: #f3f3f3; padding: 1px 3px; border-radius: 3px; font-size: 8.8pt; }
 blockquote { border-left: 3px solid #15396b; margin: 8px 0; padding: 4px 12px;
              background: #f6f8fc; color: #333; }
+img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
 """
 
 
@@ -39,7 +40,8 @@ def main() -> None:
         md, extensions=["tables", "fenced_code", "toc", "sane_lists"]
     )
     html = f"<html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{html_body}</body></html>"
-    HTML(string=html, base_url=str(ROOT)).write_pdf(str(OUT))
+    # base_url = the markdown's own directory so relative image paths (figures/*.png) resolve.
+    HTML(string=html, base_url=str(SRC.parent)).write_pdf(str(OUT))
     print(f"[done] wrote {OUT}")
 
 
