@@ -95,3 +95,83 @@ eval/train_score      ← overall score on the train set   (x = epoch)   [memori
 eval/heldout_score    ← overall score on the held-out set(x = epoch)   [generalization]
 eval/<split>_<axis>   ← that split, sliced by capability (x = epoch)   [which ability moved]
 ```
+
+## 7. Glossary — every term you'll see
+
+### Splits (the `<split>` in `eval/<split>_*`)
+
+- **train** — the *exact* data the model was just fine-tuned on. A high `train` score only proves it
+  *fit* the data, not that it learned the task. It's the **memorization** reference.
+- **heldout** — a separate set the model **never trained on**, generated with a **different random
+  seed** (same distribution, unseen content). It's the **generalization / understanding** signal —
+  the number you actually trust. (In the public-data notebook the held-out set is *synthetic* while
+  training is *public*, so it also measures cross-distribution **transfer**.)
+- **train − heldout gap** — the headline of A0: small gap = understanding; large/growing gap
+  (train→~1.0, heldout flat) = memorizing the finite synthetic templates.
+
+### Capability-axis codes (canonical — [`capability_axes.md`](capability_axes.md))
+
+Three families; **T** = read, **L** = where, **H** = reason/context.
+
+| Code | Name | Plain meaning |
+| ---- | ---- | ------------- |
+| **T1** | text recognition | read an exact printed string off the page |
+| **T2** | key-value extraction (KIE) | read **one named field's** value from its region |
+| **L1** | grounding / spotting | return the **bounding box** of a named element (scored by IoU) |
+| **L2** | absolute region | which **quadrant** an element sits in |
+| **L3** | relative position | above/below/left-of relations (with a counterfactual control) |
+| **L4** | spatial tracking | follow a box as the element moves top→bottom (hardest; unsolved by all) |
+| **H1** | reasoning — sum | **arithmetic** (sum/total/mean) over read values |
+| **H2** | reasoning — compare | **comparison** ("which is largest?") over read values |
+| **H3** | chart-value | read a number **off a chart** (graphic perception) |
+| **H4** | context — consistency | do the line items match the printed total? |
+| **H5** | context — anti-hallucination | an **absent** field → answer "none"/abstain, don't invent |
+| **H6** | context — disambiguation | pick *Total* vs a look-alike *Subtotal* (distractor) |
+| **H7** | context — cross-reference | follow a link ("Bill-to" name → its amount) |
+
+### Realistic-case tags (the `answer_type`s the synthetic doc cases emit)
+
+These are the labels you'll see most in `eval/heldout_<axis>` for the realistic set. They map onto
+the H/L families above but name the *task* concretely:
+
+| Tag | What the question asks | Example |
+| --- | ---------------------- | ------- |
+| **kie** | one field's value (≈ T2) | "What is the invoice number?" |
+| **ocr-full** | transcribe the whole page (≈ T1) | "Transcribe all text." |
+| **handwriting** | read handwritten text | IAM-style line |
+| **multilingual** | read/answer in a non-Latin script | CJK / Arabic transcription; measures language coverage |
+| **direction** | reading-direction recognition | vertical / right-to-left manuscript |
+| **special-glyph** | out-of-vocabulary / invented glyphs | the OOV fallback probe |
+| **selection** | which option/checkbox is chosen | "Which plan is selected?" |
+| **H-count** | **count** occurrences | "How many contact methods are checked?" |
+| **H1-aggregate** | aggregate arithmetic over a column | sum / mean / max of a table column |
+| **H-accounting** | multi-step accountant calc | "grand total after adding 10% tax" |
+| **H-comprehension** | **understand a relation & pick** | "which row has the larger amount?", argmax-lookup |
+| **H-action** | **next-action** / affordance reasoning | "what should the user do next?", primary CTA |
+| **H-extract-strict** | exact substring, no paraphrase allowed | "the surname from the MRZ" (scored `exact`) |
+| **consistency** | items-vs-total agreement (≈ H4) | "do the line items add up to the total?" |
+| **reading-order** | correct sequence of regions | "list the sections top-to-bottom" |
+| **ui** | web/app UI element understanding | locate the nav / button |
+| **infographic** | dense infographic QA | layout + chart + numeric fusion |
+| **form/total** | the total field on a form | "What is the total due?" |
+
+So **"comprehension"** (`H-comprehension`) = *understand a cross-cell relation and choose the right
+answer* (compare/lookup), and **"action"** (`H-action`) = *infer what to do next* (the agentic /
+UX-affordance axis) — distinct from plain arithmetic (`H1-aggregate`) or counting (`H-count`).
+
+### Metrics (how each axis's score is computed — all 0–1)
+
+- **ned** — *normalized edit distance similarity* = 1 − (edits / length). Forgiving, character-level;
+  used for OCR/transcription (`T1`, handwriting, multilingual). 1.0 = perfect read.
+- **anls** — *average normalized Levenshtein similarity*, but **hard-zeroed below 0.5**. The official
+  DocVQA metric; used for KIE/short answers. Tolerates `$1,200` vs `1200` but not a wrong value.
+- **exact** — 1 only if the normalized strings match exactly (yes/no, counts, strict extraction).
+- **relaxed_acc** — numeric answer within **5%** relative error, else exact. Official ChartQA metric
+  (`H1`, `H3`).
+- **grounding** — **IoU** between the predicted and gold bounding box (`L1`). 0 = no overlap.
+- **teds** — tree-edit-distance similarity for **table** structure+content.
+- **ocrbench** — gold string contained in the prediction (OCRBench convention).
+
+> The signal axes (`L2–L4`, `H4–H7`) on the spatial/context probe are **PASS/FAIL**, not a 0–1 score:
+> a model must clear a *shortcut control* (counterfactual / distractor / position-bias) to pass, so a
+> PASS means it read the pixels rather than guessing from a language prior.
