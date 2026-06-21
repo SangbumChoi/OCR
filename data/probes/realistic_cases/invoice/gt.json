@@ -140,13 +140,15 @@
       "key": null
     },
     {
-      "question": "How many line items are in the invoice? Answer concisely, no explanation.",
+      "question": "What is the total of the Unit column in the invoice line items? Answer concisely, no explanation.",
       "answers": [
-        "3"
+        "$673.50",
+        "673.5",
+        "673.50"
       ],
-      "answer_type": "H-count",
-      "metric": "exact",
-      "rationale": "The line-item table has 3 rows.",
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sum the Unit column: 323.5 + 155.5 + 194.5 = 673.5.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -154,13 +156,46 @@
       "key": null
     },
     {
-      "question": "Which line item has the highest amount? Give its name. Answer concisely, no explanation.",
+      "question": "Which has a larger Qty, row 1 or row 2? Answer concisely, no explanation.",
       "answers": [
-        "Incubate Dot-Com Model"
+        "row 2",
+        "2"
       ],
       "answer_type": "H-comprehension",
-      "metric": "ned",
-      "rationale": "Comparing the Amount column, row 1 ('Incubate Dot-Com Model') = $1294.00 is the largest.",
+      "metric": "anls",
+      "rationale": "Row 1 Qty=4 vs row 2 Qty=4 -> row 2.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the smallest value in the Unit column? Answer concisely, no explanation.",
+      "answers": [
+        "155.5",
+        "155.50",
+        "$155.50"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "The min of Unit is 155.5.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the 2nd-largest value in the Unit column? Answer concisely, no explanation.",
+      "answers": [
+        "194.50",
+        "194.5",
+        "$194.50"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sorted Unit descending, the 2nd is 194.5.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -213,51 +248,6 @@
       "answer_type": "H-count",
       "metric": "exact",
       "rationale": "'$' is found 7 time(s), at [534,316]; [676,316]; [534,353]; [676,353]; [534,391]; [676,391]; [145,448].",
-      "answer_bbox": null,
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "What is the sum of all line-item amounts? Answer with a number.",
-      "answers": [
-        "2305",
-        "2305"
-      ],
-      "answer_type": "H1-aggregate",
-      "metric": "relaxed_acc",
-      "rationale": "The sum of all line-item amounts: 1294 + 622 + 389 = 2305.",
-      "answer_bbox": null,
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
-      "answers": [
-        "1683",
-        "1683"
-      ],
-      "answer_type": "H1-aggregate",
-      "metric": "relaxed_acc",
-      "rationale": "The sum of the first and last line-item amounts: 1294 + 389 = 1683.",
-      "answer_bbox": null,
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
-      "answers": [
-        "905",
-        "905"
-      ],
-      "answer_type": "H1-aggregate",
-      "metric": "relaxed_acc",
-      "rationale": "The difference between the largest and smallest line-item amounts: 1294 − 389 = 905.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -391,23 +381,50 @@
     },
     {
       "key": null,
-      "question": "How many line items are in the invoice? Answer concisely, no explanation.",
+      "question": "What is the total of the Unit column in the invoice line items? Answer concisely, no explanation.",
       "answers": [
-        "3"
+        "$673.50",
+        "673.5",
+        "673.50"
       ],
-      "metric": "exact",
-      "answer_type": "H-count",
-      "rationale": "The line-item table has 3 rows."
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sum the Unit column: 323.5 + 155.5 + 194.5 = 673.5."
     },
     {
       "key": null,
-      "question": "Which line item has the highest amount? Give its name. Answer concisely, no explanation.",
+      "question": "Which has a larger Qty, row 1 or row 2? Answer concisely, no explanation.",
       "answers": [
-        "Incubate Dot-Com Model"
+        "row 2",
+        "2"
       ],
-      "metric": "ned",
+      "metric": "anls",
       "answer_type": "H-comprehension",
-      "rationale": "Comparing the Amount column, row 1 ('Incubate Dot-Com Model') = $1294.00 is the largest."
+      "rationale": "Row 1 Qty=4 vs row 2 Qty=4 -> row 2."
+    },
+    {
+      "key": null,
+      "question": "What is the smallest value in the Unit column? Answer concisely, no explanation.",
+      "answers": [
+        "155.5",
+        "155.50",
+        "$155.50"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "The min of Unit is 155.5."
+    },
+    {
+      "key": null,
+      "question": "What is the 2nd-largest value in the Unit column? Answer concisely, no explanation.",
+      "answers": [
+        "194.50",
+        "194.5",
+        "$194.50"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sorted Unit descending, the 2nd is 194.5."
     },
     {
       "key": "lines_region",
@@ -438,39 +455,6 @@
       "metric": "exact",
       "answer_type": "H-count",
       "rationale": "'$' is found 7 time(s), at [534,316]; [676,316]; [534,353]; [676,353]; [534,391]; [676,391]; [145,448]."
-    },
-    {
-      "key": null,
-      "question": "What is the sum of all line-item amounts? Answer with a number.",
-      "answers": [
-        "2305",
-        "2305"
-      ],
-      "metric": "relaxed_acc",
-      "answer_type": "H1-aggregate",
-      "rationale": "The sum of all line-item amounts: 1294 + 622 + 389 = 2305."
-    },
-    {
-      "key": null,
-      "question": "What is the sum of the first and last line-item amounts? Answer with a number.",
-      "answers": [
-        "1683",
-        "1683"
-      ],
-      "metric": "relaxed_acc",
-      "answer_type": "H1-aggregate",
-      "rationale": "The sum of the first and last line-item amounts: 1294 + 389 = 1683."
-    },
-    {
-      "key": null,
-      "question": "What is the difference between the largest and smallest line-item amounts? Answer with a number.",
-      "answers": [
-        "905",
-        "905"
-      ],
-      "metric": "relaxed_acc",
-      "answer_type": "H1-aggregate",
-      "rationale": "The difference between the largest and smallest line-item amounts: 1294 − 389 = 905."
     },
     {
       "key": "full_text",

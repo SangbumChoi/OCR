@@ -265,26 +265,14 @@ def case_invoice(do_degrade):
     # --- model-free UNDERSTANDING GT (no external model): where / how-many / totals + reasoning ---
     b.ask_where("TOTAL", label="the TOTAL row")                       # L1: locate a word
     b.ask_count("$")                                                  # H: count currency symbols (table region is auto)
-    amounts = [q * p for _, q, p in items]
-    b.ask_aggregate("the sum of all line-item amounts", amounts, op="sum")
-    # higher-level reasoning over table extremes (top vs bottom row), not plain extraction
-    b.ask_aggregate("the sum of the first and last line-item amounts", [amounts[0], amounts[-1]], op="sum")
-    b.ask_aggregate("the difference between the largest and smallest line-item amounts",
-                    amounts, op="diff")
-    # harder annotation: accountant-style multi-step calc (sum then apply 10% tax), not plain extraction
+    # accountant-style multi-step calc (domain-specific): sum then +10% tax
     grand = round(total * 1.10, 2)
     b.qa("What would the grand total be after adding 10% sales tax to the total?",
          [f"{grand:.2f}", f"{grand:,.2f}", f"${grand:,.2f}"], metric="relaxed_acc",
          answer_type="H-accounting",
          rationale=f"Total {total:.2f} × 1.10 (10% tax) = {grand:.2f}.")
-    # table-combinatorics reasoning: row count + which row is largest (compare the Amount column)
-    b.qa("How many line items are in the invoice?", str(len(items)), metric="exact",
-         answer_type="H-count", rationale=f"The line-item table has {len(items)} rows.")
-    _imax = max(range(len(items)), key=lambda k: amounts[k])
-    b.qa("Which line item has the highest amount? Give its name.", items[_imax][0],
-         metric="ned", answer_type="H-comprehension",
-         rationale=f"Comparing the Amount column, row {_imax+1} ('{items[_imax][0]}') = "
-                   f"${amounts[_imax]:.2f} is the largest.")
+    # SYSTEM: varied model-free reasoning over the line-item table (count/sum/extreme/argmax/...)
+    b.table_reason(["Item", "Qty", "Unit", "Amount"], rows, label="the invoice line items", n=4)
     b.want_fulltext()
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
@@ -405,20 +393,8 @@ def case_bank_statement(do_degrade):
     # model-free understanding GT: locate the closing balance (table region is auto)
     b.ask_where(f"${bal:.2f}", label="the closing balance")
     # reasoning over the balance column extremes (highest vs lowest)
-    bals = [float(r[3]) for r in rows]
-    b.ask_aggregate("the difference between the highest and lowest balance", bals, op="diff")
-    # accountant-style reasoning over the Amount column (deposits vs withdrawals, biggest movement)
-    amts = [float(r[2]) for r in rows]
-    n_credit = sum(1 for a in amts if a > 0); n_debit = sum(1 for a in amts if a < 0)
-    b.qa("How many transactions are deposits (positive amounts)?", str(n_credit), metric="exact",
-         answer_type="H-count",
-         rationale=f"{n_credit} of the {len(rows)} transaction amounts are positive (deposits).")
-    b.qa("How many transactions are withdrawals (negative amounts)?", str(n_debit), metric="exact",
-         answer_type="H-count")
-    _big = max(amts, key=abs)
-    b.qa("What is the largest single transaction amount by absolute value?",
-         [f"{_big:+.2f}", f"{_big:.2f}", f"${_big:.2f}"], metric="relaxed_acc", answer_type="H1-aggregate",
-         rationale=f"Comparing the magnitudes of the {len(rows)} amounts, the largest is {_big:+.2f}.")
+    # SYSTEM: varied model-free reasoning over the transaction table (count/sum/extreme/argmax/date/...)
+    b.table_reason(["Date", "Description", "Amount", "Balance"], rows, label="the transactions", n=4)
     b.want_fulltext()
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
@@ -468,21 +444,10 @@ def case_webtoon(do_degrade):
     b.qa("Transcribe the speech bubbles top to bottom, one per line.", "\n".join(lines),
          metric="ned", answer_type="reading-order")
     b.ask_where(lines[0], label="the first speech bubble")
-    b.qa("How many panels are in the comic?", str(len(lines)), metric="exact", answer_type="H-count")
-    # spatial-count reasoning: panels alternate sides, so left = odd indices, right = even
-    n_left = sum(1 for i in range(1, len(lines) + 1) if i % 2)
-    n_right = len(lines) - n_left
-    b.fields["n_left"], b.fields["n_right"] = n_left, n_right
-    b.qa("How many speech bubbles are on the left side?", str(n_left), metric="exact",
-         answer_type="H-count",
-         rationale=f"The bubbles alternate sides; {n_left} of the {len(lines)} are on the left.")
-    b.qa("How many speech bubbles are on the right side?", str(n_right), metric="exact",
-         answer_type="H-count")
-    _more = "equal" if n_left == n_right else ("left" if n_left > n_right else "right")
-    b.qa("Which side has more speech bubbles, the left or the right?",
-         {"equal": ["equal", "the same", "neither", "tie"], "left": ["left"], "right": ["right"]}[_more],
-         metric="anls", answer_type="H-comprehension",
-         rationale=f"Left has {n_left}, right has {n_right} -> {_more}.")
+    # SYSTEM: spatial-count reasoning over the panels' sides (left/right) — total, per-side, which more
+    sides = [("left",) if i % 2 else ("right",) for i in range(1, len(lines) + 1)]
+    b.seq_reason(sides, attr="side", label="speech bubbles",
+                 value_names={"left": "on the left", "right": "on the right"}, n=3)
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -676,18 +641,9 @@ def case_mobile_app(do_degrade):
     b.probe("direction", "Which messages are the user's?", "right/blue bubbles = user (outgoing)")
     b.ask_where(msgs[0][1], label="the first chat message")
     # diverse / contextual tasks: how many turns, and what the conversation is about
-    b.qa("How many messages are in the conversation?", str(len(msgs)), metric="exact",
-         answer_type="H-count")
-    # who-sent-more reasoning over incoming (left) vs outgoing (right) bubbles
-    _nin = sum(1 for s, _ in msgs if s == "in"); _nout = len(msgs) - _nin
-    b.qa("How many messages did the user (outgoing, right) send?", str(_nout), metric="exact",
-         answer_type="H-count", rationale=f"{_nout} of the {len(msgs)} bubbles are outgoing (right).")
-    _who = "the user" if _nout > _nin else ("support" if _nin > _nout else "both equally")
-    b.qa("Who sent more messages, the user or support?",
-         {"the user": ["the user", "user", "me"], "support": ["support", "the agent", "support chat"],
-          "both equally": ["equal", "the same", "both"]}[_who],
-         metric="anls", answer_type="H-comprehension",
-         rationale=f"User(outgoing)={_nout}, support(incoming)={_nin} -> {_who}.")
+    # SYSTEM: who-sent-more reasoning over message senders (incoming=support / outgoing=user)
+    b.seq_reason([(s,) for s, _ in msgs], attr="sender", label="messages",
+                 value_names={"in": "from support", "out": "from the user"}, n=3)
     b.qa("What is the conversation about?", ["invoice", "the invoice", "an invoice"],
          metric="anls", answer_type="H-comprehension",
          rationale="The user asks if their invoice is ready and to email it -> the topic is the invoice.")

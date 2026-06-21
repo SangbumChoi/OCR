@@ -70,27 +70,13 @@
       "key": null
     },
     {
-      "question": "How many messages are in the conversation? Answer concisely, no explanation.",
-      "answers": [
-        "5"
-      ],
-      "answer_type": "H-count",
-      "metric": "exact",
-      "rationale": null,
-      "answer_bbox": null,
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "How many messages did the user (outgoing, right) send? Answer concisely, no explanation.",
+      "question": "How many messages are from the user? Answer concisely, no explanation.",
       "answers": [
         "2"
       ],
       "answer_type": "H-count",
       "metric": "exact",
-      "rationale": "2 of the 5 bubbles are outgoing (right).",
+      "rationale": "2 of the 5 messages are from the user.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -98,15 +84,27 @@
       "key": null
     },
     {
-      "question": "Who sent more messages, the user or support? Answer concisely, no explanation.",
+      "question": "How many messages are from support? Answer concisely, no explanation.",
       "answers": [
-        "support",
-        "the agent",
-        "support chat"
+        "3"
       ],
-      "answer_type": "H-comprehension",
-      "metric": "anls",
-      "rationale": "User(outgoing)=2, support(incoming)=3 -> support.",
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "3 of the 5 messages are from support.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many messages are there in total? Answer concisely, no explanation.",
+      "answers": [
+        "5"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "There are 5 messages.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -259,34 +257,33 @@
     },
     {
       "key": null,
-      "question": "How many messages are in the conversation? Answer concisely, no explanation.",
-      "answers": [
-        "5"
-      ],
-      "metric": "exact",
-      "answer_type": "H-count"
-    },
-    {
-      "key": null,
-      "question": "How many messages did the user (outgoing, right) send? Answer concisely, no explanation.",
+      "question": "How many messages are from the user? Answer concisely, no explanation.",
       "answers": [
         "2"
       ],
       "metric": "exact",
       "answer_type": "H-count",
-      "rationale": "2 of the 5 bubbles are outgoing (right)."
+      "rationale": "2 of the 5 messages are from the user."
     },
     {
       "key": null,
-      "question": "Who sent more messages, the user or support? Answer concisely, no explanation.",
+      "question": "How many messages are from support? Answer concisely, no explanation.",
       "answers": [
-        "support",
-        "the agent",
-        "support chat"
+        "3"
       ],
-      "metric": "anls",
-      "answer_type": "H-comprehension",
-      "rationale": "User(outgoing)=2, support(incoming)=3 -> support."
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "3 of the 5 messages are from support."
+    },
+    {
+      "key": null,
+      "question": "How many messages are there in total? Answer concisely, no explanation.",
+      "answers": [
+        "5"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "There are 5 messages."
     },
     {
       "key": null,

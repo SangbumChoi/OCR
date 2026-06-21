@@ -210,6 +210,25 @@ class DocBuilder:
                          **({"rationale": rationale} if rationale else {}),
                          **({"languages": languages} if languages else {})})
 
+    def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:
+        """Auto-generate ``n`` varied, model-free REASONING QAs over a typed table (count / sum / mean
+        / extreme / argmax-lookup / threshold / ordinal / row-compare / date-extreme), each with a
+        rationale. Driven by ``synth.reasoning`` — the question subset varies per document."""
+        from .reasoning import table_questions
+        for d in table_questions(header, rows, label=label, n=n):
+            self.qa(d["question"], d["answers"], metric=d["metric"], answer_type=d["answer_type"],
+                    rationale=d.get("rationale"))
+
+    def seq_reason(self, items: list, *, attr: str, label: str = "items",
+                   value_names: dict | None = None, n: int = 3) -> None:
+        """Auto-generate model-free reasoning over a labelled SEQUENCE (e.g. chat bubbles by sender,
+        comic panels by side): total, count-per-group, which group has more. ``items`` = list of
+        (group_value, ...); ``value_names`` maps raw values to friendly words."""
+        from .reasoning import sequence_questions
+        for d in sequence_questions(items, attr=attr, label=label, value_names=value_names, n=n):
+            self.qa(d["question"], d["answers"], metric=d["metric"], answer_type=d["answer_type"],
+                    rationale=d.get("rationale"))
+
     def probe(self, kind: str, question: str, expected: str) -> None:
         self.probes.append({"kind": kind, "question": question, "expected": expected})
 

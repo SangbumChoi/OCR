@@ -82,13 +82,13 @@
       "key": null
     },
     {
-      "question": "How many transactions are deposits (positive amounts)? Answer concisely, no explanation.",
+      "question": "Which Description has the latest Date? Answer concisely, no explanation.",
       "answers": [
-        "3"
+        "Re-Intermediate Clic"
       ],
-      "answer_type": "H-count",
-      "metric": "exact",
-      "rationale": "3 of the 6 transaction amounts are positive (deposits).",
+      "answer_type": "H-comprehension",
+      "metric": "ned",
+      "rationale": "The latest Date (12/21) is row 3, whose Description is 'Re-Intermediate Clic'.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -96,29 +96,45 @@
       "key": null
     },
     {
-      "question": "How many transactions are withdrawals (negative amounts)? Answer concisely, no explanation.",
+      "question": "What is the average (mean) Balance in the transactions? Answer concisely, no explanation.",
       "answers": [
-        "3"
-      ],
-      "answer_type": "H-count",
-      "metric": "exact",
-      "rationale": null,
-      "answer_bbox": null,
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "What is the largest single transaction amount by absolute value? Answer concisely, no explanation.",
-      "answers": [
-        "-470.75",
-        "-470.75",
-        "$-470.75"
+        "828.54",
+        "$828.54"
       ],
       "answer_type": "H1-aggregate",
       "metric": "relaxed_acc",
-      "rationale": "Comparing the magnitudes of the 6 amounts, the largest is -470.75.",
+      "rationale": "Mean Balance = 4971.25 / 6 = 828.54.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the 2nd-largest value in the Amount column? Answer concisely, no explanation.",
+      "answers": [
+        "176.25",
+        "$176.25"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sorted Amount descending, the 2nd is 176.25.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the total of the Amount column in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "-438.5",
+        "-438.50",
+        "$-438.50"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Sum the Amount column: 176.25 + -115.75 + 79.25 + -470.75 + -304.75 + 197.25 = -438.5.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -158,21 +174,6 @@
         311,
         391
       ],
-      "languages": [
-        "en"
-      ],
-      "key": null
-    },
-    {
-      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
-      "answers": [
-        "812",
-        "812"
-      ],
-      "answer_type": "H1-aggregate",
-      "metric": "relaxed_acc",
-      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812.",
-      "answer_bbox": null,
       "languages": [
         "en"
       ],
@@ -275,34 +276,47 @@
     },
     {
       "key": null,
-      "question": "How many transactions are deposits (positive amounts)? Answer concisely, no explanation.",
+      "question": "Which Description has the latest Date? Answer concisely, no explanation.",
       "answers": [
-        "3"
+        "Re-Intermediate Clic"
       ],
-      "metric": "exact",
-      "answer_type": "H-count",
-      "rationale": "3 of the 6 transaction amounts are positive (deposits)."
+      "metric": "ned",
+      "answer_type": "H-comprehension",
+      "rationale": "The latest Date (12/21) is row 3, whose Description is 'Re-Intermediate Clic'."
     },
     {
       "key": null,
-      "question": "How many transactions are withdrawals (negative amounts)? Answer concisely, no explanation.",
+      "question": "What is the average (mean) Balance in the transactions? Answer concisely, no explanation.",
       "answers": [
-        "3"
-      ],
-      "metric": "exact",
-      "answer_type": "H-count"
-    },
-    {
-      "key": null,
-      "question": "What is the largest single transaction amount by absolute value? Answer concisely, no explanation.",
-      "answers": [
-        "-470.75",
-        "-470.75",
-        "$-470.75"
+        "828.54",
+        "$828.54"
       ],
       "metric": "relaxed_acc",
       "answer_type": "H1-aggregate",
-      "rationale": "Comparing the magnitudes of the 6 amounts, the largest is -470.75."
+      "rationale": "Mean Balance = 4971.25 / 6 = 828.54."
+    },
+    {
+      "key": null,
+      "question": "What is the 2nd-largest value in the Amount column? Answer concisely, no explanation.",
+      "answers": [
+        "176.25",
+        "$176.25"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sorted Amount descending, the 2nd is 176.25."
+    },
+    {
+      "key": null,
+      "question": "What is the total of the Amount column in the transactions? Answer concisely, no explanation.",
+      "answers": [
+        "-438.5",
+        "-438.50",
+        "$-438.50"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Sum the Amount column: 176.25 + -115.75 + 79.25 + -470.75 + -304.75 + 197.25 = -438.5."
     },
     {
       "key": "txns_region",
@@ -323,17 +337,6 @@
       "metric": "grounding",
       "answer_type": "L1-locate",
       "rationale": "the closing balance is rendered at [249, 372, 311, 391] on the 875x1241px page."
-    },
-    {
-      "key": null,
-      "question": "What is the difference between the highest and lowest balance? Answer with a number.",
-      "answers": [
-        "812",
-        "812"
-      ],
-      "metric": "relaxed_acc",
-      "answer_type": "H1-aggregate",
-      "rationale": "The difference between the highest and lowest balance: 1176.25 − 364.25 = 812."
     },
     {
       "key": "full_text",
