@@ -342,31 +342,41 @@ why" clue; the other arms (A4/A5/A7) remain available but secondary to this obje
 ### 1c. Preliminary fine-tuning observations (W&B — brief, not yet conclusive)
 
 > ⚠️ **Caveat (read first).** The fine-tuning experiments run so far are **brief and small** — short
-> A0/A1 runs on a single T4, few images and few epochs. The numbers below are **preliminary**; they
-> are enough to sanity-check direction, **not** to claim an effect size. They should be re-run at
-> larger scale before any firm conclusion. (Live curves:
+> LoRA runs on a single T4, few images and few epochs. The numbers below are **preliminary**; they
+> are enough to sanity-check direction, **not** to claim an effect size, and one anomaly (held-out >
+> train on grounding for the vision arm) is almost certainly small-sample noise. Re-run at larger
+> scale before any firm conclusion. (Live curves:
 > [W&B project `docvlm-ablation`](https://wandb.ai/sbdc/docvlm-ablation); metric meanings in
 > [`wandb_metrics.md`](wandb_metrics.md).)
 
-Spotting-focused read-out (fill from the W&B runs — values intentionally left blank rather than
-guessed):
+**What was run.** An **A5 placement** comparison on the LFM spotting arm: the same grounding-aware
+LoRA training, applied to the **vision encoder** vs the **connector/projector**, scored per-axis on
+the realistic train and held-out splits. This directly asks *which module to adapt to inject
+spotting*.
 
-| Signal (from W&B)                              | Baseline | + A1 spotting | Reading (hedged) |
-| ---------------------------------------------- | :------: | :-----------: | ---------------- |
-| `eval/heldout_grounding` (spot-IoU)            |   _TBD_  |     _TBD_     | does adding box targets *seem* to lift held-out grounding? |
-| `eval/train_grounding` (memorization ref.)     |   _TBD_  |     _TBD_     | train ≫ heldout would *suggest* it is fitting boxes, not localising |
-| `eval/heldout_kie` / `_T1` (transfer)          |   _TBD_  |     _TBD_     | did "where" supervision *appear* to cost / help "what"? |
-| `epoch/loss` trend                             |   _TBD_  |     _TBD_     | a clean downward trend = the box target is at least learnable |
+| Signal (W&B; held-out unless noted) | **vision** LoRA | **connector** LoRA | Reading (hedged) |
+| ----------------------------------- | :-------------: | :----------------: | ---------------- |
+| `grounding` spot-IoU (held-out)     | **0.140**       | 0.079              | vision ~1.8× connector — grounding *appears* to favour adapting the **vision encoder** |
+| `grounding` spot-IoU (train)        | 0.120           | 0.024              | connector barely fits boxes even on train → weak grounding pathway |
+| `L1-locate` (tight box)             | train 0.163 / eval 0.023 | train 0.0005 | vision learns *exact* localisation; connector ≈ 0 |
+| `L1-region` (enclosing box)         | train 0.061     | train 0.002 / eval 0.058 | both low; the looser region target scores a little higher, as expected |
+| `kie` ("what", transfer, held-out)  | 0.986           | 0.986              | recognition **held** under both placements — "where" supervision didn't cost "what" |
+| overall `score` (held-out)          | 0.428           | 0.380              | vision higher overall, driven mostly by the grounding axis |
 
 **Working hypotheses (weakly held, to be tested at scale):**
 
-- *H1 (tentative).* Adding bbox targets (A1) **may** raise held-out spot-IoU above the ~0.23 ceiling
-  the base LFM shows — i.e. spotting *might* be teachable with a small LoRA, not an architectural wall.
-- *H2 (tentative).* The lift, if any, **could** come with little cost to `kie`/`T1` (the boxes are an
-  *added* target, not a replaced one) — but a small drop is plausible and worth watching.
-- *H3 (tentative).* A large `train`–`heldout` grounding gap **would suggest** the model is memorising
-  box coordinates rather than localising, in which case the lever is more *diverse* layouts, not more
-  steps (the A0 logic applied to grounding).
+- *H1 (tentative).* Spotting *seems* **teachable with a small LoRA** — grounding is non-zero and the
+  vision arm roughly doubles the connector arm on held-out spot-IoU — i.e. it looks like a trainable
+  pathway, not an architectural wall.
+- *H2 (tentative).* The grounding pathway *appears* to run through the **vision encoder** more than the
+  connector (vision > connector on every grounding row, starkly on `L1-locate`). This is consistent
+  with the A5 prior "spatial/grounding ← vision (+connector)", but two arms at small scale can't yet
+  rule out the connector contributing when combined.
+- *H3 (tentative).* The lift *appears* **cheap to recognition**: `kie` is identical (0.986) across
+  placements, so adding box targets did not visibly erode "what". A real cost may only show at scale.
+- *Caveat on magnitude.* Absolute spot-IoU is still low (≤ ~0.14 held-out) and the train/held-out
+  ordering is noisy, so treat these as *direction*, not achieved performance. The next step is more
+  images/epochs and a vision **+** connector arm to test H2 directly.
 
 These are framed as conjectures on purpose: with the current brief runs we can observe *direction*,
 not magnitude. We flag this so the report does not overclaim.

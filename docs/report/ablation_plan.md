@@ -146,6 +146,12 @@ resolved at **runtime** from the loaded model
 (`docvlm_eval.finetune.lora_vlm.resolve_lora_targets(model, group)`): every `nn.Linear` is bucketed
 by its path into one of the groups below, so the same A5 ablation runs unchanged on either model.
 
+> **Preliminary (LFM, brief run).** A first **vision vs connector** comparison on the spotting arm
+> *appears* to favour the **vision encoder** for grounding (held-out spot-IoU ≈ 0.14 vs 0.08;
+> `L1-locate` train 0.163 vs ~0), with `kie` held (0.986) under both — consistent with
+> "spatial/grounding ← vision". Small-scale, direction-only; see
+> [`technical_report.md`](technical_report.md) §Part 2.1c.
+
 | Target group   | Bucketed by path                                  | Capability it should move                  |
 | -------------- | ------------------------------------------------- | ------------------------------------------ |
 | Vision encoder | `visual* / vision_tower / siglip / navit / aimv2` | recognition, small-text, layout perception |
