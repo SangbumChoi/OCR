@@ -50,10 +50,15 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
     base_meta = {"case": prefix, "doc_type": gt.get("type"), "stressors": gt.get("stressors")}
 
     for i, qa in enumerate(gt.get("qa", [])):
+        meta = {**base_meta, "qa_key": qa.get("key")}
+        if qa.get("rationale"):
+            meta["rationale"] = qa["rationale"]
+        if qa.get("box"):
+            meta["box"] = qa["box"]
         out.append(Sample(
             f"{prefix}:qa{i}", image_path, qa["question"], list(qa["answers"]),
             qa.get("answer_type", "kie"), qa.get("metric", "anls"),
-            {**base_meta, "qa_key": qa.get("key")},
+            meta,
         ))
 
     size = gt.get("render", {}).get("size_px") or [None, None]

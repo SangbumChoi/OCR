@@ -148,13 +148,20 @@ def main() -> None:
                    help="cap eval samples per probe (fixed subsample). The arm regenerates "
                         "realistic_cases at --count -> thousands of samples; without this the suite "
                         "eval would score the whole TRAINING set. 0 = score all.")
+    p.add_argument("--grounding-repeat", type=int, default=8,
+                   help="A1 curriculum: repeat grounding rows this many times during training so "
+                        "box targets are not diluted by ordinary QA/table rows.")
+    p.add_argument("--grounding-target", choices=["pixel", "norm"], default="norm",
+                   help="A1 curriculum target format. 'norm' teaches 0-1 boxes, which are scale-stable "
+                        "and still accepted by the grounding metric.")
     args = p.parse_args()
     args._mils = args.max_image_long_side or None      # 0 -> None (native resolution)
 
-    # Fail fast with one actionable line instead of a deep 'model type qwen3_5 not recognized' trace.
+    # Fail fast with one actionable line instead of a deep model-type import trace.
     import transformers
     if int(transformers.__version__.split(".")[0]) < 5:
-        sys.exit(f"[run_ablation] needs transformers>=5 for Qwen3.5-VL (got {transformers.__version__}). "
+        sys.exit(f"[run_ablation] needs transformers>=5 for the selected 2025-26 VLM "
+                 f"(got {transformers.__version__}). "
                  f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
 
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
@@ -166,9 +173,12 @@ def main() -> None:
     heldout_jsonl = None
     if args.heldout_seed is not None:    # build a held-out TEST split with a different seed
         test_dir = ROOT / "data" / "probes" / "_realistic_heldout"
-        subprocess.run([sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
-                        "--seed", str(args.heldout_seed), "--count", str(max(1, args.count // 5)),
-                        "--out", str(test_dir)], cwd=ROOT, check=True)
+        heldout_cmd = [sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
+                       "--seed", str(args.heldout_seed), "--count", str(max(1, args.count // 5)),
+                       "--out", str(test_dir)]
+        if args.arm not in ("baseline", "A0"):
+            heldout_cmd += ["--ablation", args.arm]
+        subprocess.run(heldout_cmd, cwd=ROOT, check=True)
         heldout_jsonl = str(test_dir / "realistic_cases.jsonl")
         from docvlm_eval.synth import load_realistic_samples
         from docvlm_eval.benchmarks import save_jsonl
@@ -201,6 +211,10 @@ def main() -> None:
                             "--ablation", args.arm, "--count", str(args.count)], cwd=ROOT, check=True)
             subprocess.run([sys.executable, "scripts/build_realistic_benchmark.py"], cwd=ROOT, check=True)
             train_jsonl = str(ROOT / PROBES["realistic"])
+            is_a1 = args.arm.startswith("A1_") or args.arm.startswith("A3_spot")
+            eval_specs = [("train", train_jsonl)]
+            if heldout_jsonl:
+                eval_specs.append(("heldout", heldout_jsonl))
             # 2) LoRA fine-tune (steps = the fixed iteration control); per-epoch loss/train-score -> W&B
             out, _ = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
@@ -208,10 +222,15 @@ def main() -> None:
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
-                batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
-                eval_specs=[("train", train_jsonl)])
+                batch_size=args.batch_size, eval_max_samples=args.eval_max_samples,
+                grounding_repeat=args.grounding_repeat if is_a1 else 1,
+                grounding_target=args.grounding_target if is_a1 else "pixel"),
+                eval_specs=eval_specs)
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
-            payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement},
+            payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement,
+                                   "grounding_repeat": args.grounding_repeat if is_a1 else 1,
+                                   "grounding_target": args.grounding_target if is_a1 else "pixel",
+                                   "heldout_seed": args.heldout_seed},
                        "probes": eval_all(hf, adapter=out)}
             _record(model, f"{args.arm}:{args.placement}", payload)
         cap = payload["probes"].get("capability", {})

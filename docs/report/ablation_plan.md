@@ -8,9 +8,11 @@ control — then **stack the winners** and show a **staircase** of cumulative ga
 *which-module-to-adapt* hypotheses these arms test are laid out in
 [`research_novelty.md`](research_novelty.md).
 
-Target model: **Qwen3.5-0.8B** (strongest genuinely sub-1B from the full GPU comparison). *LFM2.5-VL
-is dropped for our compute budget.* Base data: synthetic document pairs (image → structured text)
-from the generator, augmented per-ablation.
+Default target model: **LFM2.5-VL-1.6B**. It is the practical Part-2 default because its hybrid-conv
+backbone fine-tunes much faster on a T4 than Qwen3.5-VL's full-attention visual prefill. Qwen3.5-0.8B
+remains selectable with `run_ablation.py --models qwen3_5-0.8b`, but the notebook and ablation
+registry default to LFM for feasible iteration. Base data: synthetic document pairs (image →
+structured text) from the generator, augmented per-ablation.
 
 **Control factor (held fixed across every arm so a delta is attributable to the factor alone):**
 the **number of training images / iterations** (`--count` = #images, `--steps`) and the optimiser/seed
@@ -45,10 +47,15 @@ The **latency** gap is dissected per-stage/per-layer (why the *smaller* Qwen3.5-
 LFM2.5-VL-1.6B — vision-token count vs hybrid-conv per-layer cost) in
 [`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb).
 
-> **Spotting coordinate caveat (Qwen3.5-VL).** It smart-resizes the input and emits boxes in the
-> *resized* frame's absolute pixels, so a predicted box is offset/scaled vs our original-pixel GT;
-> the grounding metric rescales it via `metrics.grounding.rescale_box` (using the processor's
-> `image_grid_thw`). Check this before reading A1 grounding numbers.
+> **A1 grounding curriculum (LFM default).** The first LFM A1 W&B run showed that connector-only
+> training with sparse pixel-coordinate rows barely moved train grounding. The current training path
+> therefore repeats grounding rows during A1/A3 spotting arms and trains boxes as normalized 0-1
+> coordinates; the existing grounding metric accepts normalized predictions and rescales them to the
+> original-pixel gold frame. Run A1 with held-out logging before interpreting train-only gains.
+>
+> **Spotting coordinate caveat (Qwen3.5-VL optional).** Qwen smart-resizes the input and may emit
+> boxes in the resized frame's absolute pixels, so a predicted box can be offset/scaled vs our
+> original-pixel GT. Check the processor frame before reading Qwen A1 grounding numbers.
 
 ## Method: one factor at a time → integrate → staircase
 
@@ -58,7 +65,7 @@ should step the headline metric up at each addition (`scripts/plot_ablation.py` 
 
 | ID                                                | Research question                                                                                                                 | Factor varied (data/training)                                             | Control (what stays fixed)  | Primary metric(s)                          | Hypothesis                                                                                 |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| **A1 Spotting supervision**                       | Does adding *where* (bbox) targets to training improve extraction & spatial understanding, vs. answer-only?                       | training target = `value + [x1,y1,x2,y2]` vs `value` only                 | same images/QA, same steps  | grounding IoU; KIE F1; InfoVQA ANLS        | spotting injects spatial grounding → IoU↑ and KIE↑ (localised attention)                   |
+| **A1 Spotting supervision**                       | Does adding *where* (bbox) targets to training improve extraction & spatial understanding, vs. answer-only?                       | grounding rows repeated; target = normalized `[x1,y1,x2,y2]` vs answer-only | same images/QA, same steps  | grounding IoU; KIE F1; InfoVQA ANLS        | spotting injects spatial grounding → IoU↑ and KIE↑ (localised attention)                   |
 | **A2 Reasoning supervision**                      | Does CoT/rationale in the target help integrative reasoning, or is answer-only as good?                                           | target = `rationale → answer` vs `answer`                                 | same data                   | content-reasoning (sum/cmp); InfoVQA               | rationale teaches multi-region procedure → reasoning↑                                      |
 | **A3 Spotting+Reasoning vs combined-direct**      | Is it the *act of adding* these signals that helps, or does the plain task combination already capture it?                        | {answer} vs {+spot} vs {+reason} vs {+spot+reason}                        | same data/steps             | composite + per-axis                       | the structured signals beat plain combination; spot & reason are complementary             |
 | **A4 Multilingual mixing & language correlation** | Does training several languages in one mix beat single-language? Which language *pairs* transfer?                                 | train sets: {en}, {en+es}, {en+ja}, {ko+en}, {en+zh}, {all}               | equal total samples         | per-language NED (custom_eval)             | related scripts transfer (en↔es, ko↔en); distant scripts (en↔ja) help less or interfere    |
@@ -139,9 +146,9 @@ factor in a single config, so an arm differs from its control in exactly one fac
 ## Run one arm end-to-end (GPU)
 
 ```bash
-# baseline (eval only) for both bases, then e.g. the A1 spotting arm on the connector:
-python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm baseline
-python scripts/run_ablation.py --models qwen3_5-0.8b lfm2_5-vl-1.6b --arm A1_spotting_on --placement connector
+# baseline (eval only), then the A1 spotting curriculum on the default LFM base:
+python scripts/run_ablation.py --arm baseline
+python scripts/run_ablation.py --arm A1_spotting_on --placement connector --heldout-seed 999
 ```
 `run_ablation.py` generates the arm's data → LoRA-fine-tunes (`docvlm_eval.finetune.lora_vlm`,
 placement resolved by introspection) → evaluates on the probe suite → appends to

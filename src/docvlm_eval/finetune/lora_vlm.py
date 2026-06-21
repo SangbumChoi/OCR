@@ -20,7 +20,10 @@ PLACEMENT_GROUPS = ("vision", "connector", "llm_attn", "llm_mlp", "all")
 _VISION_PAT = re.compile(r"vis(ual|ion)|patch|siglip|navit|aimv2", re.I)
 _CONNECTOR_PAT = re.compile(r"merger|projector|connector|mlp1|multi_modal|abstractor|resampler", re.I)
 _ATTN_LEAF = re.compile(r"(^|\.)(q|k|v|o|qkv|out|wq|wk|wv|wo)_?proj$", re.I)
-_MLP_LEAF = re.compile(r"(^|\.)(gate|up|down|fc1|fc2|w1|w2|w3)_?proj$|(^|\.)(fc1|fc2)$", re.I)
+_MLP_LEAF = re.compile(
+    r"(^|\.)(gate|up|down)_?proj$|(^|\.)(fc1|fc2|w1|w2|w3)$",
+    re.I,
+)
 
 
 def _bucket(name: str) -> str:
@@ -87,6 +90,8 @@ class LoraVLMConfig:
     dtype: str = "bfloat16"
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
+    grounding_repeat: int = 1              # A1 curriculum: repeat grounding rows so boxes are not diluted
+    grounding_target: str = "pixel"        # "pixel" (legacy) or "norm" (normalized 0-1 boxes)
     # --- OOM / throughput controls (a single full-page doc -> ~1000+ vision tokens dominates memory) ---
     grad_checkpointing: bool = True        # trade compute for ~big activation-memory savings
     max_image_long_side: int | None = 768  # downscale the image's long side before the processor
@@ -108,11 +113,40 @@ def _device_dtype(prefer_dtype: str):
     return "cpu", torch.float32
 
 
-def _target_text(sample: dict) -> str:
-    """Supervision target: rationale (if present, A2) then the gold answer."""
+def _norm_box_answer(answer: str) -> str | None:
+    """Convert the gold 'x1,y1,x2,y2;W,H' box into a stable normalized target string."""
+    try:
+        box_s, size_s = answer.split(";")
+        x1, y1, x2, y2 = [float(x) for x in box_s.split(",")]
+        w, h = [float(x) for x in size_s.split(",")]
+        if not w or not h:
+            return None
+        return f"[{x1 / w:.4f}, {y1 / h:.4f}, {x2 / w:.4f}, {y2 / h:.4f}]"
+    except Exception:
+        return None
+
+
+def _target_text(sample: dict, cfg: LoraVLMConfig | None = None) -> str:
+    """Supervision target: rationale (if present, A2) then the gold answer.
+
+    For A1 grounding, normalized boxes are easier for LFM to learn than document-pixel coordinates
+    whose scale changes with every render. The existing grounding metric already accepts normalized
+    predictions and rescales them to the original-pixel gold frame.
+    """
     ans = sample["answers"][0]
-    rat = sample.get("rationale")
+    if cfg and cfg.grounding_target == "norm" and sample.get("metric") == "grounding":
+        ans = _norm_box_answer(ans) or ans.split(";", 1)[0]
+    rat = sample.get("rationale") or sample.get("meta", {}).get("rationale")
     return f"{rat}\nAnswer: {ans}" if rat else ans
+
+
+def _training_question(sample: dict, cfg: LoraVLMConfig) -> str:
+    """Use a matching prompt when the A1 curriculum trains normalized coordinates."""
+    if cfg.grounding_target == "norm" and sample.get("metric") == "grounding":
+        target = sample["question"].split(" as [x1", 1)[0]
+        return (f"{target} as [x1, y1, x2, y2] normalized to 0-1 image coordinates. "
+                "Answer with only the four numbers.")
+    return sample["question"]
 
 
 def _cap_image(img, long_side: int | None):
@@ -269,6 +303,13 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     rows = [r for r in rows if r.get("answers")]
     if not rows:
         raise RuntimeError(f"no trainable rows (with answers) in {cfg.train_jsonl}")
+    if cfg.grounding_repeat > 1:
+        grounding = [r for r in rows if r.get("metric") == "grounding"]
+        if grounding:
+            rows = rows + grounding * (cfg.grounding_repeat - 1)
+            print(f"[lora_vlm.train] A1 grounding curriculum: repeated {len(grounding)} grounding "
+                  f"rows x{cfg.grounding_repeat} -> {len(rows)} train rows; "
+                  f"target={cfg.grounding_target}", flush=True)
 
     class _DS(Dataset):
         def __len__(self): return len(rows)
@@ -283,9 +324,9 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         convs_full, prompt_lens = [], []
         for b in batch:
             img = _cap_image(Image.open(b["image_path"]).convert("RGB"), cfg.max_image_long_side)
-            tgt = _target_text(b) if cfg.use_rationale else b["answers"][0]
+            tgt = _target_text(b, cfg) if cfg.use_rationale else b["answers"][0]
             user = [{"role": "user", "content": [{"type": "image", "image": img},
-                                                 {"type": "text", "text": b["question"]}]}]
+                                                 {"type": "text", "text": _training_question(b, cfg)}]}]
             convs_full.append(user + [{"role": "assistant", "content": [{"type": "text", "text": tgt}]}])
             p = proc.apply_chat_template(user, add_generation_prompt=True, tokenize=True,
                                          return_dict=True, return_tensors="pt")

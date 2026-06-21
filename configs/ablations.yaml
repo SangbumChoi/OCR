@@ -25,6 +25,7 @@ eval_suite: [capability, spatial, realistic]   # cap_*, L2-L7 signals, realistic
 
 # Measured baseline gaps the ablations must close (qwen3.5, from the GPU run; control-robust):
 gaps:
+  lfm2_5-vl-1.6b: [L1_grounding, spot_iou]
   qwen3_5-0.8b: [L1_grounding, L4_box_tracking, H2_relational, rotation_180, latency]
 
 ablations:
