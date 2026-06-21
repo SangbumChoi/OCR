@@ -71,7 +71,8 @@ count (see [`synthetic_data_dto.md`](synthetic_data_dto.md)).
 Run the size sweep with `scripts/run_ablation.py --arm A0 --a0-sizes 50 100 200 400 800` (full curve
 adds `3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` plots the **train vs
 held-out** learning curves + the gap and reads off the size. **A0's result fixes the data scale used
-by A1–A7.**
+by A1–A7.** (Per-epoch `train`/`heldout` curves stream to W&B — see
+[`wandb_metrics.md`](wandb_metrics.md) for what each logged key means and how to read it.)
 
 ### 4.3 Two synthetic-quality axes A0 trades off
 
