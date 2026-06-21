@@ -55,7 +55,7 @@
     },
     {
       "key": "full_text",
-      "value": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/20\nRe-Intermediate Clic\n+79.25\n1139.75\n12/16\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50",
+      "value": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50",
       "role": "value",
       "bbox": null,
       "language": "en",
@@ -75,6 +75,50 @@
       "answer_type": "kie",
       "metric": "anls",
       "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many transactions are deposits (positive amounts)? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "3 of the 6 transaction amounts are positive (deposits).",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many transactions are withdrawals (negative amounts)? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "What is the largest single transaction amount by absolute value? Answer concisely, no explanation.",
+      "answers": [
+        "-470.75",
+        "-470.75",
+        "$-470.75"
+      ],
+      "answer_type": "H1-aggregate",
+      "metric": "relaxed_acc",
+      "rationale": "Comparing the magnitudes of the 6 amounts, the largest is -470.75.",
       "answer_bbox": null,
       "languages": [
         "en"
@@ -137,7 +181,7 @@
     {
       "question": "Transcribe all the text in this document in reading order.",
       "answers": [
-        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/20\nRe-Intermediate Clic\n+79.25\n1139.75\n12/16\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
+        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
       ],
       "answer_type": "ocr-full",
       "metric": "ned",
@@ -208,7 +252,7 @@
     "account": "****1780",
     "txns_rows": "6",
     "closing_balance": "$561.50",
-    "full_text": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/20\nRe-Intermediate Clic\n+79.25\n1139.75\n12/16\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
+    "full_text": "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
   },
   "spotting": {
     "closing_balance": [
@@ -228,6 +272,37 @@
       ],
       "metric": "anls",
       "answer_type": "kie"
+    },
+    {
+      "key": null,
+      "question": "How many transactions are deposits (positive amounts)? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "3 of the 6 transaction amounts are positive (deposits)."
+    },
+    {
+      "key": null,
+      "question": "How many transactions are withdrawals (negative amounts)? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count"
+    },
+    {
+      "key": null,
+      "question": "What is the largest single transaction amount by absolute value? Answer concisely, no explanation.",
+      "answers": [
+        "-470.75",
+        "-470.75",
+        "$-470.75"
+      ],
+      "metric": "relaxed_acc",
+      "answer_type": "H1-aggregate",
+      "rationale": "Comparing the magnitudes of the 6 amounts, the largest is -470.75."
     },
     {
       "key": "txns_region",
@@ -264,11 +339,11 @@
       "key": "full_text",
       "question": "Transcribe all the text in this document in reading order.",
       "answers": [
-        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/20\nRe-Intermediate Clic\n+79.25\n1139.75\n12/16\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
+        "MONTHLY STATEMENT\nAccount: ****1780\nDate\nDescription\nAmount\nBalance\n02/03\nDrive Bricks-And-Cli\n+176.25\n1176.25\n11/15\nEmbrace Back-End Ini\n-115.75\n1060.50\n12/21\nRe-Intermediate Clic\n+79.25\n1139.75\n12/17\nMatrix Distributed S\n-470.75\n669.00\n09/26\nAggregate Visionary\n-304.75\n364.25\n07/05\nWhiteboard Strategic\n+197.25\n561.50\nClosing balance: $561.50"
       ],
       "metric": "ned",
       "answer_type": "ocr-full"
     }
   ],
-  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>02/03</td><td>Drive Bricks-And-Cli</td><td>+176.25</td><td>1176.25</td></tr><tr><td>11/15</td><td>Embrace Back-End Ini</td><td>-115.75</td><td>1060.50</td></tr><tr><td>12/20</td><td>Re-Intermediate Clic</td><td>+79.25</td><td>1139.75</td></tr><tr><td>12/16</td><td>Matrix Distributed S</td><td>-470.75</td><td>669.00</td></tr><tr><td>09/26</td><td>Aggregate Visionary </td><td>-304.75</td><td>364.25</td></tr><tr><td>07/05</td><td>Whiteboard Strategic</td><td>+197.25</td><td>561.50</td></tr></table>"
+  "table_html": "<table><tr><td>Date</td><td>Description</td><td>Amount</td><td>Balance</td></tr><tr><td>02/03</td><td>Drive Bricks-And-Cli</td><td>+176.25</td><td>1176.25</td></tr><tr><td>11/15</td><td>Embrace Back-End Ini</td><td>-115.75</td><td>1060.50</td></tr><tr><td>12/21</td><td>Re-Intermediate Clic</td><td>+79.25</td><td>1139.75</td></tr><tr><td>12/17</td><td>Matrix Distributed S</td><td>-470.75</td><td>669.00</td></tr><tr><td>09/26</td><td>Aggregate Visionary </td><td>-304.75</td><td>364.25</td></tr><tr><td>07/05</td><td>Whiteboard Strategic</td><td>+197.25</td><td>561.50</td></tr></table>"
 }

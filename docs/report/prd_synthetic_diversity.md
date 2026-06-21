@@ -43,6 +43,26 @@ documents.
 | comprehension | what is the conversation about | H-comprehension |
 | consistency / abstain | dual-amount agree? redacted value? | probes |
 
+### Reasoning heuristics per design (model-free, infinite)
+Because the generator authors every value, we can derive **reasoning** GT by heuristic — no model, gold
+by construction — and attach a rationale. Each design gets questions natural to its content, so scaling
+the data scales the reasoning variety, not just templates:
+
+| Design | Heuristic-derived reasoning (examples) |
+| --- | --- |
+| invoice | #line-items; which row is largest (compare Amount col); sum / first+last / max−min; +10% tax |
+| bank statement | #deposits vs #withdrawals; largest |transaction|; max−min balance |
+| webtoon | bubbles on **left vs right** (alternating sides) + which side has more |
+| mobile chat | #incoming vs #outgoing; who sent more; topic; next action |
+| checkbox form | #checked vs #unchecked; which options selected |
+| id / passport | surname-only parse from the MRZ encoding |
+| RTL / ancient | reading direction; **which language/script** |
+| (any table) | row/col counts, per-column sum/mean, row comparison — large combinatorial space |
+
+Principle: for each design enumerate the *facts we already know* (counts, extremes, positions, language,
+relations) and emit a Q+A+rationale for each. Tables are the richest source (the combinatorics of
+rows × columns × reductions). The rationale doubles as the A2 chain-of-thought target.
+
 ## 3. Non-goals
 - Photorealistic GAN imagery (we keep GT-exact HTML/PDF rendering).
 - Real PII / real documents (synthetic only).

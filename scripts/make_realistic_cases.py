@@ -277,6 +277,14 @@ def case_invoice(do_degrade):
          [f"{grand:.2f}", f"{grand:,.2f}", f"${grand:,.2f}"], metric="relaxed_acc",
          answer_type="H-accounting",
          rationale=f"Total {total:.2f} × 1.10 (10% tax) = {grand:.2f}.")
+    # table-combinatorics reasoning: row count + which row is largest (compare the Amount column)
+    b.qa("How many line items are in the invoice?", str(len(items)), metric="exact",
+         answer_type="H-count", rationale=f"The line-item table has {len(items)} rows.")
+    _imax = max(range(len(items)), key=lambda k: amounts[k])
+    b.qa("Which line item has the highest amount? Give its name.", items[_imax][0],
+         metric="ned", answer_type="H-comprehension",
+         rationale=f"Comparing the Amount column, row {_imax+1} ('{items[_imax][0]}') = "
+                   f"${amounts[_imax]:.2f} is the largest.")
     b.want_fulltext()
     emit("invoice", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
@@ -354,6 +362,12 @@ def case_checkbox_form(do_degrade):
          answer_type="selection")
     b.probe("abstain", "Is 'Fax' selected?", "option not present")
     b.ask_where("Email", label="the Email option")
+    # count-reasoning over the checkboxes (checked vs unchecked)
+    _nchk = sum(1 for _, c in contact if c)
+    b.qa("How many contact methods are checked?", str(_nchk), metric="exact", answer_type="H-count",
+         rationale=f"{_nchk} of the {len(contact)} contact boxes are ticked (☒).")
+    b.qa("How many contact methods are left unchecked?", str(len(contact) - _nchk), metric="exact",
+         answer_type="H-count")
     b.want_fulltext()
     emit("checkbox_form", b, "scan", do_degrade)
 
@@ -393,6 +407,18 @@ def case_bank_statement(do_degrade):
     # reasoning over the balance column extremes (highest vs lowest)
     bals = [float(r[3]) for r in rows]
     b.ask_aggregate("the difference between the highest and lowest balance", bals, op="diff")
+    # accountant-style reasoning over the Amount column (deposits vs withdrawals, biggest movement)
+    amts = [float(r[2]) for r in rows]
+    n_credit = sum(1 for a in amts if a > 0); n_debit = sum(1 for a in amts if a < 0)
+    b.qa("How many transactions are deposits (positive amounts)?", str(n_credit), metric="exact",
+         answer_type="H-count",
+         rationale=f"{n_credit} of the {len(rows)} transaction amounts are positive (deposits).")
+    b.qa("How many transactions are withdrawals (negative amounts)?", str(n_debit), metric="exact",
+         answer_type="H-count")
+    _big = max(amts, key=abs)
+    b.qa("What is the largest single transaction amount by absolute value?",
+         [f"{_big:+.2f}", f"{_big:.2f}", f"${_big:.2f}"], metric="relaxed_acc", answer_type="H1-aggregate",
+         rationale=f"Comparing the magnitudes of the {len(rows)} amounts, the largest is {_big:+.2f}.")
     b.want_fulltext()
     emit("bank_statement", b, "scan", do_degrade, domain="finance", acquisition="scan")
 
@@ -412,6 +438,9 @@ def case_rtl_arabic(do_degrade):
     b.qa("Transcribe the Arabic text in the image.", text, metric="ned", answer_type="multilingual")
     b.qa("Is the text right-to-left or left-to-right?", ["right-to-left", "rtl"],
          metric="exact", answer_type="direction")
+    b.qa("What language is this document written in?", ["Arabic", "arabic"],
+         metric="anls", answer_type="multilingual",
+         rationale="The script is the Arabic abjad, written right-to-left -> Arabic.")
     b.probe("direction", "Is this text right-to-left or left-to-right?", "right-to-left")
     emit("rtl_arabic", b, "scan", do_degrade)
 
@@ -440,6 +469,20 @@ def case_webtoon(do_degrade):
          metric="ned", answer_type="reading-order")
     b.ask_where(lines[0], label="the first speech bubble")
     b.qa("How many panels are in the comic?", str(len(lines)), metric="exact", answer_type="H-count")
+    # spatial-count reasoning: panels alternate sides, so left = odd indices, right = even
+    n_left = sum(1 for i in range(1, len(lines) + 1) if i % 2)
+    n_right = len(lines) - n_left
+    b.fields["n_left"], b.fields["n_right"] = n_left, n_right
+    b.qa("How many speech bubbles are on the left side?", str(n_left), metric="exact",
+         answer_type="H-count",
+         rationale=f"The bubbles alternate sides; {n_left} of the {len(lines)} are on the left.")
+    b.qa("How many speech bubbles are on the right side?", str(n_right), metric="exact",
+         answer_type="H-count")
+    _more = "equal" if n_left == n_right else ("left" if n_left > n_right else "right")
+    b.qa("Which side has more speech bubbles, the left or the right?",
+         {"equal": ["equal", "the same", "neither", "tie"], "left": ["left"], "right": ["right"]}[_more],
+         metric="anls", answer_type="H-comprehension",
+         rationale=f"Left has {n_left}, right has {n_right} -> {_more}.")
     emit("webtoon", b, "photo", do_degrade)
 
 
@@ -526,6 +569,9 @@ def case_ancient(do_degrade):
     b.task("Transcribe characters in reading order (top→bottom, right→left).")
     b.qa("Transcribe the characters (top→bottom, right→left).", poem, metric="ned",
          answer_type="multilingual")
+    b.qa("What script/language is this manuscript written in?",
+         ["Chinese", "classical Chinese", "Han", "CJK"], metric="anls", answer_type="multilingual",
+         rationale="Vertical columns of Han characters read right-to-left -> classical Chinese.")
     # locate the ASCII part of the title — robust regardless of CJK font availability (a missing CJK
     # font would drop "古文書" from the searchable text layer -> "locate found nothing").
     b.ask_where("Classical manuscript", label="the title")
@@ -632,6 +678,16 @@ def case_mobile_app(do_degrade):
     # diverse / contextual tasks: how many turns, and what the conversation is about
     b.qa("How many messages are in the conversation?", str(len(msgs)), metric="exact",
          answer_type="H-count")
+    # who-sent-more reasoning over incoming (left) vs outgoing (right) bubbles
+    _nin = sum(1 for s, _ in msgs if s == "in"); _nout = len(msgs) - _nin
+    b.qa("How many messages did the user (outgoing, right) send?", str(_nout), metric="exact",
+         answer_type="H-count", rationale=f"{_nout} of the {len(msgs)} bubbles are outgoing (right).")
+    _who = "the user" if _nout > _nin else ("support" if _nin > _nout else "both equally")
+    b.qa("Who sent more messages, the user or support?",
+         {"the user": ["the user", "user", "me"], "support": ["support", "the agent", "support chat"],
+          "both equally": ["equal", "the same", "both"]}[_who],
+         metric="anls", answer_type="H-comprehension",
+         rationale=f"User(outgoing)={_nout}, support(incoming)={_nin} -> {_who}.")
     b.qa("What is the conversation about?", ["invoice", "the invoice", "an invoice"],
          metric="anls", answer_type="H-comprehension",
          rationale="The user asks if their invoice is ready and to email it -> the topic is the invoice.")

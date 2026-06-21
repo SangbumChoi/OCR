@@ -196,6 +196,34 @@
       "key": null
     },
     {
+      "question": "How many contact methods are checked? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "3 of the 4 contact boxes are ticked (☒).",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "How many contact methods are left unchecked? Answer concisely, no explanation.",
+      "answers": [
+        "1"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": null,
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the Email option located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
         "115,219,165,241;875,1241"
@@ -356,6 +384,25 @@
       ],
       "metric": "anls",
       "answer_type": "selection"
+    },
+    {
+      "key": null,
+      "question": "How many contact methods are checked? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "3 of the 4 contact boxes are ticked (☒)."
+    },
+    {
+      "key": null,
+      "question": "How many contact methods are left unchecked? Answer concisely, no explanation.",
+      "answers": [
+        "1"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count"
     },
     {
       "key": null,

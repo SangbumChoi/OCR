@@ -70,6 +70,23 @@
       "key": null
     },
     {
+      "question": "What script/language is this manuscript written in? Answer concisely, no explanation.",
+      "answers": [
+        "Chinese",
+        "classical Chinese",
+        "Han",
+        "CJK"
+      ],
+      "answer_type": "multilingual",
+      "metric": "anls",
+      "rationale": "Vertical columns of Han characters read right-to-left -> classical Chinese.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the title located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 709x886 pixels.",
       "answers": [
         "200,114,414,140;709,886"
@@ -165,6 +182,19 @@
       ],
       "metric": "ned",
       "answer_type": "multilingual"
+    },
+    {
+      "key": null,
+      "question": "What script/language is this manuscript written in? Answer concisely, no explanation.",
+      "answers": [
+        "Chinese",
+        "classical Chinese",
+        "Han",
+        "CJK"
+      ],
+      "metric": "anls",
+      "answer_type": "multilingual",
+      "rationale": "Vertical columns of Han characters read right-to-left -> classical Chinese."
     },
     {
       "key": null,

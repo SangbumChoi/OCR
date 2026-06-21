@@ -84,6 +84,36 @@
       "key": null
     },
     {
+      "question": "How many messages did the user (outgoing, right) send? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "2 of the 5 bubbles are outgoing (right).",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Who sent more messages, the user or support? Answer concisely, no explanation.",
+      "answers": [
+        "support",
+        "the agent",
+        "support chat"
+      ],
+      "answer_type": "H-comprehension",
+      "metric": "anls",
+      "rationale": "User(outgoing)=2, support(incoming)=3 -> support.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "What is the conversation about? Answer concisely, no explanation.",
       "answers": [
         "invoice",
@@ -235,6 +265,28 @@
       ],
       "metric": "exact",
       "answer_type": "H-count"
+    },
+    {
+      "key": null,
+      "question": "How many messages did the user (outgoing, right) send? Answer concisely, no explanation.",
+      "answers": [
+        "2"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "2 of the 5 bubbles are outgoing (right)."
+    },
+    {
+      "key": null,
+      "question": "Who sent more messages, the user or support? Answer concisely, no explanation.",
+      "answers": [
+        "support",
+        "the agent",
+        "support chat"
+      ],
+      "metric": "anls",
+      "answer_type": "H-comprehension",
+      "rationale": "User(outgoing)=2, support(incoming)=3 -> support."
     },
     {
       "key": null,

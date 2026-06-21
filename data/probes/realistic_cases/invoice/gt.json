@@ -140,6 +140,34 @@
       "key": null
     },
     {
+      "question": "How many line items are in the invoice? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "answer_type": "H-count",
+      "metric": "exact",
+      "rationale": "The line-item table has 3 rows.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
+      "question": "Which line item has the highest amount? Give its name. Answer concisely, no explanation.",
+      "answers": [
+        "Incubate Dot-Com Model"
+      ],
+      "answer_type": "H-comprehension",
+      "metric": "ned",
+      "rationale": "Comparing the Amount column, row 1 ('Incubate Dot-Com Model') = $1294.00 is the largest.",
+      "answer_bbox": null,
+      "languages": [
+        "en"
+      ],
+      "key": null
+    },
+    {
       "question": "Where is the line-item table located? Return its bounding box as [x1, y1, x2, y2] in pixel coordinates. The image is 875x1241 pixels.",
       "answers": [
         "42,263,758,427;875,1241"
@@ -360,6 +388,26 @@
       "metric": "relaxed_acc",
       "answer_type": "H-accounting",
       "rationale": "Total 2305.00 × 1.10 (10% tax) = 2535.50."
+    },
+    {
+      "key": null,
+      "question": "How many line items are in the invoice? Answer concisely, no explanation.",
+      "answers": [
+        "3"
+      ],
+      "metric": "exact",
+      "answer_type": "H-count",
+      "rationale": "The line-item table has 3 rows."
+    },
+    {
+      "key": null,
+      "question": "Which line item has the highest amount? Give its name. Answer concisely, no explanation.",
+      "answers": [
+        "Incubate Dot-Com Model"
+      ],
+      "metric": "ned",
+      "answer_type": "H-comprehension",
+      "rationale": "Comparing the Amount column, row 1 ('Incubate Dot-Com Model') = $1294.00 is the largest."
     },
     {
       "key": "lines_region",
