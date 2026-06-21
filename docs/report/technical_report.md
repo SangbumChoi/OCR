@@ -395,6 +395,14 @@ spotting*.
   rule out the connector contributing when combined.
 - *H3 (tentative).* The lift *appears* **cheap to recognition**: `kie` is identical (0.986) across
   placements, so adding box targets did not visibly erode "what". A real cost may only show at scale.
+  Note `kie` is *already high to begin with* — KIE-style "read this field's value" is close to what
+  LFM2.5-VL was **post-trained on**, so it starts near-saturated and has little room to move either
+  way. This may also explain a faint asymmetry between the two spotting targets: **`L1-locate` (a
+  single field's tight box) is much closer to the KIE skill than `L1-region` (a whole-block enclosing
+  box)**, so it *seems* to pick up a little more even on `train` (vision `L1-locate` 0.163 vs
+  `L1-region` 0.061) — i.e. the localisation that most resembles an existing post-training task is the
+  one that *appears* to train most readily. Weakly held: it could equally be that tight boxes are just
+  an easier target; scale + a region-heavy run would disambiguate.
 - *Caveat on magnitude.* Absolute spot-IoU is still low (≤ ~0.14 held-out) and the train/held-out
   ordering is noisy, so treat these as *direction*, not achieved performance. The next step is more
   images/epochs and a vision **+** connector arm to test H2 directly.
