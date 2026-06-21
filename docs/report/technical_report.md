@@ -430,38 +430,6 @@ backed by the **model-agnostic LoRA fine-tuning subpackage already in this repo*
   Public data is **feasibility-gated**: it has no boxes/rationale, so it can run A0/A5/A7 but not
   A1/A2 — exactly the division of labour the two notebooks make explicit.
 
-**Step 1 — Targeted LoRA SFT on reasoning/grounding data (attacks Gaps A & B).**
-Parameter-efficient **LoRA** (Hu et al., 2021) / **QLoRA** (Dettmers et al., 2023), placement
-resolved per-model by introspection (vision / connector / LM-attn / LM-MLP). Train on the
-reasoning-and-spotting-rich synthetic mix (and the public benchmark subset for real-distribution
-coverage). Rationale: recognition is already strong; LoRA cheaply re-weights the *reasoning* and
-*grounding* pathways without catastrophic forgetting, and fits a T4. *Keep high-res handling on*
-— small-text legibility is what the A7 preprocessing arm controls.
-
-**Step 2 — Reasoning distillation from a larger teacher (amplifies Gap A).**
-Generate **chain-of-thought rationales** for InfoVQA/ChartQA train questions with a larger
-teacher (InternVL-8B/26B or a frontier VLM) and fine-tune the 1B student on
-(image, question → rationale → answer). Sequence-level KD / rationale distillation transfers
-*reasoning procedure*, not just answers, and is well-suited to small students (Hinton et al.,
-2015; Hsieh et al., "Distilling step-by-step", 2023). This directly addresses the multi-step
-numeric reasoning that InfoVQA exposes.
-
-**Step 3 — Robustness-aware augmentation (attacks Gap C / retention).**
-Augment SFT with the **same perturbations as the robustness probe** (downscale/jpeg/blur/
-rotate/noise) and **terminology paraphrases**. Standard augmentation theory + the paired probe
-give a direct read on whether retention improves. Keep augmented and clean copies so clean
-accuracy is preserved.
-
-**Step 4 — Calibration (attacks Gap C / ECE).**
-Post-hoc **temperature scaling** on a held-out doc set (Guo et al., 2017) — one parameter,
-no accuracy change, large ECE reduction — optionally with **confidence-aware decoding** so the
-deployed reader can abstain/route low-confidence fields. Re-measure ECE with the pipeline.
-
-**Why this combination.** LoRA+QLoRA = T4-feasible and forgetting-safe; distillation injects
-the reasoning the small LM lacks; augmentation + temperature scaling convert clean-set wins
-into *deployable* wins. The plan is *surgical* — it spends capacity on the one axis the
-evidence says is weak (InfoVQA/layout reasoning), not on already-saturated OCR.
-
 ### 2b. From strategy to controlled ablations (one factor at a time)
 
 The steps above are not run as one big change — each is an **isolated ablation** with a held-out
@@ -497,33 +465,6 @@ signals, public-benchmark suite), so the staircase is apples-to-apples and each 
 that factor's marginal contribution. Steps 3–4 (robustness augmentation, temperature-scaling
 calibration) are layered on top of the chosen training arm and re-measured the same way.
 
-### 3. Expected outcomes & measurement
-
-| Axis                            | Baseline (measured, T4)                       | Target after plan                | Measured by                |
-| ------------------------------- | --------------------------------------------: | -------------------------------: | -------------------------- |
-| L1 grounding / spot-IoU         | LFM 0.229; ≤0.04 all others; probe ≈ 0        | **materially > baseline via A1**  | capability probe / custom-eval IoU |
-| L4 box-tracking (probe)         | **0.00 every model**                          | **first non-zero via A1**        | spatial probe              |
-| H2 content-compare (probe)      | LFM/MiniCPM pass; most sub-1B fail            | **lift the base via A2**         | capability probe           |
-| 180°-rotation retention         | LFM/MiniCPM 1.0; InternVL ≈ 0.06–0.10         | **lift the base via A7**         | custom-eval rotation       |
-| InfoVQA (val ANLS, published)   | ~56 (InternVL2.5-1B)                          | **+6–10 ANLS**                   | `evaluate.py` on InfoVQA   |
-| DocVQA (val ANLS)               | ~85 (InternVL2.5-1B)                          | **no regression** (±1)           | `evaluate.py` on DocVQA    |
-| Robustness worst-case retention | TBD (pipeline)                                | **+0.1–0.2**                     | robustness probe retention |
-| Calibration (ECE)               | TBD (pipeline)                                | **halved**                       | ECE in `summary.json`      |
-
-The success criterion is **held-out spotting (L1 / spot-IoU) materially above the base**, with
-recognition (`T1`/`kie`) held and the A2 reasoning-clue improving region attribution — and, as a
-*prerequisite* (A0), evidence that the gain reflects *localising* rather than memorising box
-coordinates. Everything is verified by re-running the *same* pipeline, so before/after is
-apples-to-apples. Fine-tuning numbers are **preliminary** (see §1c) until larger runs land.
-
-> **Deprecated: the cumulative "staircase".** Earlier drafts proposed a headline figure stacking
-> A1–A7 winners into a monotone staircase on a composite metric. With the report **refocused on the
-> single selected objective — spotting for human-in-the-loop verification** — that multi-arm
-> composite is **no longer the headline** and is retired (the `plot_ablation.py` staircase remains in
-> the repo for optional later use, but is not part of this report's claim). The deliverable is now the
-> **before/after on held-out spot-IoU** (§1c table), not a cumulative curve.
-
----
 
 ## Appendix A — Model profiles
 
