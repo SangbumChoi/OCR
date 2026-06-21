@@ -170,12 +170,15 @@ def main() -> None:
         from docvlm_eval.benchmarks import save_jsonl
         save_jsonl(load_realistic_samples(test_dir), heldout_jsonl)
 
+    from docvlm_eval.finetune.lora_vlm import score_suite
+
     def eval_all(hf, adapter=None):
-        """Score the whole suite -> {probe: summary} (cross-capability transfer), + held-out if set."""
-        out = {pb: eval_vlm(hf, str(ROOT / PROBES[pb]), adapter_path=adapter) for pb in EVAL_SUITE}
+        """Score the whole suite -> {probe: summary} (cross-capability transfer), + held-out if set.
+        Loads the model ONCE for all probes (not once per probe)."""
+        jsonls = {pb: str(ROOT / PROBES[pb]) for pb in EVAL_SUITE}
         if heldout_jsonl:
-            out["heldout"] = eval_vlm(hf, heldout_jsonl, adapter_path=adapter)
-        return out
+            jsonls["heldout"] = heldout_jsonl
+        return score_suite(hf, jsonls, adapter_path=adapter, max_image_long_side=args._mils)
 
     total = len(args.models); done = 0
     for model in args.models:

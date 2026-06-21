@@ -151,11 +151,11 @@ def _auto_vlm():
 
 
 def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
-           max_image_long_side: int | None = 1024) -> dict:
+           max_image_long_side: int | None = 768, tag: str = "") -> dict:
     """Generate on every sample of ``jsonl`` with the (already-loaded) model and return the project's
-    aggregate summary. Shared by ``eval_vlm`` and the per-epoch eval inside ``train_lora_vlm`` so we
-    never reload the model just to score it (the reload was a needless OOM risk)."""
-    import sys
+    aggregate summary. Shared by ``eval_vlm``/``score_suite`` and the per-epoch eval inside
+    ``train_lora_vlm`` so we never reload the model just to score it."""
+    import sys, time
     from pathlib import Path
 
     import torch
@@ -170,8 +170,10 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
     model.eval()
     dt = next(model.parameters()).dtype                        # cast pixel_values to the model dtype
     samples = load_jsonl(jsonl)
+    every = max(1, len(samples) // 5)
+    t0 = time.time()
     preds: dict[str, Prediction] = {}
-    for s in samples:
+    for i, s in enumerate(samples, 1):
         img = _cap_image(Image.open(s.image_path).convert("RGB"), max_image_long_side)
         msgs = [{"role": "user", "content": [{"type": "image", "image": img},
                                              {"type": "text", "text": s.question}]}]
@@ -186,6 +188,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
         except torch.cuda.OutOfMemoryError:        # skip the offending sample, keep scoring the rest
             torch.cuda.empty_cache(); text = ""
         preds[s.sample_id] = Prediction(sample_id=s.sample_id, prediction=text, raw=text)
+        if i == 1 or i % every == 0 or i == len(samples):
+            print(f"    [eval {tag}] {i}/{len(samples)} ({(time.time()-t0):.0f}s)", flush=True)
     if was_training:
         model.train()
     return aggregate(samples, preds)["summary"]
@@ -354,18 +358,12 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     return str(out_dir), last_eval
 
 
-def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
-             dtype: str = "bfloat16", max_new_tokens: int = 64,
-             max_image_long_side: int | None = 1024) -> dict:
-    """Score a base (optionally LoRA-adapted) VLM on a probe jsonl and return the aggregate summary
-    + per-axis (by answer_type) breakdown — the before/after measurement for an ablation arm.
-
-    GPU-only. Reuses the project's metrics so scores are comparable to the eval pipeline."""
-    import torch  # noqa: F401  (ensures a clear error if torch is missing)
-
+def _load_for_eval(model_id: str, adapter_path: str | None, dtype: str = "bfloat16"):
+    """Load the (optionally LoRA-adapted) model + processor ONCE -> (model, proc, device)."""
     device, dt = _device_dtype(dtype)
-    print(f"[lora_vlm.eval] device={device} dtype={dt}"
-          + ("" if device == "cuda" else "  (CPU — eval will be slow; expected a GPU?)"))
+    print(f"[lora_vlm.eval] loading {model_id}"
+          + (f" + adapter" if adapter_path else "") + f" on {device}/{dt}"
+          + ("" if device == "cuda" else "  (CPU — eval will be slow)"), flush=True)
     from transformers import AutoProcessor
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)
     model = _auto_vlm().from_pretrained(model_id, torch_dtype=dt,
@@ -373,4 +371,30 @@ def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
     if adapter_path:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter_path).to(device).eval()
-    return _score(model, proc, device, jsonl, max_new_tokens, max_image_long_side)
+    return model, proc, device
+
+
+def score_suite(model_id: str, jsonls: dict, *, adapter_path: str | None = None,
+                dtype: str = "bfloat16", max_new_tokens: int = 64,
+                max_image_long_side: int | None = 768) -> dict:
+    """Load the (optionally adapted) model ONCE and score several probe jsonls -> {name: summary}.
+    Avoids reloading the full model per probe (the repeated 'Loading weights 589/589' stall after
+    training that looked like a hang). Frees the model at the end."""
+    import torch
+    model, proc, device = _load_for_eval(model_id, adapter_path, dtype)
+    try:
+        return {name: _score(model, proc, device, jl, max_new_tokens, max_image_long_side, tag=name)
+                for name, jl in jsonls.items()}
+    finally:
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
+             dtype: str = "bfloat16", max_new_tokens: int = 64,
+             max_image_long_side: int | None = 768) -> dict:
+    """Score a base (optionally LoRA-adapted) VLM on ONE probe jsonl -> aggregate summary + per-axis
+    breakdown. GPU-only. (For several probes use score_suite, which loads the model only once.)"""
+    model, proc, device = _load_for_eval(model_id, adapter_path, dtype)
+    return _score(model, proc, device, jsonl, max_new_tokens, max_image_long_side, tag="probe")
