@@ -75,5 +75,14 @@ Per-model scores sliced by the axes the format is built around. Source: full GPU
 | smolvlm-256m     | 1.0  | 1.0   | 0.133  | 0.714  | 0.118 | 0.333   | 0.002    |
 | smolvlm-500m     | 1.0  | 1.0   | 0.1    | 0.571  | 0.455 | 0.333   | 0.0      |
 
+> **Reading rotation retention.** Retention = `read_score(angle) / read_score(0°)`, so it is meant to
+> live in **[0, 1]** (1.0 = rotation didn't hurt). Values **> 1** (e.g. internvl3-1b 15°/90°/270° =
+> 3.289, smoldocling 15° = 1.033) are **small-sample artifacts**, not "reads better when rotated": the
+> custom-eval is a directional ~one-sample-per-cell probe, so when the 0° baseline is small the ratio
+> blows up. Treat > 1 as "≈ no degradation but unreliable", cross-check the absolute
+> `rotation_read_score`, and judge robustness mainly by the **180°** column (true upside-down) on
+> models with a solid 0° read (LFM / MiniCPM / PaddleOCR hold 1.0; InternVL/SmolVLM collapse there).
+> `dir-acc` and `spot-IoU` are absolute 0–1 scores and never exceed 1.
+
 > PaddleOCR-VL versions on the proposed custom-eval (text class): v1.0 score 0.2097, v1.5 0.2652,
 > v1.6 0.2652 (avg latency ~5.4-6.3 s, peak GPU ~2.1 GB).
