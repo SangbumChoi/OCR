@@ -59,6 +59,17 @@ def _n_samples(jsonl: str) -> int:
     return sum(1 for ln in Path(jsonl).read_text().splitlines() if ln.strip())
 
 
+def _subsample_jsonl(src: str, n: int, out_path: Path, seed: int = 7) -> tuple[str, int]:
+    """Deterministically subsample ``n`` rows from a jsonl (for the public-data A0 scale sweep)."""
+    import random as _random
+    rows = [ln for ln in Path(src).read_text().splitlines() if ln.strip()]
+    _random.Random(seed).shuffle(rows)
+    rows = rows[:n]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return str(out_path), len(rows)
+
+
 def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     """A0 PREREQUISITE — memorization vs understanding as a function of training-data SIZE.
 
@@ -67,22 +78,36 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     seed (understanding/generalization signal). A big train≫held-out gap that grows as N shrinks =
     memorization; the held-out curve flattening = the recommended synthetic size. Result lands in
     ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite section."""
-    # held-out TEST built ONCE so every training size is scored on the identical unseen set.
+    # Validation/held-out set is ALWAYS synthetic (built ONCE so every size scores the identical set).
+    # In public-data mode (--train-jsonl) this means: TRAIN on public benchmark data, VALIDATE on
+    # synthetic — the train-vs-synthetic gap then also reflects domain shift, not memorization alone.
+    public = getattr(args, "train_jsonl", None)
     test_jsonl = _gen_realistic(ROOT / "data" / "probes" / "_a0_heldout",
                                 seed=args.a0_test_seed, count=args.a0_test_count)
     n_test = _n_samples(test_jsonl)
     sizes = sorted(set(args.a0_sizes))
+    if public:
+        n_pub = _n_samples(public)
+        sizes = [n for n in sizes if n <= n_pub] or [n_pub]   # can't subsample beyond available rows
+        print(f"[A0 public] train source = {public} ({n_pub} rows); sizes={sizes}; "
+              f"validation = synthetic (seed {args.a0_test_seed}, {n_test} samples)")
     total = len(args.models) * len(sizes); done = 0
     for model in args.models:
         hf = HF_ID[model]
         rec = {"epochs": args.a0_epochs, "test_seed": args.a0_test_seed,
-               "n_test_samples": n_test, "sizes": {}}
+               "n_test_samples": n_test, "mode": "public" if public else "synthetic",
+               "train_source": public or "synthetic(realistic_cases)", "sizes": {}}
         for n in sizes:
             done += 1
-            print(f"[{done}/{total}] ({total-done} left) {model} :: A0 size={n} (x14 cases) "
+            unit = f"{n} images (public)" if public else f"{n} (x14 cases)"
+            print(f"[{done}/{total}] ({total-done} left) {model} :: A0 size={unit} "
                   f"epochs={args.a0_epochs}")
-            train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
-            n_train = _n_samples(train_jsonl)
+            if public:
+                train_jsonl, n_train = _subsample_jsonl(
+                    public, n, ROOT / "data" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
+            else:
+                train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
+                n_train = _n_samples(train_jsonl)
             # per-epoch eval on BOTH train (memorization) and held-out (understanding) -> W&B curves
             _, last = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
@@ -96,7 +121,8 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
             train_s, held_s = last["train"], last["heldout"]   # final-epoch eval (no model reload)
             ts, hs = train_s.get("score"), held_s.get("score")
             gap = (ts - hs) if (ts is not None and hs is not None) else None
-            rec["sizes"][str(n)] = {"variants_per_case": n, "n_train_samples": n_train,
+            rec["sizes"][str(n)] = {"variants_per_case": n, "n_images": n_train,
+                                    "n_train_samples": n_train,
                                     "train": train_s, "heldout": held_s, "gap": gap}
             print(f"    train={ts}  heldout={hs}  gap(train-heldout)={gap}")
             _record(model, "A0", rec)   # checkpoint after every size
@@ -111,6 +137,16 @@ def main() -> None:
                    help="'baseline' (eval only), 'A0' (memorization-vs-size prerequisite sweep), or a "
                         "configs/synth_data.yaml ablation id (e.g. A1_spotting_on, A4_ko_en)")
     p.add_argument("--placement", default="all", help="A5 LoRA group: vision|connector|llm_attn|llm_mlp|all")
+    # PUBLIC-DATA path: train on a prebuilt benchmark jsonl (scripts/build_benchmark_trainset.py) and
+    # validate on the SYNTHETIC suite. Use --arm public for a single run, or --arm A0 for the scale sweep.
+    p.add_argument("--train-jsonl", default=None,
+                   help="train on THIS jsonl (e.g. data/benchmark_trainset/train.jsonl) instead of "
+                        "generating synthetic data; validation stays synthetic. Supports --arm public/A0.")
+    p.add_argument("--record-key", default=None,
+                   help="key to store results under in ablation_results.json (default: <arm>:<placement>)")
+    p.add_argument("--results", default=None,
+                   help="results JSON path (default docs/results/ablation_results.json; the public-data "
+                        "notebook uses a separate file so its A0 doesn't collide with the synthetic one)")
     # CONTROL FACTOR — held fixed across arms so a delta is attributable to the factor alone:
     p.add_argument("--count", type=int, default=50,
                    help="variants per case = the fixed #images/iterations control (keep equal across arms)")
@@ -156,6 +192,9 @@ def main() -> None:
                         "and still accepted by the grounding metric.")
     args = p.parse_args()
     args._mils = args.max_image_long_side or None      # 0 -> None (native resolution)
+    if args.results:
+        global RESULTS
+        RESULTS = Path(args.results)
 
     # Fail fast with one actionable line instead of a deep model-type import trace.
     import transformers
@@ -205,6 +244,31 @@ def main() -> None:
             payload = {"control": {"count": args.count, "steps": args.steps},
                        "probes": eval_all(hf)}
             _record(model, "baseline", payload)
+        elif args.arm == "public":
+            # PUBLIC-DATA single run: LoRA-train on the benchmark jsonl (optionally subsampled to
+            # --count), validate on the SYNTHETIC suite. Feasible regardless of spotting/reasoning GT;
+            # used for the A5 placement and A7 preprocessing sweeps in the public-dataset notebook.
+            if not args.train_jsonl:
+                sys.exit("[run_ablation] --arm public requires --train-jsonl <benchmark jsonl>")
+            n_avail = _n_samples(args.train_jsonl)
+            if args.count and args.count < n_avail:
+                train_jsonl, n_train = _subsample_jsonl(
+                    args.train_jsonl, args.count, ROOT / "data" / "probes" / "_public_train.jsonl")
+            else:
+                train_jsonl, n_train = args.train_jsonl, n_avail
+            print(f"    [public] train on {n_train} rows from {args.train_jsonl}; validate on synthetic")
+            out, _ = train_lora_vlm(LoraVLMConfig(
+                model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
+                max_steps=args.steps, output_dir=f"outputs/{model}/public_{args.placement}_{args._mils}",
+                wandb_project=args.wandb_project,
+                wandb_run=f"{args.wandb_run_prefix}public-{model}-{args.placement}-img{args._mils}",
+                grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
+                batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
+                eval_specs=[("train", train_jsonl)] + ([("heldout", heldout_jsonl)] if heldout_jsonl else []))
+            payload = {"control": {"count": n_train, "steps": args.steps, "placement": args.placement,
+                                   "max_image_long_side": args._mils, "train_source": args.train_jsonl},
+                       "probes": eval_all(hf, adapter=out)}
+            _record(model, args.record_key or f"public:{args.placement}", payload)
         else:
             # 1) data for this arm (count = the fixed #images control)
             subprocess.run([sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",

@@ -74,6 +74,19 @@ python -c "from datasets import load_from_disk as L; \
 huggingface-cli upload --repo-type dataset <user>/repo data/benchmark_trainset .
 ```
 
+## Train on it (public train, synthetic validation)
+
+[`notebooks/finetune_ablation(public_dataset).ipynb`](../../notebooks/finetune_ablation(public_dataset).ipynb)
+fine-tunes on this public set and **validates on the synthetic probe suite**, via
+`run_ablation.py --train-jsonl data/benchmark_trainset/train.jsonl` (`--arm public` for a single run,
+`--arm A0` for the data-scale curve; results go to a separate `ablation_results_public.json`).
+
+It is **feasibility-gated**: public benchmarks give the answer but no spotting boxes (A1) or reasoning
+rationale (A2), so those arms are detected as infeasible and skipped — only the supervision-agnostic
+arms run (A0 scale, A5 LoRA placement, A7 preprocessing/resolution). The full set including A1/A2 is
+only testable on synthetic data (`finetune_ablation.ipynb`), which authors boxes/rationales by
+construction.
+
 ## Visualize the dataset + GT
 
 A montage (cached image + normalised question/answer/metric per benchmark) sanity-checks the mapping:
