@@ -154,13 +154,32 @@ def _ai2d(ex: dict, e: dict) -> list[dict]:
     return _mcq(ex, e)
 
 
+def _ocrvqa(ex: dict, e: dict) -> list[dict]:
+    """OCR-VQA packs several QA per book-cover image as parallel ``questions`` / ``answers`` lists."""
+    qs = ex.get("questions") or ex.get("question")
+    ans = ex.get("answers") or ex.get("answer")
+    qs = qs if isinstance(qs, list) else [qs]
+    ans = ans if isinstance(ans, list) else [ans]
+    out: list[dict] = []
+    for q, a in zip(qs, ans):
+        out += _qa(_s(q), _as_answer_list(a), "doc-vqa", "exact")
+    return out
+
+
+def _charxiv(ex: dict, e: dict) -> list[dict]:
+    """CharXiv: ``reasoning_q``/``reasoning_a`` are free text (the descriptive_q* are integer
+    template ids with no in-row decoder, so we only take the reasoning pair)."""
+    return _qa(_s(ex.get("reasoning_q")), _as_answer_list(ex.get("reasoning_a")),
+               "sci-figure", "exact")
+
+
 # key -> adapter. Unregistered benchmarks fall through to ``_auto``.
 _ADAPTERS: dict[str, Callable[[dict, dict], list[dict]]] = {
     "docvqa": lambda ex, e: _vqa(ex, e, atype="doc-vqa", metric="anls"),
     "infovqa": lambda ex, e: _vqa(ex, e, atype="infographic", metric="anls"),
     "textvqa": lambda ex, e: _vqa(ex, e, atype="scene-text-vqa", metric="exact"),
     "stvqa": lambda ex, e: _vqa(ex, e, atype="scene-text-vqa", metric="anls"),
-    "ocrvqa": lambda ex, e: _vqa(ex, e, atype="doc-vqa", metric="exact"),
+    "ocrvqa": _ocrvqa,
     "ai2d": _ai2d,
     "chartqa": lambda ex, e: _vqa(ex, e, atype="chart", metric="relaxed_acc"),
     "mathvista": lambda ex, e: _vqa(ex, e, atype="figure-math", metric="exact"),
@@ -168,7 +187,7 @@ _ADAPTERS: dict[str, Callable[[dict, dict], list[dict]]] = {
     "dvqa": lambda ex, e: _vqa(ex, e, atype="chart", metric="exact"),
     "ocrbench": lambda ex, e: _vqa(ex, e, atype="ocr", metric="ocrbench"),
     "ocrbench_v2": lambda ex, e: _vqa(ex, e, atype="ocr", metric="exact"),
-    "charxiv": lambda ex, e: _vqa(ex, e, atype="sci-figure", metric="exact"),
+    "charxiv": _charxiv,
     "pope": lambda ex, e: _vqa(ex, e, atype="hallucination", metric="exact"),
     "hallusionbench": lambda ex, e: _vqa(ex, e, atype="hallucination", metric="exact"),
     "iam": lambda ex, e: _transcribe(ex, e, atype="handwriting"),

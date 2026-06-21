@@ -25,7 +25,9 @@ DTO ([`src/docvlm_eval/benchmarks/trainset.py`](../../src/docvlm_eval/benchmarks
 
 | Shape                | Benchmarks                                         | Mapping                                              |
 | -------------------- | -------------------------------------------------- | ---------------------------------------------------- |
-| Visual QA            | DocVQA, InfoVQA, TextVQA, ST-VQA, OCR-VQA, ChartQA, MathVista, OCRBench(+v2), POPE, HallusionBench, CharXiv | `question` + `answers` (metric per catalog)          |
+| Visual QA            | DocVQA, InfoVQA, TextVQA, ChartQA, MathVista, OCRBench(+v2), POPE, HallusionBench | `question` + `answers` (metric per catalog)          |
+| QA (parallel lists)  | OCR-VQA                                            | zip `questions[]` × `answers[]` (several QA per cover) |
+| QA (reasoning field) | CharXiv                                            | `reasoning_q` → `reasoning_a` (descriptive_q* are unusable int ids) |
 | Multiple-choice      | AI2D                                               | question + `options[]`, answer resolved from index/text → `exact` |
 | Transcription        | IAM, SROIE, FUNSD                                  | "Transcribe…" instruction + the text/words target → `ned` |
 | Formula              | im2latex, LaTeX_OCR                                | "Convert to LaTeX" + the LaTeX target → `ned`        |
@@ -33,9 +35,12 @@ DTO ([`src/docvlm_eval/benchmarks/trainset.py`](../../src/docvlm_eval/benchmarks
 | Table                | PubTabNet, FinTabNet                               | "Convert the table to HTML" + the HTML target        |
 | Fallback (`_auto`)   | anything unregistered                              | VQA → transcription → `conversations` (LLaVA turns)  |
 
-Detection-only records (no derivable question/answer, e.g. PubTables-1M boxes) yield `[]` and are
-skipped. The adapters are unit-tested **offline** against hand-built records mimicking each real
-schema ([`tests/test_benchmark_trainset.py`](../../tests/test_benchmark_trainset.py)).
+Records with no derivable (question, answer) yield `[]` and are skipped. **19 / 22** streamable
+benchmarks convert; the 3 that don't are documented skips because their only public stream carries no
+trainable GT: **ST-VQA** (lmms-lab `test` split ships no answers), **PubTables-1M** (webdataset,
+detection — no PIL image / no text target), **OmniDocBench** (image-only stream; page-parse
+annotations live in a separate file). The adapters are unit-tested **offline** against hand-built
+records mimicking each real schema ([`tests/test_benchmark_trainset.py`](../../tests/test_benchmark_trainset.py)).
 
 ## Build it (offline, < 200 images/benchmark)
 

@@ -74,6 +74,24 @@ def test_table_to_html():
     assert qas[0]["answer_type"] == "table"
 
 
+def test_ocrvqa_parallel_lists():
+    ex = {"image": object(),
+          "questions": ["Who wrote this book?", "What is the title?"],
+          "answers": ["The Times Mind Games", "Killer Su Doku 6"]}
+    qas = extract_qa("ocrvqa", ex, {"key": "ocrvqa"})
+    assert len(qas) == 2
+    assert qas[0]["answers"] == ["The Times Mind Games"]
+    assert qas[1]["question"].startswith("What is the title")
+
+
+def test_charxiv_reasoning_pair():
+    ex = {"image": object(), "descriptive_q1": 7, "descriptive_a1": "60",
+          "reasoning_q": "Which model declines more?", "reasoning_a": "Joint-CNN"}
+    qas = _one("charxiv", ex)
+    assert qas[0]["answers"] == ["Joint-CNN"]
+    assert qas[0]["answer_type"] == "sci-figure"
+
+
 def test_conversations_fallback():
     ex = {"conversations": [{"from": "human", "value": "read it"},
                             {"from": "gpt", "value": "INVOICE #42"}]}

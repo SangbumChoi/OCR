@@ -44,6 +44,11 @@ from docvlm_eval.schema import Sample  # noqa: E402
 
 HARD_CAP = 200  # "less than 200 images" per benchmark, by request
 
+# Some catalog splits are eval-only; for *training* we can override to a split that carries answers
+# (eval still uses the catalog split). Empty for now — ST-VQA's only HF split (test) has no GT, so it
+# stays a documented skip. Add entries here if a benchmark exposes a labelled train split.
+TRAIN_SPLIT_OVERRIDE: dict[str, str] = {}
+
 
 def _downscale(img, max_px: int):
     img = img.convert("RGB")
@@ -63,8 +68,9 @@ def build_one(e: dict, out: Path, per_bench: int, max_px: int, quality: int,
 
     from datasets import load_dataset
 
+    split = TRAIN_SPLIT_OVERRIDE.get(key, e["split"])
     try:
-        ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
+        ds = load_dataset(e["hf_id"], e.get("config"), split=split, streaming=True)
     except Exception as exc:
         print(f"[fail] {key}: {type(exc).__name__}: {str(exc)[:140]}")
         return [], "load-fail"
