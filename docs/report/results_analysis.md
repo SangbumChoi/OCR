@@ -145,7 +145,27 @@ prime Part-2 target. The most spatially-robust models are **LFM2.5-VL-1.6B and M
 (clear L2/L3/H5/H6/H7); the best **sub-1B** is **Qwen3.5-0.8B** (L2/H5/H6). Full 19-model table:
 [`../results/probe_signals.md`](../results/probe_signals.md).
 
-## F. Honest limitations of this run
+## F. Proposed custom-eval — by class / language / rotation / spotting
+
+The proposed evaluation format (`docs/results/custom_eval_breakdown.md`) slices the score by the axes
+it was built around. The decision-relevant rows (measured, T4):
+
+| Axis (custom-eval)            | Leader(s)                                  | Reading |
+| ----------------------------- | ------------------------------------------ | ------- |
+| **text** (content class)      | **LFM 0.829**, Qwen3.5 0.777, InternVL2-1b 0.729 | recognition is broadly solved at the top |
+| **stamp**                     | **LFM 0.551** (only non-zero)              | a niche class only LFM reads |
+| **direction** (reading dir.)  | LFM / Qwen3.5 / MiniCPM = **1.0**          | most others ≈ 0.33 |
+| **language — en**             | LFM / Qwen3.5 / SmolVLM-500M ≈ **0.77**    | English recognition saturates |
+| **language — ko / ja / zh**   | PaddleOCR-VL-1.5/1.6 = **1.0**; LFM ko 0.875 | parsing specialists lead CJK |
+| **rotation-180 retention**    | LFM / MiniCPM / PaddleOCR / LightOnOCR = **1.0**; InternVL ≈ 0.06–0.10, SmolVLM ≈ 0.10–0.13 | orientation robustness is bimodal |
+| **reading-direction acc**     | LFM / Qwen3.5 / MiniCPM = **1.0**          | the rest 0.0–0.33 |
+| **spotting IoU**              | **LFM 0.229**; InternVL2.5 0.042, others ≤ 0.02 | grounding is the systemic gap — only LFM is usable |
+
+**PaddleOCR-VL version ablation (custom-eval text):** v1.0 = 0.2097, v1.5 = 0.2652, v1.6 = 0.2652
+(avg latency ~5.4–6.3 s, peak GPU ~2.1 GB) — v1.5 improves on v1.0 and v1.6 matches v1.5. Full grids:
+[`../results/custom_eval_breakdown.md`](../results/custom_eval_breakdown.md).
+
+## G. Honest limitations of this run
 
 - The **all_preview** matrix is **one sample per benchmark** → a *sanity/plumbing* matrix, not
   leaderboard accuracy; treat trends, not absolute numbers. The capability/spatial probes have one
