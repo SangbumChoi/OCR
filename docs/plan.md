@@ -44,7 +44,7 @@ pixels. The rest of the plan follows from that one decision.
    pipeline  (orientation = TODO)
         │
 6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
-   → cumulative "staircase" report             report/figures/ablation_staircase.png
+   → spotting for human-in-the-loop verify     report/technical_report.md §Part 2.1b/1c
 ```
 
 ---
@@ -140,8 +140,7 @@ added factor lifting the score a step, ending well above the baseline.
   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
   diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
   and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
-  (simulation-only; LLM generators kept as future-optional seams);
-  legacy LoRA flow in [`finetune_scaffold.md`](finetune_scaffold.md).
+  (simulation-only; LLM generators kept as future-optional seams).
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
 - **Deliverable (updated):** the report is now **refocused on the single selected objective —
