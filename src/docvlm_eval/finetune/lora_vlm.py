@@ -95,6 +95,7 @@ class LoraVLMConfig:
     wandb_project: str | None = None       # set -> log loss + per-epoch eval metrics to W&B
     wandb_run: str | None = None           # W&B run name (e.g. "A0-qwen3_5-0.8b-n200")
     eval_max_new_tokens: int = 64          # generation length for the per-epoch eval
+    eval_max_samples: int = 64             # cap eval samples/probe (arm regen makes realistic huge)
     log_every: int = 10                    # stdout + W&B train-loss cadence (micro-steps)
 
 
@@ -151,10 +152,12 @@ def _auto_vlm():
 
 
 def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
-           max_image_long_side: int | None = 768, tag: str = "") -> dict:
-    """Generate on every sample of ``jsonl`` with the (already-loaded) model and return the project's
-    aggregate summary. Shared by ``eval_vlm``/``score_suite`` and the per-epoch eval inside
-    ``train_lora_vlm`` so we never reload the model just to score it."""
+           max_image_long_side: int | None = 768, tag: str = "",
+           max_samples: int | None = 64) -> dict:
+    """Generate on (a fixed subsample of) ``jsonl`` with the (already-loaded) model and return the
+    project's aggregate summary. ``max_samples`` caps the eval set — the arm path regenerates
+    realistic_cases at --count (thousands of samples), so without a cap the suite eval would score the
+    whole TRAINING set (slow + memorization-tainted). None/0 = score all."""
     import sys, time
     from pathlib import Path
 
@@ -170,6 +173,9 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
     model.eval()
     dt = next(model.parameters()).dtype                        # cast pixel_values to the model dtype
     samples = load_jsonl(jsonl)
+    if max_samples and len(samples) > max_samples:             # fixed-seed subsample -> fast + comparable
+        import random as _r
+        samples = _r.Random(0).sample(samples, max_samples)
     every = max(1, len(samples) // 5)
     t0 = time.time()
     preds: dict[str, Prediction] = {}
@@ -336,7 +342,8 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                     break
             log = {"epoch": epoch, "epoch/loss": sum(losses) / max(len(losses), 1)}
             for name, path in (eval_specs or []):          # per-epoch eval (loss AND metrics)
-                summ = _score(model, proc, device, path, cfg.eval_max_new_tokens, cfg.max_image_long_side)
+                summ = _score(model, proc, device, path, cfg.eval_max_new_tokens,
+                              cfg.max_image_long_side, tag=name, max_samples=cfg.eval_max_samples)
                 last_eval[name] = summ
                 if summ.get("score") is not None:
                     log[f"eval/{name}_score"] = summ["score"]
@@ -376,14 +383,15 @@ def _load_for_eval(model_id: str, adapter_path: str | None, dtype: str = "bfloat
 
 def score_suite(model_id: str, jsonls: dict, *, adapter_path: str | None = None,
                 dtype: str = "bfloat16", max_new_tokens: int = 64,
-                max_image_long_side: int | None = 768) -> dict:
+                max_image_long_side: int | None = 768, max_samples: int | None = 64) -> dict:
     """Load the (optionally adapted) model ONCE and score several probe jsonls -> {name: summary}.
     Avoids reloading the full model per probe (the repeated 'Loading weights 589/589' stall after
-    training that looked like a hang). Frees the model at the end."""
+    training that looked like a hang). ``max_samples`` caps each probe. Frees the model at the end."""
     import torch
     model, proc, device = _load_for_eval(model_id, adapter_path, dtype)
     try:
-        return {name: _score(model, proc, device, jl, max_new_tokens, max_image_long_side, tag=name)
+        return {name: _score(model, proc, device, jl, max_new_tokens, max_image_long_side,
+                             tag=name, max_samples=max_samples)
                 for name, jl in jsonls.items()}
     finally:
         del model
@@ -393,8 +401,9 @@ def score_suite(model_id: str, jsonls: dict, *, adapter_path: str | None = None,
 
 def eval_vlm(model_id: str, jsonl: str, *, adapter_path: str | None = None,
              dtype: str = "bfloat16", max_new_tokens: int = 64,
-             max_image_long_side: int | None = 768) -> dict:
+             max_image_long_side: int | None = 768, max_samples: int | None = 64) -> dict:
     """Score a base (optionally LoRA-adapted) VLM on ONE probe jsonl -> aggregate summary + per-axis
     breakdown. GPU-only. (For several probes use score_suite, which loads the model only once.)"""
     model, proc, device = _load_for_eval(model_id, adapter_path, dtype)
-    return _score(model, proc, device, jsonl, max_new_tokens, max_image_long_side, tag="probe")
+    return _score(model, proc, device, jsonl, max_new_tokens, max_image_long_side,
+                  tag="probe", max_samples=max_samples)

@@ -91,7 +91,7 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}A0-{model}-n{n}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
-                batch_size=args.batch_size),
+                batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl), ("heldout", test_jsonl)])
             train_s, held_s = last["train"], last["heldout"]   # final-epoch eval (no model reload)
             ts, hs = train_s.get("score"), held_s.get("score")
@@ -144,6 +144,10 @@ def main() -> None:
                         "the main OOM/speed lever). Lower to 640 if OOM; 0 = native res.")
     p.add_argument("--no-grad-ckpt", action="store_true",
                    help="disable gradient checkpointing (faster but much more activation memory)")
+    p.add_argument("--eval-max-samples", type=int, default=64,
+                   help="cap eval samples per probe (fixed subsample). The arm regenerates "
+                        "realistic_cases at --count -> thousands of samples; without this the suite "
+                        "eval would score the whole TRAINING set. 0 = score all.")
     args = p.parse_args()
     args._mils = args.max_image_long_side or None      # 0 -> None (native resolution)
 
@@ -178,7 +182,8 @@ def main() -> None:
         jsonls = {pb: str(ROOT / PROBES[pb]) for pb in EVAL_SUITE}
         if heldout_jsonl:
             jsonls["heldout"] = heldout_jsonl
-        return score_suite(hf, jsonls, adapter_path=adapter, max_image_long_side=args._mils)
+        return score_suite(hf, jsonls, adapter_path=adapter, max_image_long_side=args._mils,
+                           max_samples=args.eval_max_samples or None)
 
     total = len(args.models); done = 0
     for model in args.models:
@@ -203,7 +208,7 @@ def main() -> None:
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
-                batch_size=args.batch_size),
+                batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl)])
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
             payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement},
