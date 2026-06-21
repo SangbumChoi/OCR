@@ -267,7 +267,12 @@ class DocBuilder:
         @page {{ size: {self.page}; margin: {self.margin}; }}
         * {{ box-sizing: border-box; }}
         html, body {{ margin:0; padding:0; }}  /* drop UA 8px body margin: a page-tall card (ID/passport) would otherwise overflow to page 2 and lose its bottom strip (e.g. the MRZ) */
-        body {{ font-family:'Liberation Sans',sans-serif; color:#111; font-size:11px; }}
+        /* CJK/Arabic fallbacks are named explicitly (not just the `sans-serif` generic) so multilingual
+           content — e.g. a Korean name in any case, not only the CJK-specific ones — renders into the
+           searchable text layer reliably across environments; otherwise glyphs tofu and box derivation
+           (ask_where/locate) silently finds nothing. */
+        body {{ font-family:'Liberation Sans','Noto Sans CJK KR','Noto Sans CJK JP','Noto Sans CJK SC',
+                'Noto Sans Arabic','Noto Sans Hebrew',sans-serif; color:#111; font-size:11px; }}
         h1,h2,h3 {{ margin:0 0 6px; }}
         table {{ border-collapse:collapse; width:100%; font-size:10px; }}
         td,th {{ border:1px solid #888; padding:3px 5px; text-align:left; }}

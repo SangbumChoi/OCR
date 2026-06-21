@@ -800,6 +800,15 @@ def main():
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob}")
+    # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
+    # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
+    # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).
+    if {"ko", "ja", "zh"} & set(CFG.languages or []):
+        from docvlm_eval.benchmarks.fonts import have_cjk
+        if not have_cjk():
+            print("[warn] CJK language(s) requested but NO Noto CJK font found on this system — CJK "
+                  "glyphs will not render into the text layer, so spotting/locate on CJK values will "
+                  "be skipped. Install it (apt-get install -y fonts-noto-cjk) to fix.", flush=True)
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
         rng = random.Random(CFG.seed + v)
