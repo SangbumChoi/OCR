@@ -199,14 +199,24 @@ GT (§Part 2.3).
 
 ### 3. Evaluation metrics — beyond accuracy
 
-| Metric                   | Definition                                                                   | Why it matters for documents                                                                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ANLS**                 | 1 − normalised edit distance to best gold; 0 below 0.5                       | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses                                                  |
-| **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match                              | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                                                                 |
-| **OCRBench score**       | Gold string ⊆ prediction, summed /1000                                      | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                                                                          |
-| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     |
-| **Robustness retention** | score(perturbed) / score(clean), per perturbation family                    | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                                                                               |
-| **Operational**          | answer-rate, load time, avg latency/sample                                  | Edge viability: a model that's accurate but 10× slower may be unusable                                                                                                      |
+| Metric                   | Definition                                                                   | Why it matters for documents                                                                                                                                                | Status in this PoC |
+| ------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| **ANLS**                 | 1 − normalised edit distance to best gold; 0 below 0.5                       | Official DocVQA/InfoVQA metric; tolerant of minor OCR/format noise (e.g. `$1,200` vs `1200`) without rewarding near-misses                                                  | **used** (KIE / short-answer axes) |
+| **NED**                  | 1 − normalised edit distance (no 0.5 floor)                                  | Character-level closeness for OCR/transcription where ANLS's hard floor is too harsh                                                                                       | **used** (T1 / handwriting / multilingual) |
+| **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match                              | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                                                                 | **used** (H1 / H3) |
+| **Exact / TEDS / grounding-IoU** | exact string / table tree-edit sim / box IoU                        | strict answers, table structure, and spotting localisation respectively                                                                                                     | **used** (counts, tables, L1) |
+| **OCRBench score**       | Gold string ⊆ prediction, summed /1000                                      | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                                                                          | **not exercised** — applies only to the OCRBench dataset, which we **cite (published) but did not reproduce**; no probe uses this scorer |
+| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     | **partially used** — computed per-model in Part-1 `summary.json` for logit-exposing backends (n/a for OCR specialists); **not surfaced in the headline tables, not logged in fine-tuning** |
+| **Robustness retention** | score(perturbed) / score(clean), per perturbation family                    | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                                                                               | **partially used** — the rotation-retention slice runs on the custom-eval; the full degraded-input robustness sweep is wired but not in the headline run |
+| **Operational**          | answer-rate, load time, avg latency/sample                                  | Edge viability: a model that's accurate but 10× slower may be unusable                                                                                                      | **used** (efficiency table) |
+
+> **Honesty note on metric coverage.** The headline of this PoC is the controlled **probe / custom-eval**
+> family, whose samples are scored with **ANLS / NED / exact / relaxed-acc / TEDS / grounding-IoU**.
+> Two metrics are listed for completeness but are **not part of the measured probe results**:
+> **OCRBench score** is only meaningful on the OCRBench dataset (we report its *published* figures in
+> the comparison table and did not re-run that sweep), and **ECE** is genuinely computed in the
+> Part-1 capability/probe runs (`docs/results/<model>/<probe>/summary.json` — e.g. SmolVLM-256M ≈ 0.43)
+> but is **not pulled into the headline matrices and is not part of the fine-tuning W&B stream**.
 
 Confidence for ECE is the **mean token probability** of the generated answer, read from HF
 `generate(output_scores=True)`. Genuinely autoregressive backends (InternVL, SmolVLM,
@@ -236,15 +246,19 @@ reported as `ECE = n/a` rather than with a fabricated number.
 | -------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **PyTorch + HF Transformers**    | Model loading/inference                       | Every candidate ships HF weights; one API (`AutoModel*`, `generate`) covers them via thin adapters                                                                                                                                                                                                |
 | **HF Datasets**                  | Benchmark sourcing                            | Canonical hosting for DocVQA/InfoVQA/ChartQA/OCRBench                                                                                                                                                                                                                                             |
-| **VLMEvalKit**                   | Cross-check / standard harness                | The task's reference harness; we mirror its dataset choices & metrics, and provide a thin wrapper. We add a *self-contained* pipeline on top because VLMEvalKit reports accuracy/ANLS but **not calibration or our robustness retention** — the metrics that make this analysis "beyond accuracy" |
+| **VLMEvalKit** *(reference only — not a dependency)* | Convention reference            | We **do not run or wrap VLMEvalKit**; we **borrow its conventions** — which datasets (DocVQA/InfoVQA/ChartQA/OCRBench), the ANLS/relaxed-acc metric definitions, and the concise-answer prompting — and built a **standalone** `docvlm_eval` pipeline instead, because the metrics we need (calibration ECE, paired robustness retention, our capability/spatial probes) are **not in VLMEvalKit** |
 | **PEFT (LoRA)**                  | Part-2 fine-tuning PoC                        | Parameter-efficient adaptation fits the sub-1B/edge story and a T4 budget                                                                                                                                                                                                                         |
 | **Pillow / NumPy / torchvision** | Image I/O + perturbations + tiling transforms | Lightweight, ubiquitous                                                                                                                                                                                                                                                                           |
 
-**Why a custom pipeline *and* VLMEvalKit.** VLMEvalKit is the right standard for headline
-accuracy and is referenced for cross-checking. But calibration (ECE) and the paired robustness
-probe are not in its metric set, and they are central to the document deployment story — hence
-the small, tested `docvlm_eval` package, whose single `evaluate.py` "loads any model, runs the
-benchmark, outputs per-model scores" exactly as the PoC requires.
+**Why a custom pipeline, not VLMEvalKit.** VLMEvalKit is the field's standard harness, and we
+deliberately **align with its conventions** (the same datasets, the ANLS/relaxed-acc definitions,
+concise-answer prompting) so results are comparable in spirit. But we **do not use it as the
+harness**: the axes this task actually cares about — **calibration (ECE)**, the **paired robustness
+retention** probe, and our **capability / spatial-context / spotting probes with built-in GT** — are
+not in VLMEvalKit's metric set, and bolting them on would be more work than a focused tool. So the
+deliverable is the small, tested `docvlm_eval` package, whose single `evaluate.py` "loads any model,
+runs the benchmark, outputs per-model scores" exactly as the PoC requires — VLMEvalKit stays a
+*reference for choices*, not a runtime dependency.
 
 ### 6. What actually ran (measured, GPU)
 

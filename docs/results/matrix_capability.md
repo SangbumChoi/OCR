@@ -2,7 +2,7 @@
 
 Models run: 19/19 · benchmarks: 6
 
-Per-cell = task score (ANLS / relaxed-acc / OCRBench / exact). One preview sample per benchmark, so treat as a *plumbing + sanity* matrix, not leaderboard accuracy. Source: full GPU sweep on a T4 (`scripts/run_full_comparison.sh`, captured in `notebooks/colab_full_comparison.ipynb`).
+Per-cell = task score, each scored by its sample's own metric (ANLS / NED / relaxed-acc / exact / grounding-IoU). One preview sample per benchmark, so treat as a *plumbing + sanity* matrix, not leaderboard accuracy. Source: full GPU sweep on a T4 (`scripts/run_full_comparison.sh`, captured in `notebooks/colab_full_comparison.ipynb`).
 
 | model            | cap_text | cap_kie | cap_integ_sum | cap_integ_rel | cap_chart | cap_ground |
 | ---------------- | -------- | ------- | ------------- | ------------- | --------- | ---------- |
