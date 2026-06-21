@@ -1,18 +1,26 @@
-# Ablation plan — improvement via fine-tuning
+# Ablation plan (PRD) — improving a small VLM via fine-tuning
+
+## 1. Objective
 
 Once evaluation localises the **best small model's weaknesses** (for InternVL2.5-1B: no spotting/
 grounding, weaker InfoVQA layout-reasoning, CJK < EN, rotation/robustness drop), we improve it by
-fine-tuning on a document-generation–style dataset (uploaded later). Rather than changing many
-things at once, we run **isolated ablations** — each answers one research question with a held-out
-control — then **stack the winners** and show a **staircase** of cumulative gain. The per-capability
+fine-tuning on a synthetic document-generation dataset. Rather than changing many things at once, we
+run **isolated ablations** — each answers exactly one research question against a held-out control —
+then **stack the winners** into a cumulative **staircase** of gain. The per-capability
 *which-module-to-adapt* hypotheses these arms test are laid out in
 [`research_novelty.md`](research_novelty.md).
 
+## 2. Target model & base data
+
 Default target model: **LFM2.5-VL-1.6B**. It is the practical Part-2 default because its hybrid-conv
-backbone fine-tunes much faster on a T4 than Qwen3.5-VL's full-attention visual prefill. Qwen3.5-0.8B
+backbone fine-tunes much faster on a T4 than Qwen3.5-VL's full-attention visual prefill (Qwen runs
+~0.05 it/s; the per-stage/per-layer reason is dissected in
+[`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb)). Qwen3.5-0.8B
 remains selectable with `run_ablation.py --models qwen3_5-0.8b`, but the notebook and ablation
 registry default to LFM for feasible iteration. Base data: synthetic document pairs (image →
 structured text) from the generator, augmented per-ablation.
+
+## 3. Experimental controls
 
 **Control factor (held fixed across every arm so a delta is attributable to the factor alone):**
 the **number of training images / iterations** (`--count` = #images, `--steps`) and the optimiser/seed
@@ -23,26 +31,75 @@ comparable). Every arm is scored on the **whole suite** (capability, spatial, re
 **cross-capability transfer** — e.g. does spotting also help CER/KIE/reasoning? does a 2nd language
 hurt EN? (`scripts/run_ablation.py`).
 
-**A0 — memorization vs understanding (run this first).** Because synthetic data is *infinite*, the
-first experiment separates understanding from template-memorization: at each data scale (seed 7),
-LoRA-train for a fixed #epochs and score BOTH the train set (memorization) and a **held-out set
-generated with a different seed** (unseen content, same distribution; identical for every scale).
-Understanding → held-out keeps rising with scale and the train/held-out gap stays small; memorization
-→ train→~1.0 while held-out plateaus. The recommended synthetic size is where held-out plateaus.
-Run the size sweep with `scripts/run_ablation.py --arm A0 --a0-sizes 25 50 100 200` (full curve:
-`50 200 800 3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` plots the
-learning curve + gap and reads off the size. **A0's result fixes the data scale used by A1–A7.**
+## 4. A0 — memorization vs understanding (PREREQUISITE, run first)
+
+### 4.1 Why A0 comes first: the synthetic space is finite
+
+Synthetic generation *looks* infinite — we can sample endlessly — but the reachable space is in fact
+**finite, and far smaller than real-world data**. Every document is a combination of a bounded set of
+**contexts** (templates, field vocabularies, value ranges) and **layouts** (a fixed catalogue of
+document types / structural arrangements). The cartesian product is large but **closed**. An LLM in
+the loop could widen this space dramatically (paraphrased contexts, novel layouts), but that requires
+an LLM gateway which is **out of scope here on cost grounds** (see
+[`synth_generation_survey.md`](synth_generation_survey.md)). So we deliberately live with a finite,
+simulation-only space — and must guard against the model simply **memorising** it.
+
+### 4.2 What A0 measures
+
+Because the space is finite, a model with enough capacity can **fit the templates** instead of
+learning the task. A0 detects this directly: train at increasing data **scale** (`count` = #images,
+seed 7) for a fixed #epochs and, at every scale, score **two splits**:
+
+- **train split** — the exact images/QA the model just fit (the *memorization* signal). If this
+  climbs toward **~100%** it only proves the model *can* fit the finite data, **not** that it
+  understands the task.
+- **held-out validation / test split** — generated with a **different seed** (unseen content, same
+  distribution; the *identical* set is reused for every scale so the curve is comparable). This is the
+  *understanding / generalization* signal.
+
+**Read-out:**
+
+- *Understanding* → the held-out curve keeps rising with scale and the **train − heldout gap stays
+  small**.
+- *Memorization* → **train → ~1.0 while held-out plateaus** (a large, growing gap).
+
+The recommended synthetic data scale is the point where the **held-out curve plateaus while the gap is
+still small**. Past that point, pouring in more of the same finite templates buys memorization, not
+generalization — so the lever to push instead is **diversity** (more doc types / harder GT), not raw
+count (see [`synthetic_data_dto.md`](synthetic_data_dto.md)).
+
+Run the size sweep with `scripts/run_ablation.py --arm A0 --a0-sizes 50 100 200 400 800` (full curve
+adds `3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` plots the **train vs
+held-out** learning curves + the gap and reads off the size. **A0's result fixes the data scale used
+by A1–A7.**
+
+### 4.3 Two synthetic-quality axes A0 trades off
 
 **Two synthetic-quality axes we scale** (see [`synthetic_data_dto.md`](synthetic_data_dto.md)):
 *visual diversity* (14 doc types × acquisition/lighting/colour — `D_visual_diverse`) and *annotation
 difficulty* (accountant-style multi-step calc, MRZ field-parse, table-extremes diff, next-action —
-the understanding layer). They are the levers A0 trades off (more diversity vs more count).
+the understanding layer). They are the levers A0 trades off (more diversity vs more count): when A0
+shows the held-out curve plateauing, the productive move is to widen these axes rather than add more
+samples of the existing finite templates.
 
-**Measured baseline gaps the ablations must close** (qwen3.5, from the GPU run): L1 grounding/spotting
-≈ 0, L4 box-tracking = 0, H2 relational-compare = 0, 180° rotation collapse, slow latency. The
-hypotheses mapping each gap to a module + ablation arm are in
+## 5. Baseline gaps the ablations must close
+
+The arms exist to close specific **measured** gaps, mapped to a module + ablation in
 [`research_novelty.md`](research_novelty.md) and shown in
 [`../../notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb).
+
+> ⚠️ **The gap list below was measured on Qwen3.5-0.8B** (the original evaluation base): L1
+> grounding/spotting ≈ 0, L4 box-tracking = 0, H2 relational-compare = 0, 180° rotation collapse, slow
+> latency. **Since the Part-2 default base moved to LFM2.5-VL-1.6B, those numbers are now a legacy
+> reference and may be deprecated** — LFM has a different vision stack and tokenizer, so its gap
+> profile must be **re-measured before the arms are interpreted**. *Action:* run the baseline arm on
+> the LFM default to refresh `gaps.lfm2_5-vl-1.6b` in `configs/ablations.yaml`:
+> ```bash
+> python scripts/run_ablation.py --arm baseline          # LFM is the default base
+> ```
+> Until that run lands, treat the current LFM gap set `[L1_grounding, spot_iou]` as **provisional**
+> (carried over from the Qwen profile, not yet re-measured on LFM).
+
 The **latency** gap is dissected per-stage/per-layer (why the *smaller* Qwen3.5-0.8B is slower than
 LFM2.5-VL-1.6B — vision-token count vs hybrid-conv per-layer cost) in
 [`../../notebooks/latency_profile.ipynb`](../../notebooks/latency_profile.ipynb).
@@ -57,7 +114,7 @@ LFM2.5-VL-1.6B — vision-token count vs hybrid-conv per-layer cost) in
 > boxes in the resized frame's absolute pixels, so a predicted box can be offset/scaled vs our
 > original-pixel GT. Check the processor frame before reading Qwen A1 grounding numbers.
 
-## Method: one factor at a time → integrate → staircase
+## 6. Method: one factor at a time → integrate → staircase
 
 For each ablation A_i we train two (or more) variants differing **only** in A_i, evaluate on the
 suite, and record Δ vs the control. Winners are composed in dependency order; the cumulative run
@@ -73,7 +130,7 @@ should step the headline metric up at each addition (`scripts/plot_ablation.py` 
 | **A6 Hyperparameter optimization**                | Best rank `r`, `alpha`, lr, epochs for the chosen placement?                                                                      | r∈{8,16,32,64}, α, lr, epochs                                             | placement fixed (A5 winner) | composite + overfit gap                    | moderate r (16–32) best; too-high r overfits the small data                                |
 | **A7 Preprocessing / resize logic**               | How does the image-resizing/tiling logic affect small-text & layout?                                                              | dynamic tiling (n_max) vs fixed resize; max-resolution; aspect-ratio keep | model/data fixed            | InfoVQA, OCRBench, small-text NED          | higher-res dynamic tiling → InfoVQA/OCRBench↑ (small text legible)                         |
 
-## A4 detail — language-correlation matrix
+## 7. A4 detail — language-correlation matrix
 
 We don't just ask "is multilingual better" — we measure **pairwise transfer**:
 `transfer(L1←L2) = score_{L1}(train L1+L2) − score_{L1}(train L1)`. A heatmap over
@@ -81,7 +138,7 @@ We don't just ask "is multilingual better" — we measure **pairwise transfer**:
 zh↔en via shared doc structure) vs. interference (possible negative: en↔ja if capacity is split).
 This guides the final training mix (include synergistic languages, drop interfering ones).
 
-## A5 detail — where to put LoRA (resolved by introspection, not hardcoded)
+## 8. A5 detail — where to put LoRA (resolved by introspection, not hardcoded)
 
 Because the two bases have different module names (Qwen3.5-VL vs LFM2-VL), the placement groups are
 resolved at **runtime** from the loaded model
@@ -98,7 +155,7 @@ by its path into one of the groups below, so the same A5 ablation runs unchanged
 Each group is a separate LoRA run; we attribute per-axis gains to placement (e.g., if grounding
 only improves when the connector+vision are adapted, that confirms the spatial pathway).
 
-## Integration → the staircase
+## 9. Integration → the staircase
 
 Compose winners in dependency order and re-evaluate after each addition:
 
@@ -123,7 +180,7 @@ The A4 language-transfer and A5 placement experiments produce:
 ![Language transfer heatmap](figures/ablation_lang_transfer.png)
 ![LoRA placement gains](figures/ablation_lora_placement.png)
 
-## Dependency / relationship diagram
+## 10. Dependency / relationship diagram
 
 Ablations aren't independent: preprocessing gates recognition (A7→A1), spotting and reasoning are
 parallel supervision signals that both feed the composite, placement (A5) and HPO (A6) are
@@ -131,7 +188,7 @@ parallel supervision signals that both feed the composite, placement (A5) and HP
 
 ![Ablation relationship](figures/ablation_relationship.png)
 
-## Data generation for the ablations
+## 11. Data generation for the ablations
 
 Each ablation arm is a **synthetic dataset variant** whose ground truth carries the factor being
 varied. The generator stores every factor as typed GT (`DocSample` DTO) and exposes one knob per
@@ -143,7 +200,7 @@ factor in a single config, so an arm differs from its control in exactly one fac
 - **Generate:** `python scripts/make_realistic_cases.py --config configs/synth_data.yaml
   --ablation <id>` — `configs/synth_data.yaml` holds `base:` + `ablation_overrides:` (A1/A2/A3/A4/A7).
 
-## Run one arm end-to-end (GPU)
+## 12. Run one arm end-to-end (GPU)
 
 ```bash
 # baseline (eval only), then the A1 spotting curriculum on the default LFM base:
@@ -156,7 +213,7 @@ placement resolved by introspection) → evaluates on the probe suite → append
 [`notebooks/finetune_ablation.ipynb`](../../notebooks/finetune_ablation.ipynb) reads for the
 **side-by-side before/after** of both models.
 
-## Outputs & reproducibility
+## 13. Outputs & reproducibility
 - `configs/synth_data.yaml` — data-generation config: `base` knobs + per-ablation `ablation_overrides`
   (binds to `docvlm_eval.synth.dto.GenConfig`); one file = one dataset variant.
 - `configs/ablations.yaml` — declarative ablation registry (two bases, factor, control, metric, gap).
