@@ -316,9 +316,16 @@ it tracks the well-known **InfoVQA ≪ DocVQA** layout-reasoning deficit (Intern
 (InternVL ≈ 0.06–0.10, SmolVLM ≈ 0.1–0.13) while LFM/MiniCPM/PaddleOCR hold 1.0. Combined with
 the degraded-input robustness probe, this is the deployment-stability axis leaderboards ignore.
 
-**Gap D — reliability is unmeasured by leaderboards.** No public card reports **calibration
-(ECE)** or per-perturbation **retention**, yet both decide deployability; our pipeline measures
-them. Recognition ≠ reasoning is confirmed by the OCR specialists (GOT/Florence-2/PaddleOCR-VL),
+**Gap D — reliability is under-measured (and, here, only partially measured).** No public card
+reports **calibration (ECE)** or per-perturbation **retention**, yet both decide deployability. Our
+pipeline *can* measure both, but to be honest about what this PoC actually produced: **ECE is
+computed** per-model in the Part-1 probe runs (`docs/results/<model>/<probe>/summary.json`, real
+values for logit-exposing backends; n/a for OCR specialists) **but is not yet surfaced in the
+headline tables**; and of **retention**, only the **rotation slice** is in the headline custom-eval —
+the full degraded-input sweep (downscale/jpeg/blur/noise/terminology-paraphrase) is **wired but not
+yet run** (§3 "Status in this PoC"). So Gap D is **identified and partially instrumented, not fully
+quantified** — surfacing ECE and running the perturbation sweep is itself a near-term to-do.
+Separately, recognition ≠ reasoning is confirmed by the OCR specialists (GOT/Florence-2/PaddleOCR-VL),
 which transcribe well but cannot answer questions — pushing OCR alone will not close these gaps.
 
 **Which model do we improve, and why LFM is the fine-tuning base.** Per the task, Part 1 ranks
