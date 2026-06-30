@@ -1,4 +1,4 @@
-"""Offline tests for the unified task-typed loader (docvlm_eval.benchmarks.unified).
+"""Offline tests for the unified task-typed loader (docvlm_eval.unified).
 
 No network: feed hand-built raw records mimicking each benchmark's real schema and assert the
 UnifiedSample carries the right task + structured payload (fields/regions/boxes/table), and that
@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from docvlm_eval.benchmarks.unified import (Task, UnifiedSample, extract_unified,
+from docvlm_eval.unified import (Task, UnifiedSample, extract_unified,
                                             to_training_samples)
 
 

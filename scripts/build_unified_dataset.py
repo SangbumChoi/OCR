@@ -2,7 +2,7 @@
 """Load EVERY catalog benchmark through the unified loader and materialise one standardized dataset.
 
 Streams a subset (<200 images/benchmark) of each streamable dataset, normalises it into the
-task-typed :class:`~docvlm_eval.benchmarks.unified.UnifiedSample` (recognition / kie / vqa /
+task-typed :class:`~docvlm_eval.unified.UnifiedSample` (recognition / kie / vqa /
 localization / table / reasoning) **preserving the structured payload** (KIE fields, localization
 boxes, table HTML), caches images offline, and writes:
 
@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from docvlm_eval.benchmarks.loaders import save_jsonl  # noqa: E402
-from docvlm_eval.benchmarks.unified import (TASK_BY_BENCHMARK, Task, UnifiedLoader,  # noqa: E402
+from docvlm_eval.unified import (TASK_BY_BENCHMARK, Task, UnifiedLoader,  # noqa: E402
                                             to_training_samples)
 
 HARD_CAP = 200

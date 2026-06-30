@@ -2,12 +2,12 @@
 
 Every benchmark ships a different raw schema. To load them all through **one** pipeline and then
 *freely merge / filter / re-task*, we normalise each into a single task-typed record,
-[`UnifiedSample`](../../src/docvlm_eval/benchmarks/unified.py), that **preserves the structured
+[`UnifiedSample`](../../src/docvlm_eval/unified/), that **preserves the structured
 payload** each task needs (KIE fields, localization boxes, table HTML, full text) — not just a
 flat question/answer.
 
 ```python
-from docvlm_eval.benchmarks.unified import UnifiedLoader, Task
+from docvlm_eval.unified import UnifiedLoader, Task
 L = UnifiedLoader()
 rows  = L.load("cord", limit=50)                     # one dataset
 allr  = L.load_all(limit_per=30, cache_dir="data/unified_dataset/images")
@@ -61,7 +61,7 @@ The registry is a decorator. To support a new benchmark, write an extractor and 
 key — nothing else changes:
 
 ```python
-from docvlm_eval.benchmarks.unified import register, UnifiedSample, Task, _s
+from docvlm_eval.unified import register, UnifiedSample, Task, _s
 
 @register("my_new_bench")
 def _u_my_bench(ex, e):
@@ -87,6 +87,21 @@ python scripts/build_unified_dataset.py --task kie                # only KIE-yie
 Outputs under `data/unified_dataset/` (git-ignored — regenerable):
 `unified.jsonl` (rich, task-typed), `by_task/<task>.jsonl` (grouped), `train.jsonl` (flat trainable
 Samples), `summary.json` (per-benchmark + per-task counts, incl. how many records carry boxes).
+
+## Visualize examples across all datasets
+
+```bash
+python scripts/visualize_unified_dataset.py --per-bench 1
+```
+
+One montage cell per dataset: the image + a `source · task · N boxes` badge + a task-appropriate
+overlay — **KIE field boxes in green, localization regions in orange** (normalized boxes are scaled to
+the image), tables/recognition/vqa show the prompt+answer. This is the "see every dataset in one
+standardized view" check that the loader mapped each source correctly.
+
+![Unified loader examples](figures/unified_examples.png)
+
+(Programmatic API: `from docvlm_eval.unified import render_grid; render_grid(rows, "out.png")`.)
 
 ## Why this matters
 

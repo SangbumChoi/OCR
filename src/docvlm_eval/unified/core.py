@@ -26,7 +26,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterator
 
-from .trainset import _as_answer_list, _first, _s, extract_qa, norm_metric
+from ..benchmarks.trainset import _as_answer_list, _first, _s, extract_qa, norm_metric
 
 
 # --------------------------------------------------------------------------- task taxonomy
@@ -335,7 +335,7 @@ class UnifiedLoader:
     """
 
     def __init__(self, catalog: list[dict] | None = None):
-        from .catalog import load_catalog
+        from ..benchmarks.catalog import load_catalog
         self.catalog = catalog or load_catalog()
         self.by_key = {e["key"]: e for e in self.catalog}
 
@@ -350,7 +350,7 @@ class UnifiedLoader:
 
         from datasets import load_dataset
 
-        from .catalog import find_image
+        from ..benchmarks.catalog import find_image
 
         e = self.by_key.get(key)
         if not e or not e.get("hf_id"):
