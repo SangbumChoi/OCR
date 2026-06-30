@@ -103,6 +103,49 @@ standardized view" check that the loader mapped each source correctly.
 
 (Programmatic API: `from docvlm_eval.unified import render_grid; render_grid(rows, "out.png")`.)
 
+## UDD — the Unified Document Dataset on HuggingFace
+
+`scripts/build_udd.py` turns the unified records into **UDD**, one HF dataset repo that holds every
+benchmark under **one uniform schema** (`docvlm_eval.unified.hf`):
+
+```
+image, sample_id, source, task, instruction, answers[],
+fields_json, regions_json, full_text, table_html, language, metric, hf_id
+```
+
+The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
+`fields_json` / `regions_json`, so a single schema covers all six tasks without losing the typed
+payload — decode those columns to recover `Field`/`Region` (boxes carry `[x1,y1,x2,y2,normalized]`).
+
+**Safe, sharded, memory-bounded.** Each benchmark is converted **independently**, then:
+1. **safety-checked** (`safety_check`): build → `save_to_disk` → reload → assert row count, image
+   decode, and field/region counts all round-trip — **run before any upload**;
+2. uploaded as its **own config** (`push_to_hub(repo, config_name=<key>, max_shard_size=...)`) and
+   freed before the next, so the full corpus never sits in RAM and shards make download resumable;
+3. a combined **`all`** config concatenates them.
+
+```bash
+# MOCKUP (default): 10 examples/dataset, saved locally + safety-checked + visualized (no upload)
+python scripts/build_udd.py --only cord,funsd,ocrvqa,docvqa --per-bench 10
+
+# upload the mockup to your HF (one config per dataset + an 'all' config)
+python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN
+```
+
+Load it back per dataset or combined:
+
+```python
+from datasets import load_dataset
+cord = load_dataset("<user>/UDD", "cord", split="train")      # one benchmark
+alld = load_dataset("<user>/UDD", "all", split="train", streaming=True)   # everything, streamed
+```
+
+Verified mockup (10/dataset): cord→kie (boxed fields), funsd→kie (1769 fields), ocrvqa→vqa
+(1130 regions), pubtabnet→table, iam→recognition, chartqa→reasoning — all safety-checked, combined
+`all` reloads with the uniform schema.
+
+![UDD mockup examples](figures/udd_examples.png)
+
 ## Why this matters
 
 One loader + one schema means the downstream "merge / extract-key-values / localize" operations the

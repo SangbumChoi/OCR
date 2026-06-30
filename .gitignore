@@ -34,3 +34,6 @@ data/benchmark_trainset/
 
 # Unified loader output: cached images + jsonl (regenerable; lives on HF)
 data/unified_dataset/
+
+# UDD (Unified Document Dataset) build output: images + per-dataset HF arrow (regenerable; lives on HF)
+data/udd/
