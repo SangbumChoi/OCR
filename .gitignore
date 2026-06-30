@@ -31,3 +31,6 @@ augraphy_cache/
 # Offline benchmark training set: cached images + Arrow dataset (regenerable; lives on HF).
 # Build with scripts/build_benchmark_trainset.py; publish via push_to_hub / huggingface-cli upload.
 data/benchmark_trainset/
+
+# Unified loader output: cached images + jsonl (regenerable; lives on HF)
+data/unified_dataset/
