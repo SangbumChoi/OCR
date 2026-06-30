@@ -31,6 +31,9 @@ def main() -> None:
     p.add_argument("--skip", default=None, help="comma-separated benchmark keys to skip")
     p.add_argument("--cols", type=int, default=4)
     p.add_argument("--max-scan", type=int, default=60)
+    p.add_argument("--one-per-dataset", action="store_true",
+                   help="show a single representative cell per dataset (e.g. OCR-VQA yields several "
+                        "QA per image — keep just the first), so the grid is one row per source")
     args = p.parse_args()
 
     loader = UnifiedLoader()
@@ -39,8 +42,10 @@ def main() -> None:
     print("loading unified examples across datasets (this streams HF; a few minutes)...")
     by_key = loader.load_all(limit_per=args.per_bench, only=only, skip=skip,
                              max_scan=args.max_scan, cache_dir=args.cache)
-    # one representative row per (dataset) — first record of each, plus extra rows up to per-bench
-    rows = [r for k in by_key for r in by_key[k]]
+    if args.one_per_dataset:                       # exactly one representative cell per dataset
+        rows = [by_key[k][0] for k in by_key]
+    else:                                          # all loaded records (a dataset may yield several)
+        rows = [r for k in by_key for r in by_key[k]]
     if not rows:
         print("No examples loaded (network?)."); return
     render_grid(rows, args.out, cols=args.cols,
