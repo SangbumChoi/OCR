@@ -106,7 +106,7 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup: **one sharded
-> dataset** (single default config) of **230 rows** from 19 sources / 5 tasks. `load_dataset("danelcsb/UDD")`.
+> dataset** (single default config) of **240 rows** from 20 sources / 5 tasks. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -148,18 +148,20 @@ cord = udd.filter(lambda r: r["source"] == "cord")           # filter by origin 
 import json; fields = json.loads(kie[0]["fields_json"])       # recover typed payload (with boxes)
 ```
 
-**Feature UMAP** (`scripts/udd_umap.py`): TF-IDF over each record's content → UMAP shows the scattered
-benchmarks landing in one space, clustered by task.
+**Feature UMAP** (`scripts/udd_umap.py`, `--features image` default): **CLIP image embeddings** → UMAP
+show the scattered benchmarks organising by visual/task structure in one space (`--features text` uses
+TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
 **Validated mockup — all streamable datasets (10/dataset, safety-checked, 0 failures):**
-**19/22 converters pass** → combined `all` = 230 rows across 5 tasks
-(vqa 130, recognition 30, kie 30, reasoning 30, table 10). Highlights: cord/funsd→kie with boxes
+**20/22 converters pass** → merged dataset = 240 rows across 5 tasks
+(vqa 130, recognition 40, kie 30, reasoning 30, table 10). Highlights: cord/funsd→kie with boxes
 (FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table, iam/im2latex/latexocr→
-recognition, chartqa/mathvista/charxiv→reasoning. **3 documented skips** (no trainable GT in the
-streamable split): `stvqa` (test split ships no answers), `pubtables1m` (detection webdataset — no
-PIL image), `omnidocbench` (image-only stream; annotations in a separate file).
+recognition, chartqa/mathvista/charxiv→reasoning, **omnidocbench→recognition + localization** (via a
+dedicated `OmniDocBench.json`+images loader — `_SPECIAL_LOADERS`). **2 remaining data-access blockers**
+(not adapter bugs): `stvqa` (no HF split ships answers) and `pubtables1m` (image + annotation live in
+separate multi-GB tars — not joinable via streaming).
 
 ![UDD mockup examples](figures/udd_examples.png)
 
