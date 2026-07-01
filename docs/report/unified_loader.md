@@ -140,9 +140,13 @@ cord = load_dataset("<user>/UDD", "cord", split="train")      # one benchmark
 alld = load_dataset("<user>/UDD", "all", split="train", streaming=True)   # everything, streamed
 ```
 
-Verified mockup (10/dataset): cord→kie (boxed fields), funsd→kie (1769 fields), ocrvqa→vqa
-(1130 regions), pubtabnet→table, iam→recognition, chartqa→reasoning — all safety-checked, combined
-`all` reloads with the uniform schema.
+**Validated mockup — all streamable datasets (10/dataset, safety-checked, 0 failures):**
+**19/22 converters pass** → combined `all` = 230 rows across 5 tasks
+(vqa 130, recognition 30, kie 30, reasoning 30, table 10). Highlights: cord/funsd→kie with boxes
+(FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table, iam/im2latex/latexocr→
+recognition, chartqa/mathvista/charxiv→reasoning. **3 documented skips** (no trainable GT in the
+streamable split): `stvqa` (test split ships no answers), `pubtables1m` (detection webdataset — no
+PIL image), `omnidocbench` (image-only stream; annotations in a separate file).
 
 ![UDD mockup examples](figures/udd_examples.png)
 
