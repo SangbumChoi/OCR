@@ -103,46 +103,55 @@ standardized view" check that the loader mapped each source correctly.
 
 (Programmatic API: `from docvlm_eval.unified import render_grid; render_grid(rows, "out.png")`.)
 
-## UDD — the Unified Document Dataset on HuggingFace
+## UDD — the Universal Document Dataset on HuggingFace
 
-> **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup released with 20
-> configs (19 datasets + combined `all` = 230 rows). `load_dataset("danelcsb/UDD", "cord")` etc.
+> **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup: **one sharded
+> dataset** (single default config) of **230 rows** from 19 sources / 5 tasks. `load_dataset("danelcsb/UDD")`.
 
-
-`scripts/build_udd.py` turns the unified records into **UDD**, one HF dataset repo that holds every
-benchmark under **one uniform schema** (`docvlm_eval.unified.hf`):
+**UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
+unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
+`scripts/build_udd.py` builds it (`docvlm_eval.unified.hf`):
 
 ```
-image, sample_id, source, task, instruction, answers[],
-fields_json, regions_json, full_text, table_html, language, metric, hf_id
+image, sample_id, source, task, instruction, answers[], fields_json, regions_json,
+full_text, table_html, language, metric, hf_id, split, hf_config
 ```
 
 The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
 `fields_json` / `regions_json`, so a single schema covers all six tasks without losing the typed
 payload — decode those columns to recover `Field`/`Region` (boxes carry `[x1,y1,x2,y2,normalized]`).
+**Origin is kept in columns** (`source`, `split`, `hf_id`, `hf_config`), *not* in the repo layout — so
+it's **one merged sharded dataset**, not per-benchmark folders.
 
-**Safe, sharded, memory-bounded.** Each benchmark is converted **independently**, then:
-1. **safety-checked** (`safety_check`): build → `save_to_disk` → reload → assert row count, image
-   decode, and field/region counts all round-trip — **run before any upload**;
-2. uploaded as its **own config** (`push_to_hub(repo, config_name=<key>, max_shard_size=...)`) and
-   freed before the next, so the full corpus never sits in RAM and shards make download resumable;
-3. a combined **`all`** config concatenates them.
+**Safe, sharded, memory-bounded.** Each source is converted + **safety-checked** independently
+(`safety_check`: build → `save_to_disk` → reload → assert row count, image decode, field/region counts
+round-trip — run before upload), saved to disk, then all sources are merged by **memory-mapped
+concat** (never all in RAM) and pushed as **one sharded default config** (`max_shard_size`), so a large
+corpus stays traceable-by-column, resumable, and streamable.
 
 ```bash
 # MOCKUP (default): 10 examples/dataset, saved locally + safety-checked + visualized (no upload)
 python scripts/build_udd.py --only cord,funsd,ocrvqa,docvqa --per-bench 10
 
-# upload the mockup to your HF (one config per dataset + an 'all' config)
-python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN
+# upload the merged sharded dataset to your HF
+python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN --public
+python scripts/udd_umap.py                                    # feature-UMAP asset for the card
 ```
 
-Load it back per dataset or combined:
+Load it back (one dataset; filter by column):
 
 ```python
 from datasets import load_dataset
-cord = load_dataset("<user>/UDD", "cord", split="train")      # one benchmark
-alld = load_dataset("<user>/UDD", "all", split="train", streaming=True)   # everything, streamed
+udd = load_dataset("danelcsb/UDD", split="train")            # everything, one schema (sharded)
+kie = udd.filter(lambda r: r["task"] == "kie")               # filter by task
+cord = udd.filter(lambda r: r["source"] == "cord")           # filter by origin dataset
+import json; fields = json.loads(kie[0]["fields_json"])       # recover typed payload (with boxes)
 ```
+
+**Feature UMAP** (`scripts/udd_umap.py`): TF-IDF over each record's content → UMAP shows the scattered
+benchmarks landing in one space, clustered by task.
+
+![UDD feature UMAP](figures/udd_umap.png)
 
 **Validated mockup — all streamable datasets (10/dataset, safety-checked, 0 failures):**
 **19/22 converters pass** → combined `all` = 230 rows across 5 tasks

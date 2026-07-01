@@ -1,4 +1,4 @@
-"""UDD — the **Unified Document Dataset** HuggingFace layer.
+"""UDD — the **Universal Document Dataset** HuggingFace layer.
 
 Turns :class:`~docvlm_eval.unified.core.UnifiedSample` records into a HuggingFace ``datasets.Dataset``
 with **one uniform schema for every task** (recognition / kie / vqa / localization / table /
@@ -37,7 +37,10 @@ def udd_features():
         "table_html": Value("string"),
         "language": Value("string"),
         "metric": Value("string"),
+        # provenance / origin
         "hf_id": Value("string"),
+        "split": Value("string"),
+        "hf_config": Value("string"),
     })
 
 
@@ -57,6 +60,8 @@ def _row_to_record(r: UnifiedSample) -> dict[str, Any]:
         "language": r.language or "",
         "metric": r.metric or "anls",
         "hf_id": r.hf_id or "",
+        "split": r.split or "",
+        "hf_config": r.hf_config or "",
     }
 
 

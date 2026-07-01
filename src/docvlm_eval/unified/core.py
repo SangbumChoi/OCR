@@ -105,7 +105,10 @@ class UnifiedSample:
     language: str | None = None
     metric: str = "anls"
     image_path: str | None = None
+    # --- provenance / origin (kept as columns so a single merged dataset stays traceable) ---
     hf_id: str | None = None
+    split: str | None = None          # the source dataset's split (e.g. test / validation / train)
+    hf_config: str | None = None      # the source dataset's HF config, if any
     meta: dict = field(default_factory=dict)
 
     # -------- conversions
@@ -390,6 +393,8 @@ class UnifiedLoader:
             for i, r in enumerate(recs):
                 r.sample_id = f"{key}_{n_img:04d}_{i}"
                 r.image_path = img_path
+                r.split = e.get("split")           # origin: keep source split + config as columns
+                r.hf_config = e.get("config")
                 yield r
             n_img += 1
 

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Build & upload the **UDD — Unified Document Dataset** to the Hub.
+"""Build & upload the **UDD — Universal Document Dataset** to the Hub.
 
-Per-dataset converter → uniform UDD schema → **safety-checked** → sharded → uploaded as one config
-per benchmark (plus a combined ``all`` config) under a single HF dataset repo.
+Per-dataset converter → uniform UDD schema → **safety-checked** → merged into **ONE sharded dataset**
+(a single default config). The origin (source dataset name, split, hf_id, hf_config) is kept in
+**columns**, not in the repo layout — so it's one dataset you filter by `source`/`task`, not a pile of
+per-benchmark folders.
 
-Memory/scale notes: each benchmark is streamed and converted **independently** (bounded by
-``--per-bench``), safety-checked, saved to disk, and — with ``--push`` — uploaded and then **freed**
-before the next one, so the combined corpus never has to live in RAM at once. Uploads are sharded
-(``--max-shard-size``) so re-runs/downloads are resumable and partial.
+Memory/scale notes: each benchmark is streamed + converted **independently** (bounded by
+``--per-bench``), safety-checked, saved to disk, then all sources are merged by **memory-mapped
+concat** (never all in RAM) and pushed as one dataset sharded by ``--max-shard-size`` (resumable).
 
 MOCKUP (default): ``--per-bench 10`` — ten examples per dataset, saved locally + safety-checked +
-visualized. Add ``--push --repo <user>/UDD --token <hf_token>`` to actually upload.
+visualized. Add ``--push --repo <user>/UDD --token <hf_token> --public`` to upload.
 
     # local mockup (no upload): 10 examples/dataset, safety-check, visualize
     python scripts/build_udd.py --only cord,funsd,ocrvqa,docvqa --per-bench 10
-    # upload the mockup to your HF
-    python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN
+    # upload the merged sharded dataset to your HF
+    python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN --public
 """
 from __future__ import annotations
 
@@ -83,31 +84,24 @@ def main() -> None:
             print(f"[FAIL] {k}: safety check failed -> {type(exc).__name__}: {exc}"); continue
         report[k] = {"records": len(rows), **rep}
         print(f"[ok]   {k:14} {rep['rows']:4} rows  fields={rep['fields']} regions={rep['regions']} "
-              f"image_ok={rep['image_ok']}")
+              f"image_ok={rep['image_ok']}  (split={rows[0].split})")
         viz_rows.append(rows[0])
-        # 2) upload this dataset as its own config, then free it
-        if args.push:
-            ds = to_hf_dataset(rows)
-            push(ds, args.repo, config_name=k, token=args.token,
-                 private=not args.public, max_shard_size=args.max_shard_size)
-            print(f"       pushed config '{k}' -> {args.repo}")
-            del ds
+        # each source is saved to disk (out/hf/<key>) for safety + memory-mapped concat below;
+        # the origin (source/split/hf_config) lives in COLUMNS, so we don't need per-benchmark folders.
 
-    # combined "all" config (concat) — built once at the end
-    if not args.no_combined and report:
-        all_rows = []
-        for k in report:                      # reload from the per-dataset save (cheap, on-disk)
-            from datasets import load_from_disk
-            all_rows.append(load_from_disk(str(out / "hf" / k)))
-        if all_rows:
-            from datasets import concatenate_datasets
-            combined = concatenate_datasets(all_rows)
-            combined.save_to_disk(str(out / "hf" / "_all"))
-            print(f"\n[ok] combined 'all': {len(combined)} rows -> {out/'hf'/'_all'}")
-            if args.push:
-                push(combined, args.repo, config_name="all", token=args.token,
-                     private=not args.public, max_shard_size=args.max_shard_size)
-                print(f"     pushed config 'all' -> {args.repo}")
+    # ONE merged, sharded dataset (default config) — origin kept in the `source`/`split` columns, not
+    # in the repo layout. Built by memory-mapped concat of the on-disk saves (never all in RAM).
+    if report:
+        from datasets import concatenate_datasets, load_from_disk
+        parts = [load_from_disk(str(out / "hf" / k)) for k in report]
+        combined = concatenate_datasets(parts)
+        combined.save_to_disk(str(out / "hf" / "_all"))
+        print(f"\n[ok] merged dataset: {len(combined)} rows, sharded -> {out/'hf'/'_all'}")
+        if args.push:
+            # default config (no per-benchmark configs); datasets shards parquet by --max-shard-size
+            combined.push_to_hub(args.repo, token=args.token, private=not args.public,
+                                 max_shard_size=args.max_shard_size)
+            print(f"     pushed merged dataset (sharded) -> {args.repo}")
 
     # 3) visualize the unified mockup
     if viz_rows:
