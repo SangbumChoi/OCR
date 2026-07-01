@@ -106,7 +106,7 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup: **one sharded
-> dataset** (single default config) of **240 rows** from 20 sources / 5 tasks. `load_dataset("danelcsb/UDD")`.
+> dataset** (single default config) of **250 rows** from 21 sources / 6 tasks. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -155,11 +155,13 @@ TF-IDF of the content instead).
 ![UDD feature UMAP](figures/udd_umap.png)
 
 **Validated mockup — all streamable datasets (10/dataset, safety-checked, 0 failures):**
-**20/22 converters pass** → merged dataset = 240 rows across 5 tasks
-(vqa 130, recognition 40, kie 30, reasoning 30, table 10). Highlights: cord/funsd→kie with boxes
-(FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table, iam/im2latex/latexocr→
-recognition, chartqa/mathvista/charxiv→reasoning, **omnidocbench→recognition + localization** (via a
-dedicated `OmniDocBench.json`+images loader — `_SPECIAL_LOADERS`). **2 remaining data-access blockers**
+**21/23 converters pass** → merged dataset = 250 rows across 6 tasks
+(vqa 130, recognition 40, kie 30, reasoning 30, table 10, **localization 10**). Highlights:
+cord/funsd→kie with boxes (FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table,
+iam/im2latex/latexocr→recognition, chartqa/mathvista/charxiv→reasoning,
+**doclaynet→localization** (DocLayNet-v1.1 layout boxes, COCO xywh→normalized corners — a pure
+spotting/detection task) and **omnidocbench→recognition + localization** (via a dedicated
+`OmniDocBench.json`+images loader — `_SPECIAL_LOADERS`). **2 remaining data-access blockers**
 (not adapter bugs): `stvqa` (no HF split ships answers) and `pubtables1m` (image + annotation live in
 separate multi-GB tars — not joinable via streaming).
 

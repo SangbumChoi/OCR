@@ -57,6 +57,16 @@ def test_ocrvqa_vqa_with_regions():
     assert abs(r.regions[0].bbox.x2 - 0.4) < 1e-6           # 0.1 + 0.3
 
 
+def test_doclaynet_localization_boxes():
+    ex = {"bboxes": [[72.0, 55.0, 300.0, 20.0]], "category_id": [6],
+          "metadata": {"coco_width": 1000, "coco_height": 1000}}
+    r = _one("doclaynet", ex)[0]
+    assert r.task == Task.LOCALIZATION
+    rg = r.regions[0]
+    assert rg.label == "Page-header" and rg.bbox.normalized is True
+    assert abs(rg.bbox.x2 - 0.372) < 1e-6      # (72+300)/1000, xywh -> normalized corner
+
+
 def test_table_task():
     r = _one("pubtabnet", {"html_table": "<table><tr><td>a</td></tr></table>"})[0]
     assert r.task == Task.TABLE and r.table_html.startswith("<table")

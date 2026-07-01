@@ -71,8 +71,11 @@ def to_hf_dataset(rows: list[UnifiedSample]):
     recs = [_row_to_record(r) for r in rows if r.image_path]
     if not recs:
         raise ValueError("no rows with a cached image_path — load with cache_dir set")
+    # cast the FULL uniform schema (not just image) so sources whose optional columns are all-empty
+    # — e.g. localization has no `answers` — still get List(string), keeping every source's features
+    # identical for a clean cross-dataset concat.
     ds = Dataset.from_list(recs)
-    return ds.cast_column("image", udd_features()["image"])
+    return ds.cast(udd_features())
 
 
 def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:

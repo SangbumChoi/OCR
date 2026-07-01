@@ -133,7 +133,7 @@ benchmarks:
      hf_id: opendatalab/OmniDocBench, config: null, split: train, source: "https://arxiv.org/abs/2412.07626"}
   - {key: doclaynet, name: DocLayNet, category: "A3. Layout analysis", metric: "COCO mAP",
      purpose: "Document layout detection (11 classes) across 6 doc types; element localization.",
-     hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2206.01062"}
+     hf_id: ds4sd/DocLayNet-v1.1, config: null, split: train, source: "https://arxiv.org/abs/2206.01062"}
   - {key: fox, name: Fox, category: "A3. Fine-grained region parsing", metric: "edit dist / F1",
      purpose: "Region/colour-guided OCR + cross-page understanding on dense multi-page docs.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2405.14295"}

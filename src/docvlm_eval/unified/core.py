@@ -300,6 +300,31 @@ def _u_ocrvqa(ex, e) -> list[UnifiedSample]:
     return out
 
 
+_DOCLAYNET = {1: "Caption", 2: "Footnote", 3: "Formula", 4: "List-item", 5: "Page-footer",
+              6: "Page-header", 7: "Picture", 8: "Section-header", 9: "Table", 10: "Text", 11: "Title"}
+
+
+@register("doclaynet")
+def _u_doclaynet(ex, e) -> list[UnifiedSample]:
+    """DocLayNet layout detection: COCO [x,y,w,h] boxes per element → localization regions
+    (normalized to [0,1] by the page's coco_width/height so downscaling keeps them valid)."""
+    md = ex.get("metadata") or {}
+    W, H = md.get("coco_width") or 0, md.get("coco_height") or 0
+    boxes, cats = ex.get("bboxes") or [], ex.get("category_id") or []
+    regions = []
+    for i, b in enumerate(boxes):
+        if not (isinstance(b, (list, tuple)) and len(b) >= 4):
+            continue
+        x, y, w, h = b[:4]
+        cid = cats[i] if i < len(cats) else None
+        box = Box(x / W, y / H, (x + w) / W, (y + h) / H, True) if (W and H) \
+            else Box(x, y, x + w, y + h, False)
+        regions.append(Region(label=_DOCLAYNET.get(cid, str(cid)), bbox=box))
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.LOCALIZATION,
+                          instruction="Localize the document layout elements as bounding boxes.",
+                          regions=regions, metric="grounding")]
+
+
 def _via_trainset(ex, e, task: str) -> list[UnifiedSample]:
     """Fallback: reuse the flat trainset adapter, wrap each QA as a typed UnifiedSample."""
     out = []
