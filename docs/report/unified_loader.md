@@ -105,8 +105,9 @@ standardized view" check that the loader mapped each source correctly.
 
 ## UDD — the Universal Document Dataset on HuggingFace
 
-> **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup: **one sharded
-> dataset** (single default config) of **250 rows** from 21 sources / 6 tasks. `load_dataset("danelcsb/UDD")`.
+> **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
+> (single default config) of **2,426 rows** (100 images/source) from 21 sources / 6 tasks.
+> `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -154,9 +155,10 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated mockup — all streamable datasets (10/dataset, safety-checked, 0 failures):**
-**21/23 converters pass** → merged dataset = 250 rows across 6 tasks
-(vqa 130, recognition 40, kie 30, reasoning 30, table 10, **localization 10**). Highlights:
+**Validated — all streamable datasets (100 images/dataset, safety-checked, 0 failures):**
+**21/23 converters pass** → merged dataset = 2,426 rows across 6 tasks
+(vqa 1,276, recognition 400, reasoning 300, kie 250, table 100, **localization 100**; OCR-VQA's 100
+images carry 476 QAs, FUNSD's split has only 50 images total). Highlights:
 cord/funsd→kie with boxes (FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table,
 iam/im2latex/latexocr→recognition, chartqa/mathvista/charxiv→reasoning,
 **doclaynet→localization** (DocLayNet-v1.1 layout boxes, COCO xywh→normalized corners — a pure
