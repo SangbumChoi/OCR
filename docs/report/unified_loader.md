@@ -115,7 +115,8 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 
 ```
 image, sample_id, source, task, instruction, answers[], fields_json, regions_json,
-full_text, table_html, language, metric, hf_id, split, hf_config
+full_text, table_html, language, metric, hf_id, split, hf_config,
+n_fields, n_regions, image_width, image_height          # derived (enrichment pass)
 ```
 
 The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
@@ -168,6 +169,43 @@ spotting/detection task) and **omnidocbench→recognition + localization** (via 
 separate multi-GB tars — not joinable via streaming).
 
 ![UDD mockup examples](figures/udd_examples.png)
+
+## Enrichment — fill sparse columns from the rows themselves
+
+The converters only carry what each source ships, so an audit of the 2.4k build found `language`
+**0% filled** and the structured payload only reachable through JSON decodes. `docvlm_eval.unified.
+enrich` derives the missing values deterministically (no network, no model):
+
+- **`language`** — Unicode-script detection over the row's own text (Hangul→`ko`, kana→`ja`,
+  CJK→`zh`, Arabic→`ar`, …); Latin script falls back to a **per-source prior** (CORD receipts→`id`,
+  formula sets→`und`, rest→`en`), and rows whose text is too short to call ("$5") fall back to the
+  instruction. Result on the live corpus: **100% filled** — en 2,093 · und 200 · id 100 · zh 33
+  (OmniDocBench correctly splits 76 en / 24 zh per page).
+- **`n_fields` / `n_regions`** — payload counts as int columns, so "every row with boxes" is
+  `n_regions > 0` instead of 2.4k `json.loads` calls.
+- **`image_width` / `image_height`** — stored dims, for resolution slicing / curriculum.
+
+Detection also runs at **extraction time** (`extract_unified`), so future builds come out filled
+natively; `scripts/enrich_udd.py` retrofits an already-built corpus in place (and `build_udd.py` runs
+the same pass at merge time).
+
+## Incremental adds — per-source cache + cross-source image dedup
+
+Adding one new dataset must not cost re-streaming all 21. `build_udd.py` keeps two caches:
+
+- **Per-source builds** (`data/udd/hf/<key>`) are reused: `--skip-existing` skips streaming for any
+  source already on disk, and the merge concatenates **everything on disk**, not just the current
+  run's keys — so `--only <newkey> --skip-existing` streams only the newcomer and re-merges the full
+  corpus (measured: 21 cached sources merge+enrich in ~1 min vs ~2 h for a full rebuild).
+- **A persistent image-hash index** (`data/udd/hash_index.json`, md5-of-downscaled-image → owner
+  source) dedups across *runs and sources*: an image already owned by a different source is skipped
+  (COCO pages recur across scene-text sets), while a source's own hashes never block its rebuild.
+
+```bash
+# add one new benchmark to the existing corpus and re-push — costs ONE dataset, not 21
+python scripts/build_udd.py --only <newkey> --per-bench 100 --skip-existing \
+    --push --repo <user>/UDD --token $HF_TOKEN --public
+```
 
 ## Merge duplicate images → one record with a Q/A list
 

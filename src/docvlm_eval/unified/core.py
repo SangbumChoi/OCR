@@ -376,11 +376,19 @@ def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[Unifi
             recs = _via_trainset(ex, entry, TASK_BY_BENCHMARK.get(key, Task.VQA))
     except Exception:
         return []
-    # carry catalog metric/hf_id defaults where the extractor didn't set them
+    # carry catalog metric/hf_id defaults where the extractor didn't set them; derive language from
+    # the record's own text (script heuristic + source prior) so the column isn't left empty
+    from .enrich import detect_language
+
     for r in recs:
         r.hf_id = entry.get("hf_id")
         if not r.metric:
             r.metric = norm_metric(entry.get("metric"))
+        if not r.language:
+            text = " ".join(filter(None, [r.full_text, *(rg.text for rg in r.regions),
+                                          *(f.value for f in r.fields), *r.answers]))
+            r.language = (detect_language(text, r.source)
+                          or detect_language(r.instruction, r.source))
     return [r for r in recs if r.answers or r.fields or r.regions or r.full_text or r.table_html]
 
 
@@ -401,8 +409,14 @@ class UnifiedLoader:
         return [e["key"] for e in self.catalog if e.get("hf_id")]
 
     def iter(self, key: str, *, limit: int = 50, max_scan: int = 3000, max_px: int = 1000,
-             quality: int = 85, cache_dir: str | None = None) -> Iterator[UnifiedSample]:
-        """Yield up to ``limit`` distinct-image UnifiedSamples for one benchmark."""
+             quality: int = 85, cache_dir: str | None = None,
+             global_index: dict | None = None) -> Iterator[UnifiedSample]:
+        """Yield up to ``limit`` distinct-image UnifiedSamples for one benchmark.
+
+        ``global_index`` is a persistent cross-run/cross-source dedup cache (md5 → owner key, see
+        ``scripts/build_udd.py``): an image already owned by a *different* source is skipped (COCO
+        images recur across scene-text sets), while hashes owned by *this* key don't block a rebuild.
+        New hashes are recorded in the dict in place — the caller persists it."""
         import hashlib
         from pathlib import Path
 
@@ -440,9 +454,12 @@ class UnifiedLoader:
                 s = max_px / max(small.size)
                 small = small.resize((max(1, round(small.width * s)), max(1, round(small.height * s))))
             h = hashlib.md5(small.tobytes()).hexdigest()
-            if h in seen:
+            owner = (global_index or {}).get(h)
+            if h in seen or (owner is not None and owner != key):
                 continue
             seen.add(h)
+            if global_index is not None:
+                global_index[h] = key
             img_path = None
             if cache is not None:
                 cache.mkdir(parents=True, exist_ok=True)

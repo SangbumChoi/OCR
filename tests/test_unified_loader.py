@@ -141,6 +141,36 @@ def test_to_samples_expands_qas():
     assert len(s) == 2 and s[0].question == "Q1" and s[0].meta["n_qas"] == 3   # empty-answer QA dropped
 
 
+def test_detect_language_scripts_and_priors():
+    from docvlm_eval.unified import detect_language
+    assert detect_language("총 합계 60,000원 감사합니다") == "ko"
+    assert detect_language("合計金額は五千円です、ありがとうございます") == "ja"     # kana -> ja, not zh
+    assert detect_language("发票号码 12345 合计金额") == "zh"
+    assert detect_language("The total amount is $5.00") == "en"
+    assert detect_language("TOTAL HARGA 50.000 TUNAI", source="cord") == "id"       # Latin -> source prior
+    assert detect_language("x^2 + y^2 = z^2", source="latexocr") == "und"
+    assert detect_language("Invoice no 42 with stray 中 glyph") == "en"             # noise floor holds
+    assert detect_language("") is None and detect_language("", source="cord") == "id"
+
+
+def test_extract_unified_fills_language():
+    r = _one("cord", {"ground_truth": json.dumps({"gt_parse": {"total": "50.000"}})})[0]
+    assert r.language == "id"                       # source prior applied at extraction time
+    r2 = _one("docvqa", {"question": "Total?", "answers": ["$5 in total please"]})[0]
+    assert r2.language == "en"
+
+
+def test_enrich_record_counts_and_dims():
+    from docvlm_eval.unified import enrich_record
+    row = {"language": "", "source": "funsd", "instruction": "Transcribe.",
+           "answers": ["Name Bob"], "full_text": "Name Bob",
+           "fields_json": json.dumps([{"key": "B-QUESTION", "value": "Name"}]),
+           "regions_json": json.dumps([{"label": "word", "text": ""}]), "image": None}
+    out = enrich_record(row)
+    assert out["language"] == "en" and out["n_fields"] == 1 and out["n_regions"] == 1
+    assert out["image_width"] == 0                  # no image object -> dims default to 0
+
+
 def test_unmappable_returns_empty():
     assert extract_unified("pubtables1m", {"image": object(), "boxes": [[1, 2, 3, 4]]},
                            {"key": "pubtables1m"}) == []

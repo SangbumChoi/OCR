@@ -10,6 +10,14 @@ Memory/scale notes: each benchmark is streamed + converted **independently** (bo
 ``--per-bench``), safety-checked, saved to disk, then all sources are merged by **memory-mapped
 concat** (never all in RAM) and pushed as one dataset sharded by ``--max-shard-size`` (resumable).
 
+INCREMENTAL ADDS + DEDUP CACHE: per-source builds are cached on disk (``out/hf/<key>``) and a
+persistent **image-hash index** (``out/hash_index.json``, md5 of the downscaled image → owner source)
+is maintained across runs. ``--skip-existing`` skips re-streaming already-built sources, the index
+skips images that already exist under a *different* source (COCO pages recur across scene-text sets),
+and the merge always concatenates **everything on disk** — so adding one new dataset costs one
+dataset: ``--only <newkey> --skip-existing`` streams just the newcomer and re-merges the full corpus.
+The merge also runs the **enrichment pass** (language fill + n_fields/n_regions + image dims).
+
 MOCKUP (default): ``--per-bench 10`` — ten examples per dataset, saved locally + safety-checked +
 visualized. Add ``--push --repo <user>/UDD --token <hf_token> --public`` to upload.
 
@@ -17,10 +25,13 @@ visualized. Add ``--push --repo <user>/UDD --token <hf_token> --public`` to uplo
     python scripts/build_udd.py --only cord,funsd,ocrvqa,docvqa --per-bench 10
     # upload the merged sharded dataset to your HF
     python scripts/build_udd.py --per-bench 10 --push --repo <user>/UDD --token $HF_TOKEN --public
+    # INCREMENTAL: add one new benchmark to the existing corpus and re-push
+    python scripts/build_udd.py --only <newkey> --per-bench 100 --skip-existing --push --repo <user>/UDD
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -28,8 +39,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from docvlm_eval.unified import (UnifiedLoader, push, render_grid,  # noqa: E402
-                                 safety_check, to_hf_dataset)
+from docvlm_eval.unified import (UnifiedLoader, enrich_dataset, push,  # noqa: E402
+                                 render_grid, safety_check, to_hf_dataset)
 
 HARD_CAP = 200
 
@@ -49,6 +60,10 @@ def main() -> None:
     p.add_argument("--public", action="store_true", help="push as a public dataset (default private)")
     p.add_argument("--max-shard-size", default="500MB")
     p.add_argument("--no-combined", action="store_true", help="skip the combined 'all' config")
+    p.add_argument("--skip-existing", action="store_true",
+                   help="INCREMENTAL ADD: don't re-stream sources whose on-disk build already exists "
+                        "(out/hf/<key>) — only new sources are converted; the merge still includes "
+                        "everything on disk. Adding one dataset costs one dataset, not 21.")
     p.add_argument("--viz", default=str(ROOT / "docs" / "report" / "figures" / "udd_examples.png"))
     args = p.parse_args()
 
@@ -70,11 +85,19 @@ def main() -> None:
     print(f"[udd] {mode}: {per} examples/dataset from {len(keys)} datasets -> {out}"
           + (f" -> {args.repo}" if args.push else "") + "\n")
 
+    # persistent image-hash index: md5 -> owner source. Dedups ACROSS sources (COCO images recur in
+    # scene-text sets) and across runs; a source's own hashes never block its rebuild.
+    index_path = out / "hash_index.json"
+    hash_index: dict[str, str] = json.loads(index_path.read_text()) if index_path.exists() else {}
+
     viz_rows = []
     report: dict[str, dict] = {}
     for k in keys:
+        if args.skip_existing and (out / "hf" / k).exists():
+            print(f"[cache] {k}: on-disk build exists, skipping stream (merged below)")
+            continue
         rows = loader.load(k, limit=per, max_scan=args.max_scan, max_px=args.max_px,
-                           cache_dir=str(out / "images"))
+                           cache_dir=str(out / "images"), global_index=hash_index)
         if not rows:
             print(f"[skip] {k}: no records"); continue
         # 1) safety-check the converter BEFORE trusting/uploading it
@@ -86,17 +109,27 @@ def main() -> None:
         print(f"[ok]   {k:14} {rep['rows']:4} rows  fields={rep['fields']} regions={rep['regions']} "
               f"image_ok={rep['image_ok']}  (split={rows[0].split})")
         viz_rows.append(rows[0])
+        index_path.write_text(json.dumps(hash_index))     # checkpoint the dedup cache per source
         # each source is saved to disk (out/hf/<key>) for safety + memory-mapped concat below;
         # the origin (source/split/hf_config) lives in COLUMNS, so we don't need per-benchmark folders.
 
     # ONE merged, sharded dataset (default config) — origin kept in the `source`/`split` columns, not
-    # in the repo layout. Built by memory-mapped concat of the on-disk saves (never all in RAM).
-    if report:
+    # in the repo layout. Built by memory-mapped concat of ALL on-disk per-source saves (not just this
+    # run's — so an incremental `--only newkey` build still merges the full corpus), never all in RAM.
+    on_disk = sorted(d.name for d in (out / "hf").glob("*")
+                     if d.is_dir() and d.name != "_all") if (out / "hf").exists() else []
+    if on_disk and not args.no_combined:
         from datasets import concatenate_datasets, load_from_disk
-        parts = [load_from_disk(str(out / "hf" / k)) for k in report]
+        parts = [load_from_disk(str(out / "hf" / k)) for k in on_disk]
         combined = concatenate_datasets(parts)
-        combined.save_to_disk(str(out / "hf" / "_all"))
-        print(f"\n[ok] merged dataset: {len(combined)} rows, sharded -> {out/'hf'/'_all'}")
+        combined = enrich_dataset(combined)               # language + n_fields/n_regions + image dims
+        combined.save_to_disk(str(out / "hf" / "_all_tmp"))
+        import shutil
+        if (out / "hf" / "_all").exists():
+            shutil.rmtree(out / "hf" / "_all")
+        (out / "hf" / "_all_tmp").rename(out / "hf" / "_all")
+        print(f"\n[ok] merged dataset: {len(combined)} rows from {len(on_disk)} sources "
+              f"({len(report)} built now, {len(on_disk) - len(report)} reused) -> {out/'hf'/'_all'}")
         if args.push:
             # default config (no per-benchmark configs); datasets shards parquet by --max-shard-size
             combined.push_to_hub(args.repo, token=args.token, private=not args.public,
