@@ -107,6 +107,32 @@ def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
             "image_ok": True, "columns": ds2.column_names}
 
 
+def unified_from_hf_row(row: dict, image_path: str | None = None):
+    """Reconstruct a :class:`~docvlm_eval.unified.core.UnifiedSample` from a UDD/HF row.
+
+    Inverse of :func:`_row_to_record`: decodes ``fields_json`` / ``regions_json`` back into typed
+    ``Field`` / ``Region`` (with boxes) and re-attaches provenance. ``image_path`` overrides the row's
+    (embedded) image when the caller has already written the decoded image to disk — needed because HF
+    rows store image *bytes*, but training / visualization want a file path."""
+    from .core import Box, Field, Region, UnifiedSample
+
+    def _box(b):
+        return Box(b[0], b[1], b[2], b[3], bool(b[4])) if b else None
+
+    fields = [Field(f.get("key", ""), f.get("value", ""), _box(f.get("bbox")))
+              for f in json.loads(row.get("fields_json") or "[]")]
+    regions = [Region(r.get("label", ""), _box(r.get("bbox")), r.get("text", ""))
+               for r in json.loads(row.get("regions_json") or "[]")]
+    return UnifiedSample(
+        sample_id=row.get("sample_id", ""), source=row.get("source", ""), task=row.get("task", ""),
+        instruction=row.get("instruction", "") or "", answers=list(row.get("answers") or []),
+        fields=fields, regions=regions, full_text=row.get("full_text") or None,
+        table_html=row.get("table_html") or None, language=row.get("language") or None,
+        metric=row.get("metric") or "anls", image_path=image_path,
+        hf_id=row.get("hf_id") or None, split=row.get("split") or None,
+        hf_config=row.get("hf_config") or None)
+
+
 def push(ds, repo: str, *, config_name: str | None = None, token: str | None = None,
          private: bool = True, max_shard_size: str = "500MB") -> str:
     """Push a UDD Dataset to the Hub as ``config_name`` (sharded). Returns the repo URL."""

@@ -5,11 +5,12 @@ benchmark into a task-typed record preserving its structured payload (KIE fields
 boxes, table HTML, full text). See ``docs/report/unified_loader.md``.
 """
 
-from .core import (Box, Field, Region, Task, TASK_BY_BENCHMARK, UnifiedLoader, UnifiedSample,
-                   extract_unified, register, to_training_samples)
-from .hf import push, safety_check, to_hf_dataset, udd_features
+from .core import (QA, Box, Field, Region, Task, TASK_BY_BENCHMARK, UnifiedLoader, UnifiedSample,
+                   extract_unified, merge_by_image, register, to_training_samples)
+from .hf import push, safety_check, to_hf_dataset, udd_features, unified_from_hf_row
 from .visualize import render_grid
 
-__all__ = ["Task", "TASK_BY_BENCHMARK", "Box", "Field", "Region", "UnifiedSample",
-           "UnifiedLoader", "extract_unified", "register", "to_training_samples", "render_grid",
-           "udd_features", "to_hf_dataset", "safety_check", "push"]
+__all__ = ["Task", "TASK_BY_BENCHMARK", "Box", "Field", "Region", "QA", "UnifiedSample",
+           "UnifiedLoader", "extract_unified", "register", "merge_by_image", "to_training_samples",
+           "render_grid", "udd_features", "to_hf_dataset", "safety_check", "push",
+           "unified_from_hf_row"]

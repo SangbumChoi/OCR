@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from docvlm_eval.unified import (Task, UnifiedSample, extract_unified,
-                                            to_training_samples)
+from docvlm_eval.unified import (QA, Task, UnifiedSample, extract_unified,
+                                            merge_by_image, to_training_samples)
 
 
 def _one(key, ex):
@@ -102,6 +102,43 @@ def test_to_training_samples_filters_unusable():
             UnifiedSample(sample_id="b_0_0", source="x", task=Task.VQA,
                           image_path="/tmp/b.jpg", answers=["yes"])]
     assert len(to_training_samples(rows)) == 1
+
+
+def test_merge_by_image_groups_qa_list():
+    # three OCR-VQA-style records: same image, different questions -> one record with a qas list
+    rows = [
+        UnifiedSample(sample_id="ocrvqa_0000_0", source="ocrvqa", task=Task.VQA,
+                      image_path="/tmp/a.jpg", instruction="Who wrote this?", answers=["Smith"]),
+        UnifiedSample(sample_id="ocrvqa_0000_1", source="ocrvqa", task=Task.VQA,
+                      image_path="/tmp/a.jpg", instruction="What is the title?", answers=["Physics"]),
+        UnifiedSample(sample_id="ocrvqa_0001_0", source="ocrvqa", task=Task.VQA,
+                      image_path="/tmp/b.jpg", instruction="What genre?", answers=["Science"]),
+    ]
+    merged = merge_by_image(rows)
+    assert len(merged) == 2                              # two distinct images
+    first = merged[0]
+    assert [qa.question for qa in first.qas] == ["Who wrote this?", "What is the title?"]
+    assert not first.instruction and not first.answers   # collapsed into qas
+    # lossless: expands back to the SAME number of training samples
+    assert len(to_training_samples(merged)) == 3
+    ids = {s.sample_id for s in to_training_samples(merged)}
+    assert "ocrvqa_0000_0_q0" in ids and "ocrvqa_0000_0_q1" in ids
+
+
+def test_merge_by_image_dedupes_identical_questions():
+    rows = [UnifiedSample(sample_id="x_0_0", source="docvqa", task=Task.VQA, image_path="/i.jpg",
+                          instruction="Total?", answers=["$5"]),
+            UnifiedSample(sample_id="x_0_1", source="docvqa", task=Task.VQA, image_path="/i.jpg",
+                          instruction="Total?", answers=["$5"])]
+    merged = merge_by_image(rows)
+    assert len(merged) == 1 and len(merged[0].qas) == 1   # duplicate question merged
+
+
+def test_to_samples_expands_qas():
+    r = UnifiedSample(sample_id="i_0_0", source="ocrvqa", task=Task.VQA, image_path="/i.jpg",
+                      qas=[QA("Q1", ["a1"]), QA("Q2", ["a2"]), QA("Q3", [])])
+    s = r.to_samples()
+    assert len(s) == 2 and s[0].question == "Q1" and s[0].meta["n_qas"] == 3   # empty-answer QA dropped
 
 
 def test_unmappable_returns_empty():

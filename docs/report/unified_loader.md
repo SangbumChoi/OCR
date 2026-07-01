@@ -167,6 +167,56 @@ separate multi-GB tars — not joinable via streaming).
 
 ![UDD mockup examples](figures/udd_examples.png)
 
+## Merge duplicate images → one record with a Q/A list
+
+Many benchmarks (OCR-VQA, DocVQA, …) repeat the **same image** with **different questions**; streamed
+naively that is one record per question. `merge_by_image` regroups them so each image appears **once**,
+with every question collected into a `qas: list[QA]`:
+
+```python
+from docvlm_eval.unified import merge_by_image, to_training_samples
+merged = merge_by_image(rows)          # group by image; VQA/reasoning questions -> qas[]
+merged[0].qas                          # [QA("Who wrote this?", ["Smith"]), QA("What title?", [...])]
+train = to_training_samples(merged)    # re-expands qas -> one training Sample per question
+```
+
+It is **lossless regrouping**: identical questions are de-duped, non-QA payload (fields / regions /
+`full_text` / `table_html`) is unioned, and `to_samples()` / `to_training_samples()` expand `qas` back
+into exactly the same training set — you just get **fewer rows and one image decode per group**
+(`UnifiedSample.to_samples()` emits one `Sample` per QA, all sharing the cached `image_path`). Grouping
+is by `image_path` when present, else `(source, sample_id-without-QA-suffix)`, so it works both before
+and after image caching.
+
+## Per-task value ablation — is each task worth adding?
+
+To decide whether a task (vqa / kie / recognition / table / reasoning) **earns its slot** in the
+training mix, fine-tune on **one task at a time with the same number of samples** and compare the
+effect on the fixed synthetic probe suite. The Δ vs the un-tuned baseline is the task's value at that
+budget.
+
+```bash
+# 1) split UDD into EQUAL-N per-task training sets (offline; --merge-qa collapses OCR-VQA-style dups)
+python scripts/build_task_trainsets.py --per-task 30 --merge-qa
+# 2) train on each task alone + eval the probe suite (GPU; thin wrapper over run_ablation --arm public)
+python scripts/run_task_value.py --count 30 --steps 300 --include-all
+# 3) render the value table + Δ chart
+python scripts/analyze_task_value.py
+```
+
+`build_task_trainsets.py` reconstructs `UnifiedSample`s from the merged UDD (`unified_from_hf_row`),
+decodes each image to disk, balances every task to an equal budget (default = the smallest task's
+size), and writes `data/udd_tasks/task_<task>.jsonl` + a mixed `all.jsonl` control. `run_task_value.py`
+LoRA-fine-tunes the base on each set and appends per-probe scores to
+`docs/results/task_value_results.json`; `analyze_task_value.py` turns that into
+[`docs/results/task_value.md`](../results/task_value.md) and the Δ chart below.
+
+![task value](figures/task_value.png)
+
+> **Note.** `localization` is intentionally excluded from this per-task set — its box targets aren't a
+> plain-answer `Sample`, so they need the A1 *grounding* training format (see the ablation plan), not
+> this VQA-style budget comparison. The numbers shown are a committed **DEMO**; a GPU run overwrites
+> them with real measurements.
+
 ## Why this matters
 
 One loader + one schema means the downstream "merge / extract-key-values / localize" operations the

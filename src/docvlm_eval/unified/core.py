@@ -91,6 +91,13 @@ class Region:
 
 
 @dataclass
+class QA:
+    """One question + its gold answer(s). Lets a single image carry MANY QAs (OCR-VQA-style)."""
+    question: str
+    answers: list[str] = field(default_factory=list)
+
+
+@dataclass
 class UnifiedSample:
     """One benchmark item in the unified, task-typed format."""
     sample_id: str
@@ -98,6 +105,7 @@ class UnifiedSample:
     task: str                         # Task.*
     instruction: str = ""             # the prompt / question (empty for pure recognition w/ canned prompt)
     answers: list[str] = field(default_factory=list)
+    qas: list[QA] = field(default_factory=list)              # MANY QAs on one image (see merge_by_image)
     fields: list[Field] = field(default_factory=list)        # KIE
     regions: list[Region] = field(default_factory=list)      # localization
     full_text: str | None = None      # recognition / parsing target
@@ -141,6 +149,28 @@ class UnifiedSample:
             meta={"source": self.source, "hf_id": self.hf_id, "task": self.task,
                   "n_fields": len(self.fields), "n_regions": len(self.regions), **self.meta},
         )
+
+    def to_samples(self) -> list:
+        """Expand to flat training :class:`~docvlm_eval.schema.Sample`(s).
+
+        A record with a ``qas`` list (many questions on one image — see :func:`merge_by_image`) yields
+        **one Sample per QA**, all sharing the same ``image_path`` (so the image is cached/loaded once).
+        A record without ``qas`` yields at most one Sample (delegates to :meth:`to_sample`)."""
+        from ..schema import Sample
+        if not self.qas:
+            s = self.to_sample()
+            return [s] if s is not None else []
+        out = []
+        for i, qa in enumerate(self.qas):
+            ans = [_s(a) for a in qa.answers if _s(a)]
+            if not (self.image_path and qa.question and ans):
+                continue
+            out.append(Sample(
+                sample_id=f"{self.sample_id}_q{i}", image_path=self.image_path,
+                question=qa.question, answers=ans, answer_type=self.task, metric=self.metric,
+                meta={"source": self.source, "hf_id": self.hf_id, "task": self.task,
+                      "n_qas": len(self.qas), **self.meta}))
+        return out
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -444,8 +474,68 @@ class UnifiedLoader:
 
 # --------------------------------------------------------------------------- convenience
 def to_training_samples(rows: list[UnifiedSample]) -> list:
-    """Collapse unified rows to flat training Samples (dropping those with no usable target)."""
-    return [s for s in (r.to_sample() for r in rows) if s is not None]
+    """Collapse unified rows to flat training Samples (dropping those with no usable target).
+
+    Records that carry a ``qas`` list (from :func:`merge_by_image`) expand to one Sample per QA."""
+    return [s for r in rows for s in r.to_samples()]
+
+
+def merge_by_image(rows: list[UnifiedSample], *,
+                   qa_tasks: tuple[str, ...] = (Task.VQA, Task.REASONING)
+                   ) -> list[UnifiedSample]:
+    """Merge records that share the same image into ONE record carrying a **list of Q/A**.
+
+    Many benchmarks (OCR-VQA, DocVQA, …) repeat the *same image* with *different questions*; streamed
+    naively that is one :class:`UnifiedSample` per question. This groups them by image so each image
+    appears once, with every question collected into ``qas: list[QA]`` (deduped, order-preserving).
+    Non-QA tasks (kie/table/recognition/localization) are grouped too — their structured payload
+    (fields/regions/full_text/table_html) is unioned — but they keep an empty ``qas`` unless they also
+    carry a question.
+
+    Grouping key = ``image_path`` when present, else ``(source, sample_id-without-QA-suffix)`` so it
+    still merges pre-cache (in-memory) rows. Downstream, :meth:`UnifiedSample.to_samples` /
+    :func:`to_training_samples` re-expand ``qas`` into one training Sample per question — so merging is
+    a *lossless regrouping*: fewer rows, identical training set, and one image decode per group.
+    """
+    groups: dict[Any, list[UnifiedSample]] = {}
+    order: list[Any] = []
+    for r in rows:
+        key = r.image_path or (r.source, r.sample_id.rsplit("_", 1)[0])
+        if key not in groups:
+            groups[key] = []; order.append(key)
+        groups[key].append(r)
+
+    merged: list[UnifiedSample] = []
+    for key in order:
+        grp = groups[key]
+        base = grp[0]
+        qas: list[QA] = []
+        seen_q: set[str] = set()
+        fields: list[Field] = []
+        regions: list[Region] = []
+        full_text = None
+        table_html = None
+        for r in grp:
+            # collect this record's question(s): its own qas, then its instruction/answers pair
+            pairs = list(r.qas)
+            if r.instruction and r.answers:
+                pairs.append(QA(question=r.instruction, answers=list(r.answers)))
+            for qa in pairs:
+                sig = qa.question.strip()
+                if r.task in qa_tasks and sig and sig not in seen_q:
+                    seen_q.add(sig); qas.append(qa)
+            fields += r.fields
+            regions += r.regions
+            full_text = full_text or r.full_text
+            table_html = table_html or r.table_html
+        merged.append(UnifiedSample(
+            sample_id=base.sample_id, source=base.source, task=base.task,
+            instruction="" if qas else base.instruction,
+            answers=[] if qas else list(base.answers),
+            qas=qas, fields=fields, regions=regions, full_text=full_text, table_html=table_html,
+            language=base.language, metric=base.metric, image_path=base.image_path,
+            hf_id=base.hf_id, split=base.split, hf_config=base.hf_config, meta=dict(base.meta)))
+    return merged
 
 
 # --------------------------------------------------------------------------- special loaders
