@@ -105,6 +105,10 @@ standardized view" check that the loader mapped each source correctly.
 
 ## UDD — the Unified Document Dataset on HuggingFace
 
+> **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — mockup released with 20
+> configs (19 datasets + combined `all` = 230 rows). `load_dataset("danelcsb/UDD", "cord")` etc.
+
+
 `scripts/build_udd.py` turns the unified records into **UDD**, one HF dataset repo that holds every
 benchmark under **one uniform schema** (`docvlm_eval.unified.hf`):
 
