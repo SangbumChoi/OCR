@@ -358,6 +358,9 @@ class UnifiedLoader:
         e = self.by_key.get(key)
         if not e or not e.get("hf_id"):
             return
+        if key in _SPECIAL_LOADERS:      # datasets that need bespoke loading (json+images, etc.)
+            yield from _SPECIAL_LOADERS[key](e, limit=limit, max_px=max_px, cache_dir=cache_dir)
+            return
         try:
             ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
         except Exception as exc:
@@ -418,3 +421,72 @@ class UnifiedLoader:
 def to_training_samples(rows: list[UnifiedSample]) -> list:
     """Collapse unified rows to flat training Samples (dropping those with no usable target)."""
     return [s for s in (r.to_sample() for r in rows) if s is not None]
+
+
+# --------------------------------------------------------------------------- special loaders
+# Some datasets can't be streamed record-by-record with paired image+GT (annotations in a separate
+# file, images in a separate archive, ...). Register a bespoke loader here; UnifiedLoader.iter
+# delegates to it. Signature: ``(entry, *, limit, max_px, cache_dir) -> Iterator[UnifiedSample]``.
+_SPECIAL_LOADERS: dict = {}
+
+
+def load_omnidocbench(entry, *, limit=50, max_px=1000, cache_dir=None):
+    """OmniDocBench: annotations live in one ``OmniDocBench.json`` and images under ``images/`` — join
+    them here. Emits recognition records (full-page text in reading order) + localization ``regions``
+    (per-block boxes, normalized to [0,1] by page size, so downscaling the image keeps them valid)."""
+    import json as _json
+    from pathlib import Path
+
+    from huggingface_hub import hf_hub_download
+    from PIL import Image
+
+    repo = entry["hf_id"]
+    try:
+        data = _json.load(open(hf_hub_download(repo, "OmniDocBench.json", repo_type="dataset")))
+    except Exception as exc:
+        print(f"[unified][fail] omnidocbench: {type(exc).__name__}: {str(exc)[:120]}"); return
+    cache = Path(cache_dir) / "omnidocbench" if cache_dir else None
+    n = 0
+    for ent in data:
+        if n >= limit:
+            break
+        pi = ent.get("page_info", {}) or {}
+        ip, W, H = pi.get("image_path"), pi.get("width"), pi.get("height")
+        if not ip or not W or not H:
+            continue
+        try:
+            img = Image.open(hf_hub_download(repo, f"images/{ip}", repo_type="dataset")).convert("RGB")
+        except Exception:
+            continue
+        dets = sorted((d for d in ent.get("layout_dets", []) if not d.get("ignore")),
+                      key=lambda d: d.get("order") if d.get("order") is not None else 1_000_000)
+        regions, texts = [], []
+        for d in dets:
+            poly, txt = d.get("poly"), _s(d.get("text"))
+            box = None
+            if poly and len(poly) >= 8:
+                xs, ys = poly[0::2], poly[1::2]
+                box = Box(min(xs) / W, min(ys) / H, max(xs) / W, max(ys) / H, True)
+            regions.append(Region(label=_s(d.get("category_type")) or "block", bbox=box, text=txt))
+            if txt:
+                texts.append(txt)
+        full = "\n".join(texts)
+        small = img
+        if max(small.size) > max_px:
+            s = max_px / max(small.size)
+            small = small.resize((max(1, round(small.width * s)), max(1, round(small.height * s))))
+        img_path = None
+        if cache is not None:
+            cache.mkdir(parents=True, exist_ok=True)
+            img_path = str(cache / f"{n:04d}.jpg")
+            small.save(img_path, quality=85)
+        yield UnifiedSample(
+            sample_id=f"omnidocbench_{n:04d}_0", source="omnidocbench", task=Task.RECOGNITION,
+            instruction="Transcribe the full page in reading order.",
+            answers=[full] if full else [], full_text=full or None, regions=regions,
+            image_path=img_path, hf_id=repo, split=entry.get("split"), hf_config=entry.get("config"),
+            metric="ned")
+        n += 1
+
+
+_SPECIAL_LOADERS["omnidocbench"] = load_omnidocbench

@@ -28,12 +28,34 @@ def _text(r) -> str:
         " ".join(r.get("answers") or []), (r.get("full_text") or "")[:200], fkeys])
 
 
+def _image_features(ds, model_id: str):
+    """CLIP image embeddings (L2-normalized) for every row — the visual feature space of the docs."""
+    import numpy as np
+    import torch
+    from transformers import CLIPModel, CLIPProcessor
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    model = CLIPModel.from_pretrained(model_id).to(dev).eval()
+    proc = CLIPProcessor.from_pretrained(model_id)
+    feats = []
+    imgs = [ds[i]["image"].convert("RGB") for i in range(len(ds))]
+    with torch.no_grad():
+        for i in range(0, len(imgs), 16):
+            inp = proc(images=imgs[i:i + 16], return_tensors="pt").to(dev)
+            f = model.get_image_features(**inp)
+            f = f / f.norm(dim=-1, keepdim=True)
+            feats.append(f.cpu().numpy())
+    return np.concatenate(feats)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"),
                    help="local load_from_disk path")
     p.add_argument("--repo", default=None, help="HF repo to pull instead of --src")
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" / "udd_umap.png"))
+    p.add_argument("--features", choices=["image", "text"], default="image",
+                   help="'image' = CLIP image embeddings (default); 'text' = TF-IDF of the content")
+    p.add_argument("--clip", default="openai/clip-vit-base-patch32")
     args = p.parse_args()
 
     import matplotlib
@@ -49,16 +71,21 @@ def main() -> None:
     else:
         from datasets import load_from_disk
         ds = load_from_disk(args.src)
-    rows = [{k: ds[k][i] for k in ("task", "source", "instruction", "answers", "full_text",
-                                   "fields_json")} for i in range(len(ds))]
-    texts = [_text(r) for r in rows]
-    tasks = [r["task"] for r in rows]
-    sources = [r["source"] for r in rows]
+    tasks = list(ds["task"])
+    sources = list(ds["source"])
 
-    X = TfidfVectorizer(max_features=2000, stop_words="english").fit_transform(texts)
+    if args.features == "image":
+        X = _image_features(ds, args.clip)          # CLIP image embeddings (dense, L2-normalized)
+        feat_desc = f"CLIP({args.clip.split('/')[-1]}) image"
+    else:
+        rows = [{k: ds[k][i] for k in ("task", "source", "instruction", "answers", "full_text",
+                                       "fields_json")} for i in range(len(ds))]
+        X = TfidfVectorizer(max_features=2000, stop_words="english").fit_transform(
+            [_text(r) for r in rows]).toarray()
+        feat_desc = "TF-IDF(content)"
     n = X.shape[0]
     emb = umap.UMAP(n_neighbors=min(15, n - 1), min_dist=0.1, metric="cosine",
-                    random_state=42).fit_transform(X.toarray())
+                    random_state=42).fit_transform(X)
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6.5))
     for ax, labels, title in ((axes[0], tasks, "by task"), (axes[1], sources, "by source dataset")):
@@ -70,7 +97,7 @@ def main() -> None:
         ax.set_title(f"UDD feature UMAP — {title}", fontsize=12, fontweight="bold")
         ax.set_xticks([]); ax.set_yticks([])
         ax.legend(fontsize=7, loc="best", ncol=1 if len(cats) <= 8 else 2, framealpha=0.9)
-    fig.suptitle(f"UDD — {n} records, TF-IDF(content) → UMAP", fontsize=13, fontweight="bold")
+    fig.suptitle(f"UDD — {n} records, {feat_desc} → UMAP", fontsize=13, fontweight="bold")
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=120, bbox_inches="tight")
