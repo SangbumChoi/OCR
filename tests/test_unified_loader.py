@@ -226,6 +226,26 @@ def test_enrich_record_counts_and_dims():
     assert out["phash"] == "" and out["license"] == "cc-by-4.0"
 
 
+def test_to_grounding_samples_format(tmp_path):
+    from PIL import Image
+    from docvlm_eval.unified import Box, Region
+    ip = tmp_path / "page.jpg"
+    Image.new("RGB", (1000, 500), "white").save(ip)
+    r = UnifiedSample(sample_id="doclaynet_0000_0", source="doclaynet", task=Task.LOCALIZATION,
+                      image_path=str(ip),
+                      regions=[Region("Table", Box(0.1, 0.2, 0.5, 0.6, True)),
+                               Region("Table", Box(0.6, 0.2, 0.9, 0.6, True)),
+                               Region("Title", Box(0.0, 0.0, 1.0, 0.1, True))])
+    ss = r.to_grounding_samples()
+    assert len(ss) == 2                                   # grouped by LABEL, not per region
+    table = next(s for s in ss if "Table" in s.question)
+    assert all(s.metric == "grounding" for s in ss)
+    assert len(table.answers) == 2                                   # 2 golds, best-IoU semantics
+    assert table.answers[0] == "100,100,500,300;1000,500"            # normalized -> stored pixels
+    # no regions / no image -> nothing
+    assert UnifiedSample(sample_id="x", source="s", task=Task.LOCALIZATION).to_grounding_samples() == []
+
+
 def test_dhash_stability_and_hamming():
     from PIL import Image, ImageDraw
     from docvlm_eval.unified import dhash, hamming

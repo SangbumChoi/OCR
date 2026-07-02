@@ -40,3 +40,6 @@ data/udd/
 
 # Task-value ablation: equal-N per-task training sets (regenerable from UDD via build_task_trainsets.py)
 data/udd_tasks/
+
+# A4 language trainsets (regenerable from UDD via build_task_trainsets --group-by language)
+data/udd_langs/

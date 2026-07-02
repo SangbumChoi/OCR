@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.unified import (UnifiedLoader, enrich_dataset, push,  # noqa: E402
                                  render_grid, safety_check, to_hf_dataset)
 
-HARD_CAP = 200
+HARD_CAP = 500      # was 200 ("<200 images" mockup constraint); raised for the 200/source release
 
 
 def main() -> None:

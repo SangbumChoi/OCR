@@ -240,6 +240,43 @@ into exactly the same training set — you just get **fewer rows and one image d
 is by `image_path` when present, else `(source, sample_id-without-QA-suffix)`, so it works both before
 and after image caching.
 
+## Merge value — measured without training any model
+
+Before spending GPU on fine-tuning, `scripts/analyze_udd_merge_value.py` quantifies what merging
+buys from the dataset alone ([`docs/results/udd_merge_value.md`](../results/udd_merge_value.md)):
+
+| signal | best single source | merged | verdict |
+|---|---|---|---|
+| task coverage | 1 of 7 | **7 tasks** | no single-source option exists |
+| language coverage | 2 | **6** (ar en id ko und zh) | ×3 |
+| visual diversity (pairwise dhash) | 26.4 avg within-source | **30.4** | wider input distribution |
+| vocabulary | 5,769 tokens | **33,722** (near-linear growth) | complementary, not rephrased |
+| cross-source redundancy | — | **0.7%** strict near-dups | merging adds data, not copies |
+
+![merge value](figures/udd_merge_value.png)
+
+**Verdict: merging is justified on dataset evidence alone** — coverage no single source provides, a
+measurably wider visual/text distribution, negligible redundancy. What this *cannot* show is
+transfer to model capability at a fixed budget; that is precisely the GPU task-value ablation below
+and the A1/A4 hypothesis runs.
+
+## Hypothesis-compatible training sets (ablation_plan.md ↔ UDD)
+
+`build_task_trainsets.py` now emits the training formats the ablation-plan hypotheses need:
+
+- **A1 spotting/localization** — localization rows are no longer dropped:
+  `UnifiedSample.to_grounding_samples()` converts DocLayNet/PubLayNet/OmniDocBench regions into the
+  pipeline's grounding format — "Where is the `<label>`?" with gold `"x1,y1,x2,y2;W,H"` (same-label
+  regions become multiple golds on one sample, matching the metric's best-IoU semantics). These
+  train directly through `run_ablation.py --grounding-target norm`.
+- **A4 language diversity** — `--group-by language` writes equal-N `lang_<code>.jsonl` per language
+  (from the heuristic `language` column): en / ar / id / ko / und / zh today.
+
+```bash
+python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization
+python scripts/build_task_trainsets.py --group-by language --out data/udd_langs   # A4 sets
+```
+
 ## Per-task value ablation — is each task worth adding?
 
 To decide whether a task (vqa / kie / recognition / table / reasoning) **earns its slot** in the

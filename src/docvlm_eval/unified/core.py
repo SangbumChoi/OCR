@@ -175,6 +175,43 @@ class UnifiedSample:
                       "n_qas": len(self.qas), **self.meta}))
         return out
 
+    def to_grounding_samples(self, max_labels: int = 8) -> list:
+        """Convert localization ``regions`` into **A1-grounding training Samples**.
+
+        The plain :meth:`to_sample` path drops localization records (boxes aren't a text answer);
+        this emits the format the fine-tuning pipeline already trains and scores: one Sample per
+        region LABEL, question "where is the <label>?", gold(s) ``"x1,y1,x2,y2;W,H"`` in stored-image
+        pixels (metrics/grounding.py). Same-label regions become MULTIPLE golds on one sample —
+        matching the metric's best-IoU-over-golds semantics — instead of N ambiguous copies of the
+        same question. ``grounding_target="norm"`` in lora_vlm converts to 0-1 at train time."""
+        from ..schema import Sample
+        if not (self.image_path and self.regions):
+            return []
+        try:
+            from PIL import Image
+            W, H = Image.open(self.image_path).size
+        except Exception:
+            return []
+        by_label: dict[str, list[str]] = {}
+        for rg in self.regions:
+            if rg.bbox is None:
+                continue
+            x1, y1, x2, y2 = rg.bbox.to_list()
+            if rg.bbox.normalized:
+                x1, y1, x2, y2 = x1 * W, y1 * H, x2 * W, y2 * H
+            by_label.setdefault(rg.label or "element", []).append(
+                f"{x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f};{W},{H}")
+        out = []
+        for i, (label, golds) in enumerate(list(by_label.items())[:max_labels]):
+            out.append(Sample(
+                sample_id=f"{self.sample_id}_g{i}", image_path=self.image_path,
+                question=f"Where is the {label} in the document? "
+                         f"Return the bounding box as x1,y1,x2,y2.",
+                answers=golds, answer_type=Task.LOCALIZATION, metric="grounding",
+                meta={"source": self.source, "hf_id": self.hf_id, "task": Task.LOCALIZATION,
+                      "label": label, "n_boxes": len(golds), **self.meta}))
+        return out
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         # flatten boxes to lists for JSON friendliness
