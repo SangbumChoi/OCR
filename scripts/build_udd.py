@@ -116,8 +116,10 @@ def main() -> None:
     # ONE merged, sharded dataset (default config) — origin kept in the `source`/`split` columns, not
     # in the repo layout. Built by memory-mapped concat of ALL on-disk per-source saves (not just this
     # run's — so an incremental `--only newkey` build still merges the full corpus), never all in RAM.
+    # underscore-prefixed dirs are pipeline outputs (_all, plus _all_tmp if a merge crashed
+    # mid-save) — never treat them as sources
     on_disk = sorted(d.name for d in (out / "hf").glob("*")
-                     if d.is_dir() and d.name != "_all") if (out / "hf").exists() else []
+                     if d.is_dir() and not d.name.startswith("_")) if (out / "hf").exists() else []
     if on_disk and not args.no_combined:
         from datasets import concatenate_datasets, load_from_disk
         parts = [load_from_disk(str(out / "hf" / k)) for k in on_disk]
