@@ -56,6 +56,10 @@ def main() -> None:
     p.add_argument("--features", choices=["image", "text"], default="image",
                    help="'image' = CLIP image embeddings (default); 'text' = TF-IDF of the content")
     p.add_argument("--clip", default="openai/clip-vit-base-patch32")
+    p.add_argument("--sample", type=int, default=3000,
+                   help="max points, stratified per source (CPU CLIP over a huge corpus does not "
+                        "scale; also dedups QA fan-out rows sharing one image). 0 = every row.")
+    p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
 
     import matplotlib
@@ -71,6 +75,27 @@ def main() -> None:
     else:
         from datasets import load_from_disk
         ds = load_from_disk(args.src)
+    # one point per distinct IMAGE (QA fan-out repeats the image), then stratified per-source cap
+    all_sources = ds["source"]
+    all_sids = ds["sample_id"]
+    by_src: dict[str, list[int]] = {}
+    seen_img: set[str] = set()
+    for i in range(len(ds)):
+        img_key = f"{all_sources[i]}:{all_sids[i].rsplit('_', 1)[0]}"
+        if img_key in seen_img:
+            continue
+        seen_img.add(img_key)
+        by_src.setdefault(all_sources[i], []).append(i)
+    if args.sample:
+        import random as _random
+        rng = _random.Random(args.seed)
+        per_src = max(1, args.sample // max(1, len(by_src)))
+        idx = [i for lst in by_src.values() for i in (rng.sample(lst, per_src)
+                                                      if len(lst) > per_src else lst)]
+    else:
+        idx = [i for lst in by_src.values() for i in lst]
+    idx.sort()
+    ds = ds.select(idx)
     tasks = list(ds["task"])
     sources = list(ds["source"])
 

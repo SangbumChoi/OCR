@@ -358,6 +358,10 @@ def _u_doclaynet(ex, e) -> list[UnifiedSample]:
                           regions=regions, metric="grounding")]
 
 
+_CAULDRON_MAX_TURNS = 5    # PlotQA packs ~90 QAs/image — cap to OCR-VQA-like density so one source
+                           # can't drown the corpus (100 images stay <=500 rows, not 9k)
+
+
 @register("stvqa", "visualmrc", "plotqa", "dvqa", "tatqa", "docmatix")
 def _u_cauldron(ex, e) -> list[UnifiedSample]:
     """The Cauldron / Docmatix format: ``images: [PIL]`` + ``texts: [{user, assistant, source}]``.
@@ -365,6 +369,8 @@ def _u_cauldron(ex, e) -> list[UnifiedSample]:
     task = TASK_BY_BENCHMARK.get(e["key"], Task.VQA)
     out = []
     for t in ex.get("texts") or []:
+        if len(out) >= _CAULDRON_MAX_TURNS:
+            break
         if not isinstance(t, dict):
             continue
         q, a = _s(t.get("user")), _s(t.get("assistant"))

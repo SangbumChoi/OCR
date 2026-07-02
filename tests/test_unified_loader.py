@@ -149,6 +149,9 @@ def test_cauldron_format_multiple_turns():
     assert len(recs) == 2 and recs[0].task == Task.VQA and recs[0].answers == ["Physics"]
     assert _one("tatqa", {"texts": [{"user": "Total assets?", "assistant": "$5M"}]})[0].task \
         == Task.REASONING                                  # task typed per key, same adapter
+    # PlotQA-style 90-turn records are capped so one source can't drown the corpus
+    many = {"texts": [{"user": f"Q{i}?", "assistant": str(i)} for i in range(90)]}
+    assert len(_one("plotqa", many)) == 5
 
 
 def test_mtvqa_json_qa_pairs_and_language():
