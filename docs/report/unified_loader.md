@@ -106,8 +106,8 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **5,675 rows** (≤100 images/source) from **33 sources / 7 tasks**.
-> `load_dataset("danelcsb/UDD")`.
+> (single default config) of **11,146 rows / 6,350 distinct images** (≤200 images/source) from
+> **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -156,10 +156,11 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (≤100 images/dataset, safety-checked, 0 failures):**
-**33 converters pass** → merged dataset = 5,675 rows across **7 tasks**
-(vqa 2,625, reasoning 1,800, recognition 600, kie 250, localization 200, table 100,
-**classification 100**). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
+**Validated — all streamable datasets (≤200 images/dataset, safety-checked, 0 failures):**
+**33 converters pass** → merged dataset = 11,146 rows / 6,350 distinct images across **7 tasks**
+(vqa 5,196, reasoning 3,600, recognition 1,200, localization 400, kie 350, table 200,
+**classification 200**; languages en 9,746 · ar 582 · und 400 · ko 200 · zh 118 · id 100; CORD and
+FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
 **rvl_cdip→classification** (16 document types — first source for that task),
 **screenqa→vqa with UI-element boxes** (the webui-probe counterpart),
@@ -175,11 +176,11 @@ diversify it.
 **Duplicate audit** (`scripts/audit_udd_duplicates.py` →
 [`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
 `phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
-threshold (≤6) drowns in false positives. Current corpus: **1 cross-source exact duplicate**
-(chartqa ↔ mathvista — MathVista aggregates ChartQA) and 32 credible cross-source near-pairs
-(docmatix↔mtvqa, doclaynet↔docmatix, chartqa↔mathvista, …), plus expected within-source template
-reuse in synthetic/chart sets. The build pipeline itself dedups going forward via the persistent
-md5 `hash_index.json` (cross-run/cross-source) at insertion time.
+threshold (≤6) drowns in false positives. The 200/source corpus shows **0 cross-source exact
+duplicates** — the insertion-time md5 `hash_index.json` proved itself: the 100/source build had 1
+(chartqa ↔ mathvista, MathVista aggregates ChartQA); in the full rebuild the index skipped
+MathVista's copy at insert. 188 near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer
+can't see), plus expected within-source template reuse in synthetic/chart sets.
 
 ![UDD mockup examples](figures/udd_examples.png)
 
@@ -248,10 +249,10 @@ buys from the dataset alone ([`docs/results/udd_merge_value.md`](../results/udd_
 | signal | best single source | merged | verdict |
 |---|---|---|---|
 | task coverage | 1 of 7 | **7 tasks** | no single-source option exists |
-| language coverage | 2 | **6** (ar en id ko und zh) | ×3 |
-| visual diversity (pairwise dhash) | 26.4 avg within-source | **30.4** | wider input distribution |
-| vocabulary | 5,769 tokens | **33,722** (near-linear growth) | complementary, not rephrased |
-| cross-source redundancy | — | **0.7%** strict near-dups | merging adds data, not copies |
+| language coverage | 3 | **6** (ar en id ko und zh) | ×2 |
+| visual diversity (pairwise dhash) | 26.6 avg within-source | **30.2** | wider input distribution |
+| vocabulary | 9,135 tokens | **54,051** (near-linear growth) | complementary, not rephrased |
+| cross-source redundancy | — | **1.3%** strict near-dups (0 exact) | merging adds data, not copies |
 
 ![merge value](figures/udd_merge_value.png)
 
