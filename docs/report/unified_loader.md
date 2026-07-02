@@ -106,7 +106,7 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **2,426 rows** (100 images/source) from 21 sources / 6 tasks.
+> (single default config) of **5,675 rows** (≤100 images/source) from **33 sources / 7 tasks**.
 > `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
@@ -116,7 +116,7 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 ```
 image, sample_id, source, task, instruction, answers[], fields_json, regions_json,
 full_text, table_html, language, metric, hf_id, split, hf_config,
-n_fields, n_regions, image_width, image_height          # derived (enrichment pass)
+n_fields, n_regions, image_width, image_height, phash, license   # derived (enrichment pass)
 ```
 
 The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
@@ -156,17 +156,30 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (100 images/dataset, safety-checked, 0 failures):**
-**21/23 converters pass** → merged dataset = 2,426 rows across 6 tasks
-(vqa 1,276, recognition 400, reasoning 300, kie 250, table 100, **localization 100**; OCR-VQA's 100
-images carry 476 QAs, FUNSD's split has only 50 images total). Highlights:
-cord/funsd→kie with boxes (FUNSD 1769 fields, CORD 284), ocrvqa→vqa (1130 regions), pubtabnet→table,
-iam/im2latex/latexocr→recognition, chartqa/mathvista/charxiv→reasoning,
-**doclaynet→localization** (DocLayNet-v1.1 layout boxes, COCO xywh→normalized corners — a pure
-spotting/detection task) and **omnidocbench→recognition + localization** (via a dedicated
-`OmniDocBench.json`+images loader — `_SPECIAL_LOADERS`). **2 remaining data-access blockers**
-(not adapter bugs): `stvqa` (no HF split ships answers) and `pubtables1m` (image + annotation live in
-separate multi-GB tars — not joinable via streaming).
+**Validated — all streamable datasets (≤100 images/dataset, safety-checked, 0 failures):**
+**33 converters pass** → merged dataset = 5,675 rows across **7 tasks**
+(vqa 2,625, reasoning 1,800, recognition 600, kie 250, localization 200, table 100,
+**classification 100**). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
+**doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
+**rvl_cdip→classification** (16 document types — first source for that task),
+**screenqa→vqa with UI-element boxes** (the webui-probe counterpart),
+**mtvqa→multilingual vqa** (per-row `language` from the source), **synthdog en/ko→recognition**
+(real `ko` rows for the A4 ablation), **stvqa/visualmrc/plotqa/dvqa/tatqa/docmatix via The Cauldron**
+(one adapter, turn-capped at 5/image so PlotQA's ~90 QAs/image can't drown the corpus — this also
+resolved the old `stvqa` no-answers blocker), and **omnidocbench→recognition + localization** (via
+`_SPECIAL_LOADERS`). **1 remaining data-access blocker**: `pubtables1m` (image + annotation live in
+separate multi-GB tars — not joinable via streaming). Known sampling caveat: MTVQA streams
+language-ordered, so a 100-image head is all-Arabic; deeper scans (or a stride sampler) would
+diversify it.
+
+**Duplicate audit** (`scripts/audit_udd_duplicates.py` →
+[`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
+`phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
+threshold (≤6) drowns in false positives. Current corpus: **1 cross-source exact duplicate**
+(chartqa ↔ mathvista — MathVista aggregates ChartQA) and 32 credible cross-source near-pairs
+(docmatix↔mtvqa, doclaynet↔docmatix, chartqa↔mathvista, …), plus expected within-source template
+reuse in synthetic/chart sets. The build pipeline itself dedups going forward via the persistent
+md5 `hash_index.json` (cross-run/cross-source) at insertion time.
 
 ![UDD mockup examples](figures/udd_examples.png)
 

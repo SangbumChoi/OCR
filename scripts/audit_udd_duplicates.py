@@ -37,7 +37,11 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
-    p.add_argument("--near", type=int, default=6, help="max Hamming distance for a near-duplicate")
+    p.add_argument("--near", type=int, default=2,
+                   help="max Hamming distance for a near-duplicate. Documents are mostly-white "
+                        "low-entropy images, so dhash saturates fast: at 6 (the usual photo "
+                        "threshold) this corpus shows ~1.3k cross-source 'pairs' full of false "
+                        "positives (diagram≈receipt); at 2 the survivors are real re-uses.")
     p.add_argument("--out", default=str(MD))
     args = p.parse_args()
 
@@ -90,6 +94,11 @@ def main() -> None:
     lines = ["# UDD duplicate audit", "",
              f"{len(per_image)} distinct image slots, {len({k[0] for k in per_image})} sources. "
              f"Exact = identical decoded pixels (md5); near = dhash Hamming ≤ {args.near}.", "",
+             "Threshold note: documents are mostly-white, low-entropy images, so perceptual hashes "
+             "saturate much faster than on photos — at the usual photo threshold (≤6) this corpus "
+             "reports ~1.3k cross-source 'pairs' dominated by false positives (e.g. diagram ≈ "
+             "receipt). At ≤2 the survivors are genuine re-uses; treat anything between as "
+             "candidates needing eyeballing.", "",
              f"- **Exact duplicate groups:** {len(exact_groups)} "
              f"({len(exact_cross)} cross-source)",
              f"- **Near-duplicate pairs:** {len(near_pairs)} ({len(cross_near)} cross-source)", ""]
