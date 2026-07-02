@@ -315,8 +315,20 @@ def _u_cord(ex, e) -> list[UnifiedSample]:
             if isinstance(w, dict):
                 fields.append(Field(key=cat or "word", value=_s(w.get("text")),
                                     bbox=_quad_to_box(w.get("quad") or {})))
-    answers = [json.dumps({f.key: f.value for f in fields if f.bbox is None}, ensure_ascii=False)] \
-        if fields else []
+    # the answer is the ORIGINAL nested gt_parse — a {flat_key: value} dict silently drops repeated
+    # keys (a 10-item receipt kept only the last menu.nm: 67/100 answers were incomplete). The
+    # nested JSON keeps every line item; `fields` stays flat for cross-dataset merge/filter.
+    if parse:
+        answers = [json.dumps(parse, ensure_ascii=False)]
+    elif fields:
+        agg: dict[str, Any] = {}
+        for f in fields:
+            if f.bbox is None:
+                agg.setdefault(f.key, []).append(f.value)
+        answers = [json.dumps({k: v[0] if len(v) == 1 else v for k, v in agg.items()},
+                              ensure_ascii=False)]
+    else:
+        answers = []
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.KIE,
                           instruction="Extract the receipt's key fields as JSON.",
                           answers=answers, fields=fields, metric="anls")]
@@ -531,6 +543,30 @@ def _via_trainset(ex, e, task: str) -> list[UnifiedSample]:
     return out
 
 
+def canon_key(a: str) -> str:
+    """Normalization under which two answers count as 'the same meaning, different surface':
+    Unicode NFKC, casefold, whitespace collapse, and edge punctuation stripped."""
+    import unicodedata
+    s = unicodedata.normalize("NFKC", str(a)).casefold()
+    return " ".join(s.split()).strip(".,;:!?\"' ")
+
+
+def canon_answers(answers: list[str]) -> list[str]:
+    """Drop answers that differ only by case/punctuation/whitespace, keeping the FIRST occurrence
+    (the source's primary gold). DocVQA-style human-answer lists ship near-identical variants
+    ("ITC Limited" / "itc limited") — surface noise for a training corpus, not real alternatives.
+    Genuinely different answers (e.g. "5 days" vs "five days") are kept."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for a in answers:
+        k = canon_key(a)
+        if k and k in seen:
+            continue
+        seen.add(k)
+        out.append(a)
+    return out
+
+
 def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[UnifiedSample]:
     """Map one raw benchmark example to typed :class:`UnifiedSample`(s). Returns [] if nothing usable."""
     entry = entry or {"key": key}
@@ -547,6 +583,7 @@ def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[Unifi
 
     for r in recs:
         r.hf_id = entry.get("hf_id")
+        r.answers = canon_answers(r.answers)      # collapse case/punct/space duplicate golds
         if not r.metric:
             r.metric = norm_metric(entry.get("metric"))
         if not r.language:

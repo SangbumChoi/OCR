@@ -203,6 +203,20 @@ Detection also runs at **extraction time** (`extract_unified`), so future builds
 natively; `scripts/enrich_udd.py` retrofits an already-built corpus in place (and `build_udd.py` runs
 the same pass at merge time).
 
+**Answer quality (canonicalization).** Two systematic answer defects were found and fixed at the
+pipeline level:
+
+- **Incomplete CORD answers** — the answer JSON was built as a `{flat_key: value}` dict, so repeated
+  keys collided: a 10-item receipt kept only the *last* `menu.nm` (**67/100 CORD answers were
+  incomplete** vs their own `fields_json`). The answer is now the **original nested `gt_parse`**
+  (every line item preserved); `fields` stays flat for cross-dataset merging.
+- **Redundant multi-answers** — DocVQA-style human-answer lists ship surface variants
+  ("ITC Limited" / "itc limited" / "ITC LIMITED."), which are noise, not alternatives: 294 of 527
+  multi-answer rows carried case/punctuation duplicates. `canon_answers` (NFKC + casefold +
+  whitespace collapse + edge-punctuation strip) drops them, keeping the source's **first** gold;
+  genuinely different answers ("5 days" vs "five days") survive. Applied at extraction time for new
+  builds AND in the enrichment pass, which retrofits already-built rows at every merge.
+
 ## Incremental adds — per-source cache + cross-source image dedup
 
 Adding one new dataset must not cost re-streaming all 21. `build_udd.py` keeps two caches:

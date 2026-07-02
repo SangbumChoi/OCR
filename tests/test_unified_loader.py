@@ -37,6 +37,38 @@ def test_cord_kie_fields_and_boxes():
     assert payload["total"] == "4.50"
 
 
+def test_cord_answer_keeps_all_line_items():
+    # a 3-item receipt: the answer JSON must keep EVERY menu item, not just the last
+    # (the old {flat_key: value} dict collided repeated keys — 67/100 answers were incomplete)
+    gt = json.dumps({"gt_parse": {
+        "menu": [{"nm": "UDANG RE", "price": "216,000"},
+                 {"nm": "GURAME FILLET M", "price": "111,000"},
+                 {"nm": "ICED TEA", "price": "12,000"}],
+        "total": {"total_price": "339,000"}}})
+    r = _one("cord", {"ground_truth": gt})[0]
+    payload = json.loads(r.answers[0])
+    assert [m["nm"] for m in payload["menu"]] == ["UDANG RE", "GURAME FILLET M", "ICED TEA"]
+    assert payload["total"]["total_price"] == "339,000"
+    assert len([f for f in r.fields if f.key == "menu.nm"]) == 3    # flat fields keep all too
+
+
+def test_canon_answers_dedupes_surface_variants():
+    from docvlm_eval.unified import canon_answers
+    # DocVQA-style human answers: case/punct variants collapse, first (primary) kept
+    assert canon_answers(["ITC Limited", "itc limited", "ITC LIMITED."]) == ["ITC Limited"]
+    assert canon_answers(["university of california", "University of California",
+                          "university of california, san diego"]) \
+        == ["university of california", "university of california, san diego"]
+    # genuinely different answers survive
+    assert canon_answers(["5 days", "five days"]) == ["5 days", "five days"]
+    assert canon_answers(["Yes", "No"]) == ["Yes", "No"]
+
+
+def test_extract_unified_applies_canon():
+    r = _one("docvqa", {"question": "Who?", "answers": ["Smith", "smith", "SMITH"]})[0]
+    assert r.answers == ["Smith"]
+
+
 def test_funsd_kie_with_word_boxes():
     ex = {"words": ["Name", "Bob"], "bboxes": [[1, 2, 3, 4], [5, 6, 7, 8]], "ner_tags": [3, 5]}
     r = _one("funsd", ex)[0]

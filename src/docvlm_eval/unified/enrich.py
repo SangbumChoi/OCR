@@ -143,6 +143,13 @@ def enrich_record(row: dict) -> dict:
     out["image_width"], out["image_height"] = int(w), int(h)
     out["phash"] = dhash(img) if (w and h) else ""     # perceptual hash: near-dup detection/join key
     out["license"] = HF_LICENSE.get(row.get("hf_id") or "", "unspecified")
+    # retrofit: collapse case/punct/space duplicate golds on rows built before canon_answers existed
+    ans = list(row.get("answers") or [])
+    if len(ans) > 1:
+        from .core import canon_answers
+        deduped = canon_answers(ans)
+        if len(deduped) < len(ans):
+            out["answers"] = deduped
     return out
 
 
