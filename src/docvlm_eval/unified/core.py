@@ -57,6 +57,9 @@ TASK_BY_BENCHMARK = {
     "scitsr": Task.TABLE,
     "im2latex": Task.RECOGNITION, "latexocr": Task.RECOGNITION, "crohme": Task.RECOGNITION,
     "doclaynet": Task.LOCALIZATION, "omnidocbench": Task.RECOGNITION,
+    "mtvqa": Task.VQA, "screenqa": Task.VQA, "docmatix": Task.VQA, "tatqa": Task.REASONING,
+    "publaynet": Task.LOCALIZATION, "rvl_cdip": Task.CLASSIFICATION,
+    "synthdog_en": Task.RECOGNITION, "synthdog_ko": Task.RECOGNITION,
 }
 
 
@@ -353,6 +356,125 @@ def _u_doclaynet(ex, e) -> list[UnifiedSample]:
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.LOCALIZATION,
                           instruction="Localize the document layout elements as bounding boxes.",
                           regions=regions, metric="grounding")]
+
+
+@register("stvqa", "visualmrc", "plotqa", "dvqa", "tatqa", "docmatix")
+def _u_cauldron(ex, e) -> list[UnifiedSample]:
+    """The Cauldron / Docmatix format: ``images: [PIL]`` + ``texts: [{user, assistant, source}]``.
+    One VQA/reasoning record per turn (all sharing the image); task from TASK_BY_BENCHMARK."""
+    task = TASK_BY_BENCHMARK.get(e["key"], Task.VQA)
+    out = []
+    for t in ex.get("texts") or []:
+        if not isinstance(t, dict):
+            continue
+        q, a = _s(t.get("user")), _s(t.get("assistant"))
+        if q and a:
+            out.append(UnifiedSample(sample_id="", source=e["key"], task=task,
+                                     instruction=q, answers=[a], metric="anls"))
+    return out
+
+
+@register("mtvqa")
+def _u_mtvqa(ex, e) -> list[UnifiedSample]:
+    """MTVQA: ``qa_pairs`` is an ENCODED list of {question, answer} — sometimes JSON, sometimes a
+    Python repr (single quotes), so fall back to ast.literal_eval; ``lang`` is the doc language."""
+    raw = ex.get("qa_pairs")
+    if isinstance(raw, str):
+        import ast
+        try:
+            qa = json.loads(raw)
+        except Exception:
+            try:
+                qa = ast.literal_eval(raw)
+            except Exception:
+                qa = []
+    else:
+        qa = raw or []
+    lang = _s(ex.get("lang")).lower() or None
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.VQA,
+                          instruction=_s(p.get("question")), answers=[_s(p.get("answer"))],
+                          language=lang, metric="anls")
+            for p in qa if isinstance(p, dict) and _s(p.get("question")) and _s(p.get("answer"))]
+
+
+@register("screenqa")
+def _u_screenqa(ex, e) -> list[UnifiedSample]:
+    """RICO-ScreenQA: question + ground_truth[{full_answer, ui_elements[{bounds, text}]}] — VQA with
+    the answer's UI elements as pixel-box regions (grounded screen QA)."""
+    q = _s(ex.get("question"))
+    gts = ex.get("ground_truth") or []
+    if not (q and gts and isinstance(gts[0], dict)):
+        return []
+    answers = [_s(g.get("full_answer")) for g in gts if _s(g.get("full_answer"))]
+    regions = []
+    for el in (gts[0].get("ui_elements") or []):
+        b = el.get("bounds")
+        if isinstance(b, (list, tuple)) and len(b) >= 4:
+            regions.append(Region(label="ui_element", text=_s(el.get("text")),
+                                  bbox=_norm_box4(b[0], b[1], b[2], b[3], False)))
+    if not answers:
+        return []
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.VQA, instruction=q,
+                          answers=answers, regions=regions, metric="anls")]
+
+
+_PUBLAYNET = {1: "Text", 2: "Title", 3: "List", 4: "Table", 5: "Figure"}
+
+
+@register("publaynet")
+def _u_publaynet(ex, e) -> list[UnifiedSample]:
+    """PubLayNet: COCO ``annotations`` (bbox [x,y,w,h] pixel + category_id 1-5) — layout localization.
+    Boxes are normalized by the record's own image size so the loader's downscaling keeps them valid."""
+    img = ex.get("image")
+    W, H = getattr(img, "size", (0, 0)) or (0, 0)
+    regions = []
+    for a in ex.get("annotations") or []:
+        if not isinstance(a, dict):
+            continue
+        b = a.get("bbox")
+        if not (isinstance(b, (list, tuple)) and len(b) >= 4):
+            continue
+        x, y, w, h = b[:4]
+        box = Box(x / W, y / H, (x + w) / W, (y + h) / H, True) if (W and H) \
+            else Box(x, y, x + w, y + h, False)
+        regions.append(Region(label=_PUBLAYNET.get(a.get("category_id"), "block"), bbox=box))
+    if not regions:
+        return []
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.LOCALIZATION,
+                          instruction="Localize the document layout elements as bounding boxes.",
+                          regions=regions, metric="grounding")]
+
+
+_RVL_CDIP = ("letter", "form", "email", "handwritten", "advertisement", "scientific report",
+             "scientific publication", "specification", "file folder", "news article", "budget",
+             "invoice", "presentation", "questionnaire", "resume", "memo")
+
+
+@register("rvl_cdip")
+def _u_rvl_cdip(ex, e) -> list[UnifiedSample]:
+    lbl = ex.get("label")
+    if not isinstance(lbl, int) or not (0 <= lbl < len(_RVL_CDIP)):
+        return []
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.CLASSIFICATION,
+                          instruction="What type of document is this? Answer with the document class.",
+                          answers=[_RVL_CDIP[lbl]], metric="exact")]
+
+
+@register("synthdog_en", "synthdog_ko")
+def _u_synthdog(ex, e) -> list[UnifiedSample]:
+    """SynthDoG: ``ground_truth`` JSON with gt_parse.text_sequence — full-page synthetic reading."""
+    gt = ex.get("ground_truth")
+    try:
+        text = _s(((json.loads(gt) if isinstance(gt, str) else gt) or {})
+                  .get("gt_parse", {}).get("text_sequence"))
+    except Exception:
+        text = ""
+    if not text:
+        return []
+    lang = "ko" if e["key"].endswith("_ko") else "en"
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.RECOGNITION,
+                          instruction="Transcribe all the text in the image. Answer with the text only.",
+                          answers=[text], full_text=text, language=lang, metric="ned")]
 
 
 def _via_trainset(ex, e, task: str) -> list[UnifiedSample]:
