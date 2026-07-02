@@ -154,6 +154,14 @@ def _teds(pred: str, golds: list[str]) -> float:
     return teds_score(pred, golds)
 
 
+def _bank(name: str):
+    """Late-bound dispatch into metrics.bank (module imports text, so avoid a cycle)."""
+    def scorer(pred: str, golds: list[str]) -> float:
+        from . import bank
+        return bank.METRIC_BANK[name](pred, golds)
+    return scorer
+
+
 _SCORERS = {
     "anls": anls,
     "relaxed_acc": relaxed_accuracy,
@@ -162,6 +170,11 @@ _SCORERS = {
     "grounding": _grounding,
     "ned": ned_similarity,
     "teds": _teds,
+    # metric-bank additions (metrics/bank.py): usable as a Sample.metric directly
+    "token_f1": _bank("token_f1"),
+    "drop_em": _bank("drop_em"),
+    "cer_sim": _bank("cer_sim"),
+    "semantic_match": _bank("semantic_match"),
 }
 
 
