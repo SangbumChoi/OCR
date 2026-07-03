@@ -284,6 +284,14 @@ and the A1/A4 hypothesis runs.
   pipeline's grounding format — "Where is the `<label>`?" with gold `"x1,y1,x2,y2;W,H"` (same-label
   regions become multiple golds on one sample, matching the metric's best-IoU semantics). These
   train directly through `run_ablation.py --grounding-target norm`.
+- **A2 reasoning traces** — previously "not feasible on public data (no rationale)". Now derivable:
+  for any localized element (layout regions, boxed KIE fields), the *spatial* reasoning chain is a
+  function of the geometry — `derive_spatial_reasoning()` emits "Where is the `<label>`? Explain."
+  records whose answer is the derived chain: nearest-anchor relation + 3×3-grid page position +
+  grounded value ("the total.total_price appears **to the right of** the total.label, in the
+  **bottom** of the page, reading '60,000'"). Deterministic, no model, no annotation;
+  `--derive-spatial-reasoning` adds them to the reasoning pool (+1,747 records from the current
+  corpus).
 - **A4 language diversity** — `--group-by language` writes equal-N `lang_<code>.jsonl` per language
   (from the heuristic `language` column): en / ar / id / ko / und / zh today.
 

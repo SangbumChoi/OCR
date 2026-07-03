@@ -704,6 +704,70 @@ class UnifiedLoader:
         return out
 
 
+# --------------------------------------------------------------------------- derived reasoning
+def _grid_pos(b: Box) -> str:
+    """Name a box's position on the page via a 3x3 grid ('bottom-left', 'center', ...)."""
+    cx, cy = (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2
+    col = "left" if cx < 1 / 3 else ("right" if cx > 2 / 3 else "center")
+    row = "top" if cy < 1 / 3 else ("bottom" if cy > 2 / 3 else "middle")
+    return "center" if (row, col) == ("middle", "center") else f"{row}-{col}"
+
+
+def _relation(a: Box, b: Box) -> str:
+    """Dominant spatial relation of a RELATIVE TO b ('to the right of', 'below', ...)."""
+    dx = (a.x1 + a.x2) / 2 - (b.x1 + b.x2) / 2
+    dy = (a.y1 + a.y2) / 2 - (b.y1 + b.y2) / 2
+    if abs(dx) >= abs(dy):
+        return "to the right of" if dx > 0 else "to the left of"
+    return "below" if dy > 0 else "above"
+
+
+def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3) -> list[UnifiedSample]:
+    """Derive REASONING-task records from a record's own geometry — no model, no annotation.
+
+    Public datasets ship boxes but never rationales, which blocked the A2 (reasoning-trace)
+    hypothesis on public data. But the trace for "where is X?" IS a function of the geometry: the
+    element's page position (3x3 grid) and its relation to the nearest other element ("the value
+    sits to the RIGHT of the 'total' label"). This emits, per localized element (regions, or KIE
+    fields with boxes), a record whose instruction asks for the location WITH an explanation and
+    whose answer is the derived chain — trainable A2 rows (metric=ned, free-text). Boxes must be
+    normalized (the loaders emit normalized boxes); pixel-only records are skipped."""
+    targets: list[tuple[str, str, Box]] = []           # (label, value-text, box)
+    for rg in r.regions:
+        if rg.bbox is not None and rg.bbox.normalized:
+            targets.append((rg.label or "element", rg.text, rg.bbox))
+    for f in r.fields:
+        if f.bbox is not None and f.bbox.normalized:
+            targets.append((f.key, f.value, f.bbox))
+    if len(targets) < 2:                               # need a neighbour for a relational step
+        return []
+    out: list[UnifiedSample] = []
+    seen_labels: set[str] = set()
+    for label, value, box in targets:
+        if len(out) >= max_items or label in seen_labels:
+            continue
+        seen_labels.add(label)
+        # nearest element with a DIFFERENT label = the anchor of the relational step
+        others = [(ol, ob) for ol, _, ob in targets if ol != label]
+        if not others:
+            continue
+        anchor_label, anchor_box = min(
+            others, key=lambda t: ((box.x1 + box.x2) / 2 - (t[1].x1 + t[1].x2) / 2) ** 2
+                                + ((box.y1 + box.y2) / 2 - (t[1].y1 + t[1].y2) / 2) ** 2)
+        chain = (f"Scanning the document layout, the {anchor_label} is a useful anchor. "
+                 f"The {label} appears {_relation(box, anchor_box)} the {anchor_label}, "
+                 f"in the {_grid_pos(box)} of the page"
+                 + (f", reading '{value}'" if _s(value) else "") + ".")
+        out.append(UnifiedSample(
+            sample_id=f"{r.sample_id}_r{len(out)}", source=r.source, task=Task.REASONING,
+            instruction=f"Where is the {label} located in the document? Explain how you find it.",
+            answers=[chain], language=r.language, metric="ned", image_path=r.image_path,
+            hf_id=r.hf_id, split=r.split, hf_config=r.hf_config,
+            meta={"derived": "spatial_reasoning", "bbox": box.to_list(),
+                  "anchor": anchor_label, **r.meta}))
+    return out
+
+
 # --------------------------------------------------------------------------- convenience
 def to_training_samples(rows: list[UnifiedSample]) -> list:
     """Collapse unified rows to flat training Samples (dropping those with no usable target).

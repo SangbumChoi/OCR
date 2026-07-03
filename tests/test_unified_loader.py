@@ -166,6 +166,32 @@ def test_merge_by_image_dedupes_identical_questions():
     assert len(merged) == 1 and len(merged[0].qas) == 1   # duplicate question merged
 
 
+def test_derive_spatial_reasoning_receipt_total():
+    # the user's scenario: a receipt with menu items above and the total at the bottom —
+    # the derived chain must say the amount is to the RIGHT of the 'total' label, bottom of page
+    from docvlm_eval.unified import Box, Field, derive_spatial_reasoning
+    r = UnifiedSample(
+        sample_id="cord_0001_0", source="cord", task=Task.KIE, image_path="/tmp/r.jpg",
+        fields=[Field("menu.nm", "ICED TEA", Box(0.1, 0.2, 0.4, 0.25, True)),
+                Field("total.label", "TOTAL", Box(0.1, 0.85, 0.3, 0.9, True)),
+                Field("total.total_price", "60,000", Box(0.6, 0.85, 0.9, 0.9, True))])
+    recs = derive_spatial_reasoning(r)
+    assert recs and all(x.task == Task.REASONING for x in recs)
+    price = next(x for x in recs if "total.total_price" in x.instruction)
+    chain = price.answers[0]
+    assert "to the right of" in chain and "total.label" in chain      # relational step
+    assert "bottom" in chain and "60,000" in chain                    # position + value grounded
+    assert price.metric == "ned" and price.meta["derived"] == "spatial_reasoning"
+
+
+def test_derive_spatial_reasoning_needs_two_elements():
+    from docvlm_eval.unified import Box, Region, derive_spatial_reasoning
+    lone = UnifiedSample(sample_id="x_0_0", source="doclaynet", task=Task.LOCALIZATION,
+                         image_path="/tmp/x.jpg",
+                         regions=[Region("Title", Box(0.1, 0.0, 0.9, 0.1, True))])
+    assert derive_spatial_reasoning(lone) == []       # no anchor -> no relational chain
+
+
 def test_qas_and_flat_pair_are_mutually_exclusive():
     import pytest
     with pytest.raises(ValueError, match="two\\s+states of the same thing"):

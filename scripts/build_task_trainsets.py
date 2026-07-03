@@ -68,6 +68,10 @@ def main() -> None:
     p.add_argument("--group-by", choices=["task", "language"], default="task",
                    help="'task' = the task-value ablation sets (default); 'language' = per-language "
                         "sets (lang_<code>.jsonl) for the A4 language-diversity hypothesis")
+    p.add_argument("--derive-spatial-reasoning", action="store_true",
+                   help="A2: augment the reasoning pool with rationales DERIVED from geometry — "
+                        "for every localized element, a 'where is X? explain.' record whose answer "
+                        "is the position + nearest-anchor relation chain (no model, no annotation)")
     p.add_argument("--seed", type=int, default=7, help="shuffle seed for the balanced subsample")
     args = p.parse_args()
 
@@ -92,6 +96,16 @@ def main() -> None:
         if not ip.exists():
             ds[i]["image"].convert("RGB").save(ip, quality=90)
         by_task[task].append(unified_from_hf_row(row, image_path=str(ip)))
+
+    # 1b) A2: derive spatial-reasoning records from geometry (localization regions / boxed KIE
+    # fields) and add them to the reasoning pool — the rationale is a function of the boxes.
+    if args.derive_spatial_reasoning:
+        from docvlm_eval.unified import derive_spatial_reasoning
+        derived = [d for rows in by_task.values() for r in rows
+                   for d in derive_spatial_reasoning(r)]
+        if derived:
+            by_task.setdefault("reasoning", []).extend(derived)
+            print(f"[task-value] A2: derived {len(derived)} spatial-reasoning records from geometry")
 
     # 2) optional merge of duplicate-image QAs (a Q/A list per image) BEFORE we count samples
     if args.merge_qa:
