@@ -166,6 +166,13 @@ def test_merge_by_image_dedupes_identical_questions():
     assert len(merged) == 1 and len(merged[0].qas) == 1   # duplicate question merged
 
 
+def test_qas_and_flat_pair_are_mutually_exclusive():
+    import pytest
+    with pytest.raises(ValueError, match="two\\s+states of the same thing"):
+        UnifiedSample(sample_id="x", source="s", task=Task.VQA,
+                      instruction="Q?", answers=["a"], qas=[QA("Q2?", ["b"])])
+
+
 def test_to_samples_expands_qas():
     r = UnifiedSample(sample_id="i_0_0", source="ocrvqa", task=Task.VQA, image_path="/i.jpg",
                       qas=[QA("Q1", ["a1"]), QA("Q2", ["a2"]), QA("Q3", [])])

@@ -106,6 +106,10 @@ class UnifiedSample:
     sample_id: str
     source: str                       # catalog benchmark key
     task: str                         # Task.*
+    # ONE question per record is the canonical, PERSISTED form (instruction + answers — the only
+    # form in the stored HF schema). `qas` is the same concept in its DERIVED, grouped state: it is
+    # only populated by merge_by_image(), which then empties instruction/answers — a record is
+    # either flat OR grouped, never both (validated in __post_init__).
     instruction: str = ""             # the prompt / question (empty for pure recognition w/ canned prompt)
     answers: list[str] = field(default_factory=list)
     qas: list[QA] = field(default_factory=list)              # MANY QAs on one image (see merge_by_image)
@@ -121,6 +125,15 @@ class UnifiedSample:
     split: str | None = None          # the source dataset's split (e.g. test / validation / train)
     hf_config: str | None = None      # the source dataset's HF config, if any
     meta: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        # flat XOR grouped: a record carrying BOTH a qas list and a flat instruction+answers pair is
+        # ambiguous (which is authoritative?) — refuse it instead of silently preferring one.
+        if self.qas and self.answers:
+            raise ValueError(
+                f"UnifiedSample {self.sample_id!r}: `qas` and flat `instruction`+`answers` are two "
+                "states of the same thing — populate one, not both (merge_by_image() moves the flat "
+                "pair INTO qas and empties it)")
 
     # -------- conversions
     _DEFAULT_PROMPT = {
