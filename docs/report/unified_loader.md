@@ -116,8 +116,12 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 ```
 image, sample_id, source, task, instruction, answers[], fields_json, regions_json,
 full_text, table_html, language, metric, hf_id, split, hf_config,
-n_fields, n_regions, image_width, image_height, phash, license   # derived (enrichment pass)
+n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
+
+`fold` is the deterministic ~90/10 `train`/`heldout` split keyed by **image identity** (all QAs of
+one image share the fold — leakage-safe); `build_task_trainsets.py` excludes heldout rows from every
+training pool and writes them to `heldout_<task>.jsonl` for public-data evaluation.
 
 The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
 `fields_json` / `regions_json`, so a single schema covers all six tasks without losing the typed

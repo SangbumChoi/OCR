@@ -16,6 +16,9 @@ row (no network, no model):
 * ``phash`` — 64-bit difference hash of the image (near-duplicate detection / cross-source joins;
   see ``scripts/audit_udd_duplicates.py``).
 * ``license`` — the hosting HF repo's card license tag (``HF_LICENSE``; "unspecified" if untagged).
+* ``fold`` — deterministic ``train``/``heldout`` split (~90/10) keyed by **image identity** (md5 of
+  ``source + sample_id-without-QA-suffix``), so every QA of one image lands in the SAME fold — the
+  leakage-safe public held-out the A0/A1/A2 ablations need.
 
 ``enrich_dataset`` applies all of it to a built HF dataset (``datasets.Dataset.map``);
 ``detect_language`` is also called at extraction time (``core.extract_unified``) so *future* builds
@@ -127,6 +130,16 @@ def hamming(h1: str, h2: str) -> int:
     return bin(int(h1, 16) ^ int(h2, 16)).count("1")
 
 
+def assign_fold(source: str, sample_id: str, heldout_pct: int = 10) -> str:
+    """Deterministic train/heldout assignment keyed by IMAGE identity, not row identity — all QAs
+    of one image share the fold, so a held-out image can never leak into training via a sibling
+    question. Stable across rebuilds (pure hash of source + image key)."""
+    import hashlib
+    img_key = sample_id.rsplit("_", 1)[0] or sample_id
+    h = int(hashlib.md5(f"{source}:{img_key}".encode()).hexdigest(), 16)
+    return "heldout" if (h % 100) < heldout_pct else "train"
+
+
 def enrich_record(row: dict) -> dict:
     """The per-row map: fill ``language`` (if empty) + add payload-count and image-dim columns."""
     out = {}
@@ -148,9 +161,16 @@ def enrich_record(row: dict) -> dict:
     # column update is silently dropped.
     from .core import canon_answers
     out["answers"] = canon_answers(list(row.get("answers") or []))
+    out["fold"] = assign_fold(row.get("source") or "", row.get("sample_id") or "")
     return out
 
 
 def enrich_dataset(ds):
-    """Enrich a built UDD dataset: fill ``language``, add ``n_fields``/``n_regions``/image dims."""
-    return ds.map(enrich_record, desc="enrich (language + payload counts + image dims)")
+    """Enrich a built UDD dataset: fill ``language``, add ``n_fields``/``n_regions``/image dims,
+    ``phash``/``license``/``fold``, and canonicalise ``answers``.
+
+    ``load_from_cache_file=False``: datasets' map cache once served a STALE result after this
+    function gained a column (same inputs -> reused fingerprint), silently dropping the new field.
+    Enrichment is cheap; always recompute."""
+    return ds.map(enrich_record, desc="enrich (language/counts/dims/phash/license/fold)",
+                  load_from_cache_file=False)

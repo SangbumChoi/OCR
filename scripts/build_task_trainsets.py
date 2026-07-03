@@ -80,13 +80,19 @@ def main() -> None:
     ds = _load(args.src, args.repo)
     want = {t.strip() for t in args.tasks.split(",")} if args.tasks else None
 
-    # 1) reconstruct UnifiedSamples, decoding each image to disk (training needs a path, not bytes)
+    # 1) reconstruct UnifiedSamples, decoding each image to disk (training needs a path, not bytes).
+    # Rows are split by the leakage-safe `fold` column (image-keyed): heldout rows go to separate
+    # eval jsonls, never into a training pool. Corpora built before the column derive it on the fly.
+    from docvlm_eval.unified.enrich import assign_fold
+    has_fold = "fold" in ds.column_names
     by_task: dict[str, list] = defaultdict(list)
+    heldout_by_task: dict[str, list] = defaultdict(list)
     for i in range(len(ds)):
         row = {k: ds[k][i] for k in ds.column_names if k != "image"}
         task = row.get("task")
         if want and task not in want:
             continue
+        fold = row["fold"] if has_fold else assign_fold(row["source"], row["sample_id"])
         tdir = out / "images" / task
         tdir.mkdir(parents=True, exist_ok=True)
         # name by IMAGE identity (sample_id minus the trailing QA index) so same-image QAs share one
@@ -95,17 +101,25 @@ def main() -> None:
         ip = tdir / f"{img_key}.jpg"
         if not ip.exists():
             ds[i]["image"].convert("RGB").save(ip, quality=90)
-        by_task[task].append(unified_from_hf_row(row, image_path=str(ip)))
+        rec = unified_from_hf_row(row, image_path=str(ip))
+        (heldout_by_task if fold == "heldout" else by_task)[task].append(rec)
 
     # 1b) A2: derive spatial-reasoning records from geometry (localization regions / boxed KIE
-    # fields) and add them to the reasoning pool — the rationale is a function of the boxes.
+    # fields). BOTH styles are written as standalone files — `chain` (full rationale) vs `answer`
+    # (position-only control) — the A2 arm pair; chains also augment the reasoning pool.
     if args.derive_spatial_reasoning:
         from docvlm_eval.unified import derive_spatial_reasoning
-        derived = [d for rows in by_task.values() for r in rows
-                   for d in derive_spatial_reasoning(r)]
-        if derived:
-            by_task.setdefault("reasoning", []).extend(derived)
-            print(f"[task-value] A2: derived {len(derived)} spatial-reasoning records from geometry")
+        src_rows = [r for rows in by_task.values() for r in rows]
+        chain = [d for r in src_rows for d in derive_spatial_reasoning(r, style="chain")]
+        answer = [d for r in src_rows for d in derive_spatial_reasoning(r, style="answer")]
+        if chain:
+            save_jsonl([s for d in chain for s in d.to_samples()],
+                       out / "derived_reasoning_chain.jsonl")
+            save_jsonl([s for d in answer for s in d.to_samples()],
+                       out / "derived_reasoning_answer.jsonl")
+            by_task.setdefault("reasoning", []).extend(chain)
+            print(f"[task-value] A2: derived {len(chain)} spatial-reasoning records "
+                  f"(chain + answer-only control written to derived_reasoning_*.jsonl)")
 
     # 2) optional merge of duplicate-image QAs (a Q/A list per image) BEFORE we count samples
     if args.merge_qa:
@@ -150,6 +164,19 @@ def main() -> None:
                           "images": len({s.image_path for s in used})}
         print(f"[ok]   {group:14} available={len(pool):4} used={len(used):4} "
               f"images={summary[group]['images']}")
+
+    # heldout eval jsonls (public counterpart to the synthetic suite; NEVER subsampled/balanced —
+    # the identical set must score every arm)
+    heldout_all = []
+    for task in sorted(heldout_by_task):
+        hs = _expand(heldout_by_task[task])
+        if hs:
+            save_jsonl(hs, out / f"heldout_{task}.jsonl")
+            heldout_all += hs
+    if heldout_all:
+        save_jsonl(heldout_all, out / "heldout_all.jsonl")
+        print(f"[ok]   heldout: {len(heldout_all)} samples "
+              f"({', '.join(sorted(heldout_by_task))}) -> heldout_*.jsonl")
 
     save_jsonl(all_samples, out / "all.jsonl")
     (out / "summary.json").write_text(

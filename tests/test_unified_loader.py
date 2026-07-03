@@ -181,7 +181,13 @@ def test_derive_spatial_reasoning_receipt_total():
     chain = price.answers[0]
     assert "to the right of" in chain and "total.label" in chain      # relational step
     assert "bottom" in chain and "60,000" in chain                    # position + value grounded
-    assert price.metric == "ned" and price.meta["derived"] == "spatial_reasoning"
+    assert price.metric == "ned" and price.meta["derived"] == "spatial_reasoning:chain"
+    # A2 answer-only CONTROL: same elements/questions, target = position only (no rationale)
+    ctrl = derive_spatial_reasoning(r, style="answer")
+    c = next(x for x in ctrl if "total.total_price" in x.instruction)
+    assert "anchor" not in c.answers[0] and "to the right of" not in c.answers[0]
+    assert "bottom" in c.answers[0] and "Explain" not in c.instruction
+    assert len(ctrl) == len(recs)                                     # identical record count
 
 
 def test_derive_spatial_reasoning_needs_two_elements():
@@ -309,6 +315,18 @@ def test_to_grounding_samples_format(tmp_path):
     assert table.answers[0] == "100,100,500,300;1000,500"            # normalized -> stored pixels
     # no regions / no image -> nothing
     assert UnifiedSample(sample_id="x", source="s", task=Task.LOCALIZATION).to_grounding_samples() == []
+
+
+def test_assign_fold_deterministic_and_image_keyed():
+    from docvlm_eval.unified.enrich import assign_fold
+    # all QAs of one image share the fold (leakage-safe), and assignment is stable across calls
+    folds = {assign_fold("ocrvqa", f"ocrvqa_0007_{q}") for q in range(6)}
+    assert len(folds) == 1
+    assert assign_fold("cord", "cord_0001_0") == assign_fold("cord", "cord_0001_0")
+    # ~10% heldout over many images (loose bounds; deterministic so this cannot flake)
+    n = 2000
+    held = sum(assign_fold("src", f"src_{i:04d}_0") == "heldout" for i in range(n))
+    assert 0.05 < held / n < 0.15
 
 
 def test_dhash_stability_and_hamming():

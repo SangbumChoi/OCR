@@ -722,7 +722,8 @@ def _relation(a: Box, b: Box) -> str:
     return "below" if dy > 0 else "above"
 
 
-def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3) -> list[UnifiedSample]:
+def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3,
+                             style: str = "chain") -> list[UnifiedSample]:
     """Derive REASONING-task records from a record's own geometry — no model, no annotation.
 
     Public datasets ship boxes but never rationales, which blocked the A2 (reasoning-trace)
@@ -731,7 +732,12 @@ def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3) -> list[Unifi
     sits to the RIGHT of the 'total' label"). This emits, per localized element (regions, or KIE
     fields with boxes), a record whose instruction asks for the location WITH an explanation and
     whose answer is the derived chain — trainable A2 rows (metric=ned, free-text). Boxes must be
-    normalized (the loaders emit normalized boxes); pixel-only records are skipped."""
+    normalized (the loaders emit normalized boxes); pixel-only records are skipped.
+
+    ``style`` is the A2 ablation factor: ``"chain"`` targets the full rationale (anchor relation +
+    position + value); ``"answer"`` targets ONLY the final position statement — the answer-only
+    control with identical images, elements, question count and step budget, so the arm's delta is
+    attributable to the rationale text alone."""
     targets: list[tuple[str, str, Box]] = []           # (label, value-text, box)
     for rg in r.regions:
         if rg.bbox is not None and rg.bbox.normalized:
@@ -754,16 +760,21 @@ def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3) -> list[Unifi
         anchor_label, anchor_box = min(
             others, key=lambda t: ((box.x1 + box.x2) / 2 - (t[1].x1 + t[1].x2) / 2) ** 2
                                 + ((box.y1 + box.y2) / 2 - (t[1].y1 + t[1].y2) / 2) ** 2)
-        chain = (f"Scanning the document layout, the {anchor_label} is a useful anchor. "
-                 f"The {label} appears {_relation(box, anchor_box)} the {anchor_label}, "
-                 f"in the {_grid_pos(box)} of the page"
-                 + (f", reading '{value}'" if _s(value) else "") + ".")
+        if style == "chain":
+            target = (f"Scanning the document layout, the {anchor_label} is a useful anchor. "
+                      f"The {label} appears {_relation(box, anchor_box)} the {anchor_label}, "
+                      f"in the {_grid_pos(box)} of the page"
+                      + (f", reading '{value}'" if _s(value) else "") + ".")
+            question = f"Where is the {label} located in the document? Explain how you find it."
+        else:                               # answer-only control: same elements, no rationale
+            target = f"The {label} is in the {_grid_pos(box)} of the page."
+            question = f"Where is the {label} located in the document?"
         out.append(UnifiedSample(
             sample_id=f"{r.sample_id}_r{len(out)}", source=r.source, task=Task.REASONING,
-            instruction=f"Where is the {label} located in the document? Explain how you find it.",
-            answers=[chain], language=r.language, metric="ned", image_path=r.image_path,
+            instruction=question,
+            answers=[target], language=r.language, metric="ned", image_path=r.image_path,
             hf_id=r.hf_id, split=r.split, hf_config=r.hf_config,
-            meta={"derived": "spatial_reasoning", "bbox": box.to_list(),
+            meta={"derived": f"spatial_reasoning:{style}", "bbox": box.to_list(),
                   "anchor": anchor_label, **r.meta}))
     return out
 

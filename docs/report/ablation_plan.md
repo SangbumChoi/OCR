@@ -213,6 +213,39 @@ factor in a single config, so an arm differs from its control in exactly one fac
 - **Generate:** `python scripts/make_realistic_cases.py --config configs/synth_data.yaml
   --ablation <id>` — `configs/synth_data.yaml` holds `base:` + `ablation_overrides:` (A1/A2/A3/A4/A7).
 
+## 11b. Public-data realization of the arms (UDD)
+
+Every data-side arm now also runs on **public data** via UDD
+([`unified_loader.md`](unified_loader.md)) — same one-factor-at-equal-N control, real documents
+instead of synthetic templates. `scripts/run_udd_ablation.py` composes each arm's training mix from
+the equal-N per-task/per-language sets and drives `run_ablation.py --arm public`; every run scores
+BOTH the synthetic probe suite and the **UDD public heldout fold** (the `fold` column: deterministic
+~90/10 split keyed by *image identity*, so no held-out image leaks into training via a sibling QA).
+
+| Arm | UDD realization (equal totals) | Status / gaps |
+| --- | --- | --- |
+| A0 scale | `--arm A0 --train-jsonl data/udd_tasks/all.jsonl` (existing public A0 path) | ✅ |
+| A1 spotting | `A1_spotting_on` = vqa+kie+grounding thirds vs `A1_spotting_off` = vqa+kie halves; grounding rows from DocLayNet/PubLayNet/OmniDocBench via `to_grounding_samples()` | ✅ |
+| A2 reasoning | `A2_reason_chain` vs `A2_reason_answer`: the SAME geometry-derived records with rationale-target vs position-only target (`derive_spatial_reasoning(style=…)`) | ✅ (derived rationales — spatial subset of A2) |
+| A3 combination | `A3_base` / `A3_spot` / `A3_reason` / `A3_spot_reason`, equal totals | ✅ |
+| A4 language mix | `A4_en` vs `A4_en_{ko,ar,zh,id}` from `lang_<code>.jsonl` | ⚠️ partial: no es/ja rows yet (MTVQA streams language-ordered → ar-heavy; ja needs a deeper scan or a stride sampler); zh/id pools are small — the runner warns when an arm falls short of the equal-N target |
+| A5 placement | `--placement` knob on any arm (unchanged) | ✅ |
+| A6 HPO | orthogonal (unchanged) | ✅ |
+| A7 preprocessing | `--max-image-long-side` knob on any arm; `image_width/height` columns support small-text slicing | ✅ |
+
+```bash
+# 1) equal-N sets + heldout fold + derived A2 pair (offline)
+python scripts/build_task_trainsets.py --per-task 300 --merge-qa --derive-spatial-reasoning
+python scripts/build_task_trainsets.py --out data/udd_langs --group-by language --per-task 300
+# 2) compose + inspect the 13 arm mixes without a GPU
+python scripts/run_udd_ablation.py --arm A1 A2 A3 A4 --count 300 --dry-run
+# 3) train + eval (GPU); results -> docs/results/udd_ablation_results.json under U-<arm>
+python scripts/run_udd_ablation.py --arm A1 A2 --count 300 --steps 300
+```
+
+The synthetic arms (§11) remain the controlled-GT reference; the UDD arms answer the external-
+validity question — *do the same factors help on real documents?*
+
 ## 12. Run one arm end-to-end (GPU)
 
 ```bash
