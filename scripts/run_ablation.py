@@ -154,6 +154,10 @@ def main() -> None:
     p.add_argument("--heldout-seed", type=int, default=None,
                    help="A0 memorization test: also eval on a realistic set generated with THIS seed "
                         "(different from training) -> unseen content; reports the train/held-out gap")
+    p.add_argument("--heldout-jsonl", default=None,
+                   help="use THIS prebuilt jsonl as the held-out eval set instead of generating a "
+                        "synthetic one (e.g. data/udd_tasks/heldout_all.jsonl — the UDD public "
+                        "heldout fold from build_task_trainsets.py)")
     # --- A0 (PREREQUISITE) memorization-vs-understanding size sweep (configs/ablations.yaml A0) ---
     p.add_argument("--a0-sizes", type=int, nargs="+", default=[50, 100, 200, 400, 800],
                    help="A0: train-data scale sweep = variants/case (x14 cases = #images). Span a wide "
@@ -209,8 +213,8 @@ def main() -> None:
         run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig)
         return
 
-    heldout_jsonl = None
-    if args.heldout_seed is not None:    # build a held-out TEST split with a different seed
+    heldout_jsonl = args.heldout_jsonl   # prebuilt public heldout (UDD fold), if given
+    if heldout_jsonl is None and args.heldout_seed is not None:    # else synth with a different seed
         test_dir = ROOT / "data" / "probes" / "_realistic_heldout"
         heldout_cmd = [sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
                        "--seed", str(args.heldout_seed), "--count", str(max(1, args.count // 5)),

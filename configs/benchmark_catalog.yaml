@@ -19,6 +19,12 @@ benchmarks:
   - {key: iiit5k, name: IIIT5K, category: "A1. Text recognition", metric: "word accuracy / 1-NED",
      purpose: "Cropped-word recognition; isolates pure recognition from detection.",
      hf_id: null, config: null, split: null, source: "https://cvit.iiit.ac.in/research/projects/cvit-projects/the-iiit-5k-word-dataset"}
+  - {key: synthdog_en, name: SynthDoG-EN, category: "A1. Text recognition (synthetic)", metric: "CER / NED",
+     purpose: "Synthetic full-page English reading (Donut's pretraining recipe); scale recognition data.",
+     hf_id: naver-clova-ix/synthdog-en, config: null, split: train, source: "https://arxiv.org/abs/2111.15664"}
+  - {key: synthdog_ko, name: SynthDoG-KO, category: "A1. Text recognition (synthetic)", metric: "CER / NED",
+     purpose: "Synthetic full-page Korean reading; real ko recognition rows for the A4 ko/en ablation.",
+     hf_id: naver-clova-ix/synthdog-ko, config: null, split: train, source: "https://arxiv.org/abs/2111.15664"}
 
   # ---------- A2. Scene-text detection & recognition ----------
   - {key: scenetext, kind: synthetic, name: "Scene text (illustrative)", category: "A2. Scene-text", metric: "H-mean / word-acc / 1-NED",
@@ -43,7 +49,16 @@ benchmarks:
      hf_id: lmms-lab/textvqa, config: null, split: validation, source: "https://arxiv.org/abs/1904.08920"}
   - {key: stvqa, name: ST-VQA, category: "B1. Scene-text VQA", metric: anls,
      purpose: "VQA requiring reading scene text; origin of the ANLS metric.",
-     hf_id: lmms-lab/ST-VQA, config: null, split: test, source: "https://arxiv.org/abs/1905.13648"}
+     hf_id: HuggingFaceM4/the_cauldron, config: st_vqa, split: train, source: "https://arxiv.org/abs/1905.13648"}
+  - {key: mtvqa, name: MTVQA, category: "B1. Multilingual document VQA", metric: anls,
+     purpose: "Document VQA across 9 non-English languages (incl. ko/ja/ar); real-data multilingual check.",
+     hf_id: ByteDance/MTVQA, config: null, split: train, source: "https://arxiv.org/abs/2405.11985"}
+  - {key: screenqa, name: RICO-ScreenQA, category: "B1. UI/screen VQA", metric: anls,
+     purpose: "QA over mobile-app screenshots with answer UI-element boxes; public counterpart to webui_probe.",
+     hf_id: rootsautomation/RICO-ScreenQA, config: null, split: train, source: "https://arxiv.org/abs/2209.08199"}
+  - {key: docmatix, name: Docmatix, category: "B1. Document VQA (large-scale train)", metric: anls,
+     purpose: "2.4M-image / 9.5M-QA document-VQA training corpus (IDL-derived); the A0 scale-sweep source.",
+     hf_id: HuggingFaceM4/Docmatix, config: images, split: train, source: "https://huggingface.co/datasets/HuggingFaceM4/Docmatix"}
   - {key: ocrvqa, name: OCR-VQA, category: "B1. Document VQA", metric: exact,
      purpose: "QA over book-cover images; reading titles/authors/edition from text-heavy images.",
      hf_id: howard-hou/OCR-VQA, config: null, split: test, source: "https://ocr-vqa.github.io/"}
@@ -52,7 +67,7 @@ benchmarks:
      hf_id: lmms-lab/ai2d, config: null, split: test, source: "https://allenai.org/data/diagrams"}
   - {key: visualmrc, name: VisualMRC, category: "B1. Document VQA (abstractive)", metric: "BLEU/METEOR/CIDEr",
      purpose: "Long abstractive answers over webpage screenshots; reading comprehension + generation.",
-     hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2101.11272"}
+     hf_id: HuggingFaceM4/the_cauldron, config: visualmrc, split: train, source: "https://arxiv.org/abs/2101.11272"}
 
   # ---------- B2. Key Information Extraction (KIE) ----------
   - {key: funsd, name: FUNSD, category: "B2. Key Information Extraction (forms)", metric: "entity F1",
@@ -97,10 +112,13 @@ benchmarks:
      hf_id: AI4Math/MathVista, config: null, split: testmini, source: "https://arxiv.org/abs/2310.02255"}
   - {key: plotqa, name: PlotQA, category: "B3. Chart understanding", metric: relaxed_acc,
      purpose: "QA over scientific plots with out-of-vocabulary numeric answers; data extraction + reasoning.",
-     hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/1909.00997"}
+     hf_id: HuggingFaceM4/the_cauldron, config: plotqa, split: train, source: "https://arxiv.org/abs/1909.00997"}
   - {key: dvqa, name: DVQA, category: "B3. Chart understanding", metric: exact,
      purpose: "Bar-chart QA testing structure/element reading and value comparison.",
-     hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/1801.08163"}
+     hf_id: HuggingFaceM4/the_cauldron, config: dvqa, split: train, source: "https://arxiv.org/abs/1801.08163"}
+  - {key: tatqa, name: TAT-QA, category: "B3. Financial numeric reasoning", metric: exact,
+     purpose: "Numeric reasoning over financial tables+text; public counterpart to the H-accounting probe.",
+     hf_id: HuggingFaceM4/the_cauldron, config: tat_qa, split: train, source: "https://arxiv.org/abs/2105.07624"}
 
   # ---------- C2. Formula / math-expression recognition ----------
   - {key: im2latex, name: im2latex (latex-formulas), category: "C2. Formula recognition", metric: "edit dist / BLEU",
@@ -133,7 +151,13 @@ benchmarks:
      hf_id: opendatalab/OmniDocBench, config: null, split: train, source: "https://arxiv.org/abs/2412.07626"}
   - {key: doclaynet, name: DocLayNet, category: "A3. Layout analysis", metric: "COCO mAP",
      purpose: "Document layout detection (11 classes) across 6 doc types; element localization.",
-     hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2206.01062"}
+     hf_id: ds4sd/DocLayNet-v1.1, config: null, split: train, source: "https://arxiv.org/abs/2206.01062"}
+  - {key: publaynet, name: PubLayNet, category: "A3. Layout analysis", metric: "COCO mAP",
+     purpose: "360k-page layout detection (5 classes) on PubMed pages; large-scale localization complement to DocLayNet.",
+     hf_id: jordanparker6/publaynet, config: null, split: train, source: "https://arxiv.org/abs/1908.07836"}
+  - {key: rvl_cdip, name: RVL-CDIP, category: "A3. Document classification", metric: "accuracy",
+     purpose: "16-class document-type classification (letter/invoice/resume/...); activates the classification task.",
+     hf_id: chainyo/rvl-cdip, config: null, split: train, source: "https://arxiv.org/abs/1502.07058"}
   - {key: fox, name: Fox, category: "A3. Fine-grained region parsing", metric: "edit dist / F1",
      purpose: "Region/colour-guided OCR + cross-page understanding on dense multi-page docs.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2405.14295"}

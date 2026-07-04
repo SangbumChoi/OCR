@@ -31,3 +31,15 @@ augraphy_cache/
 # Offline benchmark training set: cached images + Arrow dataset (regenerable; lives on HF).
 # Build with scripts/build_benchmark_trainset.py; publish via push_to_hub / huggingface-cli upload.
 data/benchmark_trainset/
+
+# Unified loader output: cached images + jsonl (regenerable; lives on HF)
+data/unified_dataset/
+
+# UDD (Unified Document Dataset) build output: images + per-dataset HF arrow (regenerable; lives on HF)
+data/udd/
+
+# Task-value ablation: equal-N per-task training sets (regenerable from UDD via build_task_trainsets.py)
+data/udd_tasks/
+
+# A4 language trainsets (regenerable from UDD via build_task_trainsets --group-by language)
+data/udd_langs/

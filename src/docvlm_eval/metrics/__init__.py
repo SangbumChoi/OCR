@@ -18,6 +18,8 @@ from .text import (
     score_sample,
     wer,
 )
+from .bank import (METRIC_BANK, cer_sim, drop_em, drop_normalize, score_all, semantic_match,
+                   token_f1)
 from .calibration import expected_calibration_error, reliability_table
 from .aggregate import aggregate
 from .tables import teds, teds_struct
@@ -32,6 +34,13 @@ __all__ = [
     "relaxed_accuracy",
     "ocrbench_score",
     "score_sample",
+    "METRIC_BANK",
+    "score_all",
+    "token_f1",
+    "drop_em",
+    "cer_sim",
+    "semantic_match",
+    "drop_normalize",
     "expected_calibration_error",
     "reliability_table",
     "aggregate",

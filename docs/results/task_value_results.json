@@ -1,0 +1,140 @@
+{
+  "demo": true,
+  "models": {
+    "lfm2_5-vl-1.6b": {
+      "baseline": {
+        "probes": {
+          "capability": {
+            "score": 41.2,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 38.5
+          },
+          "spatial": {
+            "score": 22.0
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:vqa": {
+        "probes": {
+          "capability": {
+            "score": 44.8,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 41.0
+          },
+          "spatial": {
+            "score": 22.4
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:kie": {
+        "probes": {
+          "capability": {
+            "score": 43.1,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 39.9
+          },
+          "spatial": {
+            "score": 22.1
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:recognition": {
+        "probes": {
+          "capability": {
+            "score": 45.6,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 42.7
+          },
+          "spatial": {
+            "score": 21.8
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:reasoning": {
+        "probes": {
+          "capability": {
+            "score": 42.0,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 39.1
+          },
+          "spatial": {
+            "score": 22.0
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:table": {
+        "probes": {
+          "capability": {
+            "score": 41.0,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 38.2
+          },
+          "spatial": {
+            "score": 21.7
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      },
+      "task:all": {
+        "probes": {
+          "capability": {
+            "score": 46.9,
+            "by_answer_type": {}
+          },
+          "realistic": {
+            "score": 43.5
+          },
+          "spatial": {
+            "score": 23.1
+          }
+        },
+        "control": {
+          "count": 30,
+          "steps": 300,
+          "placement": "all"
+        }
+      }
+    }
+  }
+}
