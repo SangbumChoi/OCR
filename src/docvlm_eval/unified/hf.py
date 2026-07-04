@@ -103,8 +103,79 @@ def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
     exp_reg = sum(len(r.regions) for r in src)
     got_reg = sum(len(json.loads(x or "[]")) for x in ds2["regions_json"])
     assert exp_reg == got_reg, f"regions lost: {exp_reg} -> {got_reg}"
+    validate_payload_shapes(ds2)
     return {"rows": len(ds2), "fields": got_fields, "regions": got_reg,
             "image_ok": True, "columns": ds2.column_names}
+
+
+def validate_payload_shapes(ds) -> None:
+    """Payload SHAPE conformance: one DTO for every source — each region is exactly
+    {label, text, bbox: [x1,y1,x2,y2,normalized] | null}, each field {key, value, bbox} — so an
+    adapter emitting a different shape fails HERE (safety_check), not in a downstream consumer."""
+    for col, req in (("regions_json", {"label", "text", "bbox"}),
+                     ("fields_json", {"key", "value", "bbox"})):
+        for x in ds[col]:
+            for el in json.loads(x or "[]"):
+                assert isinstance(el, dict) and set(el) == req, \
+                    f"{col} element off-DTO: {el!r} (want keys {sorted(req)})"
+                bb = el["bbox"]
+                assert bb is None or (isinstance(bb, list) and len(bb) == 5), \
+                    f"{col} bbox off-DTO: {bb!r} (want [x1,y1,x2,y2,normalized] or null)"
+
+
+def dedupe_by_phash(ds):
+    """Same phash (+ same stored dims) = the same image: store it ONCE, gather every row's
+    question/answer pair into the survivor's ``qas_json`` list (identical questions deduped, order
+    preserved). Non-QA payload (fields/regions/full_text/table_html) rides with the survivor — for
+    a truly identical image the duplicates carry the same payload. The survivor keeps its own
+    ``fold``; a duplicate that sat in the other fold is REMOVED, which closes the leak of identical
+    pixels appearing on both sides of the split. Rows without a phash pass through untouched."""
+    from collections import defaultdict
+
+    from datasets import Dataset  # noqa: F401  (documents the return type)
+
+    phashes = ds["phash"]; widths = ds["image_width"]; heights = ds["image_height"]
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    order: list[tuple] = []
+    for i in range(len(ds)):
+        key = (phashes[i], widths[i], heights[i]) if phashes[i] else ("", i, i)
+        if key not in groups:
+            order.append(key)
+        groups[key].append(i)
+
+    keep: list[int] = []
+    merged_qas: dict[int, str] = {}          # survivor index -> extended qas_json
+    n_dropped = 0
+    instrs = ds["instruction"]; answers = ds["answers"]; qas_col = ds["qas_json"]
+    for key in order:
+        idxs = groups[key]
+        keep.append(idxs[0])
+        if len(idxs) == 1:
+            continue
+        qas: list[dict] = []
+        seen_q: set[str] = set()
+        for i in idxs:
+            pairs = json.loads(qas_col[i] or "[]") or \
+                [{"question": instrs[i] or "", "answers": list(answers[i] or [])}]
+            for qa in pairs:
+                q = (qa.get("question") or "").strip()
+                if q and q in seen_q:
+                    continue
+                seen_q.add(q)
+                qas.append(qa)
+        merged_qas[idxs[0]] = json.dumps(qas, ensure_ascii=False)
+        n_dropped += len(idxs) - 1
+
+    out = ds.select(keep)
+    if merged_qas:
+        pos_of = {orig: pos for pos, orig in enumerate(keep)}
+        upd = {pos_of[i]: qj for i, qj in merged_qas.items()}
+        out = out.map(lambda r, idx: {"qas_json": upd.get(idx, r["qas_json"])},
+                      with_indices=True, desc="dedupe: gather QAs onto surviving image",
+                      load_from_cache_file=False)
+    print(f"[dedupe] {len(ds)} rows -> {len(out)} ({n_dropped} duplicate-image rows folded into "
+          f"{len(merged_qas)} survivors' qas_json)")
+    return out
 
 
 def unified_from_hf_row(row: dict, image_path: str | None = None):
@@ -123,6 +194,20 @@ def unified_from_hf_row(row: dict, image_path: str | None = None):
               for f in json.loads(row.get("fields_json") or "[]")]
     regions = [Region(r.get("label", ""), _box(r.get("bbox")), r.get("text", ""))
                for r in json.loads(row.get("regions_json") or "[]")]
+    # a deduped row carries MANY QAs in qas_json -> reconstruct the grouped state (qas populated,
+    # flat pair empty, per the flat-XOR-grouped invariant); single-QA rows stay flat
+    qas_raw = json.loads(row.get("qas_json") or "[]")
+    if len(qas_raw) > 1:
+        from .core import QA
+        return UnifiedSample(
+            sample_id=row.get("sample_id", ""), source=row.get("source", ""),
+            task=row.get("task", ""), instruction="", answers=[],
+            qas=[QA(q.get("question", ""), list(q.get("answers") or [])) for q in qas_raw],
+            fields=fields, regions=regions, full_text=row.get("full_text") or None,
+            table_html=row.get("table_html") or None, language=row.get("language") or None,
+            metric=row.get("metric") or "anls", image_path=image_path,
+            hf_id=row.get("hf_id") or None, split=row.get("split") or None,
+            hf_config=row.get("hf_config") or None)
     return UnifiedSample(
         sample_id=row.get("sample_id", ""), source=row.get("source", ""), task=row.get("task", ""),
         instruction=row.get("instruction", "") or "", answers=list(row.get("answers") or []),

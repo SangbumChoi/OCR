@@ -39,6 +39,18 @@ def test_semantic_match_layered():
     assert semantic_match("red", ["blue"]) == 0.0
 
 
+def test_case_tolerance_is_explicit_across_the_bank():
+    # "Total" vs "total": every answer-style metric must treat pure case difference as correct —
+    # this is the metric-specialty row the tendency matrix ("case change") makes visible.
+    from docvlm_eval.metrics import METRIC_BANK
+    forgiving = {m: fn("total", ["Total"]) for m, fn in METRIC_BANK.items()}
+    for m in ("exact", "anls", "ned", "relaxed_acc", "ocrbench", "token_f1", "drop_em",
+              "semantic_match"):
+        assert forgiving[m] == 1.0, f"{m} punished a pure case change: {forgiving[m]}"
+    # cer_sim is the DELIBERATE exception: recognition CER is case-sensitive by convention
+    assert forgiving["cer_sim"] < 1.0
+
+
 def test_score_all_covers_bank_and_registry_dispatch():
     s = score_all("five", ["5"])
     assert set(s) == set(METRIC_BANK)

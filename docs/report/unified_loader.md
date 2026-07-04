@@ -123,6 +123,25 @@ n_fields, n_regions, image_width, image_height, phash, license, fold   # derived
 one image share the fold — leakage-safe); `build_task_trainsets.py` excludes heldout rows from every
 training pool and writes them to `heldout_<task>.jsonl` for public-data evaluation.
 
+**One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
+duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
+pair is gathered into **`qas_json`** (`[{question, answers[]}]`, identical questions deduped) —
+current corpus: 11,146 QA-rows → **6,319 image-rows** (4,827 folded into 1,396 survivors, ~40%
+smaller parquet, zero QAs lost — `unified_from_hf_row` re-expands `qas_json` into the grouped
+`qas` state and `to_training_samples` recovers every pair). A duplicate that sat in the other
+`fold` is removed, which also closes the identical-pixels-on-both-sides-of-the-split leak. Payload
+DTO conformance (every region exactly `{label, text, bbox}`, every field `{key, value, bbox}`,
+boxes `[x1,y1,x2,y2,normalized]|null`) is now **enforced** by `safety_check` →
+`validate_payload_shapes`, so an off-shape adapter fails at build time.
+
+**Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
+(oracle, case-flipped oracle, sentence-wrapped, truncated, constant, echo-question) over the public
+heldout sets and scores them through the real per-sample metric dispatch (incl. grounding box
+parsing on localization rows) → [`docs/results/udd_mock_eval.md`](../results/udd_mock_eval.md).
+Sanity is asserted (oracle ≈ 1.0, constant ≈ 0.0 per task) and **case tolerance is explicit**: the
+case-flipped oracle scores 1.00 on every task metric (only CER-style recognition scoring is
+case-sensitive, by convention — pinned by tests).
+
 The structured payload (KIE fields, localization regions with boxes) is **JSON-encoded** into
 `fields_json` / `regions_json`, so a single schema covers all six tasks without losing the typed
 payload — decode those columns to recover `Field`/`Region` (boxes carry `[x1,y1,x2,y2,normalized]`).

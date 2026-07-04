@@ -125,6 +125,9 @@ def main() -> None:
         parts = [load_from_disk(str(out / "hf" / k)) for k in on_disk]
         combined = concatenate_datasets(parts)
         combined = enrich_dataset(combined)               # language + n_fields/n_regions + image dims
+        from docvlm_eval.unified import dedupe_by_phash
+        combined = dedupe_by_phash(combined)              # same phash+dims = same image: store once,
+                                                          # gather all its QAs into qas_json
         combined.save_to_disk(str(out / "hf" / "_all_tmp"))
         import shutil
         if (out / "hf" / "_all").exists():

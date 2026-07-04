@@ -162,6 +162,15 @@ def enrich_record(row: dict) -> dict:
     from .core import canon_answers
     out["answers"] = canon_answers(list(row.get("answers") or []))
     out["fold"] = assign_fold(row.get("source") or "", row.get("sample_id") or "")
+    # qas_json: ALL question/answer pairs riding on this image (>=1). Starts as the row's own pair;
+    # dedupe_by_phash() extends it when same-image rows are merged, so no image is stored twice.
+    # instruction/answers stay = the PRIMARY (first) QA for flat consumers.
+    if not row.get("qas_json"):
+        out["qas_json"] = json.dumps(
+            [{"question": row.get("instruction") or "", "answers": out["answers"]}],
+            ensure_ascii=False)
+    else:
+        out["qas_json"] = row["qas_json"]
     return out
 
 

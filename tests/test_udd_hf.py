@@ -61,3 +61,61 @@ def test_to_hf_dataset_requires_image():
     import pytest
     with pytest.raises(ValueError):
         to_hf_dataset([UnifiedSample(sample_id="x", source="y", task=Task.VQA, answers=["a"])])
+
+
+def _mini_udd(tmp_path, rows_spec):
+    """Build a tiny enriched-shaped Dataset (phash/dims/qas_json columns) from (phash, q, a) specs."""
+    from datasets import Dataset
+    recs = []
+    for i, (ph, q, a) in enumerate(rows_spec):
+        recs.append({"sample_id": f"src_{i:04d}_0", "source": "src", "task": "vqa",
+                     "instruction": q, "answers": [a], "fields_json": "[]", "regions_json": "[]",
+                     "full_text": "", "table_html": "", "language": "en", "metric": "exact",
+                     "hf_id": "", "split": "test", "hf_config": "", "n_fields": 0, "n_regions": 0,
+                     "image_width": 40, "image_height": 30, "phash": ph, "license": "unspecified",
+                     "fold": "train",
+                     "qas_json": json.dumps([{"question": q, "answers": [a]}])})
+    return Dataset.from_list(recs)
+
+
+def test_dedupe_by_phash_gathers_qas(tmp_path):
+    from docvlm_eval.unified import dedupe_by_phash
+    ds = _mini_udd(tmp_path, [
+        ("aaaa", "Who wrote this?", "Smith"),
+        ("aaaa", "What is the title?", "Physics"),      # same image -> folded into row 0
+        ("aaaa", "Who wrote this?", "Smith"),           # identical question -> deduped
+        ("bbbb", "What genre?", "Science"),             # different image -> untouched
+    ])
+    out = dedupe_by_phash(ds)
+    assert len(out) == 2                                # one row per distinct image
+    qas = json.loads(out[0]["qas_json"])
+    assert [q["question"] for q in qas] == ["Who wrote this?", "What is the title?"]
+    assert out[0]["instruction"] == "Who wrote this?"   # primary QA stays flat for consumers
+    assert json.loads(out[1]["qas_json"])[0]["question"] == "What genre?"
+
+
+def test_unified_from_hf_row_expands_qas_json(tmp_path):
+    from docvlm_eval.unified import to_training_samples, unified_from_hf_row
+    row = {"sample_id": "src_0000_0", "source": "src", "task": "vqa",
+           "instruction": "Who wrote this?", "answers": ["Smith"],
+           "qas_json": json.dumps([{"question": "Who wrote this?", "answers": ["Smith"]},
+                                   {"question": "What is the title?", "answers": ["Physics"]}]),
+           "fields_json": "[]", "regions_json": "[]", "metric": "exact"}
+    r = unified_from_hf_row(row, image_path=_img(tmp_path))
+    assert len(r.qas) == 2 and not r.instruction        # grouped state (flat-XOR-grouped holds)
+    samples = to_training_samples([r])
+    assert len(samples) == 2                            # both QAs train, one image decode
+    assert {s.question for s in samples} == {"Who wrote this?", "What is the title?"}
+
+
+def test_validate_payload_shapes_rejects_off_dto(tmp_path):
+    import pytest
+    from docvlm_eval.unified.hf import validate_payload_shapes
+    img = _img(tmp_path)
+    ds = to_hf_dataset([UnifiedSample(sample_id="x_0_0", source="x", task=Task.VQA, image_path=img,
+                                      instruction="Q?", answers=["a"])])
+    validate_payload_shapes(ds)                          # conforming corpus passes
+    bad = ds.map(lambda r: {"regions_json": json.dumps([{"label": "w", "boxes": [[1, 2], [3, 4]]}])},
+                 load_from_cache_file=False)             # list-of-lists box + wrong key = off-DTO
+    with pytest.raises(AssertionError, match="off-DTO"):
+        validate_payload_shapes(bad)
