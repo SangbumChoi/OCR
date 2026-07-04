@@ -50,33 +50,44 @@ def _mix(parts: list[tuple[Path, float]], n_total: int, seed: int, out_path: Pat
     return len(rows)
 
 
-def arm_definitions(td: Path) -> dict[str, list[tuple[Path, float]]]:
-    """Arm -> equal-total composition. Only arms whose ingredient files exist are offered."""
+def arm_definitions(td: Path) -> dict[str, dict]:
+    """Arm -> {parts: equal-total composition, extra: per-arm run_ablation flags}.
+    Only arms whose ingredient files exist are offered."""
     t = lambda name: td / f"task_{name}.jsonl"          # noqa: E731
     d = lambda name: td / f"derived_reasoning_{name}.jsonl"   # noqa: E731
     lang = lambda code: td.parent / "udd_langs" / f"lang_{code}.jsonl"  # noqa: E731
-    arms: dict[str, list[tuple[Path, float]]] = {
+    # the full-signal composite mix: A5/A6 vary HOW we train, so the data stays fixed at this mix
+    composite = [(t("vqa"), 1 / 4), (t("kie"), 1 / 4), (t("localization"), 1 / 4), (d("chain"), 1 / 4)]
+    arms: dict[str, dict] = {
         # A1: does adding WHERE (grounding rows) help, at equal N?
-        "A1_spotting_on": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)],
-        "A1_spotting_off": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)],
+        "A1_spotting_on": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3),
+                                     (t("localization"), 1 / 3)]},
+        "A1_spotting_off": {"parts": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)]},
         # A2: rationale target vs answer-only target on the SAME derived records
-        "A2_reason_chain": [(d("chain"), 1.0)],
-        "A2_reason_answer": [(d("answer"), 1.0)],
+        "A2_reason_chain": {"parts": [(d("chain"), 1.0)]},
+        "A2_reason_answer": {"parts": [(d("answer"), 1.0)]},
         # A3: is it the structured signals, or just task combination?
-        "A3_base": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)],
-        "A3_spot": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)],
-        "A3_reason": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (d("chain"), 1 / 3)],
-        "A3_spot_reason": [(t("vqa"), 1 / 4), (t("kie"), 1 / 4),
-                           (t("localization"), 1 / 4), (d("chain"), 1 / 4)],
+        "A3_base": {"parts": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)]},
+        "A3_spot": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)]},
+        "A3_reason": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (d("chain"), 1 / 3)]},
+        "A3_spot_reason": {"parts": composite},
     }
     # A4: en alone vs en+X pairs, for every language set that exists
     if lang("en").exists():
-        arms["A4_en"] = [(lang("en"), 1.0)]
+        arms["A4_en"] = {"parts": [(lang("en"), 1.0)]}
         for code in ("ko", "ar", "zh", "id"):
             if lang(code).exists():
-                arms[f"A4_en_{code}"] = [(lang("en"), 1 / 2), (lang(code), 1 / 2)]
-    return {name: parts for name, parts in arms.items()
-            if all(p.exists() for p, _ in parts)}
+                arms[f"A4_en_{code}"] = {"parts": [(lang("en"), 1 / 2), (lang(code), 1 / 2)]}
+    # A5: LoRA placement over the FIXED composite mix — which modules move which capability
+    for grp in ("vision", "connector", "llm_attn", "llm_mlp"):
+        arms[f"A5_{grp}"] = {"parts": composite, "extra": ["--placement", grp]}
+    # A6: HPO over the FIXED composite mix (alpha = 2r convention; placement stays the CLI default
+    # until the A5 winner is known, then rerun with --placement <winner>)
+    for r in (8, 16, 32, 64):
+        arms[f"A6_r{r}"] = {"parts": composite,
+                            "extra": ["--lora-r", str(r), "--lora-alpha", str(2 * r)]}
+    return {name: spec for name, spec in arms.items()
+            if all(p.exists() for p, _ in spec["parts"])}
 
 
 def main() -> None:
@@ -109,10 +120,13 @@ def main() -> None:
     print(f"[udd-ablation] {len(selected)} arm runs, N={args.count}/arm, "
           f"heldout={'yes' if heldout.exists() else 'MISSING'}\n")
     for i, name in enumerate(selected, 1):
+        spec = arms[name]
         train = td / "arms" / f"{name}.jsonl"
-        n = _mix(arms[name], args.count, args.seed, train)
+        n = _mix(spec["parts"], args.count, args.seed, train)
+        extra = spec.get("extra", [])
         print(f"[{i}/{len(selected)}] {name}: {n} samples <- "
-              + " + ".join(f"{p.name}×{s:.2f}" for p, s in arms[name]))
+              + " + ".join(f"{p.name}×{s:.2f}" for p, s in spec["parts"])
+              + (f"   [{' '.join(extra)}]" if extra else ""))
         if n < 0.95 * args.count:
             print(f"    [warn] {name} fell short of the equal-N target ({n} < {args.count}): a "
                   f"source pool is too small. Compare it only against arms at the SAME total, or "
@@ -124,7 +138,7 @@ def main() -> None:
                "--record-key", f"U-{name}", "--results", args.results,
                "--count", str(args.count), "--steps", str(args.steps),
                "--placement", args.placement,
-               "--max-image-long-side", str(args.max_image_long_side)]
+               "--max-image-long-side", str(args.max_image_long_side)] + extra
         if heldout.exists():
             cmd += ["--heldout-jsonl", str(heldout)]
         if args.wandb_project:

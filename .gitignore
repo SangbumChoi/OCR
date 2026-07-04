@@ -43,3 +43,6 @@ data/udd_tasks/
 
 # A4 language trainsets (regenerable from UDD via build_task_trainsets --group-by language)
 data/udd_langs/
+
+# Synthetic UDD-format corpus (LOCAL ONLY, regenerable from make_realistic_cases)
+data/udd_synthetic/

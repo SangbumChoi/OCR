@@ -175,6 +175,10 @@ def main() -> None:
                         "Omit to train without logging.")
     p.add_argument("--wandb-run-prefix", default="",
                    help="prefix for the W&B run name (run = <prefix><arm>-<model>[-n<size>])")
+    # --- A6 HPO knobs (threaded into LoraVLMConfig; defaults = the config's defaults) ---
+    p.add_argument("--lora-r", type=int, default=16, help="A6: LoRA rank")
+    p.add_argument("--lora-alpha", type=int, default=32, help="A6: LoRA alpha (convention: 2*r)")
+    p.add_argument("--lr", type=float, default=1e-4, help="A6: learning rate")
     # --- throughput / OOM controls ---
     p.add_argument("--batch-size", type=int, default=2,
                    help="micro-batch (images/forward). LFM at 768px uses ~5GB on a T4 -> bs=2 fits; "
@@ -264,12 +268,14 @@ def main() -> None:
             out, _ = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
                 max_steps=args.steps, output_dir=f"outputs/{model}/public_{args.placement}_{args._mils}",
+                lora_r=args.lora_r, lora_alpha=args.lora_alpha, learning_rate=args.lr,
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}public-{model}-{args.placement}-img{args._mils}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl)] + ([("heldout", heldout_jsonl)] if heldout_jsonl else []))
             payload = {"control": {"count": n_train, "steps": args.steps, "placement": args.placement,
+                                   "lora_r": args.lora_r, "lora_alpha": args.lora_alpha, "lr": args.lr,
                                    "max_image_long_side": args._mils, "train_source": args.train_jsonl},
                        "probes": eval_all(hf, adapter=out)}
             _record(model, args.record_key or f"public:{args.placement}", payload)
