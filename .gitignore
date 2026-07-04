@@ -46,3 +46,6 @@ data/udd_langs/
 
 # Synthetic UDD-format corpus (LOCAL ONLY, regenerable from make_realistic_cases)
 data/udd_synthetic/
+
+# Reading-order probe renders (regenerable via make_reading_order_probe.py)
+data/probes/reading_order/

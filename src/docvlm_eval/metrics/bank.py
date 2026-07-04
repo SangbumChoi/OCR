@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 
+from .order import content_bag, order_tau
 from .text import (anls, cer, exact_match, ned_similarity, normalize_text, ocrbench_score,
                    relaxed_accuracy)
 
@@ -151,6 +152,9 @@ METRIC_BANK: dict = {
     "drop_em": drop_em,
     "cer_sim": cer_sim,
     "semantic_match": semantic_match,
+    # reading-order split (metrics/order.py): score ORDER separately from CONTENT
+    "content_bag": content_bag,
+    "order_tau": order_tau,
 }
 
 

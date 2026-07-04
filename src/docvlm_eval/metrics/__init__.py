@@ -20,6 +20,7 @@ from .text import (
 )
 from .bank import (METRIC_BANK, cer_sim, drop_em, drop_normalize, score_all, semantic_match,
                    token_f1)
+from .order import content_bag, order_tau
 from .calibration import expected_calibration_error, reliability_table
 from .aggregate import aggregate
 from .tables import teds, teds_struct
@@ -41,6 +42,8 @@ __all__ = [
     "cer_sim",
     "semantic_match",
     "drop_normalize",
+    "content_bag",
+    "order_tau",
     "expected_calibration_error",
     "reliability_table",
     "aggregate",

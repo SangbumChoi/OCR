@@ -175,6 +175,8 @@ _SCORERS = {
     "drop_em": _bank("drop_em"),
     "cer_sim": _bank("cer_sim"),
     "semantic_match": _bank("semantic_match"),
+    "content_bag": _bank("content_bag"),
+    "order_tau": _bank("order_tau"),
 }
 
 
