@@ -246,6 +246,13 @@ python scripts/run_udd_ablation.py --arm A1 A2 --count 300 --steps 300
 The synthetic arms (§11) remain the controlled-GT reference; the UDD arms answer the external-
 validity question — *do the same factors help on real documents?*
 
+Beyond these, the corpus columns support **seven more candidate arms** (resolution strata,
+QA-packing, output style, numeric reasoning, grounding-box difficulty, form factor, license
+filter) — bucket support and recipes are measured in
+[`../results/udd_ablation_features.md`](../results/udd_ablation_features.md); wiring verification
+(composition, leakage, A2 control, mock eval) lives in
+[`../../notebooks/udd_ablation.ipynb`](../../notebooks/udd_ablation.ipynb).
+
 ## 12. Run one arm end-to-end (GPU)
 
 ```bash
