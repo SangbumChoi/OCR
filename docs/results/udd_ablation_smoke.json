@@ -1,0 +1,359 @@
+{
+  "models": {
+    "smolvlm-256m": {
+      "U-A1_spotting_on": {
+        "control": {
+          "count": 24,
+          "steps": 8,
+          "placement": "all",
+          "lora_r": 16,
+          "lora_alpha": 32,
+          "lr": 0.0001,
+          "max_image_long_side": 512,
+          "train_source": "/home/user/OCR/data/udd_tasks/arms/A1_spotting_on.jsonl"
+        },
+        "probes": {
+          "capability": {
+            "n_samples": 6,
+            "primary_metric": "anls",
+            "score": 0.4389,
+            "accuracy": 0.5,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "H1": {
+                "n": 1,
+                "score": 0.0
+              },
+              "H2": {
+                "n": 1,
+                "score": 0.0
+              },
+              "H3": {
+                "n": 1,
+                "score": 1.0
+              },
+              "L1": {
+                "n": 1,
+                "score": 0.0
+              },
+              "T1": {
+                "n": 1,
+                "score": 0.6923
+              },
+              "T2": {
+                "n": 1,
+                "score": 0.9412
+              }
+            }
+          },
+          "spatial": {
+            "n_samples": 15,
+            "primary_metric": "exact",
+            "score": 0.3333,
+            "accuracy": 0.3333,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "context-absence": {
+                "n": 1,
+                "score": 0.0
+              },
+              "context-consistency": {
+                "n": 2,
+                "score": 0.5
+              },
+              "context-distractor": {
+                "n": 1,
+                "score": 1.0
+              },
+              "context-xref": {
+                "n": 2,
+                "score": 0.5
+              },
+              "spatial-box-tracking": {
+                "n": 3,
+                "score": 0.0
+              },
+              "spatial-quadrant": {
+                "n": 4,
+                "score": 0.25
+              },
+              "spatial-relative": {
+                "n": 2,
+                "score": 0.5
+              }
+            }
+          },
+          "realistic": {
+            "n_samples": 16,
+            "primary_metric": "grounding",
+            "score": 0.0066,
+            "accuracy": 0.0,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "H-comprehension": {
+                "n": 2,
+                "score": 0.0
+              },
+              "H-count": {
+                "n": 4,
+                "score": 0.0
+              },
+              "H1-aggregate": {
+                "n": 1,
+                "score": 0.0
+              },
+              "L1-locate": {
+                "n": 3,
+                "score": 0.0
+              },
+              "L1-region": {
+                "n": 1,
+                "score": 0.0
+              },
+              "grounding": {
+                "n": 3,
+                "score": 0.0
+              },
+              "ocr-full": {
+                "n": 1,
+                "score": 0.1056
+              },
+              "probe:order": {
+                "n": 1,
+                "score": 0.0
+              }
+            }
+          },
+          "heldout": {
+            "n_samples": 16,
+            "primary_metric": "anls",
+            "score": 0.4123,
+            "accuracy": 0.5,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "localization": {
+                "n": 1,
+                "score": 0.0
+              },
+              "reasoning": {
+                "n": 5,
+                "score": 0.4311
+              },
+              "recognition": {
+                "n": 3,
+                "score": 0.399
+              },
+              "table": {
+                "n": 1,
+                "score": 0.0
+              },
+              "vqa": {
+                "n": 6,
+                "score": 0.5408
+              }
+            }
+          }
+        },
+        "probes_before": {
+          "capability": {
+            "n_samples": 6,
+            "primary_metric": "anls",
+            "score": 0.4389,
+            "accuracy": 0.5,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "H1": {
+                "n": 1,
+                "score": 0.0
+              },
+              "H2": {
+                "n": 1,
+                "score": 0.0
+              },
+              "H3": {
+                "n": 1,
+                "score": 1.0
+              },
+              "L1": {
+                "n": 1,
+                "score": 0.0
+              },
+              "T1": {
+                "n": 1,
+                "score": 0.6923
+              },
+              "T2": {
+                "n": 1,
+                "score": 0.9412
+              }
+            }
+          },
+          "spatial": {
+            "n_samples": 15,
+            "primary_metric": "exact",
+            "score": 0.4,
+            "accuracy": 0.4,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "context-absence": {
+                "n": 1,
+                "score": 0.0
+              },
+              "context-consistency": {
+                "n": 2,
+                "score": 0.5
+              },
+              "context-distractor": {
+                "n": 1,
+                "score": 1.0
+              },
+              "context-xref": {
+                "n": 2,
+                "score": 1.0
+              },
+              "spatial-box-tracking": {
+                "n": 3,
+                "score": 0.0
+              },
+              "spatial-quadrant": {
+                "n": 4,
+                "score": 0.25
+              },
+              "spatial-relative": {
+                "n": 2,
+                "score": 0.5
+              }
+            }
+          },
+          "realistic": {
+            "n_samples": 16,
+            "primary_metric": "grounding",
+            "score": 0.0066,
+            "accuracy": 0.0,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "H-comprehension": {
+                "n": 2,
+                "score": 0.0
+              },
+              "H-count": {
+                "n": 4,
+                "score": 0.0
+              },
+              "H1-aggregate": {
+                "n": 1,
+                "score": 0.0
+              },
+              "L1-locate": {
+                "n": 3,
+                "score": 0.0
+              },
+              "L1-region": {
+                "n": 1,
+                "score": 0.0
+              },
+              "grounding": {
+                "n": 3,
+                "score": 0.0
+              },
+              "ocr-full": {
+                "n": 1,
+                "score": 0.1056
+              },
+              "probe:order": {
+                "n": 1,
+                "score": 0.0
+              }
+            }
+          },
+          "heldout": {
+            "n_samples": 16,
+            "primary_metric": "anls",
+            "score": 0.4098,
+            "accuracy": 0.5,
+            "answer_rate": 1.0,
+            "ece": null,
+            "by_answer_type": {
+              "localization": {
+                "n": 1,
+                "score": 0.0
+              },
+              "reasoning": {
+                "n": 5,
+                "score": 0.4311
+              },
+              "recognition": {
+                "n": 3,
+                "score": 0.3852
+              },
+              "table": {
+                "n": 1,
+                "score": 0.0
+              },
+              "vqa": {
+                "n": 6,
+                "score": 0.5408
+              }
+            }
+          }
+        },
+        "delta": {
+          "capability": {
+            "score": 0.0,
+            "by_axis": {
+              "T2": 0.0,
+              "H1": 0.0,
+              "T1": 0.0,
+              "H2": 0.0,
+              "L1": 0.0,
+              "H3": 0.0
+            }
+          },
+          "spatial": {
+            "score": -0.0667,
+            "by_axis": {
+              "context-consistency": 0.0,
+              "spatial-box-tracking": 0.0,
+              "context-xref": -0.5,
+              "spatial-relative": 0.0,
+              "context-absence": 0.0,
+              "spatial-quadrant": 0.0,
+              "context-distractor": 0.0
+            }
+          },
+          "realistic": {
+            "score": 0.0,
+            "by_axis": {
+              "L1-locate": 0.0,
+              "H-count": 0.0,
+              "L1-region": 0.0,
+              "H1-aggregate": 0.0,
+              "H-comprehension": 0.0,
+              "grounding": 0.0,
+              "ocr-full": 0.0,
+              "probe:order": 0.0
+            }
+          },
+          "heldout": {
+            "score": 0.0025,
+            "by_axis": {
+              "vqa": 0.0,
+              "table": 0.0,
+              "reasoning": 0.0,
+              "localization": 0.0,
+              "recognition": 0.0138
+            }
+          }
+        },
+        "preds_dir": "/home/user/OCR/outputs/smolvlm-256m/U-A1_spotting_on"
+      }
+    }
+  }
+}
