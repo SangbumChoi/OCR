@@ -18,4 +18,4 @@ The gap-sweep curve above is the *logic-switch* characterization: a real model's
 
 ## Public-data validation
 
-_merged corpus not on disk — OmniDocBench section pending rebuild_
+**27 OmniDocBench heldout pages** carry real reading-order GT (`regions` are stored in reading order) — score real models on them with `metric=content_bag/order_tau` using the region texts as the gold element list.

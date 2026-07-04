@@ -106,8 +106,8 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **6,319 image-rows** (one row per distinct image, ≤200 images/source)
-> from **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **9,389 image-rows / 16,585 QAs** (one row per distinct image,
+> ≤300 images/source) from **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -133,10 +133,10 @@ training pool and writes them to `heldout_<task>.jsonl` for public-data evaluati
 **One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
 duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
 pair is gathered into the native `instructions`/`answers` lists (identical questions deduped, index
-pairing kept) — current corpus: 11,146 QA-rows → **6,319 image-rows** (4,827 folded into 1,396
+pairing kept) — current corpus: 16,616 QA-rows → **9,389 image-rows** (7,227 folded into 2,069
 survivors, ~40% smaller parquet, zero QAs lost — `unified_from_hf_row` maps multi-QA rows to the
 grouped `qas` state and `to_training_samples` recovers every pair; re-verified after the full
-33-benchmark × ≤200-image rebuild on the new schema). A duplicate that sat in the other `fold` is
+33-benchmark × ≤300-image rebuild). A duplicate that sat in the other `fold` is
 removed, which also closes the identical-pixels-on-both-sides-of-the-split leak.
 
 **Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
@@ -184,10 +184,10 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (≤200 images/dataset, safety-checked, 0 failures):**
-**33 converters pass** → merged dataset = 11,146 rows / 6,350 distinct images across **7 tasks**
-(vqa 5,196, reasoning 3,600, recognition 1,200, localization 400, kie 350, table 200,
-**classification 200**; languages en 9,746 · ar 582 · und 400 · ko 200 · zh 118 · id 100; CORD and
+**Validated — all streamable datasets (≤300 images/dataset, safety-checked, 0 failures):**
+**33 converters pass** → merged dataset = 9,389 image-rows / 16,585 QAs across **7 tasks**
+(image-rows: vqa 4,144, recognition 1,799, reasoning 1,796, localization 600, kie 450, table 300,
+**classification 300**; languages en 7,896 · und 600 · ar 302 · ko 300 · zh 191 · id 100; CORD and
 FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
 **rvl_cdip→classification** (16 document types — first source for that task),
@@ -204,11 +204,11 @@ diversify it.
 **Duplicate audit** (`scripts/audit_udd_duplicates.py` →
 [`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
 `phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
-threshold (≤6) drowns in false positives. The 200/source corpus shows **0 cross-source exact
+threshold (≤6) drowns in false positives. The 300/source corpus shows **0 cross-source exact
 duplicates** — the insertion-time md5 `hash_index.json` proved itself: the 100/source build had 1
-(chartqa ↔ mathvista, MathVista aggregates ChartQA); in the full rebuild the index skipped
-MathVista's copy at insert. 188 near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer
-can't see), plus expected within-source template reuse in synthetic/chart sets.
+(chartqa ↔ mathvista, MathVista aggregates ChartQA); every full rebuild since skips such copies at
+insert. 307 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
+see), plus expected within-source template reuse in synthetic/chart sets.
 
 ![UDD mockup examples](figures/udd_examples.png)
 
