@@ -624,14 +624,19 @@ def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[Unifi
     for r in recs:
         r.hf_id = entry.get("hf_id")
         r.answers = canon_answers(r.answers)      # collapse case/punct/space duplicate golds
+        for qa in r.qas:
+            qa.answers = canon_answers(qa.answers)
         if not r.metric:
             r.metric = norm_metric(entry.get("metric"))
         if not r.language:
             text = " ".join(filter(None, [r.full_text, *(rg.text for rg in r.regions),
-                                          *(f.value for f in r.fields), *r.answers]))
+                                          *(f.value for f in r.fields), *r.answers,
+                                          *(a for qa in r.qas for a in qa.answers)]))
             r.language = (detect_language(text, r.source)
-                          or detect_language(r.instruction, r.source))
-    return [r for r in recs if r.answers or r.fields or r.regions or r.full_text or r.table_html]
+                          or detect_language(r.instruction or (r.qas[0].question if r.qas else ""),
+                                             r.source))
+    return [r for r in recs if r.answers or r.qas or r.fields or r.regions
+            or r.full_text or r.table_html]
 
 
 # --------------------------------------------------------------------------- the loader
