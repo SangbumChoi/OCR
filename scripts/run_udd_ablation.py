@@ -75,7 +75,7 @@ def arm_definitions(td: Path) -> dict[str, dict]:
     # A4: en alone vs en+X pairs, for every language set that exists
     if lang("en").exists():
         arms["A4_en"] = {"parts": [(lang("en"), 1.0)]}
-        for code in ("ko", "ar", "zh", "id"):
+        for code in ("ko", "ja", "ar", "zh", "id", "fr", "de"):
             if lang(code).exists():
                 arms[f"A4_en_{code}"] = {"parts": [(lang("en"), 1 / 2), (lang(code), 1 / 2)]}
     # A5: LoRA placement over the FIXED composite mix — which modules move which capability

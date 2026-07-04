@@ -459,6 +459,7 @@ def _u_mtvqa(ex, e) -> list[UnifiedSample]:
     else:
         qa = raw or []
     lang = _s(ex.get("lang")).lower() or None
+    lang = {"kr": "ko", "cz": "cs"}.get(lang, lang)      # MTVQA uses KR/CZ; normalize to ISO 639-1
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.VQA,
                           instruction=_s(p.get("question")), answers=[_s(p.get("answer"))],
                           language=lang, metric="anls")
