@@ -99,9 +99,10 @@ def main() -> None:
 
     # ---------- 3. vocabulary growth as sources are added
     vocab_by_src: dict[str, set] = defaultdict(set)
-    answers = ds["answers"]; instrs = ds["instruction"]
+    answers = ds["answers"]; instrs = ds["instructions"]
     for i in range(n):
-        toks = (" ".join([instrs[i] or "", " ".join(answers[i] or []),
+        flat_ans = " ".join(a for inner in (answers[i] or []) for a in inner)
+        toks = (" ".join([" ".join(instrs[i] or []), flat_ans,
                           (fulls[i] or "")[:400]])).lower().split()
         vocab_by_src[sources[i]].update(toks)
     orders = []

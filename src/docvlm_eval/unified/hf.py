@@ -22,15 +22,21 @@ from .core import UnifiedSample
 
 
 def udd_features():
-    """The single, uniform UDD schema (every task fits it; structured payload is JSON-encoded)."""
+    """The single, uniform UDD schema (every task fits it; structured payload is JSON-encoded).
+
+    The QA pairing is NATIVE list columns, not a JSON side-channel: ``instructions[i]`` is answered
+    by ``answers[i]`` (a list of interchangeable gold variants). One image = one row = N QAs, with
+    the two list levels structurally distinct — outer index pairs with the question, inner list is
+    surface variants of ONE answer. ``len(instructions) == len(answers) >= 1`` always
+    (enforced by :func:`validate_payload_shapes`)."""
     from datasets import Features, Image, Sequence, Value
     return Features({
         "image": Image(),
         "sample_id": Value("string"),
         "source": Value("string"),          # benchmark key
         "task": Value("string"),            # recognition/kie/vqa/localization/table/reasoning
-        "instruction": Value("string"),
-        "answers": Sequence(Value("string")),
+        "instructions": Sequence(Value("string")),           # N questions on this image
+        "answers": Sequence(Sequence(Value("string"))),      # answers[i] = golds for instructions[i]
         "fields_json": Value("string"),     # json [{key,value,bbox:[x1,y1,x2,y2,normalized]|null}]
         "regions_json": Value("string"),    # json [{label,text,bbox:[...]|null}]
         "full_text": Value("string"),
@@ -46,13 +52,19 @@ def udd_features():
 
 def _row_to_record(r: UnifiedSample) -> dict[str, Any]:
     d = r.to_dict()                         # bbox already flattened to [x1,y1,x2,y2,normalized]
+    if r.qas:                               # grouped record -> the lists carry every QA
+        instructions = [qa.question for qa in r.qas]
+        answers = [[str(a) for a in qa.answers] for qa in r.qas]
+    else:
+        instructions = [r.prompt()]
+        answers = [[str(a) for a in r.answers]]
     return {
         "image": r.image_path,              # path -> cast to Image() reads the bytes
         "sample_id": r.sample_id,
         "source": r.source,
         "task": r.task,
-        "instruction": r.prompt(),
-        "answers": [str(a) for a in r.answers],
+        "instructions": instructions,
+        "answers": answers,
         "fields_json": json.dumps(d["fields"], ensure_ascii=False),
         "regions_json": json.dumps(d["regions"], ensure_ascii=False),
         "full_text": r.full_text or "",
@@ -110,8 +122,10 @@ def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
 
 def validate_payload_shapes(ds) -> None:
     """Payload SHAPE conformance: one DTO for every source — each region is exactly
-    {label, text, bbox: [x1,y1,x2,y2,normalized] | null}, each field {key, value, bbox} — so an
-    adapter emitting a different shape fails HERE (safety_check), not in a downstream consumer."""
+    {label, text, bbox: [x1,y1,x2,y2,normalized] | null}, each field {key, value, bbox} with
+    **key and value required strings** (bbox is the only optional part), and the QA pairing
+    invariant ``len(instructions) == len(answers) >= 1`` — so an adapter emitting a different
+    shape fails HERE (safety_check), not in a downstream consumer."""
     for col, req in (("regions_json", {"label", "text", "bbox"}),
                      ("fields_json", {"key", "value", "bbox"})):
         for x in ds[col]:
@@ -121,18 +135,24 @@ def validate_payload_shapes(ds) -> None:
                 bb = el["bbox"]
                 assert bb is None or (isinstance(bb, list) and len(bb) == 5), \
                     f"{col} bbox off-DTO: {bb!r} (want [x1,y1,x2,y2,normalized] or null)"
+                for k in req - {"bbox"}:
+                    assert isinstance(el[k], str), \
+                        f"{col} '{k}' must be a string (required), got {el[k]!r}"
+    if "instructions" in ds.column_names:
+        for qs, ans in zip(ds["instructions"], ds["answers"]):
+            assert len(qs) == len(ans) >= 1, \
+                f"QA pairing broken: {len(qs)} instructions vs {len(ans)} answer lists (need ==, >=1)"
 
 
 def dedupe_by_phash(ds):
     """Same phash (+ same stored dims) = the same image: store it ONCE, gather every row's
-    question/answer pair into the survivor's ``qas_json`` list (identical questions deduped, order
-    preserved). Non-QA payload (fields/regions/full_text/table_html) rides with the survivor — for
-    a truly identical image the duplicates carry the same payload. The survivor keeps its own
-    ``fold``; a duplicate that sat in the other fold is REMOVED, which closes the leak of identical
-    pixels appearing on both sides of the split. Rows without a phash pass through untouched."""
+    question/answer pairs into the survivor's native ``instructions``/``answers`` lists (identical
+    questions deduped, order preserved, index pairing kept). Non-QA payload (fields/regions/
+    full_text/table_html) rides with the survivor — for a truly identical image the duplicates
+    carry the same payload. The survivor keeps its own ``fold``; a duplicate that sat in the other
+    fold is REMOVED, which closes the leak of identical pixels appearing on both sides of the
+    split. Rows without a phash pass through untouched."""
     from collections import defaultdict
-
-    from datasets import Dataset  # noqa: F401  (documents the return type)
 
     phashes = ds["phash"]; widths = ds["image_width"]; heights = ds["image_height"]
     groups: dict[tuple, list[int]] = defaultdict(list)
@@ -144,37 +164,37 @@ def dedupe_by_phash(ds):
         groups[key].append(i)
 
     keep: list[int] = []
-    merged_qas: dict[int, str] = {}          # survivor index -> extended qas_json
+    merged: dict[int, tuple[list, list]] = {}   # survivor index -> (instructions, answers)
     n_dropped = 0
-    instrs = ds["instruction"]; answers = ds["answers"]; qas_col = ds["qas_json"]
+    instrs = ds["instructions"]; answers = ds["answers"]
     for key in order:
         idxs = groups[key]
         keep.append(idxs[0])
         if len(idxs) == 1:
             continue
-        qas: list[dict] = []
+        qs: list[str] = []
+        ans: list[list[str]] = []
         seen_q: set[str] = set()
         for i in idxs:
-            pairs = json.loads(qas_col[i] or "[]") or \
-                [{"question": instrs[i] or "", "answers": list(answers[i] or [])}]
-            for qa in pairs:
-                q = (qa.get("question") or "").strip()
-                if q and q in seen_q:
+            for q, a in zip(instrs[i] or [], answers[i] or []):
+                if q.strip() and q.strip() in seen_q:
                     continue
-                seen_q.add(q)
-                qas.append(qa)
-        merged_qas[idxs[0]] = json.dumps(qas, ensure_ascii=False)
+                seen_q.add(q.strip())
+                qs.append(q); ans.append(list(a))
+        merged[idxs[0]] = (qs, ans)
         n_dropped += len(idxs) - 1
 
     out = ds.select(keep)
-    if merged_qas:
+    if merged:
         pos_of = {orig: pos for pos, orig in enumerate(keep)}
-        upd = {pos_of[i]: qj for i, qj in merged_qas.items()}
-        out = out.map(lambda r, idx: {"qas_json": upd.get(idx, r["qas_json"])},
+        upd = {pos_of[i]: qa for i, qa in merged.items()}
+        out = out.map(lambda r, idx: ({"instructions": upd[idx][0], "answers": upd[idx][1]}
+                                      if idx in upd else
+                                      {"instructions": r["instructions"], "answers": r["answers"]}),
                       with_indices=True, desc="dedupe: gather QAs onto surviving image",
                       load_from_cache_file=False)
     print(f"[dedupe] {len(ds)} rows -> {len(out)} ({n_dropped} duplicate-image rows folded into "
-          f"{len(merged_qas)} survivors' qas_json)")
+          f"{len(merged)} survivors' instructions/answers)")
     return out
 
 
@@ -194,28 +214,23 @@ def unified_from_hf_row(row: dict, image_path: str | None = None):
               for f in json.loads(row.get("fields_json") or "[]")]
     regions = [Region(r.get("label", ""), _box(r.get("bbox")), r.get("text", ""))
                for r in json.loads(row.get("regions_json") or "[]")]
-    # a deduped row carries MANY QAs in qas_json -> reconstruct the grouped state (qas populated,
-    # flat pair empty, per the flat-XOR-grouped invariant); single-QA rows stay flat
-    qas_raw = json.loads(row.get("qas_json") or "[]")
-    if len(qas_raw) > 1:
-        from .core import QA
-        return UnifiedSample(
-            sample_id=row.get("sample_id", ""), source=row.get("source", ""),
-            task=row.get("task", ""), instruction="", answers=[],
-            qas=[QA(q.get("question", ""), list(q.get("answers") or [])) for q in qas_raw],
-            fields=fields, regions=regions, full_text=row.get("full_text") or None,
-            table_html=row.get("table_html") or None, language=row.get("language") or None,
-            metric=row.get("metric") or "anls", image_path=image_path,
-            hf_id=row.get("hf_id") or None, split=row.get("split") or None,
-            hf_config=row.get("hf_config") or None)
-    return UnifiedSample(
+    # instructions[i] pairs with answers[i]: >1 QA -> the grouped state (qas populated, flat pair
+    # empty, per the flat-XOR-grouped invariant); exactly one QA -> the flat state
+    instrs = list(row.get("instructions") or [])
+    ans = [list(a) for a in (row.get("answers") or [])]
+    common = dict(
         sample_id=row.get("sample_id", ""), source=row.get("source", ""), task=row.get("task", ""),
-        instruction=row.get("instruction", "") or "", answers=list(row.get("answers") or []),
         fields=fields, regions=regions, full_text=row.get("full_text") or None,
         table_html=row.get("table_html") or None, language=row.get("language") or None,
         metric=row.get("metric") or "anls", image_path=image_path,
         hf_id=row.get("hf_id") or None, split=row.get("split") or None,
         hf_config=row.get("hf_config") or None)
+    if len(instrs) > 1:
+        from .core import QA
+        return UnifiedSample(instruction="", answers=[],
+                             qas=[QA(q, a) for q, a in zip(instrs, ans)], **common)
+    return UnifiedSample(instruction=instrs[0] if instrs else "",
+                         answers=ans[0] if ans else [], **common)
 
 
 def push(ds, repo: str, *, config_name: str | None = None, token: str | None = None,

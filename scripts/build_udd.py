@@ -127,7 +127,7 @@ def main() -> None:
         combined = enrich_dataset(combined)               # language + n_fields/n_regions + image dims
         from docvlm_eval.unified import dedupe_by_phash
         combined = dedupe_by_phash(combined)              # same phash+dims = same image: store once,
-                                                          # gather all its QAs into qas_json
+                                                          # QAs gathered into instructions/answers
         combined.save_to_disk(str(out / "hf" / "_all_tmp"))
         import shutil
         if (out / "hf" / "_all").exists():

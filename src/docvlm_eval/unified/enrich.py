@@ -102,15 +102,17 @@ def detect_language(text: str, source: str | None = None) -> str | None:
 
 def sample_text(row: dict) -> str:
     """Concatenate the row's own text signals (payload first — it reflects the DOCUMENT's language;
-    instruction last — prompts are English even for non-English documents)."""
+    instructions last — prompts are English even for non-English documents)."""
     parts = [row.get("full_text") or ""]
     for r in json.loads(row.get("regions_json") or "[]"):
         parts.append(r.get("text") or "")
     for f in json.loads(row.get("fields_json") or "[]"):
         parts.append(f.get("value") or "")
-    parts += list(row.get("answers") or [])
+    for inner in row.get("answers") or []:              # answers is list[list[str]] (per QA)
+        parts += list(inner) if isinstance(inner, list) else [inner]
     doc_text = " ".join(p for p in parts if p).strip()
-    return doc_text if doc_text else (row.get("instruction") or "")
+    instrs = row.get("instructions") or []
+    return doc_text if doc_text else (instrs[0] if instrs else "")
 
 
 def dhash(img, size: int = 8) -> str:
@@ -146,8 +148,9 @@ def enrich_record(row: dict) -> dict:
     if not row.get("language"):
         # two-stage: document text first; when it's too short/non-alphabetic to call ("$5", "14"),
         # fall back to the instruction (an English prompt on an undetectable doc is still English data)
+        instrs = row.get("instructions") or []
         lang = (detect_language(sample_text(row), row.get("source"))
-                or detect_language(row.get("instruction") or "", row.get("source")))
+                or detect_language(instrs[0] if instrs else "", row.get("source")))
         out["language"] = lang or ""
     out["n_fields"] = len(json.loads(row.get("fields_json") or "[]"))
     out["n_regions"] = len(json.loads(row.get("regions_json") or "[]"))
@@ -156,27 +159,19 @@ def enrich_record(row: dict) -> dict:
     out["image_width"], out["image_height"] = int(w), int(h)
     out["phash"] = dhash(img) if (w and h) else ""     # perceptual hash: near-dup detection/join key
     out["license"] = HF_LICENSE.get(row.get("hf_id") or "", "unspecified")
-    # retrofit: collapse case/punct/space duplicate golds on rows built before canon_answers existed.
+    # canon each QA's gold list (answers is list[list[str]]: answers[i] = golds for instructions[i]).
     # ALWAYS return the key — datasets.map needs a consistent output schema across rows, or the
     # column update is silently dropped.
     from .core import canon_answers
-    out["answers"] = canon_answers(list(row.get("answers") or []))
+    out["answers"] = [canon_answers([inner] if isinstance(inner, str) else list(inner))
+                      for inner in (row.get("answers") or [])]
     out["fold"] = assign_fold(row.get("source") or "", row.get("sample_id") or "")
-    # qas_json: ALL question/answer pairs riding on this image (>=1). Starts as the row's own pair;
-    # dedupe_by_phash() extends it when same-image rows are merged, so no image is stored twice.
-    # instruction/answers stay = the PRIMARY (first) QA for flat consumers.
-    if not row.get("qas_json"):
-        out["qas_json"] = json.dumps(
-            [{"question": row.get("instruction") or "", "answers": out["answers"]}],
-            ensure_ascii=False)
-    else:
-        out["qas_json"] = row["qas_json"]
     return out
 
 
 def enrich_dataset(ds):
     """Enrich a built UDD dataset: fill ``language``, add ``n_fields``/``n_regions``/image dims,
-    ``phash``/``license``/``fold``, and canonicalise ``answers``.
+    ``phash``/``license``/``fold``, and canonicalise each QA's gold list in ``answers``.
 
     ``load_from_cache_file=False``: datasets' map cache once served a STALE result after this
     function gained a column (same inputs -> reused fingerprint), silently dropping the new field.

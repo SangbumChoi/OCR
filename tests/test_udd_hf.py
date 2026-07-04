@@ -64,17 +64,16 @@ def test_to_hf_dataset_requires_image():
 
 
 def _mini_udd(tmp_path, rows_spec):
-    """Build a tiny enriched-shaped Dataset (phash/dims/qas_json columns) from (phash, q, a) specs."""
+    """Build a tiny enriched-shaped Dataset (native instructions/answers lists) from specs."""
     from datasets import Dataset
     recs = []
     for i, (ph, q, a) in enumerate(rows_spec):
         recs.append({"sample_id": f"src_{i:04d}_0", "source": "src", "task": "vqa",
-                     "instruction": q, "answers": [a], "fields_json": "[]", "regions_json": "[]",
-                     "full_text": "", "table_html": "", "language": "en", "metric": "exact",
-                     "hf_id": "", "split": "test", "hf_config": "", "n_fields": 0, "n_regions": 0,
-                     "image_width": 40, "image_height": 30, "phash": ph, "license": "unspecified",
-                     "fold": "train",
-                     "qas_json": json.dumps([{"question": q, "answers": [a]}])})
+                     "instructions": [q], "answers": [[a]], "fields_json": "[]",
+                     "regions_json": "[]", "full_text": "", "table_html": "", "language": "en",
+                     "metric": "exact", "hf_id": "", "split": "test", "hf_config": "",
+                     "n_fields": 0, "n_regions": 0, "image_width": 40, "image_height": 30,
+                     "phash": ph, "license": "unspecified", "fold": "train"})
     return Dataset.from_list(recs)
 
 
@@ -88,24 +87,27 @@ def test_dedupe_by_phash_gathers_qas(tmp_path):
     ])
     out = dedupe_by_phash(ds)
     assert len(out) == 2                                # one row per distinct image
-    qas = json.loads(out[0]["qas_json"])
-    assert [q["question"] for q in qas] == ["Who wrote this?", "What is the title?"]
-    assert out[0]["instruction"] == "Who wrote this?"   # primary QA stays flat for consumers
-    assert json.loads(out[1]["qas_json"])[0]["question"] == "What genre?"
+    assert out[0]["instructions"] == ["Who wrote this?", "What is the title?"]
+    assert out[0]["answers"] == [["Smith"], ["Physics"]]   # index pairing preserved
+    assert out[1]["instructions"] == ["What genre?"]
 
 
-def test_unified_from_hf_row_expands_qas_json(tmp_path):
+def test_unified_from_hf_row_expands_native_lists(tmp_path):
     from docvlm_eval.unified import to_training_samples, unified_from_hf_row
     row = {"sample_id": "src_0000_0", "source": "src", "task": "vqa",
-           "instruction": "Who wrote this?", "answers": ["Smith"],
-           "qas_json": json.dumps([{"question": "Who wrote this?", "answers": ["Smith"]},
-                                   {"question": "What is the title?", "answers": ["Physics"]}]),
+           "instructions": ["Who wrote this?", "What is the title?"],
+           "answers": [["Smith"], ["Physics", "PHYSICS BOOK"]],
            "fields_json": "[]", "regions_json": "[]", "metric": "exact"}
     r = unified_from_hf_row(row, image_path=_img(tmp_path))
     assert len(r.qas) == 2 and not r.instruction        # grouped state (flat-XOR-grouped holds)
+    assert r.qas[1].answers == ["Physics", "PHYSICS BOOK"]   # inner list = variants of ONE answer
     samples = to_training_samples([r])
     assert len(samples) == 2                            # both QAs train, one image decode
     assert {s.question for s in samples} == {"Who wrote this?", "What is the title?"}
+    # single-QA row stays flat
+    r2 = unified_from_hf_row({**row, "instructions": ["Who wrote this?"], "answers": [["Smith"]]},
+                             image_path=_img(tmp_path))
+    assert r2.instruction == "Who wrote this?" and not r2.qas
 
 
 def test_validate_payload_shapes_rejects_off_dto(tmp_path):

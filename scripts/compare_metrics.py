@@ -88,10 +88,11 @@ def characterize(args) -> tuple[list[str], list[str], list[list[float]], str]:
     # perturbing a 2k-char transcript by one char tells us nothing)
     pool = []
     for i in range(len(ds)):
-        ans = ds["answers"][i]
-        if ans and 1 <= len(ans[0]) <= 60 and ds["task"][i] in ("vqa", "reasoning", "kie",
-                                                                "classification"):
-            pool.append(ans[0])
+        nested = ds["answers"][i]                       # list[list[str]]: golds per instruction
+        first = nested[0][0] if (nested and nested[0]) else ""
+        if first and 1 <= len(first) <= 60 and ds["task"][i] in ("vqa", "reasoning", "kie",
+                                                                 "classification"):
+            pool.append(first)
     rng.shuffle(pool)
     pool = pool[: args.n]
     perts = perturbations(rng)

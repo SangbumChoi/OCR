@@ -23,9 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def _text(r) -> str:
     fields = json.loads(r.get("fields_json") or "[]")
     fkeys = " ".join(f.get("key", "") for f in fields[:20])
+    flat_answers = " ".join(a for inner in (r.get("answers") or []) for a in inner)
     return " ".join(str(x) for x in [
-        r.get("task", ""), r.get("instruction", ""),
-        " ".join(r.get("answers") or []), (r.get("full_text") or "")[:200], fkeys])
+        r.get("task", ""), " ".join(r.get("instructions") or []),
+        flat_answers, (r.get("full_text") or "")[:200], fkeys])
 
 
 def _image_features(ds, model_id: str):
@@ -103,7 +104,7 @@ def main() -> None:
         X = _image_features(ds, args.clip)          # CLIP image embeddings (dense, L2-normalized)
         feat_desc = f"CLIP({args.clip.split('/')[-1]}) image"
     else:
-        rows = [{k: ds[k][i] for k in ("task", "source", "instruction", "answers", "full_text",
+        rows = [{k: ds[k][i] for k in ("task", "source", "instructions", "answers", "full_text",
                                        "fields_json")} for i in range(len(ds))]
         X = TfidfVectorizer(max_features=2000, stop_words="english").fit_transform(
             [_text(r) for r in rows]).toarray()
