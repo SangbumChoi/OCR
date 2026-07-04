@@ -332,7 +332,18 @@ and the A1/A4 hypothesis runs.
   `--derive-spatial-reasoning` adds them to the reasoning pool (+1,747 records from the current
   corpus).
 - **A4 language diversity** — `--group-by language` writes equal-N `lang_<code>.jsonl` per language
-  (from the heuristic `language` column): en / ar / id / ko / und / zh today.
+  (from the heuristic `language` column): 12 languages after the MTVQA shuffle fix (en, ko, ja, zh,
+  ar, fr, de, ru, vi, it, id, und) — the `en+ja` pair the original plan wanted is now composable.
+- **Instruction diversity for single-line crops** — IAM/SROIE ship one sentence per image with the
+  same "transcribe" instruction every time. `derive_text_probes()`
+  (`--derive-text-probes`) derives varied fine-grained reading probes from the gold text itself —
+  "What is the 3rd character (ignoring spaces)?" → "9", "What are the first two characters?" →
+  "78", last word, word count — deterministic, exact-match, one probe set per crop. Formula sources
+  are excluded (LaTeX string characters are not the rendered glyphs), as are multi-line texts.
+- **HallusionBench as reasoning data** — the raw `gt_answer` is the string digit `'0'/'1'` whose
+  INTENT is false/true: the adapter now emits the literal `yes`/`no`, retasks the source as
+  `reasoning`, and turns the shipped `gt_answer_details` explanation into a second
+  "… Explain your answer." QA — rationale supervision straight from the source annotations.
 
 ```bash
 python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization

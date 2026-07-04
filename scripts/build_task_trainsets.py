@@ -68,6 +68,11 @@ def main() -> None:
     p.add_argument("--group-by", choices=["task", "language"], default="task",
                    help="'task' = the task-value ablation sets (default); 'language' = per-language "
                         "sets (lang_<code>.jsonl) for the A4 language-diversity hypothesis")
+    p.add_argument("--derive-text-probes", action="store_true",
+                   help="derive varied fine-grained reading probes from single-line crop sources "
+                        "(IAM/SROIE: k-th character, first-two chars, last word, word count) — "
+                        "instruction diversity from the gold text itself; added to the recognition "
+                        "pool as exact-match samples")
     p.add_argument("--derive-spatial-reasoning", action="store_true",
                    help="A2: augment the reasoning pool with rationales DERIVED from geometry — "
                         "for every localized element, a 'where is X? explain.' record whose answer "
@@ -85,6 +90,7 @@ def main() -> None:
     # eval jsonls, never into a training pool. Corpora built before the column derive it on the fly.
     from docvlm_eval.unified.enrich import assign_fold
     has_fold = "fold" in ds.column_names
+    probe_extra: list = []
     by_task: dict[str, list] = defaultdict(list)
     heldout_by_task: dict[str, list] = defaultdict(list)
     for i in range(len(ds)):
@@ -121,6 +127,16 @@ def main() -> None:
             print(f"[task-value] A2: derived {len(chain)} spatial-reasoning records "
                   f"(chain + answer-only control written to derived_reasoning_*.jsonl)")
 
+    # 1c: derive fine-grained reading probes from single-line crops (instruction diversity)
+    if args.derive_text_probes:
+        from docvlm_eval.unified import derive_text_probes
+        probe_samples = [s for rows in by_task.values() for r in rows
+                         for s in derive_text_probes(r)]
+        if probe_samples:
+            probe_extra.extend(probe_samples)
+            print(f"[task-value] text probes: derived {len(probe_samples)} fine-grained reading "
+                  f"samples from single-line crops")
+
     # 2) optional merge of duplicate-image QAs (a Q/A list per image) BEFORE we count samples
     if args.merge_qa:
         by_task = {t: merge_by_image(rows) for t, rows in by_task.items()}
@@ -139,6 +155,8 @@ def main() -> None:
     samples_by_group: dict[str, list] = {}
     if args.group_by == "task":
         samples_by_group = {t: _expand(rows) for t, rows in by_task.items()}
+        if probe_extra:
+            samples_by_group.setdefault("recognition", []).extend(probe_extra)
     else:
         # A4 language-diversity sets: regroup the SAME expanded samples by the row's language
         for t, rows in by_task.items():

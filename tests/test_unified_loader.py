@@ -269,6 +269,44 @@ def test_synthdog_recognition_language():
     assert r.task == Task.RECOGNITION and r.language == "ko" and r.full_text.startswith("3 위")
 
 
+def test_hallusionbench_yes_no_and_rationale():
+    ex = {"question": "Is Switzerland the leading importer?", "gt_answer": "1",
+          "gt_answer_details": "Switzerland is the leading importing country with the highest value.",
+          "subcategory": "chart"}
+    r = _one("hallusionbench", ex)[0]
+    assert r.task == Task.REASONING
+    assert r.qas[0].answers == ["yes"]                       # '1' -> the INTENT, not the digit
+    assert r.qas[1].question.endswith("Explain your answer.")
+    assert r.qas[1].answers[0].endswith("So the answer is yes.")
+    r0 = _one("hallusionbench", {"question": "Is France the leader?", "gt_answer": "0"})[0]
+    assert r0.answers == ["no"] and not r0.qas               # no details -> flat single QA
+
+
+def test_derive_text_probes_from_single_line_crop():
+    from docvlm_eval.unified import derive_text_probes
+    r = UnifiedSample(sample_id="sroie_0001_0", source="sroie", task=Task.RECOGNITION,
+                      image_path="/tmp/line.jpg", instruction="Transcribe.",
+                      answers=["789417-W TAN"])
+    probes = derive_text_probes(r)
+    assert len(probes) == 3
+    by_q = {p.question: p.answers[0] for p in probes}
+    first_two = next(a for q, a in by_q.items() if "first two characters" in q)
+    assert first_two == "78"                                 # user's example: '789...' -> '78'
+    kth = next((q, a) for q, a in by_q.items() if "character (ignoring spaces)" in q)
+    chars = [c for c in "789417-W TAN" if not c.isspace()]
+    import re
+    k = int(re.search(r"(\d+)(?:st|nd|rd|th)", kth[0]).group(1))
+    assert kth[1] == chars[k - 1]                            # k-th visible glyph, exact
+    assert all(p.metric == "exact" and p.meta["derived"] == "text_probe" for p in probes)
+    # formula sources and paragraphs are excluded (unfair as visual tasks)
+    latex = UnifiedSample(sample_id="x", source="latexocr", task=Task.RECOGNITION,
+                          image_path="/tmp/f.jpg", answers=["x^2 + y^2"])
+    assert derive_text_probes(latex) == []
+    para = UnifiedSample(sample_id="y", source="iam", task=Task.RECOGNITION,
+                         image_path="/tmp/p.jpg", answers=["line one\nline two"])
+    assert derive_text_probes(para) == []
+
+
 def test_detect_language_scripts_and_priors():
     from docvlm_eval.unified import detect_language
     assert detect_language("총 합계 60,000원 감사합니다") == "ko"
