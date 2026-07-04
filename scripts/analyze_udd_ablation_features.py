@@ -62,10 +62,10 @@ def main() -> None:
            "yes/no" if re.match(r"(is|are|does|do|was|can)\b", s) else "other"] += 1
     dims["question type"] = qt
     small = tot = 0
-    for rj in ds["regions_json"]:
+    for rj in ds["elements_json"]:
         for el in json.loads(rj or "[]"):
             bb = el.get("bbox")
-            if bb and bb[4]:
+            if el.get("kind") == "region" and bb and bb[4]:
                 tot += 1
                 small += (bb[2] - bb[0]) * (bb[3] - bb[1]) < 0.01
     dims["grounding box size (A1 curriculum)"] = Counter(

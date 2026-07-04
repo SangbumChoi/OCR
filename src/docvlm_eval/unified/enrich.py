@@ -104,10 +104,14 @@ def sample_text(row: dict) -> str:
     """Concatenate the row's own text signals (payload first — it reflects the DOCUMENT's language;
     instructions last — prompts are English even for non-English documents)."""
     parts = [row.get("full_text") or ""]
-    for r in json.loads(row.get("regions_json") or "[]"):
-        parts.append(r.get("text") or "")
-    for f in json.loads(row.get("fields_json") or "[]"):
-        parts.append(f.get("value") or "")
+    if row.get("elements_json"):
+        for el in json.loads(row["elements_json"]):
+            parts.append(el.get("value") or "")
+    else:                                               # build-time intermediates (pre-merge)
+        for r in json.loads(row.get("regions_json") or "[]"):
+            parts.append(r.get("text") or "")
+        for f in json.loads(row.get("fields_json") or "[]"):
+            parts.append(f.get("value") or "")
     for inner in row.get("answers") or []:              # answers is list[list[str]] (per QA)
         parts += list(inner) if isinstance(inner, list) else [inner]
     doc_text = " ".join(p for p in parts if p).strip()
@@ -152,8 +156,13 @@ def enrich_record(row: dict) -> dict:
         lang = (detect_language(sample_text(row), row.get("source"))
                 or detect_language(instrs[0] if instrs else "", row.get("source")))
         out["language"] = lang or ""
-    out["n_fields"] = len(json.loads(row.get("fields_json") or "[]"))
-    out["n_regions"] = len(json.loads(row.get("regions_json") or "[]"))
+    if row.get("elements_json"):                        # already-merged corpus (re-enrich path)
+        els = json.loads(row["elements_json"])
+        out["n_fields"] = sum(1 for e in els if e.get("kind") == "field")
+        out["n_regions"] = sum(1 for e in els if e.get("kind") == "region")
+    else:
+        out["n_fields"] = len(json.loads(row.get("fields_json") or "[]"))
+        out["n_regions"] = len(json.loads(row.get("regions_json") or "[]"))
     img = row.get("image")
     w, h = getattr(img, "size", (0, 0)) or (0, 0)
     out["image_width"], out["image_height"] = int(w), int(h)
@@ -166,15 +175,33 @@ def enrich_record(row: dict) -> dict:
     out["answers"] = [canon_answers([inner] if isinstance(inner, str) else list(inner))
                       for inner in (row.get("answers") or [])]
     out["fold"] = assign_fold(row.get("source") or "", row.get("sample_id") or "")
+    # ONE localized-element datatype: fields and regions share the shape {key, value, bbox} and
+    # differ only in ROLE, so the published schema carries a single `elements_json` column with a
+    # `kind` discriminator ("field" = KIE key-value, "region" = layout/spotting element) instead of
+    # two parallel JSON columns. Build columns (fields_json/regions_json) remain internal
+    # intermediates and are dropped by enrich_dataset.
+    if row.get("elements_json"):
+        out["elements_json"] = row["elements_json"]
+    else:
+        els = [{"key": f.get("key", ""), "value": f.get("value", ""),
+                "bbox": f.get("bbox"), "kind": "field"}
+               for f in json.loads(row.get("fields_json") or "[]")]
+        els += [{"key": r.get("label", ""), "value": r.get("text", ""),
+                 "bbox": r.get("bbox"), "kind": "region"}
+                for r in json.loads(row.get("regions_json") or "[]")]
+        out["elements_json"] = json.dumps(els, ensure_ascii=False)
     return out
 
 
 def enrich_dataset(ds):
     """Enrich a built UDD dataset: fill ``language``, add ``n_fields``/``n_regions``/image dims,
-    ``phash``/``license``/``fold``, and canonicalise each QA's gold list in ``answers``.
+    ``phash``/``license``/``fold``, canonicalise each QA's gold list in ``answers``, and merge the
+    fields/regions payload into the single ``elements_json`` column (the build-time
+    fields_json/regions_json intermediates are dropped from the published schema).
 
     ``load_from_cache_file=False``: datasets' map cache once served a STALE result after this
     function gained a column (same inputs -> reused fingerprint), silently dropping the new field.
     Enrichment is cheap; always recompute."""
-    return ds.map(enrich_record, desc="enrich (language/counts/dims/phash/license/fold)",
-                  load_from_cache_file=False)
+    drop = [c for c in ("fields_json", "regions_json") if c in ds.column_names]
+    return ds.map(enrich_record, desc="enrich (language/counts/dims/phash/license/fold/elements)",
+                  load_from_cache_file=False, remove_columns=drop)

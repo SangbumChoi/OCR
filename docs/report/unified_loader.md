@@ -106,8 +106,8 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **9,389 image-rows / 16,585 QAs** (one row per distinct image,
-> ≤300 images/source) from **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **9,089 image-rows / 16,285 QAs** (one row per distinct image,
+> ≤300 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -117,14 +117,25 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 image, sample_id, source, task,
 instructions: list[str],            # ALL questions on this image (N >= 1)
 answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
-fields_json, regions_json, full_text, table_html, language, metric, hf_id, split, hf_config,
+elements_json,                      # ALL localized elements, ONE datatype:
+                                    #   [{key, value, bbox, kind: field|region}]
+full_text, table_html, language, metric, hf_id, split, hf_config,
 n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
 
 The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
-question with its answer list; the inner list holds surface variants of ONE answer. The invariant
-`len(instructions) == len(answers) >= 1` — plus fields' `key`/`value` being required strings — is
-enforced by `validate_payload_shapes` inside every `safety_check`.
+question with its answer list; the inner list holds surface variants of ONE answer. Localized
+payload is likewise ONE datatype: `elements_json` carries both KIE fields and layout regions as
+`{key, value, bbox, kind}` (fields and regions share the shape; `kind` is the role discriminator —
+the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
+invariants (`len(instructions) == len(answers) >= 1`, `key`/`value` required strings, box shape,
+kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
+**POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
+no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
+A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is
+scaffolded for future GPU work: 90% of rows could gain a SOTA-OCR `full_text`, 994 rows have
+textless layout regions — fills are provenance-marked in `pseudo_json` and never overwrite gold
+([plan report](../results/udd_pseudo_label_plan.md)).
 
 `fold` is the deterministic ~90/10 `train`/`heldout` split keyed by **image identity** (all QAs of
 one image share the fold — leakage-safe); `build_task_trainsets.py` excludes heldout rows from every
@@ -185,8 +196,8 @@ TF-IDF of the content instead).
 ![UDD feature UMAP](figures/udd_umap.png)
 
 **Validated — all streamable datasets (≤300 images/dataset, safety-checked, 0 failures):**
-**33 converters pass** → merged dataset = 9,389 image-rows / 16,585 QAs across **7 tasks**
-(image-rows: vqa 4,144, recognition 1,799, reasoning 1,796, localization 600, kie 450, table 300,
+**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 9,089 image-rows / 16,285 QAs across **7 tasks**
+(image-rows: vqa 3,844, recognition 1,799, reasoning 1,796, localization 600, kie 450, table 300,
 **classification 300**; languages en 7,896 · und 600 · ar 302 · ko 300 · zh 191 · id 100; CORD and
 FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),

@@ -621,7 +621,10 @@ class UnifiedLoader:
         self.by_key = {e["key"]: e for e in self.catalog}
 
     def streamable_keys(self) -> list[str]:
-        return [e["key"] for e in self.catalog if e.get("hf_id")]
+        """Catalog entries UDD builds from: has an hf_id and is not udd-excluded (an entry can be
+        eval-relevant — e.g. POPE for hallucination — without being DOCUMENT data; the catalog's
+        ``udd_exclude_reason`` records why)."""
+        return [e["key"] for e in self.catalog if e.get("hf_id") and not e.get("udd_exclude")]
 
     def iter(self, key: str, *, limit: int = 50, max_scan: int = 3000, max_px: int = 1000,
              quality: int = 85, cache_dir: str | None = None,

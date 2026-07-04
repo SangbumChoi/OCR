@@ -171,6 +171,10 @@ benchmarks:
      hf_id: null, config: null, split: null, source: "derived from DocVQA (scripts/make_synthetic_samples.py / build_robustness_set.py)"}
   - {key: pope, name: POPE, category: "E1. Hallucination", metric: "F1 / accuracy",
      purpose: "Object-existence polling (yes/no) to quantify hallucination; precision/recall/F1.",
+     udd_exclude: true,
+     udd_exclude_reason: "COCO photos with object-existence yes/no questions — no text, no document
+                          content. Belongs in the Part-1 reliability EVAL suite, not in a
+                          document-understanding training corpus.",
      hf_id: lmms-lab/POPE, config: null, split: test, source: "https://arxiv.org/abs/2305.10355"}
   - {key: hallusionbench, name: HallusionBench, category: "E1. Hallucination", metric: "acc + consistency",
      purpose: "Visual-illusion vs knowledge-hallucination yes/no pairs; consistency-aware scoring.",
