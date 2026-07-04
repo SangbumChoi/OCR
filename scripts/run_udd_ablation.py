@@ -105,7 +105,19 @@ def main() -> None:
     p.add_argument("--results", default=str(RESULTS))
     p.add_argument("--wandb-project", default=None)
     p.add_argument("--dry-run", action="store_true", help="compose arm jsonls + report, no training")
+    p.add_argument("--smoke", action="store_true",
+                   help="SIMPLE TEST of train+validate for every selected arm: tiny budget "
+                        "(count=24, steps=8, eval 16 samples/probe, 512px) so all arms run "
+                        "end-to-end fast — the wiring/before-after proof, NOT a measurement")
+    p.add_argument("--before-after", action="store_true", default=True,
+                   help="record base-vs-adapted on the full suite with per-axis deltas and saved "
+                        "predictions (default ON — the cross-capability comparison is the point)")
     args = p.parse_args()
+    if args.smoke:
+        args.count, args.steps = min(args.count, 24), min(args.steps, 8)
+        args.max_image_long_side = min(args.max_image_long_side, 512)
+        print("[smoke] tiny train+validate: count=24 steps=8 eval=16/probe 512px — wiring proof, "
+              "not a measurement\n")
 
     td = Path(args.tasksets_dir)
     arms = arm_definitions(td)
@@ -139,6 +151,10 @@ def main() -> None:
                "--count", str(args.count), "--steps", str(args.steps),
                "--placement", args.placement,
                "--max-image-long-side", str(args.max_image_long_side)] + extra
+        if args.before_after:
+            cmd.append("--before-after")
+        if args.smoke:
+            cmd += ["--eval-max-samples", "16"]
         if heldout.exists():
             cmd += ["--heldout-jsonl", str(heldout)]
         if args.wandb_project:

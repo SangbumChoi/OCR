@@ -27,7 +27,10 @@ RESULTS = ROOT / "docs" / "results" / "ablation_results.json"
 # Part-2 bases (select with --models). LFM2.5-VL is ~10x faster to fine-tune than Qwen3.5-VL on a T4
 # (Qwen's full-attention prefill ~0.05 it/s vs LFM's hybrid-conv) — see notebooks/latency_profile.ipynb.
 HF_ID = {"qwen3_5-0.8b": "Qwen/Qwen3.5-0.8B",
-         "lfm2_5-vl-1.6b": "LiquidAI/LFM2.5-VL-1.6B"}
+         "lfm2_5-vl-1.6b": "LiquidAI/LFM2.5-VL-1.6B",
+         # tiny base for --smoke wiring proofs: small enough that a few LoRA steps + a 16-sample
+         # eval complete on CPU (NOT a measurement base)
+         "smolvlm-256m": "HuggingFaceTB/SmolVLM-256M-Instruct"}
 PROBES = {"capability": "data/probes/capability_probe/capability.jsonl",
           "spatial": "data/probes/spatial_context_probe/probe.jsonl",
           "realistic": "data/probes/realistic_cases/realistic_cases.jsonl"}
@@ -158,6 +161,12 @@ def main() -> None:
                    help="use THIS prebuilt jsonl as the held-out eval set instead of generating a "
                         "synthetic one (e.g. data/udd_tasks/heldout_all.jsonl — the UDD public "
                         "heldout fold from build_task_trainsets.py)")
+    p.add_argument("--before-after", action="store_true",
+                   help="public arms: ALSO evaluate the UN-tuned base on the full suite before "
+                        "training, record probes_before/probes_after + per-axis deltas, and save "
+                        "per-sample predictions for both phases (outputs/<model>/<arm>/preds_"
+                        "{before,after}/) — the cross-capability 'did the factor help OVERALL, "
+                        "not just its own axis' comparison")
     # --- A0 (PREREQUISITE) memorization-vs-understanding size sweep (configs/ablations.yaml A0) ---
     p.add_argument("--a0-sizes", type=int, nargs="+", default=[50, 100, 200, 400, 800],
                    help="A0: train-data scale sweep = variants/case (x14 cases = #images). Span a wide "
@@ -205,8 +214,11 @@ def main() -> None:
         RESULTS = Path(args.results)
 
     # Fail fast with one actionable line instead of a deep model-type import trace.
+    # Only the 2025-26 bases (LFM2.5-VL / Qwen3.5) need transformers>=5; the smolvlm-256m smoke
+    # base runs on v4, so don't block a wiring proof on the big-model requirement.
     import transformers
-    if int(transformers.__version__.split(".")[0]) < 5:
+    needs_v5 = any(m in ("qwen3_5-0.8b", "lfm2_5-vl-1.6b") for m in args.models)
+    if needs_v5 and int(transformers.__version__.split(".")[0]) < 5:
         sys.exit(f"[run_ablation] needs transformers>=5 for the selected 2025-26 VLM "
                  f"(got {transformers.__version__}). "
                  f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
@@ -233,14 +245,27 @@ def main() -> None:
 
     from docvlm_eval.finetune.lora_vlm import score_suite
 
-    def eval_all(hf, adapter=None):
+    def eval_all(hf, adapter=None, save_preds_dir=None):
         """Score the whole suite -> {probe: summary} (cross-capability transfer), + held-out if set.
         Loads the model ONCE for all probes (not once per probe)."""
         jsonls = {pb: str(ROOT / PROBES[pb]) for pb in EVAL_SUITE}
         if heldout_jsonl:
             jsonls["heldout"] = heldout_jsonl
         return score_suite(hf, jsonls, adapter_path=adapter, max_image_long_side=args._mils,
-                           max_samples=args.eval_max_samples or None)
+                           max_samples=args.eval_max_samples or None,
+                           save_preds_dir=save_preds_dir)
+
+    def _deltas(before: dict, after: dict) -> dict:
+        """Per-probe score delta + per-axis (answer_type/task) deltas — after minus before."""
+        out = {}
+        for pb, aft in after.items():
+            bef = before.get(pb, {})
+            d = {"score": (aft.get("score") or 0) - (bef.get("score") or 0)}
+            b_ax, a_ax = bef.get("by_answer_type") or {}, aft.get("by_answer_type") or {}
+            d["by_axis"] = {k: round((a_ax.get(k) or 0) - (b_ax.get(k) or 0), 4)
+                            for k in set(b_ax) | set(a_ax)}
+            out[pb] = d
+        return out
 
     total = len(args.models); done = 0
     for model in args.models:
@@ -265,6 +290,11 @@ def main() -> None:
             else:
                 train_jsonl, n_train = args.train_jsonl, n_avail
             print(f"    [public] train on {n_train} rows from {args.train_jsonl}; validate on synthetic")
+            arm_dir = ROOT / "outputs" / model / (args.record_key or f"public_{args.placement}").replace(":", "_")
+            probes_before = None
+            if args.before_after:      # BASE model on the full suite BEFORE any training
+                print("    [before] scoring the un-tuned base on the full suite")
+                probes_before = eval_all(hf, save_preds_dir=str(arm_dir / "preds_before"))
             out, _ = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
                 max_steps=args.steps, output_dir=f"outputs/{model}/public_{args.placement}_{args._mils}",
@@ -274,10 +304,20 @@ def main() -> None:
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl)] + ([("heldout", heldout_jsonl)] if heldout_jsonl else []))
+            probes_after = eval_all(hf, adapter=out,
+                                    save_preds_dir=str(arm_dir / "preds_after")
+                                    if args.before_after else None)
             payload = {"control": {"count": n_train, "steps": args.steps, "placement": args.placement,
                                    "lora_r": args.lora_r, "lora_alpha": args.lora_alpha, "lr": args.lr,
                                    "max_image_long_side": args._mils, "train_source": args.train_jsonl},
-                       "probes": eval_all(hf, adapter=out)}
+                       "probes": probes_after}
+            if probes_before is not None:
+                payload["probes_before"] = probes_before
+                payload["delta"] = _deltas(probes_before, probes_after)
+                payload["preds_dir"] = str(arm_dir)
+                hd = payload["delta"].get("heldout", {})
+                print(f"    [before/after] heldout Δscore={hd.get('score', 0):+.2f}  "
+                      f"by-axis={hd.get('by_axis')}")
             _record(model, args.record_key or f"public:{args.placement}", payload)
         else:
             # 1) data for this arm (count = the fixed #images control)
