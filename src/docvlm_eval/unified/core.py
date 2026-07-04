@@ -523,8 +523,11 @@ def _u_rvl_cdip(ex, e) -> list[UnifiedSample]:
     lbl = ex.get("label")
     if not isinstance(lbl, int) or not (0 <= lbl < len(_RVL_CDIP)):
         return []
+    # closed-set classification: the legal label pool MUST be in the prompt — without it the task
+    # is unanswerable-as-posed ("business letter" would fail exact-match against "letter")
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.CLASSIFICATION,
-                          instruction="What type of document is this? Answer with the document class.",
+                          instruction="What type of document is this? Answer with exactly one of: "
+                                      + ", ".join(_RVL_CDIP) + ".",
                           answers=[_RVL_CDIP[lbl]], metric="exact")]
 
 
@@ -650,6 +653,12 @@ class UnifiedLoader:
             return
         try:
             ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
+            if e.get("shuffle"):
+                # class/language-ORDERED sources collapse to one bucket when sampled from the
+                # stream head (rvl_cdip -> all 'letter', mtvqa -> all Arabic). A seeded streaming
+                # shuffle (shard order + a reservoir buffer) diversifies the head deterministically.
+                buf = int(e["shuffle"]) if str(e["shuffle"]).isdigit() else 2000
+                ds = ds.shuffle(seed=7, buffer_size=buf)
         except Exception as exc:
             print(f"[unified][fail] {key}: {type(exc).__name__}: {str(exc)[:120]}")
             return

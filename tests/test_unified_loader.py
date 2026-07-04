@@ -257,6 +257,10 @@ def test_publaynet_normalizes_by_image_size():
 def test_rvl_cdip_classification():
     r = _one("rvl_cdip", {"label": 11})[0]
     assert r.task == Task.CLASSIFICATION and r.answers == ["invoice"] and r.metric == "exact"
+    # closed-set: the instruction must enumerate the legal label pool (all 16 classes)
+    assert "exactly one of" in r.instruction
+    for cls in ("letter", "invoice", "resume", "memo", "scientific publication"):
+        assert cls in r.instruction
 
 
 def test_synthdog_recognition_language():

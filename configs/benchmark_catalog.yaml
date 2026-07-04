@@ -52,7 +52,7 @@ benchmarks:
      hf_id: HuggingFaceM4/the_cauldron, config: st_vqa, split: train, source: "https://arxiv.org/abs/1905.13648"}
   - {key: mtvqa, name: MTVQA, category: "B1. Multilingual document VQA", metric: anls,
      purpose: "Document VQA across 9 non-English languages (incl. ko/ja/ar); real-data multilingual check.",
-     hf_id: ByteDance/MTVQA, config: null, split: train, source: "https://arxiv.org/abs/2405.11985"}
+     hf_id: ByteDance/MTVQA, config: null, split: train, shuffle: 2000, source: "https://arxiv.org/abs/2405.11985"}
   - {key: screenqa, name: RICO-ScreenQA, category: "B1. UI/screen VQA", metric: anls,
      purpose: "QA over mobile-app screenshots with answer UI-element boxes; public counterpart to webui_probe.",
      hf_id: rootsautomation/RICO-ScreenQA, config: null, split: train, source: "https://arxiv.org/abs/2209.08199"}
@@ -157,7 +157,7 @@ benchmarks:
      hf_id: jordanparker6/publaynet, config: null, split: train, source: "https://arxiv.org/abs/1908.07836"}
   - {key: rvl_cdip, name: RVL-CDIP, category: "A3. Document classification", metric: "accuracy",
      purpose: "16-class document-type classification (letter/invoice/resume/...); activates the classification task.",
-     hf_id: chainyo/rvl-cdip, config: null, split: train, source: "https://arxiv.org/abs/1502.07058"}
+     hf_id: chainyo/rvl-cdip, config: null, split: train, shuffle: 2000, source: "https://arxiv.org/abs/1502.07058"}
   - {key: fox, name: Fox, category: "A3. Fine-grained region parsing", metric: "edit dist / F1",
      purpose: "Region/colour-guided OCR + cross-page understanding on dense multi-page docs.",
      hf_id: null, config: null, split: null, source: "https://arxiv.org/abs/2405.14295"}
