@@ -841,8 +841,11 @@ def derive_text_probes(r: UnifiedSample, max_probes: int = 3) -> list:
     text = _s(r.full_text) or (_s(r.answers[0]) if r.answers else "")
     if not text or "\n" in text or not (4 <= len(text) <= 80):
         return []
+    import string
     chars = [c for c in text if not c.isspace()]        # index only visible glyphs
-    words = text.split()
+    # word probes must target REAL words: IAM-style transcripts tokenize punctuation ("... start .")
+    # so a naive split()[-1] yields "." as the "last word" and inflates the word count
+    words = [w for w in (t.strip(string.punctuation) for t in text.split()) if w]
     seed = sum(ord(c) for c in r.sample_id)             # deterministic, no RNG state
     k = (seed % min(len(chars), 9)) + 1                 # 1-based position, small enough to count
     ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(k, f"{k}th")
@@ -851,9 +854,12 @@ def derive_text_probes(r: UnifiedSample, max_probes: int = 3) -> list:
          f"Answer with that single character.", chars[k - 1]),
         ("What are the first two characters in the image? Answer with exactly "
          "those two characters.", "".join(chars[:2])),
-        ("What is the last word in the image? Answer with that word only.", words[-1]),
-        ("How many words are in the image? Answer with a number.", str(len(words))),
     ]
+    if words:
+        candidates += [
+            ("What is the last word in the image? Answer with that word only.", words[-1]),
+            ("How many words are in the image? Answer with a number.", str(len(words))),
+        ]
     out = []
     for i, (q, a) in enumerate(candidates[:max_probes]):
         out.append(Sample(

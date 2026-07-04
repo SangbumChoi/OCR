@@ -305,6 +305,11 @@ def test_derive_text_probes_from_single_line_crop():
     para = UnifiedSample(sample_id="y", source="iam", task=Task.RECOGNITION,
                          image_path="/tmp/p.jpg", answers=["line one\nline two"])
     assert derive_text_probes(para) == []
+    # tokenized punctuation is NOT a word: "last word" must be the last real word, not "."
+    tok = UnifiedSample(sample_id="iam_0002_0", source="iam", task=Task.RECOGNITION,
+                        image_path="/tmp/t.jpg", answers=["but it 's a good start ."])
+    last = next(p for p in derive_text_probes(tok, max_probes=4) if "last word" in p.question)
+    assert last.answers == ["start"]
 
 
 def test_detect_language_scripts_and_priors():
