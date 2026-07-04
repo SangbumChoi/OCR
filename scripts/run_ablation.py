@@ -256,13 +256,17 @@ def main() -> None:
                            save_preds_dir=save_preds_dir)
 
     def _deltas(before: dict, after: dict) -> dict:
-        """Per-probe score delta + per-axis (answer_type/task) deltas — after minus before."""
+        """Per-probe score delta + per-axis (answer_type/task) deltas — after minus before.
+        by_answer_type values are {"n": ..., "score": ...} dicts (metrics.aggregate)."""
+        def _ax_score(ax: dict, k: str) -> float:
+            v = ax.get(k)
+            return float(v.get("score", 0) if isinstance(v, dict) else (v or 0))
         out = {}
         for pb, aft in after.items():
             bef = before.get(pb, {})
-            d = {"score": (aft.get("score") or 0) - (bef.get("score") or 0)}
+            d = {"score": round((aft.get("score") or 0) - (bef.get("score") or 0), 4)}
             b_ax, a_ax = bef.get("by_answer_type") or {}, aft.get("by_answer_type") or {}
-            d["by_axis"] = {k: round((a_ax.get(k) or 0) - (b_ax.get(k) or 0), 4)
+            d["by_axis"] = {k: round(_ax_score(a_ax, k) - _ax_score(b_ax, k), 4)
                             for k in set(b_ax) | set(a_ax)}
             out[pb] = d
         return out
