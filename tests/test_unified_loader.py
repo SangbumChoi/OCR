@@ -339,6 +339,17 @@ def test_enrich_record_counts_and_dims():
     assert out["phash"] == "" and out["license"] == "cc-by-4.0"
 
 
+def test_enrich_record_normalizes_legacy_language_codes():
+    # rows from per-source dirs built before an adapter learned a tag mapping still carry the
+    # source's raw code (MTVQA shipped "KR"); every enrich pass must canonicalize, not only fill
+    from docvlm_eval.unified import enrich_record
+    row = {"language": "KR", "source": "mtvqa", "instructions": ["What does the sign say?"],
+           "answers": [["yes"]], "image": None, "hf_id": "ByteDance/MTVQA"}
+    assert enrich_record(row)["language"] == "ko"
+    row["language"] = "ja"                          # already-canonical codes pass through
+    assert enrich_record(row)["language"] == "ja"
+
+
 def test_to_grounding_samples_format(tmp_path):
     from PIL import Image
     from docvlm_eval.unified import Box, Region

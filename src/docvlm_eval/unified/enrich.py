@@ -43,6 +43,11 @@ HF_LICENSE = {
     "chainyo/rvl-cdip": "other",
 }
 
+# Non-standard language tags some sources ship -> ISO 639-1. Applied on EVERY enrich pass (not
+# only when language is empty) so a merge normalizes rows from per-source dirs built before an
+# adapter learned the mapping (e.g. MTVQA's "KR" survived in the on-disk dir).
+ISO_LANG_FIX = {"kr": "ko", "cz": "cs", "jp": "ja", "gr": "el", "cn": "zh"}
+
 # Latin-script sources that are NOT English + language-neutral sources. Everything else in the
 # catalog is English-language, so the Latin-script fallback is "en".
 SOURCE_LANG = {
@@ -149,13 +154,14 @@ def assign_fold(source: str, sample_id: str, heldout_pct: int = 10) -> str:
 def enrich_record(row: dict) -> dict:
     """The per-row map: fill ``language`` (if empty) + add payload-count and image-dim columns."""
     out = {}
-    if not row.get("language"):
+    lang = (row.get("language") or "").lower()
+    if not lang:
         # two-stage: document text first; when it's too short/non-alphabetic to call ("$5", "14"),
         # fall back to the instruction (an English prompt on an undetectable doc is still English data)
         instrs = row.get("instructions") or []
         lang = (detect_language(sample_text(row), row.get("source"))
-                or detect_language(instrs[0] if instrs else "", row.get("source")))
-        out["language"] = lang or ""
+                or detect_language(instrs[0] if instrs else "", row.get("source")) or "")
+    out["language"] = ISO_LANG_FIX.get(lang, lang)
     if row.get("elements_json"):                        # already-merged corpus (re-enrich path)
         els = json.loads(row["elements_json"])
         out["n_fields"] = sum(1 for e in els if e.get("kind") == "field")
