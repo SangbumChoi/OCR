@@ -106,18 +106,25 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **11,146 rows / 6,350 distinct images** (≤200 images/source) from
-> **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **6,319 image-rows** (one row per distinct image, ≤200 images/source)
+> from **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
 `scripts/build_udd.py` builds it (`docvlm_eval.unified.hf`):
 
 ```
-image, sample_id, source, task, instruction, answers[], fields_json, regions_json,
-full_text, table_html, language, metric, hf_id, split, hf_config,
+image, sample_id, source, task,
+instructions: list[str],            # ALL questions on this image (N >= 1)
+answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
+fields_json, regions_json, full_text, table_html, language, metric, hf_id, split, hf_config,
 n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
+
+The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
+question with its answer list; the inner list holds surface variants of ONE answer. The invariant
+`len(instructions) == len(answers) >= 1` — plus fields' `key`/`value` being required strings — is
+enforced by `validate_payload_shapes` inside every `safety_check`.
 
 `fold` is the deterministic ~90/10 `train`/`heldout` split keyed by **image identity** (all QAs of
 one image share the fold — leakage-safe); `build_task_trainsets.py` excludes heldout rows from every
@@ -125,14 +132,12 @@ training pool and writes them to `heldout_<task>.jsonl` for public-data evaluati
 
 **One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
 duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
-pair is gathered into **`qas_json`** (`[{question, answers[]}]`, identical questions deduped) —
-current corpus: 11,146 QA-rows → **6,319 image-rows** (4,827 folded into 1,396 survivors, ~40%
-smaller parquet, zero QAs lost — `unified_from_hf_row` re-expands `qas_json` into the grouped
-`qas` state and `to_training_samples` recovers every pair). A duplicate that sat in the other
-`fold` is removed, which also closes the identical-pixels-on-both-sides-of-the-split leak. Payload
-DTO conformance (every region exactly `{label, text, bbox}`, every field `{key, value, bbox}`,
-boxes `[x1,y1,x2,y2,normalized]|null`) is now **enforced** by `safety_check` →
-`validate_payload_shapes`, so an off-shape adapter fails at build time.
+pair is gathered into the native `instructions`/`answers` lists (identical questions deduped, index
+pairing kept) — current corpus: 11,146 QA-rows → **6,319 image-rows** (4,827 folded into 1,396
+survivors, ~40% smaller parquet, zero QAs lost — `unified_from_hf_row` maps multi-QA rows to the
+grouped `qas` state and `to_training_samples` recovers every pair; re-verified after the full
+33-benchmark × ≤200-image rebuild on the new schema). A duplicate that sat in the other `fold` is
+removed, which also closes the identical-pixels-on-both-sides-of-the-split leak.
 
 **Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
 (oracle, case-flipped oracle, sentence-wrapped, truncated, constant, echo-question) over the public
