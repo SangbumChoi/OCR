@@ -14,6 +14,28 @@ from pathlib import Path
 
 from ..schema import Sample
 
+ROOT = Path(__file__).resolve().parents[3]     # src/docvlm_eval/benchmarks/ -> repo root
+
+
+def _portable_path(p: str) -> str:
+    """Re-anchor a fixture image path at THIS repo root when it does not exist here.
+
+    Checked-in jsonls (probe suites) carry absolute paths from the machine that generated them
+    (e.g. ``/home/user/OCR/data/...``); on a clone rooted elsewhere (Colab: ``/content/OCR``)
+    those break. The ``data/...`` tail is machine-independent, so resolve it against this repo."""
+    if not p or Path(p).exists():
+        return p
+    q = Path(p)
+    if not q.is_absolute():
+        cand = ROOT / q
+        return str(cand) if cand.exists() else p
+    parts = q.parts
+    if "data" in parts:
+        cand = ROOT.joinpath(*parts[parts.index("data"):])
+        if cand.exists():
+            return str(cand)
+    return p
+
 
 def load_jsonl(path: str | Path) -> list[Sample]:
     samples: list[Sample] = []
@@ -26,7 +48,7 @@ def load_jsonl(path: str | Path) -> list[Sample]:
             samples.append(
                 Sample(
                     sample_id=str(d["sample_id"]),
-                    image_path=d["image_path"],
+                    image_path=_portable_path(d["image_path"]),
                     question=d["question"],
                     answers=[str(a) for a in d["answers"]],
                     answer_type=d.get("answer_type", "default"),

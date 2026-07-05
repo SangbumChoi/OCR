@@ -32,6 +32,42 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 
 ---
 
+## UDD — the Universal Document Dataset (public-data track)
+
+The Part-2 ablations now also run on **real public data** via
+[`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — 33 public benchmarks unified into
+**one sharded dataset** (28,299 image-rows / 53,108 QAs / 7 tasks, ≤1,000 images/source), built by
+`scripts/build_udd.py` from the task-typed loader in `docvlm_eval.unified`. What the pipeline
+guarantees (full story: [`docs/report/unified_loader.md`](docs/report/unified_loader.md)):
+
+- **One row per image, native QA lists** — `instructions: list[str]` paired index-wise with
+  `answers: list[list[str]]` (inner list = surface variants of one answer); same-phash duplicate
+  images are folded into the lists (52,929 QA-rows → 28,299 image-rows, zero QAs lost) and
+  the pairing/DTO shape is **enforced** at build time (`validate_payload_shapes`).
+- **Derived columns** for slicing and hygiene: heuristic `language`, `phash`, hosting-repo
+  `license`, leakage-safe `fold` (train/heldout keyed by image identity), payload counts and
+  image dims.
+- **Data quality fixed structurally**: CORD answers keep every line item (nested `gt_parse`),
+  case/punctuation duplicate golds are canonicalized, insertion-time hash-index dedup
+  (it caught MathVista re-using a ChartQA image), duplicate/near-duplicate audit committed
+  ([`docs/results/udd_duplicates.md`](docs/results/udd_duplicates.md)).
+- **Ablations on public data**: full-pool per-task / per-language training sets with a public
+  heldout fold (`scripts/build_task_trainsets.py --per-task -1`), 24 composed arm mixes for
+  A1–A6 trained at each family's largest equal-N budget
+  (`scripts/run_udd_ablation.py`, incl. geometry-derived A2 rationales with an answer-only
+  control), a **metric bank** (SQuAD-F1 / DROP-EM / CER / layered `semantic_match`) with a
+  measured tolerance matrix ([`docs/results/metric_tendency.md`](docs/results/metric_tendency.md)),
+  and a GPU-free **mock multi-model eval** that sanity-checks the whole scoring path
+  ([`docs/results/udd_mock_eval.md`](docs/results/udd_mock_eval.md)).
+- **What merging buys, measured without training**:
+  [`docs/results/udd_merge_value.md`](docs/results/udd_merge_value.md); further ablation-usable
+  features mined from the corpus:
+  [`docs/results/udd_ablation_features.md`](docs/results/udd_ablation_features.md).
+- **Verify the ablation wiring end-to-end (no GPU):**
+  [`notebooks/udd_ablation.ipynb`](notebooks/udd_ablation.ipynb).
+
+---
+
 ## What's here
 
 One installable package, `docvlm_eval` (src layout):

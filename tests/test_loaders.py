@@ -1,4 +1,5 @@
 """JSONL loader/saver round-trip."""
+import json
 
 from docvlm_eval.benchmarks import load_jsonl, save_jsonl
 from docvlm_eval.schema import Sample
@@ -35,3 +36,22 @@ def test_answers_coerced_to_str(tmp_path):
     p.write_text('{"sample_id":"a","image_path":"i","question":"q","answers":[100, 2.5]}\n', encoding="utf-8")
     out = load_jsonl(p)
     assert out[0].answers == ["100", "2.5"]
+
+
+def test_foreign_absolute_paths_reanchor_at_this_repo(tmp_path):
+    # Checked-in probe jsonls carry absolute paths from the generating machine
+    # (/home/user/OCR/data/...); on a clone rooted elsewhere (Colab /content/OCR) they must
+    # resolve against THIS repo root via their data/-relative tail.
+    from docvlm_eval.benchmarks.loaders import ROOT
+    real = next((ROOT / "data" / "probes").rglob("*.png"))
+    rel = real.relative_to(ROOT)
+    foreign = "/somewhere/else/OCR/" + str(rel)
+    p = tmp_path / "f.jsonl"
+    p.write_text(json.dumps({"sample_id": "a", "image_path": foreign,
+                             "question": "q", "answers": ["1"]}) + "\n", encoding="utf-8")
+    out = load_jsonl(p)
+    assert out[0].image_path == str(real)
+    # a genuinely missing path stays untouched (no false remap)
+    p.write_text(json.dumps({"sample_id": "b", "image_path": "/no/data/here.png",
+                             "question": "q", "answers": ["1"]}) + "\n", encoding="utf-8")
+    assert load_jsonl(p)[0].image_path == "/no/data/here.png"

@@ -106,8 +106,8 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **6,319 image-rows** (one row per distinct image, ≤200 images/source)
-> from **33 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **28,299 image-rows / 53,108 QAs** (one row per distinct image,
+> ≤1,000 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -117,14 +117,25 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 image, sample_id, source, task,
 instructions: list[str],            # ALL questions on this image (N >= 1)
 answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
-fields_json, regions_json, full_text, table_html, language, metric, hf_id, split, hf_config,
+elements_json,                      # ALL localized elements, ONE datatype:
+                                    #   [{key, value, bbox, kind: field|region}]
+full_text, table_html, language, metric, hf_id, split, hf_config,
 n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
 
 The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
-question with its answer list; the inner list holds surface variants of ONE answer. The invariant
-`len(instructions) == len(answers) >= 1` — plus fields' `key`/`value` being required strings — is
-enforced by `validate_payload_shapes` inside every `safety_check`.
+question with its answer list; the inner list holds surface variants of ONE answer. Localized
+payload is likewise ONE datatype: `elements_json` carries both KIE fields and layout regions as
+`{key, value, bbox, kind}` (fields and regions share the shape; `kind` is the role discriminator —
+the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
+invariants (`len(instructions) == len(answers) >= 1`, `key`/`value` required strings, box shape,
+kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
+**POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
+no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
+A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is
+scaffolded for future GPU work: 90% of rows could gain a SOTA-OCR `full_text`, 994 rows have
+textless layout regions — fills are provenance-marked in `pseudo_json` and never overwrite gold
+([plan report](../results/udd_pseudo_label_plan.md)).
 
 `fold` is the deterministic ~90/10 `train`/`heldout` split keyed by **image identity** (all QAs of
 one image share the fold — leakage-safe); `build_task_trainsets.py` excludes heldout rows from every
@@ -133,10 +144,10 @@ training pool and writes them to `heldout_<task>.jsonl` for public-data evaluati
 **One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
 duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
 pair is gathered into the native `instructions`/`answers` lists (identical questions deduped, index
-pairing kept) — current corpus: 11,146 QA-rows → **6,319 image-rows** (4,827 folded into 1,396
+pairing kept) — current corpus: 16,616 QA-rows → **9,389 image-rows** (7,227 folded into 2,069
 survivors, ~40% smaller parquet, zero QAs lost — `unified_from_hf_row` maps multi-QA rows to the
 grouped `qas` state and `to_training_samples` recovers every pair; re-verified after the full
-33-benchmark × ≤200-image rebuild on the new schema). A duplicate that sat in the other `fold` is
+33-benchmark × ≤1,000-image rebuild). A duplicate that sat in the other `fold` is
 removed, which also closes the identical-pixels-on-both-sides-of-the-split leak.
 
 **Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
@@ -184,11 +195,11 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (≤200 images/dataset, safety-checked, 0 failures):**
-**33 converters pass** → merged dataset = 11,146 rows / 6,350 distinct images across **7 tasks**
-(vqa 5,196, reasoning 3,600, recognition 1,200, localization 400, kie 350, table 200,
-**classification 200**; languages en 9,746 · ar 582 · und 400 · ko 200 · zh 118 · id 100; CORD and
-FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
+**Validated — all streamable datasets (≤1,000 images/dataset, safety-checked, 0 failures):**
+**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 28,299 image-rows / 53,108 QAs across **7 tasks**
+(image-rows: vqa 11,004, reasoning 6,196, recognition 5,997, localization 1,976, kie 1,150,
+table 1,000, **classification 976**; languages en 23,087 · und 1,999 · zh 1,114 · ko 1,074 ·
+ja 183 · de 151; CORD and FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
 **rvl_cdip→classification** (16 document types — first source for that task),
 **screenqa→vqa with UI-element boxes** (the webui-probe counterpart),
@@ -204,11 +215,12 @@ diversify it.
 **Duplicate audit** (`scripts/audit_udd_duplicates.py` →
 [`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
 `phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
-threshold (≤6) drowns in false positives. The 200/source corpus shows **0 cross-source exact
+threshold (≤6) drowns in false positives. The 1,000/source corpus shows **0 cross-source exact
 duplicates** — the insertion-time md5 `hash_index.json` proved itself: the 100/source build had 1
-(chartqa ↔ mathvista, MathVista aggregates ChartQA); in the full rebuild the index skipped
-MathVista's copy at insert. 188 near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer
-can't see), plus expected within-source template reuse in synthetic/chart sets.
+(chartqa ↔ mathvista, MathVista aggregates ChartQA); every full rebuild since skips such copies at
+insert. 2,217 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
+see — led by pubtabnet ↔ tatqa table renders), plus expected within-source template reuse in
+synthetic/chart sets.
 
 ![UDD mockup examples](figures/udd_examples.png)
 
@@ -321,7 +333,18 @@ and the A1/A4 hypothesis runs.
   `--derive-spatial-reasoning` adds them to the reasoning pool (+1,747 records from the current
   corpus).
 - **A4 language diversity** — `--group-by language` writes equal-N `lang_<code>.jsonl` per language
-  (from the heuristic `language` column): en / ar / id / ko / und / zh today.
+  (from the heuristic `language` column): 12 languages after the MTVQA shuffle fix (en, ko, ja, zh,
+  ar, fr, de, ru, vi, it, id, und) — the `en+ja` pair the original plan wanted is now composable.
+- **Instruction diversity for single-line crops** — IAM/SROIE ship one sentence per image with the
+  same "transcribe" instruction every time. `derive_text_probes()`
+  (`--derive-text-probes`) derives varied fine-grained reading probes from the gold text itself —
+  "What is the 3rd character (ignoring spaces)?" → "9", "What are the first two characters?" →
+  "78", last word, word count — deterministic, exact-match, one probe set per crop. Formula sources
+  are excluded (LaTeX string characters are not the rendered glyphs), as are multi-line texts.
+- **HallusionBench as reasoning data** — the raw `gt_answer` is the string digit `'0'/'1'` whose
+  INTENT is false/true: the adapter now emits the literal `yes`/`no`, retasks the source as
+  `reasoning`, and turns the shipped `gt_answer_details` explanation into a second
+  "… Explain your answer." QA — rationale supervision straight from the source annotations.
 
 ```bash
 python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization

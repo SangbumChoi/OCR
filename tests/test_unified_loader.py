@@ -257,12 +257,59 @@ def test_publaynet_normalizes_by_image_size():
 def test_rvl_cdip_classification():
     r = _one("rvl_cdip", {"label": 11})[0]
     assert r.task == Task.CLASSIFICATION and r.answers == ["invoice"] and r.metric == "exact"
+    # closed-set: the instruction must enumerate the legal label pool (all 16 classes)
+    assert "exactly one of" in r.instruction
+    for cls in ("letter", "invoice", "resume", "memo", "scientific publication"):
+        assert cls in r.instruction
 
 
 def test_synthdog_recognition_language():
     gt = json.dumps({"gt_parse": {"text_sequence": "3 위 에 올 랐 다"}})
     r = _one("synthdog_ko", {"ground_truth": gt})[0]
     assert r.task == Task.RECOGNITION and r.language == "ko" and r.full_text.startswith("3 위")
+
+
+def test_hallusionbench_yes_no_and_rationale():
+    ex = {"question": "Is Switzerland the leading importer?", "gt_answer": "1",
+          "gt_answer_details": "Switzerland is the leading importing country with the highest value.",
+          "subcategory": "chart"}
+    r = _one("hallusionbench", ex)[0]
+    assert r.task == Task.REASONING
+    assert r.qas[0].answers == ["yes"]                       # '1' -> the INTENT, not the digit
+    assert r.qas[1].question.endswith("Explain your answer.")
+    assert r.qas[1].answers[0].endswith("So the answer is yes.")
+    r0 = _one("hallusionbench", {"question": "Is France the leader?", "gt_answer": "0"})[0]
+    assert r0.answers == ["no"] and not r0.qas               # no details -> flat single QA
+
+
+def test_derive_text_probes_from_single_line_crop():
+    from docvlm_eval.unified import derive_text_probes
+    r = UnifiedSample(sample_id="sroie_0001_0", source="sroie", task=Task.RECOGNITION,
+                      image_path="/tmp/line.jpg", instruction="Transcribe.",
+                      answers=["789417-W TAN"])
+    probes = derive_text_probes(r)
+    assert len(probes) == 3
+    by_q = {p.question: p.answers[0] for p in probes}
+    first_two = next(a for q, a in by_q.items() if "first two characters" in q)
+    assert first_two == "78"                                 # user's example: '789...' -> '78'
+    kth = next((q, a) for q, a in by_q.items() if "character (ignoring spaces)" in q)
+    chars = [c for c in "789417-W TAN" if not c.isspace()]
+    import re
+    k = int(re.search(r"(\d+)(?:st|nd|rd|th)", kth[0]).group(1))
+    assert kth[1] == chars[k - 1]                            # k-th visible glyph, exact
+    assert all(p.metric == "exact" and p.meta["derived"] == "text_probe" for p in probes)
+    # formula sources and paragraphs are excluded (unfair as visual tasks)
+    latex = UnifiedSample(sample_id="x", source="latexocr", task=Task.RECOGNITION,
+                          image_path="/tmp/f.jpg", answers=["x^2 + y^2"])
+    assert derive_text_probes(latex) == []
+    para = UnifiedSample(sample_id="y", source="iam", task=Task.RECOGNITION,
+                         image_path="/tmp/p.jpg", answers=["line one\nline two"])
+    assert derive_text_probes(para) == []
+    # tokenized punctuation is NOT a word: "last word" must be the last real word, not "."
+    tok = UnifiedSample(sample_id="iam_0002_0", source="iam", task=Task.RECOGNITION,
+                        image_path="/tmp/t.jpg", answers=["but it 's a good start ."])
+    last = next(p for p in derive_text_probes(tok, max_probes=4) if "last word" in p.question)
+    assert last.answers == ["start"]
 
 
 def test_detect_language_scripts_and_priors():
@@ -295,6 +342,17 @@ def test_enrich_record_counts_and_dims():
     assert out["language"] == "en" and out["n_fields"] == 1 and out["n_regions"] == 1
     assert out["image_width"] == 0                  # no image object -> dims default to 0
     assert out["phash"] == "" and out["license"] == "cc-by-4.0"
+
+
+def test_enrich_record_normalizes_legacy_language_codes():
+    # rows from per-source dirs built before an adapter learned a tag mapping still carry the
+    # source's raw code (MTVQA shipped "KR"); every enrich pass must canonicalize, not only fill
+    from docvlm_eval.unified import enrich_record
+    row = {"language": "KR", "source": "mtvqa", "instructions": ["What does the sign say?"],
+           "answers": [["yes"]], "image": None, "hf_id": "ByteDance/MTVQA"}
+    assert enrich_record(row)["language"] == "ko"
+    row["language"] = "ja"                          # already-canonical codes pass through
+    assert enrich_record(row)["language"] == "ja"
 
 
 def test_to_grounding_samples_format(tmp_path):

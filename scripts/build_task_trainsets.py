@@ -60,7 +60,9 @@ def main() -> None:
     p.add_argument("--repo", default=None, help="pull UDD from this Hub repo instead of --src")
     p.add_argument("--out", default=str(ROOT / "data" / "udd_tasks"))
     p.add_argument("--per-task", type=int, default=0,
-                   help="samples per task (0 = the smallest task's size, i.e. equal budget for all)")
+                   help="samples per task (0 = the smallest task's size, i.e. equal budget for all; "
+                        "-1 = NO cap: write each group's FULL pool — use when a downstream composer "
+                        "such as run_udd_ablation does its own equal-N control)")
     p.add_argument("--tasks", default=None, help="comma-separated tasks to include (default: all present)")
     p.add_argument("--merge-qa", action="store_true",
                    help="merge duplicate-image QAs into a Q/A list before counting (one image decode "
@@ -68,6 +70,11 @@ def main() -> None:
     p.add_argument("--group-by", choices=["task", "language"], default="task",
                    help="'task' = the task-value ablation sets (default); 'language' = per-language "
                         "sets (lang_<code>.jsonl) for the A4 language-diversity hypothesis")
+    p.add_argument("--derive-text-probes", action="store_true",
+                   help="derive varied fine-grained reading probes from single-line crop sources "
+                        "(IAM/SROIE: k-th character, first-two chars, last word, word count) — "
+                        "instruction diversity from the gold text itself; added to the recognition "
+                        "pool as exact-match samples")
     p.add_argument("--derive-spatial-reasoning", action="store_true",
                    help="A2: augment the reasoning pool with rationales DERIVED from geometry — "
                         "for every localized element, a 'where is X? explain.' record whose answer "
@@ -85,6 +92,7 @@ def main() -> None:
     # eval jsonls, never into a training pool. Corpora built before the column derive it on the fly.
     from docvlm_eval.unified.enrich import assign_fold
     has_fold = "fold" in ds.column_names
+    probe_extra: list = []
     by_task: dict[str, list] = defaultdict(list)
     heldout_by_task: dict[str, list] = defaultdict(list)
     for i in range(len(ds)):
@@ -121,6 +129,16 @@ def main() -> None:
             print(f"[task-value] A2: derived {len(chain)} spatial-reasoning records "
                   f"(chain + answer-only control written to derived_reasoning_*.jsonl)")
 
+    # 1c: derive fine-grained reading probes from single-line crops (instruction diversity)
+    if args.derive_text_probes:
+        from docvlm_eval.unified import derive_text_probes
+        probe_samples = [s for rows in by_task.values() for r in rows
+                         for s in derive_text_probes(r)]
+        if probe_samples:
+            probe_extra.extend(probe_samples)
+            print(f"[task-value] text probes: derived {len(probe_samples)} fine-grained reading "
+                  f"samples from single-line crops")
+
     # 2) optional merge of duplicate-image QAs (a Q/A list per image) BEFORE we count samples
     if args.merge_qa:
         by_task = {t: merge_by_image(rows) for t, rows in by_task.items()}
@@ -139,6 +157,8 @@ def main() -> None:
     samples_by_group: dict[str, list] = {}
     if args.group_by == "task":
         samples_by_group = {t: _expand(rows) for t, rows in by_task.items()}
+        if probe_extra:
+            samples_by_group.setdefault("recognition", []).extend(probe_extra)
     else:
         # A4 language-diversity sets: regroup the SAME expanded samples by the row's language
         for t, rows in by_task.items():
@@ -148,16 +168,18 @@ def main() -> None:
     samples_by_group = {g: s for g, s in samples_by_group.items() if s}   # drop empty groups
     if not samples_by_group:
         print("[task-value] no trainable samples found — check --src / --tasks."); return
-    n_balanced = args.per_task or min(len(s) for s in samples_by_group.values())
+    full_pools = args.per_task == -1        # arm composer downstream does the equal-N control
+    n_balanced = None if full_pools else (args.per_task or
+                                          min(len(s) for s in samples_by_group.values()))
     prefix = "task" if args.group_by == "task" else "lang"
 
     summary, all_samples = {}, []
-    print(f"[task-value] equal budget N={n_balanced} samples/{args.group_by} "
-          f"(from {args.repo or args.src})\n")
+    print(f"[task-value] {'FULL pools (no cap)' if full_pools else f'equal budget N={n_balanced}'} "
+          f"samples/{args.group_by} (from {args.repo or args.src})\n")
     for group in sorted(samples_by_group):
         pool = list(samples_by_group[group])
         rng.shuffle(pool)
-        used = pool[:n_balanced]
+        used = pool if full_pools else pool[:n_balanced]
         save_jsonl(used, out / f"{prefix}_{group}.jsonl")
         all_samples += used
         summary[group] = {"available": len(pool), "used": len(used),
@@ -180,10 +202,11 @@ def main() -> None:
 
     save_jsonl(all_samples, out / "all.jsonl")
     (out / "summary.json").write_text(
-        json.dumps({"n_balanced": n_balanced, "merge_qa": args.merge_qa,
+        json.dumps({"n_balanced": "full" if full_pools else n_balanced, "merge_qa": args.merge_qa,
                     "group_by": args.group_by, "groups": summary},
                    indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n=== built {len(summary)} per-{args.group_by} sets (N={n_balanced} each) -> {out} ===")
+    print(f"\n=== built {len(summary)} per-{args.group_by} sets "
+          f"({'full pools' if full_pools else f'N={n_balanced} each'}) -> {out} ===")
     print(f"  jsonl : {out}/{prefix}_<{args.group_by}>.jsonl   (feed to run_task_value.py)")
     print(f"  mixed control  : {out}/all.jsonl")
 

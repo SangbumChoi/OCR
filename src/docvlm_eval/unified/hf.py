@@ -121,13 +121,19 @@ def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
 
 
 def validate_payload_shapes(ds) -> None:
-    """Payload SHAPE conformance: one DTO for every source — each region is exactly
-    {label, text, bbox: [x1,y1,x2,y2,normalized] | null}, each field {key, value, bbox} with
-    **key and value required strings** (bbox is the only optional part), and the QA pairing
-    invariant ``len(instructions) == len(answers) >= 1`` — so an adapter emitting a different
-    shape fails HERE (safety_check), not in a downstream consumer."""
-    for col, req in (("regions_json", {"label", "text", "bbox"}),
-                     ("fields_json", {"key", "value", "bbox"})):
+    """Payload SHAPE conformance: one DTO for every source, so an adapter emitting a different
+    shape fails HERE (safety_check), not in a downstream consumer.
+
+    Published schema: every localized element in ``elements_json`` is exactly
+    {key, value, bbox: [x1,y1,x2,y2,normalized]|null, kind: "field"|"region"} with key/value
+    required strings. Build-time intermediates (fields_json/regions_json in per-source dirs) are
+    validated in their pre-merge shapes. The QA pairing invariant
+    ``len(instructions) == len(answers) >= 1`` holds in both."""
+    cols = ds.column_names
+    specs = ([("elements_json", {"key", "value", "bbox", "kind"})] if "elements_json" in cols
+             else [("regions_json", {"label", "text", "bbox"}),
+                   ("fields_json", {"key", "value", "bbox"})])
+    for col, req in specs:
         for x in ds[col]:
             for el in json.loads(x or "[]"):
                 assert isinstance(el, dict) and set(el) == req, \
@@ -135,10 +141,13 @@ def validate_payload_shapes(ds) -> None:
                 bb = el["bbox"]
                 assert bb is None or (isinstance(bb, list) and len(bb) == 5), \
                     f"{col} bbox off-DTO: {bb!r} (want [x1,y1,x2,y2,normalized] or null)"
-                for k in req - {"bbox"}:
+                for k in req - {"bbox", "kind"}:
                     assert isinstance(el[k], str), \
                         f"{col} '{k}' must be a string (required), got {el[k]!r}"
-    if "instructions" in ds.column_names:
+                if "kind" in req:
+                    assert el["kind"] in ("field", "region"), \
+                        f"{col} kind off-DTO: {el['kind']!r} (want 'field'|'region')"
+    if "instructions" in cols:
         for qs, ans in zip(ds["instructions"], ds["answers"]):
             assert len(qs) == len(ans) >= 1, \
                 f"QA pairing broken: {len(qs)} instructions vs {len(ans)} answer lists (need ==, >=1)"
@@ -210,10 +219,17 @@ def unified_from_hf_row(row: dict, image_path: str | None = None):
     def _box(b):
         return Box(b[0], b[1], b[2], b[3], bool(b[4])) if b else None
 
-    fields = [Field(f.get("key", ""), f.get("value", ""), _box(f.get("bbox")))
-              for f in json.loads(row.get("fields_json") or "[]")]
-    regions = [Region(r.get("label", ""), _box(r.get("bbox")), r.get("text", ""))
-               for r in json.loads(row.get("regions_json") or "[]")]
+    if row.get("elements_json"):        # published schema: ONE element datatype, kind-discriminated
+        els = json.loads(row["elements_json"])
+        fields = [Field(e.get("key", ""), e.get("value", ""), _box(e.get("bbox")))
+                  for e in els if e.get("kind") == "field"]
+        regions = [Region(e.get("key", ""), _box(e.get("bbox")), e.get("value", ""))
+                   for e in els if e.get("kind") == "region"]
+    else:                               # build-time intermediates (per-source dirs)
+        fields = [Field(f.get("key", ""), f.get("value", ""), _box(f.get("bbox")))
+                  for f in json.loads(row.get("fields_json") or "[]")]
+        regions = [Region(r.get("label", ""), _box(r.get("bbox")), r.get("text", ""))
+                   for r in json.loads(row.get("regions_json") or "[]")]
     # instructions[i] pairs with answers[i]: >1 QA -> the grouped state (qas populated, flat pair
     # empty, per the flat-XOR-grouped invariant); exactly one QA -> the flat state
     instrs = list(row.get("instructions") or [])

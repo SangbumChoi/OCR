@@ -229,8 +229,8 @@ BOTH the synthetic probe suite and the **UDD public heldout fold** (the `fold` c
 | A2 reasoning | `A2_reason_chain` vs `A2_reason_answer`: the SAME geometry-derived records with rationale-target vs position-only target (`derive_spatial_reasoning(style=…)`) | ✅ (derived rationales — spatial subset of A2) |
 | A3 combination | `A3_base` / `A3_spot` / `A3_reason` / `A3_spot_reason`, equal totals | ✅ |
 | A4 language mix | `A4_en` vs `A4_en_{ko,ar,zh,id}` from `lang_<code>.jsonl` | ⚠️ partial: no es/ja rows yet (MTVQA streams language-ordered → ar-heavy; ja needs a deeper scan or a stride sampler); zh/id pools are small — the runner warns when an arm falls short of the equal-N target |
-| A5 placement | `--placement` knob on any arm (unchanged) | ✅ |
-| A6 HPO | orthogonal (unchanged) | ✅ |
+| A5 placement | `A5_{vision,connector,llm_attn,llm_mlp}`: the FIXED composite mix (vqa+kie+grounding+rationale quarters), placement varied | ✅ (4 composed arms) |
+| A6 HPO | `A6_r{8,16,32,64}` (α=2r) on the same fixed composite mix; `--lora-r/--lora-alpha/--lr` now thread through `run_ablation` | ✅ (4 composed arms) |
 | A7 preprocessing | `--max-image-long-side` knob on any arm; `image_width/height` columns support small-text slicing | ✅ |
 
 ```bash
@@ -245,6 +245,13 @@ python scripts/run_udd_ablation.py --arm A1 A2 --count 300 --steps 300
 
 The synthetic arms (§11) remain the controlled-GT reference; the UDD arms answer the external-
 validity question — *do the same factors help on real documents?*
+
+Beyond these, the corpus columns support **seven more candidate arms** (resolution strata,
+QA-packing, output style, numeric reasoning, grounding-box difficulty, form factor, license
+filter) — bucket support and recipes are measured in
+[`../results/udd_ablation_features.md`](../results/udd_ablation_features.md); wiring verification
+(composition, leakage, A2 control, mock eval) lives in
+[`../../notebooks/udd_ablation.ipynb`](../../notebooks/udd_ablation.ipynb).
 
 ## 12. Run one arm end-to-end (GPU)
 

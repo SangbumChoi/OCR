@@ -19,9 +19,9 @@ Every run trains via ``run_ablation.py --arm public`` and evaluates BOTH the syn
 and the UDD public heldout fold (``heldout_all.jsonl`` — leakage-safe, image-keyed split). Results
 land under ``models[<model>]["U-<arm>"]`` in ``docs/results/udd_ablation_results.json``.
 
-    python scripts/build_task_trainsets.py --per-task 300 --merge-qa --derive-spatial-reasoning
+    python scripts/build_task_trainsets.py --per-task -1 --merge-qa --derive-spatial-reasoning
     python scripts/run_udd_ablation.py --arm A1 --dry-run     # compose + inspect, no GPU
-    python scripts/run_udd_ablation.py --arm A1 A2 --count 300 --steps 300   # GPU
+    python scripts/run_udd_ablation.py --arm A1 A2 --steps 300    # GPU; --count 0 = ALL images
 """
 from __future__ import annotations
 
@@ -50,33 +50,44 @@ def _mix(parts: list[tuple[Path, float]], n_total: int, seed: int, out_path: Pat
     return len(rows)
 
 
-def arm_definitions(td: Path) -> dict[str, list[tuple[Path, float]]]:
-    """Arm -> equal-total composition. Only arms whose ingredient files exist are offered."""
+def arm_definitions(td: Path) -> dict[str, dict]:
+    """Arm -> {parts: equal-total composition, extra: per-arm run_ablation flags}.
+    Only arms whose ingredient files exist are offered."""
     t = lambda name: td / f"task_{name}.jsonl"          # noqa: E731
     d = lambda name: td / f"derived_reasoning_{name}.jsonl"   # noqa: E731
     lang = lambda code: td.parent / "udd_langs" / f"lang_{code}.jsonl"  # noqa: E731
-    arms: dict[str, list[tuple[Path, float]]] = {
+    # the full-signal composite mix: A5/A6 vary HOW we train, so the data stays fixed at this mix
+    composite = [(t("vqa"), 1 / 4), (t("kie"), 1 / 4), (t("localization"), 1 / 4), (d("chain"), 1 / 4)]
+    arms: dict[str, dict] = {
         # A1: does adding WHERE (grounding rows) help, at equal N?
-        "A1_spotting_on": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)],
-        "A1_spotting_off": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)],
+        "A1_spotting_on": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3),
+                                     (t("localization"), 1 / 3)]},
+        "A1_spotting_off": {"parts": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)]},
         # A2: rationale target vs answer-only target on the SAME derived records
-        "A2_reason_chain": [(d("chain"), 1.0)],
-        "A2_reason_answer": [(d("answer"), 1.0)],
+        "A2_reason_chain": {"parts": [(d("chain"), 1.0)]},
+        "A2_reason_answer": {"parts": [(d("answer"), 1.0)]},
         # A3: is it the structured signals, or just task combination?
-        "A3_base": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)],
-        "A3_spot": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)],
-        "A3_reason": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (d("chain"), 1 / 3)],
-        "A3_spot_reason": [(t("vqa"), 1 / 4), (t("kie"), 1 / 4),
-                           (t("localization"), 1 / 4), (d("chain"), 1 / 4)],
+        "A3_base": {"parts": [(t("vqa"), 1 / 2), (t("kie"), 1 / 2)]},
+        "A3_spot": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (t("localization"), 1 / 3)]},
+        "A3_reason": {"parts": [(t("vqa"), 1 / 3), (t("kie"), 1 / 3), (d("chain"), 1 / 3)]},
+        "A3_spot_reason": {"parts": composite},
     }
     # A4: en alone vs en+X pairs, for every language set that exists
     if lang("en").exists():
-        arms["A4_en"] = [(lang("en"), 1.0)]
-        for code in ("ko", "ar", "zh", "id"):
+        arms["A4_en"] = {"parts": [(lang("en"), 1.0)]}
+        for code in ("ko", "ja", "ar", "zh", "id", "fr", "de"):
             if lang(code).exists():
-                arms[f"A4_en_{code}"] = [(lang("en"), 1 / 2), (lang(code), 1 / 2)]
-    return {name: parts for name, parts in arms.items()
-            if all(p.exists() for p, _ in parts)}
+                arms[f"A4_en_{code}"] = {"parts": [(lang("en"), 1 / 2), (lang(code), 1 / 2)]}
+    # A5: LoRA placement over the FIXED composite mix — which modules move which capability
+    for grp in ("vision", "connector", "llm_attn", "llm_mlp"):
+        arms[f"A5_{grp}"] = {"parts": composite, "extra": ["--placement", grp]}
+    # A6: HPO over the FIXED composite mix (alpha = 2r convention; placement stays the CLI default
+    # until the A5 winner is known, then rerun with --placement <winner>)
+    for r in (8, 16, 32, 64):
+        arms[f"A6_r{r}"] = {"parts": composite,
+                            "extra": ["--lora-r", str(r), "--lora-alpha", str(2 * r)]}
+    return {name: spec for name, spec in arms.items()
+            if all(p.exists() for p, _ in spec["parts"])}
 
 
 def main() -> None:
@@ -86,7 +97,10 @@ def main() -> None:
     p.add_argument("--arm", nargs="+", required=True,
                    help="arm ids or families: A1 A2 A3 A4 (family expands to all its variants)")
     p.add_argument("--models", nargs="+", default=["lfm2_5-vl-1.6b"])
-    p.add_argument("--count", type=int, default=300, help="EQUAL total samples per arm (the control)")
+    p.add_argument("--count", type=int, default=0,
+                   help="EQUAL total samples per arm family (the control). 0 = auto: use ALL the "
+                        "images — the largest equal-N every arm of a family can support from its "
+                        "pools (build the pools uncapped with build_task_trainsets --per-task -1)")
     p.add_argument("--steps", type=int, default=300)
     p.add_argument("--placement", default="all", help="A5 knob: vision|connector|llm_attn|llm_mlp|all")
     p.add_argument("--max-image-long-side", type=int, default=768, help="A7 knob")
@@ -94,7 +108,20 @@ def main() -> None:
     p.add_argument("--results", default=str(RESULTS))
     p.add_argument("--wandb-project", default=None)
     p.add_argument("--dry-run", action="store_true", help="compose arm jsonls + report, no training")
+    p.add_argument("--smoke", action="store_true",
+                   help="SIMPLE TEST of train+validate for every selected arm: tiny budget "
+                        "(count=24, steps=8, eval 16 samples/probe, 512px) so all arms run "
+                        "end-to-end fast — the wiring/before-after proof, NOT a measurement")
+    p.add_argument("--before-after", action="store_true", default=True,
+                   help="record base-vs-adapted on the full suite with per-axis deltas and saved "
+                        "predictions (default ON — the cross-capability comparison is the point)")
     args = p.parse_args()
+    if args.smoke:
+        args.count = 24 if args.count == 0 else min(args.count, 24)
+        args.steps = min(args.steps, 8)
+        args.max_image_long_side = min(args.max_image_long_side, 512)
+        print("[smoke] tiny train+validate: count=24 steps=8 eval=16/probe 512px — wiring proof, "
+              "not a measurement\n")
 
     td = Path(args.tasksets_dir)
     arms = arm_definitions(td)
@@ -102,19 +129,38 @@ def main() -> None:
     for a in args.arm:
         fam = [k for k in arms if k == a or k.startswith(a + "_")]
         if not fam:
-            sys.exit(f"[udd-ablation] unknown arm '{a}'. Available: {sorted(arms)}")
+            sys.exit(f"[udd-ablation] unknown arm '{a}'. Available: {sorted(arms)}\n"
+                     f"  (arms are offered only when their pool files exist under {td} — build "
+                     f"them first: python scripts/build_task_trainsets.py --per-task -1 --merge-qa "
+                     f"--derive-spatial-reasoning --derive-text-probes)")
         selected += fam
     heldout = td / "heldout_all.jsonl"
 
-    print(f"[udd-ablation] {len(selected)} arm runs, N={args.count}/arm, "
+    # --count 0 = use ALL images: each FAMILY trains at the largest equal-N every one of its arms
+    # can support (the pairwise control is within a family, so equality must hold there, not
+    # globally — A2's derived pools must not shrink A1's budget).
+    def _supportable(spec) -> int:
+        return min(int(len([ln for ln in p.read_text().splitlines() if ln.strip()]) / s)
+                   for p, s in spec["parts"])
+    fam_count: dict[str, int] = {}
+    for name in selected:
+        fam = name.split("_")[0]
+        fam_count[fam] = min(fam_count.get(fam, 1 << 30), _supportable(arms[name]))
+    counts = {name: args.count or fam_count[name.split("_")[0]] for name in selected}
+
+    print(f"[udd-ablation] {len(selected)} arm runs, "
+          f"N={'auto (ALL images, equal per family): ' + str(dict(sorted(fam_count.items()))) if not args.count else f'{args.count}/arm'}, "
           f"heldout={'yes' if heldout.exists() else 'MISSING'}\n")
     for i, name in enumerate(selected, 1):
+        spec, count = arms[name], counts[name]
         train = td / "arms" / f"{name}.jsonl"
-        n = _mix(arms[name], args.count, args.seed, train)
-        print(f"[{i}/{len(selected)}] {name}: {n} samples <- "
-              + " + ".join(f"{p.name}×{s:.2f}" for p, s in arms[name]))
-        if n < 0.95 * args.count:
-            print(f"    [warn] {name} fell short of the equal-N target ({n} < {args.count}): a "
+        n = _mix(spec["parts"], count, args.seed, train)
+        extra = spec.get("extra", [])
+        print(f"[{i}/{len(selected)}] {name}: {n} samples (target {count}) <- "
+              + " + ".join(f"{p.name}×{s:.2f}" for p, s in spec["parts"])
+              + (f"   [{' '.join(extra)}]" if extra else ""))
+        if n < 0.95 * count:
+            print(f"    [warn] {name} fell short of the equal-N target ({n} < {count}): a "
                   f"source pool is too small. Compare it only against arms at the SAME total, or "
                   f"lower --count to {n} for this family.")
         if args.dry_run:
@@ -122,14 +168,27 @@ def main() -> None:
         cmd = [sys.executable, "scripts/run_ablation.py", "--models", *args.models,
                "--arm", "public", "--train-jsonl", str(train),
                "--record-key", f"U-{name}", "--results", args.results,
-               "--count", str(args.count), "--steps", str(args.steps),
+               "--count", str(count), "--steps", str(args.steps),
                "--placement", args.placement,
-               "--max-image-long-side", str(args.max_image_long_side)]
+               "--max-image-long-side", str(args.max_image_long_side)] + extra
+        if args.before_after:
+            cmd.append("--before-after")
+        if args.smoke:
+            cmd += ["--eval-max-samples", "16"]
         if heldout.exists():
             cmd += ["--heldout-jsonl", str(heldout)]
         if args.wandb_project:
             cmd += ["--wandb-project", args.wandb_project]
-        subprocess.run(cmd, cwd=ROOT, check=True)
+        try:
+            subprocess.run(cmd, cwd=ROOT, check=True)
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"\n[udd-ablation] arm {name} FAILED (exit {e.returncode}) — the actual error "
+                     f"is printed just above this line by the child process.\n"
+                     f"  command: {' '.join(map(str, e.cmd))}\n"
+                     f"  common causes: transformers<5 for LFM/Qwen (pip install -U "
+                     f"'transformers>=5'); missing [finetune] deps (pip install -e "
+                     f"'.[models,finetune]'); CUDA OOM (lower --count / --max-image-long-side, or "
+                     f"--models smolvlm-256m).")
     if args.dry_run:
         print(f"\n[dry-run] composed arm jsonls under {td/'arms'}; rerun without --dry-run on a GPU.")
     else:

@@ -50,7 +50,7 @@ TASK_BY_BENCHMARK = {
     "wildreceipt": Task.KIE, "docile": Task.KIE,
     "docvqa": Task.VQA, "infovqa": Task.VQA, "textvqa": Task.VQA, "stvqa": Task.VQA,
     "ocrvqa": Task.VQA, "ai2d": Task.VQA, "visualmrc": Task.VQA, "ocrbench": Task.VQA,
-    "ocrbench_v2": Task.VQA, "pope": Task.VQA, "hallusionbench": Task.VQA,
+    "ocrbench_v2": Task.VQA, "pope": Task.VQA, "hallusionbench": Task.REASONING,
     "chartqa": Task.REASONING, "mathvista": Task.REASONING, "plotqa": Task.REASONING,
     "dvqa": Task.REASONING, "charxiv": Task.REASONING,
     "pubtabnet": Task.TABLE, "pubtables1m": Task.LOCALIZATION, "fintabnet": Task.TABLE,
@@ -459,6 +459,7 @@ def _u_mtvqa(ex, e) -> list[UnifiedSample]:
     else:
         qa = raw or []
     lang = _s(ex.get("lang")).lower() or None
+    lang = {"kr": "ko", "cz": "cs"}.get(lang, lang)      # MTVQA uses KR/CZ; normalize to ISO 639-1
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.VQA,
                           instruction=_s(p.get("question")), answers=[_s(p.get("answer"))],
                           language=lang, metric="anls")
@@ -523,9 +524,35 @@ def _u_rvl_cdip(ex, e) -> list[UnifiedSample]:
     lbl = ex.get("label")
     if not isinstance(lbl, int) or not (0 <= lbl < len(_RVL_CDIP)):
         return []
+    # closed-set classification: the legal label pool MUST be in the prompt — without it the task
+    # is unanswerable-as-posed ("business letter" would fail exact-match against "letter")
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.CLASSIFICATION,
-                          instruction="What type of document is this? Answer with the document class.",
+                          instruction="What type of document is this? Answer with exactly one of: "
+                                      + ", ".join(_RVL_CDIP) + ".",
                           answers=[_RVL_CDIP[lbl]], metric="exact")]
+
+
+@register("hallusionbench")
+def _u_hallusionbench(ex, e) -> list[UnifiedSample]:
+    """HallusionBench: yes/no visual-reasoning pairs shipped as gt_answer '1'/'0' — the INTENT is
+    true/false, so the training target becomes the literal 'yes'/'no'. The raw record also carries
+    ``gt_answer_details`` (a full explanation), so each row yields a grouped record: the yes/no QA
+    plus an 'explain' QA whose target is the rationale — reasoning supervision for free."""
+    q = _s(ex.get("question"))
+    gt = _s(ex.get("gt_answer"))
+    if not q or gt not in ("0", "1"):
+        return []
+    yn = "yes" if gt == "1" else "no"
+    qas = [QA(q, [yn])]
+    details = _s(ex.get("gt_answer_details"))
+    if details:
+        qas.append(QA(f"{q} Explain your answer.", [f"{details} So the answer is {yn}."]))
+    return [UnifiedSample(sample_id="", source=e["key"], task=Task.REASONING,
+                          qas=qas if len(qas) > 1 else [],
+                          instruction=q if len(qas) == 1 else "",
+                          answers=[yn] if len(qas) == 1 else [],
+                          metric="exact",
+                          meta={"subcategory": _s(ex.get("subcategory")) or None})]
 
 
 @register("synthdog_en", "synthdog_ko")
@@ -597,14 +624,19 @@ def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[Unifi
     for r in recs:
         r.hf_id = entry.get("hf_id")
         r.answers = canon_answers(r.answers)      # collapse case/punct/space duplicate golds
+        for qa in r.qas:
+            qa.answers = canon_answers(qa.answers)
         if not r.metric:
             r.metric = norm_metric(entry.get("metric"))
         if not r.language:
             text = " ".join(filter(None, [r.full_text, *(rg.text for rg in r.regions),
-                                          *(f.value for f in r.fields), *r.answers]))
+                                          *(f.value for f in r.fields), *r.answers,
+                                          *(a for qa in r.qas for a in qa.answers)]))
             r.language = (detect_language(text, r.source)
-                          or detect_language(r.instruction, r.source))
-    return [r for r in recs if r.answers or r.fields or r.regions or r.full_text or r.table_html]
+                          or detect_language(r.instruction or (r.qas[0].question if r.qas else ""),
+                                             r.source))
+    return [r for r in recs if r.answers or r.qas or r.fields or r.regions
+            or r.full_text or r.table_html]
 
 
 # --------------------------------------------------------------------------- the loader
@@ -621,7 +653,10 @@ class UnifiedLoader:
         self.by_key = {e["key"]: e for e in self.catalog}
 
     def streamable_keys(self) -> list[str]:
-        return [e["key"] for e in self.catalog if e.get("hf_id")]
+        """Catalog entries UDD builds from: has an hf_id and is not udd-excluded (an entry can be
+        eval-relevant — e.g. POPE for hallucination — without being DOCUMENT data; the catalog's
+        ``udd_exclude_reason`` records why)."""
+        return [e["key"] for e in self.catalog if e.get("hf_id") and not e.get("udd_exclude")]
 
     def iter(self, key: str, *, limit: int = 50, max_scan: int = 3000, max_px: int = 1000,
              quality: int = 85, cache_dir: str | None = None,
@@ -647,6 +682,12 @@ class UnifiedLoader:
             return
         try:
             ds = load_dataset(e["hf_id"], e.get("config"), split=e["split"], streaming=True)
+            if e.get("shuffle"):
+                # class/language-ORDERED sources collapse to one bucket when sampled from the
+                # stream head (rvl_cdip -> all 'letter', mtvqa -> all Arabic). A seeded streaming
+                # shuffle (shard order + a reservoir buffer) diversifies the head deterministically.
+                buf = int(e["shuffle"]) if str(e["shuffle"]).isdigit() else 2000
+                ds = ds.shuffle(seed=7, buffer_size=buf)
         except Exception as exc:
             print(f"[unified][fail] {key}: {type(exc).__name__}: {str(exc)[:120]}")
             return
@@ -776,6 +817,55 @@ def derive_spatial_reasoning(r: UnifiedSample, max_items: int = 3,
             hf_id=r.hf_id, split=r.split, hf_config=r.hf_config,
             meta={"derived": f"spatial_reasoning:{style}", "bbox": box.to_list(),
                   "anchor": anchor_label, **r.meta}))
+    return out
+
+
+_FORMULA_SOURCES = {"im2latex", "latexocr", "crohme"}   # LaTeX string chars != rendered glyphs
+
+
+def derive_text_probes(r: UnifiedSample, max_probes: int = 3) -> list:
+    """Derive VARIED instructions from a single-line crop's own transcription — no model needed.
+
+    Sources like IAM/SROIE are one-sentence crops whose only instruction is "transcribe" — the
+    same supervision every time. But the gold text itself supports fine-grained reading probes:
+    "What is the 3rd character?" -> "9", "What are the first two characters?" -> "78",
+    "What is the last word?" -> ... Each probe is a deterministic pure function of the gold, so
+    the derived answers are exact. Emits flat training Samples sharing the crop's image.
+
+    Applies only to plain-text single-line recognition rows: formula sources are excluded (the
+    LaTeX string's characters are not the rendered glyphs), as are multi-line/long texts (indexing
+    into a paragraph is not a fair visual task)."""
+    from ..schema import Sample
+    if r.task != Task.RECOGNITION or r.source in _FORMULA_SOURCES or not r.image_path:
+        return []
+    text = _s(r.full_text) or (_s(r.answers[0]) if r.answers else "")
+    if not text or "\n" in text or not (4 <= len(text) <= 80):
+        return []
+    import string
+    chars = [c for c in text if not c.isspace()]        # index only visible glyphs
+    # word probes must target REAL words: IAM-style transcripts tokenize punctuation ("... start .")
+    # so a naive split()[-1] yields "." as the "last word" and inflates the word count
+    words = [w for w in (t.strip(string.punctuation) for t in text.split()) if w]
+    seed = sum(ord(c) for c in r.sample_id)             # deterministic, no RNG state
+    k = (seed % min(len(chars), 9)) + 1                 # 1-based position, small enough to count
+    ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(k, f"{k}th")
+    candidates = [
+        (f"What is the {ordinal} character (ignoring spaces) in the image? "
+         f"Answer with that single character.", chars[k - 1]),
+        ("What are the first two characters in the image? Answer with exactly "
+         "those two characters.", "".join(chars[:2])),
+    ]
+    if words:
+        candidates += [
+            ("What is the last word in the image? Answer with that word only.", words[-1]),
+            ("How many words are in the image? Answer with a number.", str(len(words))),
+        ]
+    out = []
+    for i, (q, a) in enumerate(candidates[:max_probes]):
+        out.append(Sample(
+            sample_id=f"{r.sample_id}_p{i}", image_path=r.image_path, question=q,
+            answers=[a], answer_type=f"{Task.RECOGNITION}:probe", metric="exact",
+            meta={"source": r.source, "derived": "text_probe", "gold_text": text, **r.meta}))
     return out
 
 

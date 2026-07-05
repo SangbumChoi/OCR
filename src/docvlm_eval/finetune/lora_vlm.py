@@ -187,7 +187,7 @@ def _auto_vlm():
 
 def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
            max_image_long_side: int | None = 768, tag: str = "",
-           max_samples: int | None = 64) -> dict:
+           max_samples: int | None = 64, save_preds: str | None = None) -> dict:
     """Generate on (a fixed subsample of) ``jsonl`` with the (already-loaded) model and return the
     project's aggregate summary. ``max_samples`` caps the eval set — the arm path regenerates
     realistic_cases at --count (thousands of samples), so without a cap the suite eval would score the
@@ -232,7 +232,23 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
             print(f"    [eval {tag}] {i}/{len(samples)} ({(time.time()-t0):.0f}s)", flush=True)
     if was_training:
         model.train()
-    return aggregate(samples, preds)["summary"]
+    agg = aggregate(samples, preds)
+    if save_preds:
+        # per-sample predictions + scores -> jsonl, so before/after runs can be diffed at the
+        # EXAMPLE level (which samples flipped) — the fixed-seed subsample keeps the sets aligned
+        import json as _json
+        by_id = {s.sample_id: s for s in samples}
+        out_p = Path(save_preds)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        with out_p.open("w", encoding="utf-8") as fh:
+            for row in agg["per_sample"]:
+                s = by_id.get(row.get("sample_id"))
+                fh.write(_json.dumps({**row,
+                                      "question": s.question if s else "",
+                                      "answers": s.answers if s else [],
+                                      "image_path": s.image_path if s else ""},
+                                     ensure_ascii=False) + "\n")
+    return agg["summary"]
 
 
 def _wandb_init(cfg: "LoraVLMConfig"):
@@ -427,15 +443,20 @@ def _load_for_eval(model_id: str, adapter_path: str | None, dtype: str = "bfloat
 
 def score_suite(model_id: str, jsonls: dict, *, adapter_path: str | None = None,
                 dtype: str = "bfloat16", max_new_tokens: int = 64,
-                max_image_long_side: int | None = 768, max_samples: int | None = 64) -> dict:
+                max_image_long_side: int | None = 768, max_samples: int | None = 64,
+                save_preds_dir: str | None = None) -> dict:
     """Load the (optionally adapted) model ONCE and score several probe jsonls -> {name: summary}.
     Avoids reloading the full model per probe (the repeated 'Loading weights 589/589' stall after
-    training that looked like a hang). ``max_samples`` caps each probe. Frees the model at the end."""
+    training that looked like a hang). ``max_samples`` caps each probe. ``save_preds_dir`` writes
+    per-sample predictions+scores to ``<dir>/<probe>.jsonl`` (the before/after example-level diff
+    needs them). Frees the model at the end."""
     import torch
     model, proc, device = _load_for_eval(model_id, adapter_path, dtype)
     try:
         return {name: _score(model, proc, device, jl, max_new_tokens, max_image_long_side,
-                             tag=name, max_samples=max_samples)
+                             tag=name, max_samples=max_samples,
+                             save_preds=(f"{save_preds_dir}/{name}.jsonl"
+                                         if save_preds_dir else None))
                 for name, jl in jsonls.items()}
     finally:
         del model

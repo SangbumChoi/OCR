@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _text(r) -> str:
-    fields = json.loads(r.get("fields_json") or "[]")
-    fkeys = " ".join(f.get("key", "") for f in fields[:20])
+    els = json.loads(r.get("elements_json") or r.get("fields_json") or "[]")
+    fkeys = " ".join(e.get("key", "") for e in els[:20])
     flat_answers = " ".join(a for inner in (r.get("answers") or []) for a in inner)
     return " ".join(str(x) for x in [
         r.get("task", ""), " ".join(r.get("instructions") or []),
@@ -105,7 +105,7 @@ def main() -> None:
         feat_desc = f"CLIP({args.clip.split('/')[-1]}) image"
     else:
         rows = [{k: ds[k][i] for k in ("task", "source", "instructions", "answers", "full_text",
-                                       "fields_json")} for i in range(len(ds))]
+                                       "elements_json")} for i in range(len(ds))]
         X = TfidfVectorizer(max_features=2000, stop_words="english").fit_transform(
             [_text(r) for r in rows]).toarray()
         feat_desc = "TF-IDF(content)"

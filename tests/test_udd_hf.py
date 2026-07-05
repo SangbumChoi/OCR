@@ -110,6 +110,21 @@ def test_unified_from_hf_row_expands_native_lists(tmp_path):
     assert r2.instruction == "Who wrote this?" and not r2.qas
 
 
+def test_elements_json_single_datatype_roundtrip(tmp_path):
+    # published schema: fields and regions share ONE {key,value,bbox,kind} element type
+    from docvlm_eval.unified import unified_from_hf_row
+    row = {"sample_id": "x_0_0", "source": "cord", "task": "kie",
+           "instructions": ["Extract."], "answers": [["{}"]], "metric": "anls",
+           "elements_json": json.dumps([
+               {"key": "total", "value": "60,000", "bbox": [0.1, 0.8, 0.4, 0.9, True],
+                "kind": "field"},
+               {"key": "Table", "value": "", "bbox": [0.0, 0.1, 1.0, 0.5, True],
+                "kind": "region"}])}
+    r = unified_from_hf_row(row, image_path=_img(tmp_path))
+    assert len(r.fields) == 1 and r.fields[0].key == "total" and r.fields[0].bbox.normalized
+    assert len(r.regions) == 1 and r.regions[0].label == "Table"
+
+
 def test_validate_payload_shapes_rejects_off_dto(tmp_path):
     import pytest
     from docvlm_eval.unified.hf import validate_payload_shapes
