@@ -129,7 +129,10 @@ def main() -> None:
     for a in args.arm:
         fam = [k for k in arms if k == a or k.startswith(a + "_")]
         if not fam:
-            sys.exit(f"[udd-ablation] unknown arm '{a}'. Available: {sorted(arms)}")
+            sys.exit(f"[udd-ablation] unknown arm '{a}'. Available: {sorted(arms)}\n"
+                     f"  (arms are offered only when their pool files exist under {td} — build "
+                     f"them first: python scripts/build_task_trainsets.py --per-task -1 --merge-qa "
+                     f"--derive-spatial-reasoning --derive-text-probes)")
         selected += fam
     heldout = td / "heldout_all.jsonl"
 
@@ -176,7 +179,16 @@ def main() -> None:
             cmd += ["--heldout-jsonl", str(heldout)]
         if args.wandb_project:
             cmd += ["--wandb-project", args.wandb_project]
-        subprocess.run(cmd, cwd=ROOT, check=True)
+        try:
+            subprocess.run(cmd, cwd=ROOT, check=True)
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"\n[udd-ablation] arm {name} FAILED (exit {e.returncode}) — the actual error "
+                     f"is printed just above this line by the child process.\n"
+                     f"  command: {' '.join(map(str, e.cmd))}\n"
+                     f"  common causes: transformers<5 for LFM/Qwen (pip install -U "
+                     f"'transformers>=5'); missing [finetune] deps (pip install -e "
+                     f"'.[models,finetune]'); CUDA OOM (lower --count / --max-image-long-side, or "
+                     f"--models smolvlm-256m).")
     if args.dry_run:
         print(f"\n[dry-run] composed arm jsonls under {td/'arms'}; rerun without --dry-run on a GPU.")
     else:

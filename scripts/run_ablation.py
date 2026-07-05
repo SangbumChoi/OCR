@@ -223,6 +223,12 @@ def main() -> None:
                  f"(got {transformers.__version__}). "
                  f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
 
+    try:
+        import peft, accelerate  # noqa: F401  (the [finetune] extra; missing on a bare install)
+    except ModuleNotFoundError as e:
+        sys.exit(f"[run_ablation] missing fine-tuning dependency '{e.name}'. "
+                 f"Run: pip install -e '.[models,finetune]'")
+
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
 
     if args.arm == "A0":
