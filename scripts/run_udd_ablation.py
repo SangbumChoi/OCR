@@ -19,9 +19,9 @@ Every run trains via ``run_ablation.py --arm public`` and evaluates BOTH the syn
 and the UDD public heldout fold (``heldout_all.jsonl`` — leakage-safe, image-keyed split). Results
 land under ``models[<model>]["U-<arm>"]`` in ``docs/results/udd_ablation_results.json``.
 
-    python scripts/build_task_trainsets.py --per-task 300 --merge-qa --derive-spatial-reasoning
+    python scripts/build_task_trainsets.py --per-task -1 --merge-qa --derive-spatial-reasoning
     python scripts/run_udd_ablation.py --arm A1 --dry-run     # compose + inspect, no GPU
-    python scripts/run_udd_ablation.py --arm A1 A2 --count 300 --steps 300   # GPU
+    python scripts/run_udd_ablation.py --arm A1 A2 --steps 300    # GPU; --count 0 = ALL images
 """
 from __future__ import annotations
 
@@ -97,7 +97,10 @@ def main() -> None:
     p.add_argument("--arm", nargs="+", required=True,
                    help="arm ids or families: A1 A2 A3 A4 (family expands to all its variants)")
     p.add_argument("--models", nargs="+", default=["lfm2_5-vl-1.6b"])
-    p.add_argument("--count", type=int, default=300, help="EQUAL total samples per arm (the control)")
+    p.add_argument("--count", type=int, default=0,
+                   help="EQUAL total samples per arm family (the control). 0 = auto: use ALL the "
+                        "images — the largest equal-N every arm of a family can support from its "
+                        "pools (build the pools uncapped with build_task_trainsets --per-task -1)")
     p.add_argument("--steps", type=int, default=300)
     p.add_argument("--placement", default="all", help="A5 knob: vision|connector|llm_attn|llm_mlp|all")
     p.add_argument("--max-image-long-side", type=int, default=768, help="A7 knob")
@@ -114,7 +117,8 @@ def main() -> None:
                         "predictions (default ON — the cross-capability comparison is the point)")
     args = p.parse_args()
     if args.smoke:
-        args.count, args.steps = min(args.count, 24), min(args.steps, 8)
+        args.count = 24 if args.count == 0 else min(args.count, 24)
+        args.steps = min(args.steps, 8)
         args.max_image_long_side = min(args.max_image_long_side, 512)
         print("[smoke] tiny train+validate: count=24 steps=8 eval=16/probe 512px — wiring proof, "
               "not a measurement\n")
@@ -129,18 +133,31 @@ def main() -> None:
         selected += fam
     heldout = td / "heldout_all.jsonl"
 
-    print(f"[udd-ablation] {len(selected)} arm runs, N={args.count}/arm, "
+    # --count 0 = use ALL images: each FAMILY trains at the largest equal-N every one of its arms
+    # can support (the pairwise control is within a family, so equality must hold there, not
+    # globally — A2's derived pools must not shrink A1's budget).
+    def _supportable(spec) -> int:
+        return min(int(len([ln for ln in p.read_text().splitlines() if ln.strip()]) / s)
+                   for p, s in spec["parts"])
+    fam_count: dict[str, int] = {}
+    for name in selected:
+        fam = name.split("_")[0]
+        fam_count[fam] = min(fam_count.get(fam, 1 << 30), _supportable(arms[name]))
+    counts = {name: args.count or fam_count[name.split("_")[0]] for name in selected}
+
+    print(f"[udd-ablation] {len(selected)} arm runs, "
+          f"N={'auto (ALL images, equal per family): ' + str(dict(sorted(fam_count.items()))) if not args.count else f'{args.count}/arm'}, "
           f"heldout={'yes' if heldout.exists() else 'MISSING'}\n")
     for i, name in enumerate(selected, 1):
-        spec = arms[name]
+        spec, count = arms[name], counts[name]
         train = td / "arms" / f"{name}.jsonl"
-        n = _mix(spec["parts"], args.count, args.seed, train)
+        n = _mix(spec["parts"], count, args.seed, train)
         extra = spec.get("extra", [])
-        print(f"[{i}/{len(selected)}] {name}: {n} samples <- "
+        print(f"[{i}/{len(selected)}] {name}: {n} samples (target {count}) <- "
               + " + ".join(f"{p.name}×{s:.2f}" for p, s in spec["parts"])
               + (f"   [{' '.join(extra)}]" if extra else ""))
-        if n < 0.95 * args.count:
-            print(f"    [warn] {name} fell short of the equal-N target ({n} < {args.count}): a "
+        if n < 0.95 * count:
+            print(f"    [warn] {name} fell short of the equal-N target ({n} < {count}): a "
                   f"source pool is too small. Compare it only against arms at the SAME total, or "
                   f"lower --count to {n} for this family.")
         if args.dry_run:
@@ -148,7 +165,7 @@ def main() -> None:
         cmd = [sys.executable, "scripts/run_ablation.py", "--models", *args.models,
                "--arm", "public", "--train-jsonl", str(train),
                "--record-key", f"U-{name}", "--results", args.results,
-               "--count", str(args.count), "--steps", str(args.steps),
+               "--count", str(count), "--steps", str(args.steps),
                "--placement", args.placement,
                "--max-image-long-side", str(args.max_image_long_side)] + extra
         if args.before_after:

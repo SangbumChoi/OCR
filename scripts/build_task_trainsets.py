@@ -60,7 +60,9 @@ def main() -> None:
     p.add_argument("--repo", default=None, help="pull UDD from this Hub repo instead of --src")
     p.add_argument("--out", default=str(ROOT / "data" / "udd_tasks"))
     p.add_argument("--per-task", type=int, default=0,
-                   help="samples per task (0 = the smallest task's size, i.e. equal budget for all)")
+                   help="samples per task (0 = the smallest task's size, i.e. equal budget for all; "
+                        "-1 = NO cap: write each group's FULL pool — use when a downstream composer "
+                        "such as run_udd_ablation does its own equal-N control)")
     p.add_argument("--tasks", default=None, help="comma-separated tasks to include (default: all present)")
     p.add_argument("--merge-qa", action="store_true",
                    help="merge duplicate-image QAs into a Q/A list before counting (one image decode "
@@ -166,16 +168,18 @@ def main() -> None:
     samples_by_group = {g: s for g, s in samples_by_group.items() if s}   # drop empty groups
     if not samples_by_group:
         print("[task-value] no trainable samples found — check --src / --tasks."); return
-    n_balanced = args.per_task or min(len(s) for s in samples_by_group.values())
+    full_pools = args.per_task == -1        # arm composer downstream does the equal-N control
+    n_balanced = None if full_pools else (args.per_task or
+                                          min(len(s) for s in samples_by_group.values()))
     prefix = "task" if args.group_by == "task" else "lang"
 
     summary, all_samples = {}, []
-    print(f"[task-value] equal budget N={n_balanced} samples/{args.group_by} "
-          f"(from {args.repo or args.src})\n")
+    print(f"[task-value] {'FULL pools (no cap)' if full_pools else f'equal budget N={n_balanced}'} "
+          f"samples/{args.group_by} (from {args.repo or args.src})\n")
     for group in sorted(samples_by_group):
         pool = list(samples_by_group[group])
         rng.shuffle(pool)
-        used = pool[:n_balanced]
+        used = pool if full_pools else pool[:n_balanced]
         save_jsonl(used, out / f"{prefix}_{group}.jsonl")
         all_samples += used
         summary[group] = {"available": len(pool), "used": len(used),
@@ -198,10 +202,11 @@ def main() -> None:
 
     save_jsonl(all_samples, out / "all.jsonl")
     (out / "summary.json").write_text(
-        json.dumps({"n_balanced": n_balanced, "merge_qa": args.merge_qa,
+        json.dumps({"n_balanced": "full" if full_pools else n_balanced, "merge_qa": args.merge_qa,
                     "group_by": args.group_by, "groups": summary},
                    indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n=== built {len(summary)} per-{args.group_by} sets (N={n_balanced} each) -> {out} ===")
+    print(f"\n=== built {len(summary)} per-{args.group_by} sets "
+          f"({'full pools' if full_pools else f'N={n_balanced} each'}) -> {out} ===")
     print(f"  jsonl : {out}/{prefix}_<{args.group_by}>.jsonl   (feed to run_task_value.py)")
     print(f"  mixed control  : {out}/all.jsonl")
 
