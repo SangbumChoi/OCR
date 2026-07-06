@@ -35,14 +35,21 @@ img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
 
 
 def main() -> None:
-    md = SRC.read_text(encoding="utf-8")
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--src", default=str(SRC), help="markdown source")
+    ap.add_argument("--out", default=None, help="pdf target (default: source with .pdf)")
+    args = ap.parse_args()
+    src = Path(args.src)
+    out = Path(args.out) if args.out else src.with_suffix(".pdf")
+    md = src.read_text(encoding="utf-8")
     html_body = markdown.markdown(
-        md, extensions=["tables", "fenced_code", "toc", "sane_lists"]
+        md, extensions=["tables", "fenced_code", "toc", "sane_lists", "md_in_html"]
     )
     html = f"<html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{html_body}</body></html>"
     # base_url = the markdown's own directory so relative image paths (figures/*.png) resolve.
-    HTML(string=html, base_url=str(SRC.parent)).write_pdf(str(OUT))
-    print(f"[done] wrote {OUT}")
+    HTML(string=html, base_url=str(src.parent)).write_pdf(str(out))
+    print(f"[done] wrote {out}")
 
 
 if __name__ == "__main__":
