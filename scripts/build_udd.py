@@ -42,14 +42,17 @@ sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.unified import (UnifiedLoader, enrich_dataset, push,  # noqa: E402
                                  render_grid, safety_check, to_hf_dataset)
 
-HARD_CAP = 1500     # was 500 (300/source era), 200 before that; raised for the 1000/source release
+HARD_CAP = 1_000_000   # sanity backstop only — DISK is the real limit (a full no-cap
+                       # ingest of every source is terabytes; run those on a big-disk box)
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default=str(ROOT / "data" / "udd"))
-    p.add_argument("--per-bench", type=int, default=10, help=f"examples/dataset (mockup=10; < {HARD_CAP})")
+    p.add_argument("--per-bench", type=int, default=10,
+                   help="examples/dataset (mockup=10). 0 = NO cap: ingest every available example "
+                        "of every source — needs a big disk (full sources are terabytes)")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys")
     p.add_argument("--skip", default=None, help="comma-separated benchmark keys to skip")
     p.add_argument("--max-scan", type=int, default=400)
@@ -71,7 +74,7 @@ def main() -> None:
         sys.exit("[udd] --push needs --repo <user>/UDD and a token (--token or $HF_TOKEN). "
                  "Run `hf auth login` or pass --token.")
 
-    per = max(1, min(args.per_bench, HARD_CAP - 1))
+    per = HARD_CAP if args.per_bench == 0 else max(1, min(args.per_bench, HARD_CAP - 1))
     out = Path(args.out)
     loader = UnifiedLoader()
     only = [k.strip() for k in args.only.split(",")] if args.only else None

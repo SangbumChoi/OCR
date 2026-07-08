@@ -94,8 +94,15 @@ deltas move, not just its own axis.
 
 ```bash
 python scripts/build_udd.py --per-bench 1000 --max-scan 40000   # re-stream sources, dedup-cached
+python scripts/build_udd.py --per-bench 0 --max-scan 0          # NO cap: EVERY available example
 python scripts/audit_udd_duplicates.py                          # 0 cross-source exact expected
 ```
+
+`--per-bench 0` removes the per-source cap entirely — the format scales (sharded parquet, one
+merged memory-mapped concat), but the DATA does not fit a small box: full Docmatix/PubTabNet/
+RVL-CDIP alone are millions of images (terabytes). Run the no-cap ingest on a machine with the
+disk to hold it; on ordinary boxes pick the largest --per-bench the free space allows
+(~7 GB per 25k rows, plus the same again as merge headroom).
 
 The corpus release on the Hub already contains everything the ablation needs (`fold` gives the
 leakage-safe public heldout); rebuilding is only for changing the scale or adding sources.
