@@ -215,10 +215,10 @@ diversify it.
 **Duplicate audit** (`scripts/audit_udd_duplicates.py` →
 [`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
 `phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
-threshold (≤6) drowns in false positives. The 1,000/source corpus shows **0 cross-source exact
+threshold (≤6) drowns in false positives. The 1,500/source corpus (39,837 rows) shows **0 cross-source exact
 duplicates** — the insertion-time md5 `hash_index.json` proved itself: the 100/source build had 1
 (chartqa ↔ mathvista, MathVista aggregates ChartQA); every full rebuild since skips such copies at
-insert. 2,217 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
+insert. 4,119 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
 see — led by pubtabnet ↔ tatqa table renders), plus expected within-source template reuse in
 synthetic/chart sets.
 
