@@ -34,7 +34,7 @@ pip install -e '.[models,finetune]'
 ```
 
 On Colab you skip all of this — the notebook's first cell clones + installs by itself, and pulls
-the corpus from the Hub (`danelcsb/UDD`, 28,299 image-rows / 53,108 QAs / 32 sources) when no
+the corpus from the Hub (`danelcsb/UDD`, 39,837 image-rows / 77,063 QAs / 32 sources) when no
 local build exists. GPU caveat handled by section 6 automatically: LFM2.5-VL/Qwen3.5 need
 `transformers>=5` and `torchao>=0.16` (Colab preinstalls older ones); the cell force-upgrades both
 before training. Checked-in probe fixtures carry paths from the generating machine —
@@ -77,8 +77,8 @@ python scripts/run_udd_ablation.py --arm A1 A2 A3 A4 A5 A6 --steps 300
 ```
 
 `--count 0` (default) = use ALL images: each FAMILY trains at the largest equal-N every one of its
-arms supports (at the 28k corpus: A2 ≈ 7.3k, A5/A6 ≈ 4.1k, A1/A3 ≈ 2.1k, A4 = smallest language
-pool). `--smoke` first (count=24, steps=8) is a 1–2 h wiring proof of all 24 arms if you want a
+arms supports (at the 40k corpus: A2 ≈ 10.9k, A5/A6 ≈ 5.9k, A1/A3 ≈ 3.0k, A4 = smallest
+language pool). `--smoke` first (count=24, steps=8) is a 1–2 h wiring proof of all 24 arms if you want a
 cheap end-to-end pass before the measurement. Single-factor knobs pass through:
 `--placement`, `--lora-r/--lora-alpha`, `--max-image-long-side`.
 
