@@ -28,8 +28,41 @@ Design principles:
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Callable
+
+
+# --------------------------------------------------------------- standardization (the contract)
+# A model's raw output is NEVER written to the corpus as-is: every filler owns a normalizer that
+# (a) standardizes the value into the column's format and (b) REJECTS degenerate outputs by
+# returning None (the row is then simply left unfilled — no provenance, no bad label).
+_WRAPPERS = re.compile(
+    r"^(the (text|image|document)( in the image)? (reads|says|shows|contains|is)[:\s]*|"
+    r"here is the (text|transcription)[:\s]*|transcription[:\s]*)", re.IGNORECASE)
+
+
+def normalize_text(raw: str, *, max_len: int = 8000) -> str | None:
+    """Standardize a model transcript: NFC unicode, chat-wrapper phrases stripped, whitespace
+    runs collapsed (newlines kept — reading order is meaningful), surrounding quotes dropped.
+    Returns None for degenerate outputs (empty, refusals, over-long ramblings)."""
+    t = unicodedata.normalize("NFC", (raw or "").strip())
+    t = _WRAPPERS.sub("", t).strip().strip('"\u201c\u201d').strip()
+    t = "\n".join(re.sub(r"[ \t]+", " ", ln).strip() for ln in t.splitlines())
+    t = re.sub(r"\n{3,}", "\n\n", t).strip()
+    low = t.lower()
+    if not t or len(t) > max_len:
+        return None
+    if low.startswith(("i cannot", "i can't", "i'm sorry", "sorry,", "unable to")):
+        return None                                   # refusal, not a transcript
+    return t
+
+
+def normalize_table_html(raw: str) -> str | None:
+    """Standardize table output: keep exactly the <table>...</table> block, nothing else."""
+    m = re.search(r"<table\b.*?</table>", raw or "", re.IGNORECASE | re.DOTALL)
+    return m.group(0) if m else None
 
 
 @dataclass
@@ -39,6 +72,8 @@ class Filler:
     description: str
     needs: Callable[[dict], bool]
     suggested_models: tuple[str, ...] = ()
+    normalize: Callable[[Any], Any] | None = None
+    prompt: str = ""                                  # the standardized instruction for VLM labelers
 
 
 def _no_full_text(row: dict) -> bool:
@@ -61,18 +96,26 @@ FILLERS: dict[str, Filler] = {
         description="full-page transcript from a SOTA open-source OCR model — every document image "
                     "has one, but only recognition-task rows ship it",
         needs=_no_full_text,
-        suggested_models=("got-ocr2", "paddleocr-vl")),
+        suggested_models=("got-ocr2", "paddleocr-vl"),
+        normalize=normalize_text,
+        prompt="Read ALL the text in this image, top to bottom. Output ONLY the text exactly as "
+               "written, preserving line breaks. No commentary."),
     "region_text": Filler(
         column="elements_json",
         description="text content of layout regions that have a box but no value (DocLayNet/"
                     "PubLayNet boxes are class-only) — crop the box, OCR the crop",
         needs=_has_textless_regions,
-        suggested_models=("got-ocr2", "paddleocr-vl")),
+        suggested_models=("got-ocr2", "paddleocr-vl"),
+        normalize=normalize_text,
+        prompt="Read the text inside this cropped document region. Output ONLY the text, "
+               "no commentary."),
     "table_html": Filler(
         column="table_html",
         description="table-structure HTML for table-task rows missing it",
         needs=_no_table_html,
-        suggested_models=("got-ocr2",)),
+        suggested_models=("got-ocr2",),
+        normalize=normalize_table_html,
+        prompt="Convert this table image to HTML. Output ONLY the <table>...</table> markup."),
 }
 
 
@@ -107,6 +150,8 @@ def apply(ds, filler_name: str, *, labeler: Callable[[dict], Any], name: str):
         pseudo = json.loads(row.get("pseudo_json") or "{}")
         if f.needs(row):
             val = labeler(row)
+            if val is not None and f.normalize is not None:
+                val = f.normalize(val)                # standardize; None = reject, leave unfilled
             if val is not None:
                 out[f.column] = val
                 pseudo[f.column] = name
@@ -115,3 +160,33 @@ def apply(ds, filler_name: str, *, labeler: Callable[[dict], Any], name: str):
 
     return ds.map(_fill, desc=f"pseudo-label: {filler_name} <- {name}",
                   load_from_cache_file=False)
+
+
+def vlm_labeler(model_key: str, filler_name: str, *, device: str = "cpu",
+                max_new_tokens: int = 256) -> Callable[[dict], str | None]:
+    """Wrap any model from ``docvlm_eval.models`` into a ``labeler(row) -> raw text``.
+
+    The filler's standardized ``prompt`` is used, so every model answers the SAME instruction —
+    the output contract (and rejection rules) live in the filler's ``normalize``, keeping labels
+    comparable across labeler models. Works with any registered VLM ('smolvlm-256m' runs on CPU;
+    'got-ocr2' / 'paddleocr-vl' / bigger Qwen/LFM need a GPU)."""
+    import tempfile
+    from ..models import build_model
+    from ..models.base import GenConfig
+
+    adapter = build_model(model_key, device=device,
+                          dtype="float32" if device == "cpu" else "bfloat16",
+                          gen=GenConfig(max_new_tokens=max_new_tokens))
+    adapter.load()
+    prompt = FILLERS[filler_name].prompt
+
+    def _label(row: dict) -> str | None:
+        img = row.get("image")
+        if img is None:
+            return None
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tf:
+            img.convert("RGB").save(tf.name)
+            text, _conf = adapter.generate(tf.name, prompt)
+        return text
+
+    return _label
