@@ -89,3 +89,11 @@ def test_apply_normalizes_fills_and_skips_rejections():
     assert json.loads(filled["pseudo_json"][rej]) == {}                  # and NO provenance
     gold = by_id["iam_0000_0"]
     assert filled["full_text"][gold] == "the quick brown fox"            # gold never touched
+
+
+def test_agreement_crosscheck_against_gold_answers():
+    from docvlm_eval.unified.pseudo_label import agrees_with_gold
+    row = {"answers": [["CENTRE"]]}
+    assert agrees_with_gold(row, "WELCOME TO THE Centre OF TOWN") is True
+    assert agrees_with_gold(row, "P.E.R.I.T.E.R.") is False              # the demo hallucination
+    assert agrees_with_gold({"answers": []}, "anything") is None         # nothing to check

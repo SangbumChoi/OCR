@@ -13,8 +13,10 @@ Design principles:
   the value. Registered in :data:`FILLERS`.
 * **Plan first, infer later** — ``plan(ds)`` reports exactly what each filler WOULD fill (counts
   per source/task) with zero model loading; ``apply(ds, filler, labeler=...)`` runs the actual
-  fill. The GPU labelers are intentionally NOT implemented here — filling is future work; the
-  pipeline, provenance and tests are not.
+  fill. :func:`vlm_labeler` wraps any registered model into a labeler answering the filler's
+  standardized prompt; every raw output passes the filler's normalizer (standardize-or-reject)
+  before it is written, and :func:`agrees_with_gold` cross-checks transcripts against the row's
+  own gold answers.
 * **Provenance is mandatory**: every filled value is recorded in the row's ``pseudo_json`` column
   (``{column: labeler_name}``), so pseudo-labels can always be distinguished from source GT,
   filtered out, or regenerated with a better model. Gold values are NEVER overwritten — fillers
@@ -190,3 +192,19 @@ def vlm_labeler(model_key: str, filler_name: str, *, device: str = "cpu",
         return text
 
     return _label
+
+
+def agrees_with_gold(row: dict, text: str) -> bool | None:
+    """Cross-check a pseudo ``full_text`` against the row's OWN gold QA answers.
+
+    Rows that already carry extraction-style golds (VQA/KIE answers are usually spans of the
+    page text) give a free verification signal: at least one gold answer should appear in the
+    transcript. Returns None when the row has no usable gold (nothing to check against) —
+    treat None as "unverifiable", not as a failure. Recommended as a rejection gate for
+    GPU-scale fills: the CPU demo's 256M labeler read one crop as 'P.E.R.I.T.E.R.' where the
+    gold answer was 'CENTRE' — exactly the hallucination this check catches."""
+    golds = [a for anss in (row.get("answers") or []) for a in anss if len(a or "") >= 3]
+    if not golds or not text:
+        return None
+    low = text.lower()
+    return any(g.lower() in low for g in golds)
