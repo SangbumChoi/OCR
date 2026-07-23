@@ -32,6 +32,15 @@ from .teacher_targets import (
     export_teacher_requests,
     generate_teacher_predictions,
 )
+from .sweep import (
+    CompiledVariant,
+    MatchedControl,
+    SweepPlan,
+    SweepRunner,
+    aggregate_sweep_results,
+    apply_json_patch,
+    compile_sweep_plan,
+)
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
 from .posttrain import (
@@ -59,6 +68,7 @@ from .rewards import (
 __all__ = [
     "BalancedGroupBatchSampler",
     "ConnectorConfig",
+    "CompiledVariant",
     "CurriculumSchedule",
     "CurriculumStage",
     "DocumentTokenizer",
@@ -68,6 +78,7 @@ __all__ = [
     "LanguageConfig",
     "HubComponentSpec",
     "MixtureComponent",
+    "MatchedControl",
     "NativeStudentTeacher",
     "PretrainConfig",
     "RLVRConfig",
@@ -87,14 +98,18 @@ __all__ = [
     "TeacherSignals",
     "TrainingResult",
     "StructuredResponse",
+    "SweepPlan",
+    "SweepRunner",
     "UDDStudentDataset",
     "VisionConfig",
     "student_model_inputs",
     "build_structured_target",
     "build_weighted_mixture",
     "apply_teacher_predictions",
+    "apply_json_patch",
     "acquire_hub_component",
     "compare_split_summaries",
+    "compile_sweep_plan",
     "export_teacher_requests",
     "completion_log_probs",
     "group_relative_policy_loss",
@@ -111,4 +126,5 @@ __all__ = [
     "evaluate_structured_student",
     "wandb_metrics_for_split",
     "write_split_comparison",
+    "aggregate_sweep_results",
 ]

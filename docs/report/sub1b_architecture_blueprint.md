@@ -213,8 +213,9 @@ and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and
 [`student_pretraining_runner.md`](student_pretraining_runner.md), and
 [`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
-step is to run matched initialization, SFT-target, and reward ablations at fixed token budgets with
-the evaluator, then publish held-out capability and efficiency curves.
+step is to execute the compiled matched suites in
+[`student_sweep_runner.md`](student_sweep_runner.md) at fixed token budgets, then publish held-out
+capability and efficiency curves.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations

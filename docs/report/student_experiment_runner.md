@@ -6,6 +6,11 @@ validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer 
 tokenizer training, student initialization, pretraining, grounded SFT, RLVR, and train/heldout
 generation evaluation.
 
+For matched multi-run ablations, use
+[`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
+patches, rejects changes to declared fixed controls, reuses this runner for every variant, and
+aggregates baseline deltas from the final train/heldout comparisons.
+
 ## Configurations
 
 The full approximately 800M experiment is

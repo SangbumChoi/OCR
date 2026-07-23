@@ -1,0 +1,99 @@
+# Matched native-student ablations. Every variant runs the complete experiment DAG.
+
+schema_version: 1
+name: docvlm-core-ablation
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-core-ablation
+baseline: baseline
+
+matched_controls:
+  - document: experiment
+    path: /synthetic/count
+  - document: experiment
+    path: /synthetic/train_seed
+  - document: experiment
+    path: /synthetic/heldout_seed
+  - document: experiment
+    path: /data/components
+  - document: experiment
+    path: /pretraining/max_steps
+  - document: experiment
+    path: /posttraining/sft/max_steps
+  - document: experiment
+    path: /posttraining/rlvr/max_steps
+  - document: experiment
+    path: /evaluation/max_samples
+  - document: experiment
+    path: /evaluation/seed
+  - document: blueprint
+    path: /training/pretraining/optimizer/total_tokens
+  - document: blueprint
+    path: /training/pretraining/optimizer/epochs
+  - document: blueprint
+    path: /training/posttraining/sft/optimizer/total_tokens
+  - document: blueprint
+    path: /training/posttraining/rlvr/optimizer/max_steps
+
+variants:
+  - id: baseline
+    hypothesis: "Full random-initialized recipe with LFM sequence targets and all native objectives."
+
+  - id: no_sequence_distillation
+    hypothesis: "Tests whether quality-gated LFM sequence targets improve held-out capability."
+    experiment_patches:
+      - op: replace
+        path: /sequence_teacher/enabled
+        value: false
+
+  - id: no_spatial_auxiliary
+    hypothesis: "Measures the contribution of contrastive, box, and orientation auxiliary losses."
+    blueprint_patches:
+      - op: replace
+        path: /training/pretraining/losses/region_text_contrastive
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/losses/box_regression
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/losses/orientation
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/0/loss_weights/region_text_contrastive
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/0/loss_weights/box_regression
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/0/loss_weights/orientation
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/2/loss_weights/region_text_contrastive
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/2/loss_weights/box_regression
+        value: 0.0
+      - op: replace
+        path: /training/pretraining/curriculum/stages/2/loss_weights/orientation
+        value: 0.0
+
+  - id: sft_answer_only
+    hypothesis: "Tests whether evidence-linked structured SFT beats answer-only supervision."
+    experiment_patches:
+      - op: replace
+        path: /posttraining/sft/target_mode
+        value: answer_only
+
+  - id: correctness_only_rlvr
+    hypothesis: "Tests decomposed grounded rewards against answer-correctness-only RLVR."
+    blueprint_patches:
+      - op: replace
+        path: /training/posttraining/rlvr/reward_mix
+        value:
+          answer_correctness: 1.0
+          normalized_text_similarity: 0.0
+          box_iou: 0.0
+          table_tree_similarity: 0.0
+          chart_numeric_tolerance: 0.0
+          formula_equivalence: 0.0
+          grounded_rationale_consistency: 0.0
+          calibrated_abstention: 0.0

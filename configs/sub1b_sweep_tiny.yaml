@@ -1,0 +1,38 @@
+# Two-run CPU contract for the matched native-student sweep.
+
+schema_version: 1
+name: docvlm-tiny-sweep
+base_experiment: configs/sub1b_experiment_tiny.yaml
+output_root: outputs/sweeps/docvlm-tiny-sweep
+baseline: baseline
+
+matched_controls:
+  - document: experiment
+    path: /synthetic/count
+  - document: experiment
+    path: /synthetic/train_seed
+  - document: experiment
+    path: /synthetic/heldout_seed
+  - document: experiment
+    path: /data/components
+  - document: experiment
+    path: /pretraining/max_steps
+  - document: experiment
+    path: /posttraining/sft/max_steps
+  - document: experiment
+    path: /posttraining/rlvr/max_steps
+  - document: experiment
+    path: /evaluation/max_samples
+  - document: experiment
+    path: /evaluation/seed
+
+variants:
+  - id: baseline
+    hypothesis: "Exercises the complete tiny pipeline with offline sequence-target selection."
+
+  - id: no_sequence_distillation
+    hypothesis: "Exercises a matched tiny pipeline without sequence-teacher stages."
+    experiment_patches:
+      - op: replace
+        path: /sequence_teacher/enabled
+        value: false
