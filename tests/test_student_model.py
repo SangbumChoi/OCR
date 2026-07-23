@@ -1,0 +1,237 @@
+import importlib.util
+from dataclasses import replace
+
+import pytest
+
+
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None,
+    reason="native student tests require torch",
+)
+
+
+def test_tiny_student_multimodal_forward_and_auxiliary_losses():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(3)
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config)
+    input_ids = torch.randint(0, config.language.vocab_size, (2, 6))
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1], [1, 1, 1, 0, 0, 0]])
+    labels = input_ids.clone()
+    labels[attention_mask == 0] = config.ignore_index
+    output = model(
+        input_ids=input_ids,
+        pixel_values=torch.randn(2, 3, 30, 31),
+        attention_mask=attention_mask,
+        labels=labels,
+        box_targets=torch.rand(2, 4),
+        orientation_labels=torch.tensor([0, 3]),
+        contrastive=True,
+    )
+
+    assert output.logits.shape == (2, config.connector.latent_tokens + 6, 256)
+    assert output.box_predictions.shape == (2, 4)
+    assert torch.all(output.box_predictions[:, 2:] >= output.box_predictions[:, :2])
+    assert torch.all((0.0 <= output.box_predictions) & (output.box_predictions <= 1.0))
+    assert output.orientation_logits.shape == (2, 4)
+    assert set(output.losses) == {
+        "autoregressive",
+        "box_regression",
+        "orientation",
+        "region_text_contrastive",
+    }
+    assert output.loss is not None and torch.isfinite(output.loss)
+
+
+def test_tiny_student_supports_text_replay_and_generation():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config).eval()
+    input_ids = torch.randint(0, config.language.vocab_size, (1, 4))
+    output = model(input_ids=input_ids, labels=input_ids)
+    generated = model.generate(input_ids, max_new_tokens=2)
+
+    assert output.logits.shape == (1, 4, config.language.vocab_size)
+    assert output.loss is not None
+    assert generated.shape == (1, 6)
+
+
+def test_random_init_first_step_reaches_the_vision_tower():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config)
+    ids = torch.randint(0, config.language.vocab_size, (1, 5))
+    output = model(ids, pixel_values=torch.randn(1, 3, 32, 32), labels=ids)
+    assert output.loss is not None
+    output.loss.backward()
+
+    gradient = model.vision.patch_embed.weight.grad
+    assert gradient is not None
+    assert gradient.abs().sum() > 0
+
+
+def test_student_checkpoint_round_trip(tmp_path):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(9)
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    ids = torch.randint(0, 256, (1, 5))
+    expected = model(ids).logits
+    model.save_pretrained(tmp_path, metadata={"initialization_arm": "I0_random"})
+
+    loaded = DocumentVLMStudent.from_pretrained(tmp_path).eval()
+
+    assert loaded.config == model.config
+    assert torch.equal(expected, loaded(ids).logits)
+    assert (tmp_path / "metadata.json").exists()
+
+
+def test_full_meta_model_matches_the_blueprint_estimator():
+    import torch
+
+    from docvlm_eval.architecture import estimate_parameters, load_blueprint
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent, count_unique_parameters
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    with torch.device("meta"):
+        model = DocumentVLMStudent(StudentConfig.from_blueprint(blueprint))
+
+    actual = count_unique_parameters(model)
+    estimated = estimate_parameters(blueprint)
+    assert actual == estimated
+    assert actual["total"] == 799_919_882
+    assert actual["total"] < 1_000_000_000
+
+
+def test_selective_transfer_depth_maps_exact_shape_blocks_only():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student_config = StudentConfig.tiny()
+    teacher_config = replace(
+        student_config,
+        language=replace(student_config.language, layers=4),
+    )
+    student = DocumentVLMStudent(student_config)
+    teacher = DocumentVLMStudent(teacher_config)
+    with torch.no_grad():
+        for index, block in enumerate(teacher.language.blocks):
+            block.attn.q_proj.weight.fill_(index + 1)
+    before_block_zero = student.language.blocks[0].attn.q_proj.weight.detach().clone()
+
+    report = selective_transfer(
+        student,
+        teacher.state_dict(),
+        {"language": 0.5},
+        family="student",
+    )
+
+    assert torch.equal(
+        student.language.blocks[0].attn.q_proj.weight,
+        before_block_zero,
+    )
+    assert torch.all(student.language.blocks[1].attn.q_proj.weight == 4)
+    assert "language.blocks.1.attn.q_proj.weight" in report.copied_keys
+    assert report.copied_parameters > 0
+
+
+def test_selective_transfer_reports_shape_mismatch_without_cropping():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    source = {key: value.clone() for key, value in student.state_dict().items()}
+    key = "vision.patch_embed.weight"
+    source[key] = torch.randn(1)
+    original = student.state_dict()[key].clone()
+
+    report = selective_transfer(student, source, {"vision": 1.0})
+
+    assert torch.equal(student.state_dict()[key], original)
+    assert any(item["target"] == key for item in report.skipped_shape)
+
+
+def test_generalized_box_iou_is_zero_for_an_exact_match():
+    import torch
+
+    from docvlm_eval.student.losses import generalized_box_iou_loss
+
+    boxes = torch.tensor([[0.1, 0.2, 0.7, 0.9], [0.0, 0.0, 1.0, 1.0]])
+
+    assert torch.allclose(generalized_box_iou_loss(boxes, boxes), torch.tensor(0.0))
+
+
+def test_external_embedding_transfer_requires_identity_map():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    original = student.language.token_embedding.weight.detach().clone()
+    external_embedding = torch.arange(256 * 128, dtype=torch.float32).view(256, 128)
+    source = {"model.embed_tokens.weight": external_embedding}
+
+    no_map = selective_transfer(student, source, {"language": 1.0}, family="llama")
+    assert torch.equal(student.language.token_embedding.weight, original)
+    assert no_map.token_rows_copied == 0
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        family="llama",
+        token_map={7: 11},
+    )
+    assert torch.equal(student.language.token_embedding.weight[7], external_embedding[11])
+    assert torch.equal(student.language.token_embedding.weight[6], original[6])
+    assert report.token_rows_copied == 1
+    assert report.copied_parameters == 128
+
+
+def test_auxiliary_heads_are_real_architecture_switches():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent, count_unique_parameters
+
+    config = StudentConfig.tiny()
+    disabled = replace(
+        config,
+        task_heads=replace(
+            config.task_heads,
+            region_text_contrastive=False,
+            orientation=False,
+            box_regression=False,
+        ),
+    )
+    model = DocumentVLMStudent(disabled)
+    output = model(torch.randint(0, 256, (1, 3)), pixel_values=torch.randn(1, 3, 32, 32))
+
+    assert output.box_predictions is None
+    assert output.orientation_logits is None
+    assert output.vision_embeddings is None
+    assert count_unique_parameters(model)["task_heads"] == 0

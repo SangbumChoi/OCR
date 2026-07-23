@@ -41,7 +41,7 @@ pixels. The rest of the plan follows from that one decision.
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
         │
 5 decide ARCHITECTURE: integrate, don't ───►  report/research_novelty.md · ablation_plan.md
-   pipeline  (orientation = TODO)               sub1b_architecture_blueprint.md
+   pipeline  (orientation head implemented)     sub1b_architecture_blueprint.md
         │
 6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
    → spotting for human-in-the-loop verify     report/technical_report.md §Part 2.1b/1c
@@ -118,13 +118,13 @@ hand-offs, error compounding, no joint reasoning). The conclusion: **bake these 
 the model** via targeted fine-tuning, rather than bolting on stages.
 
 - **Decision:** prefer in-model capability injection over a model pipeline.
-- **TODO (open):** an **orientation** signal probably *should* be added (cheap, high-leverage) —
-  left as a TODO, not yet committed.
+- **Implemented in the native student:** an explicit four-way **orientation head**; the upcoming
+  UDD collator must supply the rotation labels and held-out retention gate.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
   capability × scale, grounding-supervision causality (does "where" improve "whether"?).
 - **Build:** [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) —
-  the adjustable approximately 790M student, selective-transfer controls, multimodal pretraining,
-  grounded SFT, and verifiable-reward RL design. Its machine-readable source is
+  the adjustable approximately 800M student, executable native model, selective-transfer controls,
+  multimodal pretraining, grounded SFT, and verifiable-reward RL design. Its machine-readable source is
   [`../configs/sub1b_architecture.yaml`](../configs/sub1b_architecture.yaml).
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
@@ -166,7 +166,7 @@ added factor lifting the score a step, ending well above the baseline.
 | "Document" includes screens / UX surfaces (not just OCR) | this plan §0; realistic_cases `website`/`mobile_app` |
 | Data/evaluation survey before model survey | §1–3 before §4 |
 | Integrate capabilities into the model, **not** a specialist pipeline | §5; ablation_plan A1/A5/A7 |
-| **Orientation as an explicit signal — TODO** (not yet committed) | §5 |
+| Orientation as an explicit four-way auxiliary signal | §5; native student model |
 | Report's headline = **spotting/grounding for human-in-the-loop verification** (cumulative staircase **deprecated**) | §6; technical_report §Part 2.1b/1c |
 
 ## Reading order (index)

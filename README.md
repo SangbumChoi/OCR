@@ -234,3 +234,20 @@ The improvement strategy (report §II.2) is backed by a LoRA fine-tuning subpack
 JSONL of `{"image_path", "text"}` and supports LoRA(PEFT) SFT, CER/WER eval, vanilla-vs-tuned
 comparison, and adapter merge — the machinery for Steps 1–4 of the plan. Full scaffold docs:
 [`docs/finetune_scaffold.md`](docs/finetune_scaffold.md).
+
+### Native sub-1B student
+
+The near-random-initialization track has an executable approximately 800M model rather than only a
+design document. It consists of a 12-layer ViT, a 64-token gated resampler, and a 23-layer GQA
+decoder, with contrastive, orientation, and valid-box auxiliary heads:
+
+```bash
+pip install -e ".[student]"
+python scripts/build_sub1b_student.py --device meta
+# exact result: 799,919,882 parameters, without allocating the weights
+```
+
+`--init-arm I0_random|I1_vision|I2_language|I3_dual|I4_selective` controls initialization.
+Exact-shape SigLIP/Llama-style blocks can be depth-mapped and copied; incompatible dimensions stay
+random and are reserved for feature/logit distillation. See
+[`docs/report/sub1b_architecture_blueprint.md`](docs/report/sub1b_architecture_blueprint.md).

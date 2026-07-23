@@ -2,7 +2,7 @@
 
 ## Decision
 
-Build an approximately 790M-parameter student whose architecture, initialization, data mixture,
+Build an approximately 800M-parameter student whose architecture, initialization, data mixture,
 losses, and post-training rewards are controlled by
 [`configs/sub1b_architecture.yaml`](../../configs/sub1b_architecture.yaml). LFM2.5-VL-1.6B remains
 the fast experimental base and a teacher candidate; it is not the deployment-size student.
@@ -17,23 +17,32 @@ distillation. This separates initialization benefit from teacher supervision.
 
 | Component | Default | Estimated parameters | Reason |
 | --- | --- | ---: | --- |
-| Vision tower | ViT, 12 layers, width 768, patch 14 | 89M | Retains fine glyph detail without spending most of the budget on natural-image capacity. |
-| Language decoder | 20 layers, width 1536, 64k vocabulary | 665M | Holds multilingual emission, cross-region binding, arithmetic, and structured generation. |
-| Connector | Two-layer gated resampler, 64 visual tokens | 28M | Makes compression an explicit, ablatable bottleneck instead of a fixed projection. |
-| Temporary task heads | region-text contrast, orientation | 8M | Supplies dense pretraining signals; removable for deployment. |
-| **Total** | | **about 790M** | Leaves headroom below the strict one-billion deployment limit. |
+| Vision tower | ViT, 12 layers, width 768, patch 14 | 88.7M | Retains fine glyph detail without spending most of the budget on natural-image capacity. |
+| Language decoder | 23 layers, width 1536, GQA 24Q/8KV, 64k vocabulary | 677.5M | Holds multilingual emission, cross-region binding, arithmetic, and structured generation. |
+| Connector | Two-layer gated resampler, 64 visual tokens | 33.2M | Makes compression an explicit, ablatable bottleneck instead of a fixed projection. |
+| Temporary task heads | contrast, orientation, normalized box regression | 0.6M | Supplies dense pretraining signals; removable for deployment. |
+| **Total** | | **799,919,882** | The instantiated model and independent estimator agree exactly; the model remains below one billion. |
 
-The estimate is deliberately transparent, not a substitute for counting a constructed model. Run
-`python scripts/validate_sub1b_blueprint.py` after changing dimensions or mixtures. Once model
-construction exists, exact instantiated parameters must replace the estimate as the release gate.
+The estimate is transparent and checked against the actual module graph. Run
+`python scripts/validate_sub1b_blueprint.py` after changing dimensions or mixtures, then instantiate
+on the PyTorch `meta` device to count exact tensors without allocating several GB:
+
+```bash
+python scripts/build_sub1b_student.py --device meta
+python scripts/build_sub1b_student.py --tiny --device cpu --allow-full-memory
+```
+
+Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which implements the
+vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
+checkpoint round-trip, and selective initialization.
 
 ### Why this split
 
 The measured repository results show that small models often read a local value but fail grounding
 and multi-region comparison. Spending almost the entire budget on the vision tower would improve
 legibility but leave the integration bottleneck intact. Conversely, a tiny visual encoder would make
-reasoning operate on lossy evidence. The default assigns roughly 11% to vision, 84% to language, and
-5% to alignment and task heads, while the resampler exposes visual-token count as a direct latency
+reasoning operate on lossy evidence. The default assigns roughly 11% to vision, 85% to language, and
+4% to alignment and task heads, while the resampler exposes visual-token count as a direct latency
 and accuracy control.
 
 ## Selective weight transfer
@@ -51,6 +60,28 @@ blocks, token embeddings, and output heads are treated separately. Vocabulary ro
 exact token identity; unmatched rows remain random. A source with incompatible width is a teacher,
 not a source of copied tensors. Connector weights remain random unless a controlled arm explicitly
 tests connector transfer.
+
+The implementation depth-maps a selected fraction of student blocks onto a deeper compatible
+teacher and copies only exact-shape tensors. It includes canonical name adapters for native student,
+Hugging Face SigLIP, and Llama-style checkpoints. Every run records copied keys, copied parameter
+count, missing source keys, and shape mismatches. There is intentionally no hidden-width cropping or
+interpolation: incompatible LFM or other teachers provide logits/features during distillation.
+
+Example selective initialization:
+
+```bash
+python scripts/build_sub1b_student.py --tiny --device cpu --allow-full-memory \
+  --init-arm I4_selective \
+  --vision-source /path/to/vision/model.pt --vision-family siglip \
+  --language-source /path/to/language/model.pt --language-family llama \
+  --token-map /path/to/target_to_source_token_ids.json \
+  --save /path/to/student_init
+```
+
+Native `model.pt`, PyTorch bin, single safetensors, and Hugging Face sharded checkpoint directories
+are accepted. External token embeddings are never copied merely because their tensor shapes match.
+`--token-map` must explicitly map each target vocabulary row to the same token's source row; without
+that proof, the embedding and tied output head stay random.
 
 The key comparison is not only final score. Report convergence tokens, held-out score, train versus
 held-out gap, and robustness under counterfactual pixel edits. A transferred model that converges
@@ -73,6 +104,12 @@ The autoregressive target is accompanied by teacher KL, hidden-feature distillat
 region-text contrast, box regression, reading-order, and orientation losses. Losses are logged
 separately and gradient norms are measured per module. This is necessary because a low total loss
 can hide a connector or vision tower receiving almost no useful gradient.
+
+The native model already exposes autoregressive, symmetric contrastive, four-way orientation, and
+normalized box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
+`y2 >= y1` always hold; training combines smooth L1 with generalized IoU. Teacher KL,
+intermediate-feature alignment, and reading-order batching belong in the upcoming pretraining
+runner because they require teacher outputs and UDD annotations rather than extra model heads.
 
 ## Step 2: post-training
 
@@ -137,6 +174,21 @@ must separate templates, fonts, value distributions, and document graphs, not me
 The current LoRA ablations answer where existing LFM capabilities are easiest to adapt. This
 blueprint answers the next question: which capabilities can be built into a deployment-size student,
 what must be inherited, and what can be learned from the controlled document curriculum.
+
+## Current implementation boundary
+
+The model constructor and initialization path are executable and tested. Three pieces remain before
+a full pretraining run:
+
+1. a tokenizer/image collator that converts UDD rows into prompt-masked text labels, normalized
+   boxes, orientation labels, and task-balanced batches;
+2. a teacher interface that emits logits and selected vision/language features for distillation;
+3. an optimizer/checkpoint runner with token-based schedules, mixed precision, distributed
+   accumulation, and per-source held-out evaluation.
+
+The current vision tower accepts variable image shapes and pads only to the patch boundary. It does
+not yet perform true NaViT multi-example sequence packing or patch-padding masking; those remain
+measured preprocessing/architecture ablations rather than claimed capabilities.
 
 ## Evidence basis
 
