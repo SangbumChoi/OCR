@@ -38,3 +38,12 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("rotation_probability must be between" in error for error in errors)
     assert any("balance_by must be task, source, or language" in error for error in errors)
     assert any("tokenizer.vocab_size must match" in error for error in errors)
+
+
+def test_blueprint_rejects_an_unimplemented_pretraining_loss():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("future_objective is not implemented" in error for error in errors)

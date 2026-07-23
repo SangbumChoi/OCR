@@ -91,7 +91,7 @@ initialization_arms:
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
-    policy: "Copy alternating depth-matched blocks; distill every student block."
+    policy: "Copy alternating depth-matched blocks; distill selected depth anchors and logits."
     purpose: "Separates useful inherited features from wholesale checkpoint dependence."
 
 training:
@@ -101,10 +101,42 @@ training:
       max_text_tokens: 2048
       max_image_long_side: 896
       rotation_probability: 1.0
+      augmentation_seed: 7
       allow_upscale: false
       contrastive: true
       balance_by: task
       group_weights: {}
+    distillation:
+      temperature: 2.0
+      logit_top_k: 128
+      vision_layer_pairs:
+        - [3, 3]
+        - [7, 7]
+        - [11, 11]
+      language_layer_pairs:
+        - [5, 5]
+        - [11, 11]
+        - [17, 17]
+        - [22, 22]
+      cross_tokenizer_policy: sequence_targets_only
+    optimizer:
+      epochs: 3
+      max_steps: null
+      micro_batch_size: 1
+      grad_accum_steps: 8
+      learning_rate: 0.0003
+      min_lr_ratio: 0.1
+      weight_decay: 0.1
+      betas: [0.9, 0.95]
+      max_grad_norm: 1.0
+      warmup_tokens: 100000000
+      total_tokens: 20000000000
+      precision: bfloat16
+      checkpoint_every_steps: 1000
+      eval_every_steps: 1000
+      log_every_steps: 10
+      num_workers: 4
+      seed: 7
     data_mix:
       synthetic_documents: 0.45
       public_document_data: 0.25
@@ -117,7 +149,6 @@ training:
       hidden_feature_distillation: 0.20
       region_text_contrastive: 0.15
       box_regression: 0.20
-      reading_order: 0.10
       orientation: 0.05
     curriculum:
       - "clean single-region recognition"

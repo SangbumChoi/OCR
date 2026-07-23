@@ -235,3 +235,38 @@ def test_auxiliary_heads_are_real_architecture_switches():
     assert output.orientation_logits is None
     assert output.vision_embeddings is None
     assert count_unique_parameters(model)["task_heads"] == 0
+
+
+def test_student_captures_only_requested_distillation_layers():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    output = model(
+        torch.randint(0, 256, (1, 4)),
+        pixel_values=torch.randn(1, 3, 32, 32),
+        feature_layers={"vision": [0, -1], "language": [1, -1]},
+    )
+
+    assert set(output.vision_features) == {0, -1}
+    assert set(output.language_features) == {1, -1}
+    assert output.vision_features[0].shape == (1, 16, 64)
+    assert output.language_features[1].shape == (1, 12, 128)
+    assert output.vision_mask.shape == (1, 16)
+
+
+def test_student_rejects_unknown_distillation_layer():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+
+    with pytest.raises(ValueError, match="unknown language feature layers"):
+        model(
+            torch.randint(0, 256, (1, 4)),
+            feature_layers={"language": [99]},
+        )

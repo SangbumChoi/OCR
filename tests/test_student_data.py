@@ -148,6 +148,7 @@ def test_collated_udd_batch_runs_all_available_student_losses():
         StudentCollator,
         StudentCollatorConfig,
         UDDStudentDataset,
+        student_model_inputs,
     )
     from docvlm_eval.student.model import DocumentVLMStudent
 
@@ -167,7 +168,7 @@ def test_collated_udd_batch_runs_all_available_student_losses():
     batch = collator([dataset[0], dataset[2]])
     model = DocumentVLMStudent(StudentConfig.tiny())
 
-    output = model(**batch)
+    output = model(**student_model_inputs(batch))
 
     assert set(output.losses) == {
         "autoregressive",
@@ -285,3 +286,18 @@ def test_text_only_replay_batch_omits_visual_targets():
     assert "pixel_mask" not in batch
     assert "orientation_labels" not in batch
     assert "box_targets" not in batch
+
+
+def test_rotation_augmentation_is_stable_for_exact_resume():
+    from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
+
+    collator = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(rotation_probability=1.0, augmentation_seed=17),
+    )
+
+    epoch_zero = collator._quarter_turns("sample-42")
+    assert collator._quarter_turns("sample-42") == epoch_zero
+    collator.set_epoch(3)
+    epoch_three = collator._quarter_turns("sample-42")
+    assert collator._quarter_turns("sample-42") == epoch_three

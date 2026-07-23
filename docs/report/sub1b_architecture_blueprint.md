@@ -105,16 +105,16 @@ rendered text/formulas, 10% natural image-text replay, and 5% text-only replay. 
 provides exact boxes, table trees, chart values, formula source, and counterfactual pairs. Public
 data constrains renderer bias. Replay protects general visual and language capability.
 
-The autoregressive target is accompanied by teacher KL, hidden-feature distillation,
-region-text contrast, box regression, reading-order, and orientation losses. Losses are logged
-separately and gradient norms are measured per module. This is necessary because a low total loss
-can hide a connector or vision tower receiving almost no useful gradient.
+The autoregressive target is accompanied by teacher KL, hidden-feature distillation, region-text
+contrast, box regression, and orientation losses. Losses are logged separately. This is necessary
+because a low total loss can hide a connector or vision tower receiving almost no useful gradient.
 
-The native model already exposes autoregressive, symmetric contrastive, four-way orientation, and
-normalized box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
-`y2 >= y1` always hold; training combines smooth L1 with generalized IoU. Teacher KL,
-intermediate-feature alignment, and reading-order batching belong in the upcoming pretraining
-runner because they require teacher outputs and UDD annotations rather than extra model heads.
+The native model exposes autoregressive, symmetric contrastive, four-way orientation, and normalized
+box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
+`y2 >= y1` always hold; training combines smooth L1 with generalized IoU. The runner adds compressed
+teacher KL and selected intermediate-feature alignment. Reading-order examples use answer-only
+autoregressive supervision; there is no unimplemented standalone reading-order loss hidden inside
+the weighted total.
 
 The UDD collator removes two subtle leakage/error paths. Box predictions pool the hidden state at
 the end of the prompt, before any gold box tokens, and mixed QA views from the same image are
@@ -186,14 +186,13 @@ what must be inherited, and what can be learned from the controlled document cur
 
 ## Current implementation boundary
 
-The model constructor, selective initialization, tokenizer, UDD adapter, balanced sampler, and
-multimodal collator are executable and tested. The input implementation is detailed in
-[`student_input_pipeline.md`](student_input_pipeline.md). Two pieces remain before a full
-pretraining run:
-
-1. a teacher interface that emits logits and selected vision/language features for distillation;
-2. an optimizer/checkpoint runner with token-based schedules, mixed precision, distributed
-   accumulation, resumable sampler state, and per-source held-out evaluation.
+The model constructor, selective initialization, tokenizer, UDD adapter, balanced sampler,
+multimodal collator, same-tokenizer teacher interface, and pretraining runner are executable and
+tested. The contracts are detailed in
+[`student_input_pipeline.md`](student_input_pipeline.md) and
+[`student_pretraining_runner.md`](student_pretraining_runner.md). The next evidence-producing step
+is to run matched initialization and teacher ablations at fixed token budgets, then publish
+held-out capability and efficiency curves.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations

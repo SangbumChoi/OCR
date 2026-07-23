@@ -23,8 +23,9 @@ python scripts/train_student_tokenizer.py \
 
 Training text includes every instruction and answer variant, full-page text, table HTML, and
 localized element key/value. The saved `tokenizer_config.json` records special-token IDs, requested
-and actual vocabulary sizes, normalization, and minimum frequency. The collator rejects any token
-ID outside the model vocabulary before the forward pass.
+and actual vocabulary sizes, normalization, minimum frequency, and a SHA-256 fingerprint of the
+complete token-to-ID contract. The collator rejects any token ID outside the model vocabulary
+before the forward pass.
 
 ## UDD expansion
 
@@ -38,12 +39,15 @@ example is requested. It expands:
 
 Every expanded record retains task, source, language, sample ID, and image identity. The same image
 can therefore supply several tasks without duplicating stored pixels. `BalancedGroupBatchSampler`
-can balance by task, source, or language with explicit weights and deterministic epoch seeds.
+can balance by task, source, or language with explicit weights and deterministic epoch seeds. Under
+`torchrun`, it draws one global batch and gives each rank a disjoint local slice.
 
 ## Spatial contract
 
-The collator applies a uniformly sampled 0, 90, 180, or 270 degree clockwise rotation. Its class is
-the orientation target. Evidence boxes receive the exact same transform:
+The collator applies a deterministic, epoch-varying 0, 90, 180, or 270 degree clockwise rotation.
+The choice is a stable hash of augmentation seed, epoch, and sample ID, so exact checkpoint resume
+does not depend on worker RNG history. Its class is the orientation target. Evidence boxes receive
+the exact same transform:
 
 | Rotation | `[x1, y1, x2, y2]` becomes |
 | --- | --- |
@@ -94,10 +98,9 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 `StudentCollatorConfig.from_blueprint()` binds these controls to the model's patch size, visual
 position count, and language vocabulary.
 
-## Remaining boundary
+## Runner integration
 
-This module establishes trustworthy model inputs; it does not claim a completed pretraining run.
-The next layer must provide teacher logits/features, mixed-precision distributed optimization,
-token-based scheduling, resumable data/sampler state, and held-out evaluation by source, task, and
-language. True NaViT-style packed visual sequences remain an efficiency ablation beyond the fixed
-masked canvas baseline.
+The input path is consumed by the mixed-precision, token-scheduled, exactly resumable runner
+documented in [`student_pretraining_runner.md`](student_pretraining_runner.md). Batch provenance is
+retained for auditing but stripped before model calls. True NaViT-style packed visual sequences
+remain an efficiency ablation beyond the fixed masked canvas baseline.

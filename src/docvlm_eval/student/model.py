@@ -119,7 +119,12 @@ class VisionTower(nn.Module):
         pixel_mask: torch.Tensor | None = None,
         *,
         return_mask: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        capture_layers: set[int] | None = None,
+    ) -> (
+        torch.Tensor
+        | tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, dict[int, torch.Tensor]]
+    ):
         patch = self.config.patch_size
         height, width = pixel_values.shape[-2:]
         if pixel_mask is not None and pixel_mask.shape != (
@@ -159,10 +164,22 @@ class VisionTower(nn.Module):
                 .bool()
             )
         x = x + self.position_embedding[: x.shape[1]].unsqueeze(0).to(x.dtype)
-        for block in self.blocks:
+        features: dict[int, torch.Tensor] = {}
+        for index, block in enumerate(self.blocks):
             x = block(x, patch_mask)
             x = x * patch_mask.unsqueeze(-1)
+            if capture_layers is not None and index in capture_layers:
+                features[index] = x
         x = self.norm(x) * patch_mask.unsqueeze(-1)
+        if capture_layers is not None and -1 in capture_layers:
+            features[-1] = x
+        if capture_layers is not None:
+            missing = capture_layers - features.keys()
+            if missing:
+                raise ValueError(f"unknown vision feature layers: {sorted(missing)}")
+            if not return_mask:
+                raise ValueError("capturing vision layers requires return_mask=True")
+            return x, patch_mask, features
         return (x, patch_mask) if return_mask else x
 
 
@@ -398,7 +415,8 @@ class LanguageDecoder(nn.Module):
         self,
         embeddings: torch.Tensor,
         attention_mask: torch.Tensor | None,
-    ) -> torch.Tensor:
+        capture_layers: set[int] | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[int, torch.Tensor]]:
         x = embeddings
         attention_bias = None
         is_causal = attention_mask is None
@@ -414,9 +432,20 @@ class LanguageDecoder(nn.Module):
             padding = (1.0 - attention_mask[:, None, None, :].to(x.dtype)) * minimum
             attention_bias = causal[None, None] + padding
         cos, sin = self.rotary(x.shape[1], x.device, x.dtype)
-        for block in self.blocks:
+        features: dict[int, torch.Tensor] = {}
+        for index, block in enumerate(self.blocks):
             x = block(x, attention_bias, is_causal, cos, sin)
-        return self.norm(x)
+            if capture_layers is not None and index in capture_layers:
+                features[index] = x
+        x = self.norm(x)
+        if capture_layers is not None and -1 in capture_layers:
+            features[-1] = x
+        if capture_layers is not None:
+            missing = capture_layers - features.keys()
+            if missing:
+                raise ValueError(f"unknown language feature layers: {sorted(missing)}")
+            return x, features
+        return x
 
 
 @dataclass
@@ -428,6 +457,9 @@ class StudentOutput:
     orientation_logits: torch.Tensor | None = None
     vision_embeddings: torch.Tensor | None = None
     text_embeddings: torch.Tensor | None = None
+    vision_features: dict[int, torch.Tensor] = field(default_factory=dict)
+    language_features: dict[int, torch.Tensor] = field(default_factory=dict)
+    vision_mask: torch.Tensor | None = None
 
 
 class DocumentVLMStudent(nn.Module):
@@ -517,6 +549,7 @@ class DocumentVLMStudent(nn.Module):
         contrastive: bool = False,
         contrastive_ids: torch.Tensor | None = None,
         loss_weights: dict[str, float] | None = None,
+        feature_layers: dict[str, list[int] | tuple[int, ...]] | None = None,
     ) -> StudentOutput:
         weights = {
             "autoregressive": 1.0,
@@ -527,12 +560,21 @@ class DocumentVLMStudent(nn.Module):
         }
         vision_tokens = None
         vision_mask = None
+        vision_features: dict[int, torch.Tensor] = {}
+        language_features: dict[int, torch.Tensor] = {}
+        requested_vision = set((feature_layers or {}).get("vision", ()))
+        requested_language = set((feature_layers or {}).get("language", ()))
         if pixel_values is not None:
-            vision_tokens, vision_mask = self.vision(
+            vision_result = self.vision(
                 pixel_values,
                 pixel_mask,
                 return_mask=True,
+                capture_layers=requested_vision if requested_vision else None,
             )
+            if requested_vision:
+                vision_tokens, vision_mask, vision_features = vision_result
+            else:
+                vision_tokens, vision_mask = vision_result
         elif pixel_mask is not None:
             raise ValueError("pixel_mask requires pixel_values")
         prefix = (
@@ -554,7 +596,15 @@ class DocumentVLMStudent(nn.Module):
                 device=attention_mask.device,
             )
             full_mask = torch.cat((prefix_mask, attention_mask), dim=1)
-        hidden = self.language(embeddings, full_mask)
+        language_result = self.language(
+            embeddings,
+            full_mask,
+            capture_layers=requested_language if requested_language else None,
+        )
+        if requested_language:
+            hidden, language_features = language_result
+        else:
+            hidden = language_result
         logits = self.lm_head(hidden)
         losses: dict[str, torch.Tensor] = {}
 
@@ -683,6 +733,9 @@ class DocumentVLMStudent(nn.Module):
             orientation_logits=orientation_logits,
             vision_embeddings=vision_embeddings,
             text_embeddings=text_projected,
+            vision_features=vision_features,
+            language_features=language_features,
+            vision_mask=vision_mask,
         )
 
     @torch.no_grad()
@@ -735,14 +788,16 @@ class DocumentVLMStudent(nn.Module):
         config = StudentConfig.from_dict(
             json.loads((checkpoint / "student_config.json").read_text(encoding="utf-8"))
         )
-        model = cls(config)
+        device = torch.device(map_location)
+        with torch.device(device):
+            model = cls(config)
         state = torch.load(
             checkpoint / "model.pt",
-            map_location="cpu",
+            map_location=device,
             weights_only=True,
         )
         model.load_state_dict(state)
-        return model.to(map_location)
+        return model
 
 
 def count_unique_parameters(model: nn.Module) -> dict[str, int]:

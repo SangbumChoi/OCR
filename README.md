@@ -265,3 +265,19 @@ python scripts/train_student_tokenizer.py \
 
 The batch contract and its spatial invariants are documented in
 [`docs/report/student_input_pipeline.md`](docs/report/student_input_pipeline.md).
+
+The native pretraining runner adds same-tokenizer top-k logit and selected-feature distillation,
+token-count warmup/cosine decay, mixed precision, distributed balanced sampling, held-out loss
+slices, and atomic exact resume:
+
+```bash
+python scripts/pretrain_student.py \
+  --repo danelcsb/UDD \
+  --tokenizer artifacts/student_tokenizer \
+  --output outputs/student_pretrain/I0_random
+```
+
+Use `torchrun --standalone --nproc-per-node=N` for data parallel training and `--resume latest`
+after interruption. LFM and other cross-tokenizer teachers supply offline sequence targets, while
+online KL is restricted by a matching tokenizer fingerprint. See
+[`docs/report/student_pretraining_runner.md`](docs/report/student_pretraining_runner.md).

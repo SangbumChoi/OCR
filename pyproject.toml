@@ -41,7 +41,12 @@ models = [
 # Part-2 LoRA fine-tuning subpackage (docvlm_eval.finetune).
 finetune = ["peft>=0.12.0", "wandb>=0.17.0", "accelerate>=0.33.0"]
 # Native approximately 800M student construction, selective transfer, and pre/post-training.
-student = ["torch>=2.3.0", "safetensors>=0.4.0", "tokenizers>=0.20.0"]
+student = [
+    "torch>=2.3.0",
+    "safetensors>=0.4.0",
+    "tokenizers>=0.20.0",
+    "datasets>=2.20.0",
+]
 # Newer 2025-26 bases (Qwen3.5-VL, LFM2.5-VL, MiniCPM-V-4.6) need transformers >=5 — which is
 # INCOMPATIBLE with the remote-code sweep's `models` pin (<5), so they get their own extra. Use
 # this (not `models`) for the fine-tuning bases / the side-by-side + fine-grained notebooks.

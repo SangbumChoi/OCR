@@ -2,13 +2,40 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import math
+import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Sequence
+
+
+STUDENT_MODEL_INPUTS = frozenset(
+    {
+        "input_ids",
+        "pixel_values",
+        "pixel_mask",
+        "attention_mask",
+        "labels",
+        "box_targets",
+        "box_target_mask",
+        "box_query_positions",
+        "orientation_labels",
+        "contrastive",
+        "contrastive_ids",
+        "loss_weights",
+        "feature_layers",
+    }
+)
+
+
+def student_model_inputs(batch: dict[str, Any]) -> dict[str, Any]:
+    """Remove provenance and runner-only fields before calling the model."""
+
+    return {key: value for key, value in batch.items() if key in STUDENT_MODEL_INPUTS}
 
 
 @dataclass(frozen=True)
@@ -297,6 +324,7 @@ class StudentCollatorConfig:
     max_visual_tokens: int = 4096
     vocab_size: int | None = None
     rotation_probability: float = 1.0
+    augmentation_seed: int = 7
     allow_upscale: bool = False
     prompt_template: str = "User: {prompt}\nAssistant:"
     image_mean: tuple[float, float, float] = (0.5, 0.5, 0.5)
@@ -318,6 +346,7 @@ class StudentCollatorConfig:
             "max_visual_tokens": int(vision["max_position_tokens"]),
             "vocab_size": int(blueprint["student"]["language"]["vocab_size"]),
             "rotation_probability": float(pipeline["rotation_probability"]),
+            "augmentation_seed": int(pipeline.get("augmentation_seed", 7)),
             "allow_upscale": bool(pipeline.get("allow_upscale", False)),
             "contrastive": bool(pipeline.get("contrastive", True)),
         }
@@ -375,6 +404,20 @@ class StudentCollator:
             raise ValueError("tokenizer must define pad_token_id")
         if self.eos_token_id is None:
             raise ValueError("tokenizer must define eos_token_id")
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def _quarter_turns(self, sample_id: str) -> int:
+        payload = (
+            f"{self.config.augmentation_seed}:{self.epoch}:{sample_id}"
+        ).encode("utf-8")
+        digest = hashlib.blake2b(payload, digest_size=16).digest()
+        probability = int.from_bytes(digest[:8], "big") / float(2**64)
+        if probability >= self.config.rotation_probability:
+            return 0
+        return int.from_bytes(digest[8:], "big") % 4
 
     def _tokenize(self, prompt: str, answer: str) -> tuple[list[int], list[int], int]:
         prompt_text = self.config.prompt_template.format(prompt=prompt)
@@ -432,11 +475,7 @@ class StudentCollator:
             for example in examples:
                 image = _open_image(example.image)
                 original_width, original_height = image.size
-                turns = (
-                    int(torch.randint(0, 4, ()).item())
-                    if float(torch.rand(())) < self.config.rotation_probability
-                    else 0
-                )
+                turns = self._quarter_turns(example.sample_id)
                 if turns:
                     transpose = {
                         1: Image.Transpose.ROTATE_270,
@@ -549,6 +588,13 @@ class StudentCollator:
                 and pixel_values is not None
                 and len(examples) > 1
             ),
+            "metadata": {
+                "sample_id": [example.sample_id for example in examples],
+                "source": [example.source for example in examples],
+                "task": [example.task for example in examples],
+                "language": [example.language for example in examples],
+                "image_key": [example.image_key for example in examples],
+            },
         }
         if pixel_values is not None and pixel_mask is not None:
             batch["pixel_values"] = pixel_values
@@ -588,6 +634,8 @@ class BalancedGroupBatchSampler:
         group_weights: dict[str, float] | None = None,
         num_batches: int | None = None,
         seed: int = 7,
+        num_replicas: int = 1,
+        rank: int = 0,
     ):
         if not groups:
             raise ValueError("balanced sampler requires at least one example")
@@ -597,6 +645,10 @@ class BalancedGroupBatchSampler:
         self.num_batches = num_batches or math.ceil(len(groups) / batch_size)
         self.seed = seed
         self.epoch = 0
+        if num_replicas <= 0 or not 0 <= rank < num_replicas:
+            raise ValueError("distributed sampler rank must be within num_replicas")
+        self.num_replicas = num_replicas
+        self.rank = rank
         self.indices: dict[str, list[int]] = {}
         for index, group in enumerate(groups):
             self.indices.setdefault(str(group), []).append(index)
@@ -618,6 +670,8 @@ class BalancedGroupBatchSampler:
         *,
         num_batches: int | None = None,
         seed: int = 7,
+        num_replicas: int | None = None,
+        rank: int | None = None,
     ) -> "BalancedGroupBatchSampler":
         pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
         balance_by = str(pipeline["balance_by"])
@@ -630,6 +684,16 @@ class BalancedGroupBatchSampler:
             },
             num_batches=num_batches,
             seed=seed,
+            num_replicas=(
+                int(os.environ.get("WORLD_SIZE", "1"))
+                if num_replicas is None
+                else num_replicas
+            ),
+            rank=(
+                int(os.environ.get("RANK", "0"))
+                if rank is None
+                else rank
+            ),
         )
 
     def set_epoch(self, epoch: int) -> None:
@@ -644,6 +708,10 @@ class BalancedGroupBatchSampler:
             selected_groups = rng.choices(
                 self.group_names,
                 weights=self.weights,
-                k=self.batch_size,
+                k=self.batch_size * self.num_replicas,
             )
-            yield [rng.choice(self.indices[group]) for group in selected_groups]
+            selected_indices = [
+                rng.choice(self.indices[group]) for group in selected_groups
+            ]
+            start = self.rank * self.batch_size
+            yield selected_indices[start : start + self.batch_size]

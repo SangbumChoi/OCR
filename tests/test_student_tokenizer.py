@@ -35,6 +35,7 @@ def test_byte_level_student_tokenizer_round_trips_document_scripts(tmp_path):
     loaded = DocumentTokenizer.from_pretrained(tmp_path)
 
     assert loaded.vocab_size == tokenizer.vocab_size
+    assert loaded.fingerprint == tokenizer.fingerprint
     assert loaded.decode(loaded.encode(corpus[2])) == corpus[2]
     assert loaded.encode("answer", add_special_tokens=True)[0] == loaded.bos_token_id
     assert loaded.encode("answer", add_special_tokens=True)[-1] == loaded.eos_token_id

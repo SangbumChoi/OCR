@@ -156,6 +156,58 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.input_pipeline.balance_by must be task, source, or language"
         )
+    distillation = blueprint["training"]["pretraining"].get("distillation", {})
+    if float(distillation.get("temperature", 0.0)) <= 0:
+        errors.append("training.pretraining.distillation.temperature must be positive")
+    logit_top_k = int(distillation.get("logit_top_k", -1))
+    if not 0 <= logit_top_k < int(language["vocab_size"]):
+        errors.append(
+            "training.pretraining.distillation.logit_top_k must be within the vocabulary"
+        )
+    for name, maximum_layers in (
+        ("vision_layer_pairs", int(vision["layers"])),
+        ("language_layer_pairs", int(language["layers"])),
+    ):
+        for pair in distillation.get(name, []):
+            if not isinstance(pair, list) or len(pair) != 2:
+                errors.append(f"training.pretraining.distillation.{name} entries must be pairs")
+                continue
+            student_layer = int(pair[0])
+            if student_layer != -1 and not 0 <= student_layer < maximum_layers:
+                errors.append(
+                    f"training.pretraining.distillation.{name} student layer "
+                    f"{student_layer} is out of range"
+                )
+    optimizer = blueprint["training"]["pretraining"].get("optimizer", {})
+    positive_optimizer_fields = (
+        "epochs",
+        "micro_batch_size",
+        "grad_accum_steps",
+        "learning_rate",
+        "max_grad_norm",
+        "total_tokens",
+    )
+    for field in positive_optimizer_fields:
+        if float(optimizer.get(field, 0)) <= 0:
+            errors.append(f"training.pretraining.optimizer.{field} must be positive")
+    if int(optimizer.get("log_every_steps", 0)) <= 0:
+        errors.append("training.pretraining.optimizer.log_every_steps must be positive")
+    for field in ("checkpoint_every_steps", "eval_every_steps", "warmup_tokens"):
+        if int(optimizer.get(field, -1)) < 0:
+            errors.append(
+                f"training.pretraining.optimizer.{field} must be non-negative"
+            )
+    betas = optimizer.get("betas", ())
+    if len(betas) != 2 or any(not 0 <= float(beta) < 1 for beta in betas):
+        errors.append("training.pretraining.optimizer.betas must contain two values in [0, 1)")
+    warmup_tokens = int(optimizer.get("warmup_tokens", -1))
+    total_tokens = int(optimizer.get("total_tokens", 0))
+    if not 0 <= warmup_tokens < total_tokens:
+        errors.append(
+            "training.pretraining.optimizer requires 0 <= warmup_tokens < total_tokens"
+        )
+    if optimizer.get("precision") not in {"auto", "float32", "bfloat16", "float16"}:
+        errors.append("training.pretraining.optimizer.precision is invalid")
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
     if estimates["total"] >= maximum:
@@ -184,6 +236,19 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 errors.append(f"{arm_id}.{key} must be between 0 and 1")
 
     training = blueprint["training"]
+    supported_pretraining_losses = {
+        "autoregressive",
+        "teacher_kl",
+        "hidden_feature_distillation",
+        "region_text_contrastive",
+        "box_regression",
+        "orientation",
+    }
+    for name, weight in training["pretraining"]["losses"].items():
+        if name not in supported_pretraining_losses:
+            errors.append(f"training.pretraining.losses.{name} is not implemented")
+        if float(weight) < 0:
+            errors.append(f"training.pretraining.losses.{name} must be non-negative")
     _validate_mix("training.pretraining.data_mix", training["pretraining"]["data_mix"], errors)
     _validate_mix(
         "training.posttraining.sft.data_mix",

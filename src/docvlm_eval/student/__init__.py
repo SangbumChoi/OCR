@@ -7,19 +7,35 @@ from .data import (
     StudentCollatorConfig,
     StudentExample,
     UDDStudentDataset,
+    student_model_inputs,
+)
+from .distillation import (
+    DistillationConfig,
+    DistillationLoss,
+    NativeStudentTeacher,
+    TeacherSignals,
 )
 from .tokenizer import DocumentTokenizer
+from .pretrain import PretrainConfig, TrainingResult, train_student
 
 __all__ = [
     "BalancedGroupBatchSampler",
     "ConnectorConfig",
     "DocumentTokenizer",
+    "DistillationConfig",
+    "DistillationLoss",
     "LanguageConfig",
+    "NativeStudentTeacher",
+    "PretrainConfig",
     "StudentCollator",
     "StudentCollatorConfig",
     "StudentConfig",
     "StudentExample",
     "TaskHeadConfig",
+    "TeacherSignals",
+    "TrainingResult",
     "UDDStudentDataset",
     "VisionConfig",
+    "student_model_inputs",
+    "train_student",
 ]

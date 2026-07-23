@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -83,6 +84,13 @@ class DocumentTokenizer:
             skip_special_tokens=skip_special_tokens,
         )
 
+    @property
+    def fingerprint(self) -> str:
+        """Identify the complete token-to-ID contract used by online distillation."""
+
+        payload = self.backend.to_str().encode("utf-8")
+        return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
     def save_pretrained(self, output_dir: str | Path) -> None:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
@@ -90,6 +98,7 @@ class DocumentTokenizer:
         metadata = {
             **self.metadata,
             "format": "docvlm-byte-level-bpe-v1",
+            "fingerprint": self.fingerprint,
             "vocab_size": self.vocab_size,
             "special_tokens": self.metadata.get("special_tokens", SPECIAL_TOKENS),
             "normalization": "NFC",
