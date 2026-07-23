@@ -2,8 +2,9 @@
 
 [`scripts/run_student_experiment.py`](../../scripts/run_student_experiment.py) compiles one validated
 YAML experiment into a resumable stage DAG. It connects hard-document synthesis, semantic split
-validation, UDD conversion, weighted data mixing, tokenizer training, student initialization,
-pretraining, grounded SFT, RLVR, and train/heldout generation evaluation.
+validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer distillation,
+tokenizer training, student initialization, pretraining, grounded SFT, RLVR, and train/heldout
+generation evaluation.
 
 ## Configurations
 
@@ -15,8 +16,8 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The CPU contract test uses the same 13 stages with one 587k-parameter student and one optimizer
-step per training phase:
+The CPU contract test uses the same 16 stages with a dummy cross-tokenizer teacher, one
+587k-parameter student, and one optimizer step per training phase:
 
 ```bash
 python scripts/run_student_experiment.py \
@@ -27,6 +28,12 @@ The experiment YAML controls synthetic families, difficulty, independent split s
 data components and weights, tokenizer size, initialization arm and transfer sources, training
 limits, evaluation settings, and W&B metadata. The runner writes a resolved architecture blueprint
 whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+
+The full configuration uses `lfm2_5-vl-1.6b` as an offline sequence teacher. It exports
+fingerprinted image-question requests, resumes deterministic teacher generation, applies each
+sample's native metric as a quality gate, and preserves rejected targets only as aggregate
+provenance. The tiny configuration uses `dummy-echo`; its deliberately incorrect outputs prove
+that all teacher responses can be rejected while the pipeline safely trains on gold.
 
 ## Data mixture
 

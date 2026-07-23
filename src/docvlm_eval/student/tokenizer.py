@@ -36,6 +36,10 @@ def iter_udd_text(dataset: Any) -> Iterator[str]:
                 text = str(answer).strip()
                 if text:
                     yield text
+        for answer in row.get("teacher_answers") or []:
+            text = str(answer).strip()
+            if text:
+                yield text
         for key in ("full_text", "table_html"):
             text = str(row.get(key) or "").strip()
             if text:

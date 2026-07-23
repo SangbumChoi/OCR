@@ -25,6 +25,11 @@ from .evaluate import (
     write_split_comparison,
 )
 from .mixture import MixtureComponent, build_weighted_mixture
+from .teacher_targets import (
+    apply_teacher_predictions,
+    export_teacher_requests,
+    generate_teacher_predictions,
+)
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
 from .posttrain import (
@@ -82,9 +87,12 @@ __all__ = [
     "student_model_inputs",
     "build_structured_target",
     "build_weighted_mixture",
+    "apply_teacher_predictions",
     "compare_split_summaries",
+    "export_teacher_requests",
     "completion_log_probs",
     "group_relative_policy_loss",
+    "generate_teacher_predictions",
     "parse_structured_response",
     "sample_completion_group",
     "posttraining_prompt_batch",

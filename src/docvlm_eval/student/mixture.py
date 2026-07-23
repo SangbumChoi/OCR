@@ -70,6 +70,9 @@ def mixture_features():
             "metric": Value("string"),
             "fold": Value("string"),
             "mixture_component": Value("string"),
+            "teacher_answers": Sequence(Value("string")),
+            "teacher_scores": Sequence(Value("float32")),
+            "teacher_provenance_json": Value("string"),
         }
     )
 
@@ -86,6 +89,7 @@ _STRING_DEFAULTS = {
     "language": "",
     "metric": "anls",
     "fold": "",
+    "teacher_provenance_json": "{}",
 }
 
 
@@ -113,6 +117,9 @@ def _normalize_dataset(dataset: Any, component: MixtureComponent):
     for name, default in _STRING_DEFAULTS.items():
         if name not in dataset.column_names:
             dataset = dataset.add_column(name, [default] * len(dataset))
+    for name in ("teacher_answers", "teacher_scores"):
+        if name not in dataset.column_names:
+            dataset = dataset.add_column(name, [[] for _ in range(len(dataset))])
     if "fold" in dataset.column_names:
         dataset = dataset.remove_columns(["fold"])
     dataset = dataset.add_column("fold", ["train"] * len(dataset))

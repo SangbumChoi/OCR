@@ -81,6 +81,35 @@ text. They must not be connected to token-level KL by matching vocabulary size o
 The policy is controlled by
 `training.pretraining.distillation.cross_tokenizer_policy: sequence_targets_only`.
 
+The offline path is executable and fail-closed:
+
+```bash
+python scripts/build_teacher_targets.py export \
+  --src artifacts/data/mixture \
+  --output artifacts/data/teacher_requests
+python scripts/build_teacher_targets.py generate \
+  --requests artifacts/data/teacher_requests/requests.jsonl \
+  --model lfm2_5-vl-1.6b \
+  --device cuda \
+  --output artifacts/data/teacher_predictions.jsonl
+python scripts/build_teacher_targets.py apply \
+  --src artifacts/data/mixture \
+  --requests artifacts/data/teacher_requests/requests.jsonl \
+  --predictions artifacts/data/teacher_predictions.jsonl \
+  --min-score 0.8 \
+  --output artifacts/data/distilled_mixture
+```
+
+Exported requests include immutable image, question, answer, metric, and source-dataset
+fingerprints. Generation resumes by request ID. Apply rejects unknown, duplicate, mismatched,
+degenerate, or below-threshold responses and never changes native gold. Accepted targets are stored
+in aligned `teacher_answers`, `teacher_scores`, and `teacher_provenance_json` columns. The
+`sequence_targets.probability`, `min_score`, and `seed` controls deterministically choose accepted
+teacher text or gold for each QA; missing or rejected teacher output always falls back to gold.
+Generation fingerprints prevent a resumed file from mixing teachers or decoding settings. The full
+experiment also requires a minimum acceptance rate, so a broken teacher run cannot silently become
+a gold-only run.
+
 ## Distributed training
 
 Launch one process per GPU:

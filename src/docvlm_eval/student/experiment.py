@@ -170,6 +170,18 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     data = _require_mapping(raw, "data")
     if not isinstance(data.get("components"), list) or not data["components"]:
         raise ValueError("data.components must be a non-empty list")
+    sequence_teacher = raw.get("sequence_teacher") or {}
+    if not isinstance(sequence_teacher, dict):
+        raise ValueError("experiment.sequence_teacher must be a mapping")
+    if bool(sequence_teacher.get("enabled", False)):
+        if not str(sequence_teacher.get("model") or "").strip():
+            raise ValueError("enabled sequence_teacher requires a model")
+        for field in ("min_score", "min_acceptance_rate", "target_probability"):
+            value = float(sequence_teacher.get(field, -1.0))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"sequence_teacher.{field} must be within [0, 1]")
+        if sequence_teacher.get("target_format", "answer") not in {"answer", "response"}:
+            raise ValueError("sequence_teacher.target_format must be answer or response")
     return name, output_root, blueprint
 
 
@@ -214,6 +226,9 @@ def _resolved_blueprint(
     *,
     tiny: bool,
     tiny_vocab_size: int,
+    sequence_target_probability: float,
+    sequence_target_min_score: float,
+    sequence_target_seed: int,
 ) -> dict[str, Any]:
     blueprint = copy.deepcopy(load_blueprint(blueprint_path))
     if tiny:
@@ -243,6 +258,12 @@ def _resolved_blueprint(
     pipeline["balance_by"] = "component"
     pipeline["group_weights"] = weights
     blueprint["training"]["pretraining"]["data_mix"] = weights
+    sequence_targets = blueprint["training"]["pretraining"]["distillation"][
+        "sequence_targets"
+    ]
+    sequence_targets["probability"] = sequence_target_probability
+    sequence_targets["min_score"] = sequence_target_min_score
+    sequence_targets["seed"] = sequence_target_seed
     _, errors = validate_blueprint(blueprint)
     if errors:
         raise ValueError("resolved blueprint is invalid:\n" + "\n".join(errors))
@@ -295,11 +316,20 @@ def build_experiment_plan(
     )
     initialization = raw.get("initialization") or {}
     tokenizer = raw.get("tokenizer") or {}
+    sequence_teacher = raw.get("sequence_teacher") or {}
+    sequence_teacher_enabled = bool(sequence_teacher.get("enabled", False))
     blueprint = _resolved_blueprint(
         blueprint_path,
         components,
         tiny=bool(initialization.get("tiny", False)),
         tiny_vocab_size=int(tokenizer.get("vocab_size") or 512),
+        sequence_target_probability=(
+            float(sequence_teacher.get("target_probability", 0.0))
+            if sequence_teacher_enabled
+            else 0.0
+        ),
+        sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
+        sequence_target_seed=int(sequence_teacher.get("seed", 7)),
     )
     runtime = raw.get("runtime") or {}
     device = str(runtime.get("device") or "auto")
@@ -435,13 +465,114 @@ def build_experiment_plan(
         )
     )
 
+    training_data = mixed_data
+    training_data_dependency = "mix_pretraining_data"
+    if sequence_teacher_enabled:
+        teacher_requests = artifacts / "data" / "teacher_requests"
+        generated_predictions = artifacts / "data" / "teacher_predictions.jsonl"
+        distilled_data = artifacts / "data" / "distilled_mixture"
+        stages.append(
+            ExperimentStage(
+                "export_teacher_requests",
+                (
+                    python,
+                    script("build_teacher_targets.py"),
+                    "export",
+                    "--src",
+                    str(mixed_data),
+                    "--output",
+                    str(teacher_requests),
+                ),
+                ("mix_pretraining_data",),
+                (
+                    Artifact(str(teacher_requests / "requests.jsonl")),
+                    Artifact(str(teacher_requests / "manifest.json")),
+                ),
+            )
+        )
+        configured_predictions = sequence_teacher.get("predictions")
+        if configured_predictions:
+            predictions_path = _resolve_path(repo_root, configured_predictions)
+            if not predictions_path.is_file():
+                raise ValueError(
+                    f"sequence teacher predictions do not exist: {predictions_path}"
+                )
+            apply_dependencies = ("export_teacher_requests",)
+        else:
+            predictions_path = generated_predictions
+            generate_command = [
+                python,
+                script("build_teacher_targets.py"),
+                "generate",
+                "--requests",
+                str(teacher_requests / "requests.jsonl"),
+                "--output",
+                str(predictions_path),
+                "--model",
+                str(sequence_teacher["model"]),
+                "--device",
+                str(sequence_teacher.get("device") or device),
+                "--dtype",
+                str(sequence_teacher.get("dtype") or "bfloat16"),
+                "--max-new-tokens",
+                str(int(sequence_teacher.get("max_new_tokens", 128))),
+                "--temperature",
+                str(float(sequence_teacher.get("temperature", 0.0))),
+            ]
+            stages.append(
+                ExperimentStage(
+                    "generate_teacher_predictions",
+                    tuple(generate_command),
+                    ("export_teacher_requests",),
+                    (
+                        Artifact(str(predictions_path)),
+                        Artifact(str(predictions_path) + ".manifest.json"),
+                    ),
+                )
+            )
+            apply_dependencies = (
+                "export_teacher_requests",
+                "generate_teacher_predictions",
+            )
+        stages.append(
+            ExperimentStage(
+                "apply_teacher_targets",
+                (
+                    python,
+                    script("build_teacher_targets.py"),
+                    "apply",
+                    "--src",
+                    str(mixed_data),
+                    "--requests",
+                    str(teacher_requests / "requests.jsonl"),
+                    "--predictions",
+                    str(predictions_path),
+                    "--output",
+                    str(distilled_data),
+                    "--min-score",
+                    str(float(sequence_teacher.get("min_score", 0.8))),
+                    "--min-acceptance-rate",
+                    str(float(sequence_teacher.get("min_acceptance_rate", 0.0))),
+                    "--target-format",
+                    str(sequence_teacher.get("target_format") or "answer"),
+                ),
+                apply_dependencies,
+                (
+                    Artifact(str(distilled_data), "directory"),
+                    Artifact(str(distilled_data / "teacher_target_manifest.json")),
+                ),
+            )
+        )
+        training_data = distilled_data
+        training_data_dependency = "apply_teacher_targets"
+
     tokenizer_command = [
         python,
         script("train_student_tokenizer.py"),
         "--config",
         str(resolved_blueprint_path),
         "--src",
-        str(mixed_data),
+        str(training_data),
         "--output",
         str(tokenizer_dir),
         "--min-frequency",
@@ -454,7 +585,7 @@ def build_experiment_plan(
         ExperimentStage(
             "train_tokenizer",
             tuple(tokenizer_command),
-            ("mix_pretraining_data",),
+            (training_data_dependency,),
             (
                 Artifact(str(tokenizer_dir / "tokenizer.json")),
                 Artifact(str(tokenizer_dir / "tokenizer_config.json")),
@@ -515,7 +646,7 @@ def build_experiment_plan(
         "--config",
         str(resolved_blueprint_path),
         "--src",
-        str(mixed_data),
+        str(training_data),
         "--tokenizer",
         str(tokenizer_dir),
         "--student-checkpoint",

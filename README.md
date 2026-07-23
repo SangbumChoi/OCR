@@ -295,8 +295,9 @@ python scripts/pretrain_student.py \
 ```
 
 Use `torchrun --standalone --nproc-per-node=N` for data parallel training and `--resume latest`
-after interruption. LFM and other cross-tokenizer teachers supply offline sequence targets, while
-online KL is restricted by a matching tokenizer fingerprint. See
+after interruption. LFM and other cross-tokenizer teachers supply fingerprinted, metric-gated
+offline sequence targets; native same-tokenizer teachers can additionally provide online top-k KL
+and feature alignment. See
 [`docs/report/student_pretraining_runner.md`](docs/report/student_pretraining_runner.md).
 
 The second stage is also executable. It teaches a strict
@@ -332,8 +333,9 @@ python scripts/run_student_experiment.py \
 ```
 
 The full configuration is `configs/sub1b_experiment.yaml`. Both configurations connect independent
-hard-document train/heldout generation, leakage validation, weighted UDD mixing, tokenizer and
-student creation, pretraining, SFT, RLVR, and split evaluation. See
+hard-document train/heldout generation, leakage validation, weighted UDD mixing, cross-tokenizer
+teacher generation and quality gating, tokenizer and student creation, pretraining, SFT, RLVR, and
+split evaluation. See
 [`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
 
 Compare train and heldout generation from any native checkpoint:

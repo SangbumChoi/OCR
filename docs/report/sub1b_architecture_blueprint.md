@@ -116,6 +116,13 @@ teacher KL and selected intermediate-feature alignment. Reading-order examples u
 autoregressive supervision; there is no unimplemented standalone reading-order loss hidden inside
 the weighted total.
 
+LFM2.5-VL is connected through offline sequence distillation rather than invalid token-position
+KL. Every image-question request is fingerprinted, generated resumably, scored with its native gold
+metric, and accepted only above a configurable threshold. Accepted responses remain separate from
+gold with model, confidence, score, and request provenance. A deterministic probability controls
+how often pretraining consumes an accepted teacher response; rejected or absent responses fall
+back to gold.
+
 The UDD collator removes two subtle leakage/error paths. Box predictions pool the hidden state at
 the end of the prompt, before any gold box tokens, and mixed QA views from the same image are
 multi-positive pairs rather than false negatives in the contrastive objective.

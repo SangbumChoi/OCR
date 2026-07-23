@@ -29,6 +29,20 @@ data:
       path: "@synthetic"
       weight: 1.0
 
+sequence_teacher:
+  enabled: true
+  model: lfm2_5-vl-1.6b
+  predictions: null
+  device: cuda
+  dtype: bfloat16
+  max_new_tokens: 128
+  temperature: 0.0
+  min_score: 0.8
+  min_acceptance_rate: 0.1
+  target_probability: 0.5
+  target_format: answer
+  seed: 7
+
 tokenizer:
   vocab_size: null
   min_frequency: 2

@@ -172,9 +172,25 @@ def main() -> None:
 
     collator_config = StudentCollatorConfig.from_blueprint(blueprint)
     collator = StudentCollator(tokenizer, collator_config)
+    sequence_targets = blueprint["training"]["pretraining"]["distillation"].get(
+        "sequence_targets",
+        {},
+    )
     train_dataset = UDDStudentDataset(
         train_rows,
         include_grounding=not args.no_grounding,
+        teacher_target_probability=float(sequence_targets.get("probability", 0.0)),
+        teacher_min_score=float(sequence_targets.get("min_score", 0.0)),
+        teacher_target_seed=int(sequence_targets.get("seed", 0)),
+    )
+    teacher_targets = sum(
+        source == "teacher" for source in train_dataset.target_sources
+    )
+    print(
+        f"[sequence-distillation] selected={teacher_targets} "
+        f"gold={len(train_dataset) - teacher_targets} "
+        f"probability={float(sequence_targets.get('probability', 0.0)):.3f}",
+        flush=True,
     )
     optimizer_raw = blueprint["training"]["pretraining"]["optimizer"]
     batch_size = args.batch_size or int(optimizer_raw["micro_batch_size"])

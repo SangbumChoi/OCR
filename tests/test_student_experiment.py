@@ -33,6 +33,9 @@ def test_default_experiment_compiles_complete_stage_dag():
         "build_train_samples",
         "build_heldout_samples",
         "mix_pretraining_data",
+        "export_teacher_requests",
+        "generate_teacher_predictions",
+        "apply_teacher_targets",
         "train_tokenizer",
         "initialize_student",
         "pretrain",
@@ -43,6 +46,10 @@ def test_default_experiment_compiles_complete_stage_dag():
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["balance_by"] == "component"
     assert pipeline["group_weights"] == {"synthetic_documents": 1.0}
+    sequence_targets = plan.resolved_blueprint["training"]["pretraining"]["distillation"][
+        "sequence_targets"
+    ]
+    assert sequence_targets["probability"] == pytest.approx(0.5)
     sft = next(stage for stage in plan.stages if stage.name == "sft")
     assert sft.command[0] == sys.executable
     assert sft.command.count(sys.executable) == 1
@@ -66,6 +73,11 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert pipeline["max_image_long_side"] == tiny.vision.image_size
     initialize = next(stage for stage in plan.stages if stage.name == "initialize_student")
     assert initialize.command[initialize.command.index("--tiny-vocab-size") + 1] == "512"
+    assert "export_teacher_requests" in plan.stage_names
+    generate = next(
+        stage for stage in plan.stages if stage.name == "generate_teacher_predictions"
+    )
+    assert generate.command[generate.command.index("--model") + 1] == "dummy-echo"
 
 
 def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):

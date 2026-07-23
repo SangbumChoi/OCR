@@ -165,6 +165,18 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.distillation.logit_top_k must be within the vocabulary"
         )
+    sequence_targets = distillation.get("sequence_targets", {})
+    for field in ("probability", "min_score"):
+        value = float(sequence_targets.get(field, -1.0))
+        if not 0.0 <= value <= 1.0:
+            errors.append(
+                f"training.pretraining.distillation.sequence_targets.{field} "
+                "must be between 0 and 1"
+            )
+    if int(sequence_targets.get("seed", -1)) < 0:
+        errors.append(
+            "training.pretraining.distillation.sequence_targets.seed must be non-negative"
+        )
     for name, maximum_layers in (
         ("vision_layer_pairs", int(vision["layers"])),
         ("language_layer_pairs", int(language["layers"])),

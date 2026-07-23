@@ -22,8 +22,9 @@ python scripts/train_student_tokenizer.py \
 ```
 
 Training text includes every instruction and answer variant, full-page text, table HTML, and
-localized element key/value. The saved `tokenizer_config.json` records special-token IDs, requested
-and actual vocabulary sizes, normalization, minimum frequency, and a SHA-256 fingerprint of the
+localized element key/value. It also includes accepted offline teacher sequence targets before
+student tokenization. The saved `tokenizer_config.json` records special-token IDs, requested and
+actual vocabulary sizes, normalization, minimum frequency, and a SHA-256 fingerprint of the
 complete token-to-ID contract. The collator rejects any token ID outside the model vocabulary
 before the forward pass.
 
@@ -33,14 +34,16 @@ before the forward pass.
 example is requested. It expands:
 
 - each native `instructions[i]` and `answers[i]` pair into one generative example;
+- each accepted `teacher_answers[i]` as a deterministic alternative target without replacing gold;
 - each localized field or region into one evidence-box example;
 - duplicate labels into text-qualified or reading-order-qualified questions so a target is not
   ambiguous.
 
-Every expanded record retains task, source, language, sample ID, and image identity. The same image
-can therefore supply several tasks without duplicating stored pixels. `BalancedGroupBatchSampler`
-can balance by task, source, or language with explicit weights and deterministic epoch seeds. Under
-`torchrun`, it draws one global batch and gives each rank a disjoint local slice.
+Every expanded record retains task, source, language, mixture component, target source, sample ID,
+and image identity. The same image can therefore supply several tasks without duplicating stored
+pixels. `BalancedGroupBatchSampler` can balance by task, source, language, or mixture component
+with explicit weights and deterministic epoch seeds. Under `torchrun`, it draws one global batch
+and gives each rank a disjoint local slice.
 
 ## Spatial contract
 
@@ -94,6 +97,7 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 - upscaling policy;
 - contrastive objective switch;
 - task/source/language balancing key and group weights.
+- cross-tokenizer teacher target probability, minimum quality score, and deterministic seed.
 
 `StudentCollatorConfig.from_blueprint()` binds these controls to the model's patch size, visual
 position count, and language vocabulary.

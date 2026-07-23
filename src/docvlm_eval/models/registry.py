@@ -30,6 +30,7 @@ def build_model(key: str, **kwargs) -> ModelAdapter:
     # Import adapters lazily so a missing optional dep (e.g. one model's custom code)
     # doesn't break the whole registry.
     from . import (  # noqa: F401
+        dummy,
         internvl,
         smolvlm,
         llava_ov,
@@ -48,6 +49,7 @@ def build_model(key: str, **kwargs) -> ModelAdapter:
 
 def list_models() -> list[str]:
     from . import (  # noqa: F401
+        dummy,
         internvl,
         smolvlm,
         llava_ov,

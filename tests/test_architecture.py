@@ -31,12 +31,19 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
     pipeline["rotation_probability"] = 2.0
     pipeline["balance_by"] = "anything"
+    sequence_targets = blueprint["training"]["pretraining"]["distillation"]["sequence_targets"]
+    sequence_targets["probability"] = 1.1
+    sequence_targets["min_score"] = -0.1
+    sequence_targets["seed"] = -1
     blueprint["tokenizer"]["vocab_size"] = 32000
 
     _, errors = validate_blueprint(blueprint)
 
     assert any("rotation_probability must be between" in error for error in errors)
     assert any("balance_by must be task, source, language, or component" in error for error in errors)
+    assert any("sequence_targets.probability" in error for error in errors)
+    assert any("sequence_targets.min_score" in error for error in errors)
+    assert any("sequence_targets.seed" in error for error in errors)
     assert any("tokenizer.vocab_size must match" in error for error in errors)
 
 

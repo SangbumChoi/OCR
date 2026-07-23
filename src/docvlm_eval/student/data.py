@@ -52,6 +52,7 @@ class StudentExample:
     language: str = ""
     box: tuple[float, float, float, float] | None = None
     box_normalized: bool = True
+    target_source: str = "gold"
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ class _ExampleRef:
     source: str
     language: str
     component: str
+    target_source: str
     sample_id: str
 
 
@@ -102,6 +104,9 @@ def _metadata_view(dataset: Any) -> Any:
         "task",
         "instructions",
         "answers",
+        "teacher_answers",
+        "teacher_scores",
+        "teacher_provenance_json",
         "elements_json",
         "fields_json",
         "regions_json",
@@ -164,10 +169,20 @@ class UDDStudentDataset:
         *,
         include_grounding: bool = True,
         max_grounding_per_row: int = 16,
+        teacher_target_probability: float = 0.0,
+        teacher_min_score: float = 0.0,
+        teacher_target_seed: int = 0,
     ):
+        if not 0.0 <= teacher_target_probability <= 1.0:
+            raise ValueError("teacher_target_probability must be within [0, 1]")
+        if not 0.0 <= teacher_min_score <= 1.0:
+            raise ValueError("teacher_min_score must be within [0, 1]")
         self.dataset = dataset
         self.include_grounding = include_grounding
         self.max_grounding_per_row = max_grounding_per_row
+        self.teacher_target_probability = teacher_target_probability
+        self.teacher_min_score = teacher_min_score
+        self.teacher_target_seed = int(teacher_target_seed)
         self._refs: list[_ExampleRef] = []
         metadata = _metadata_view(dataset)
         for row_index in range(len(metadata)):
@@ -179,6 +194,8 @@ class UDDStudentDataset:
             component = str(row.get("mixture_component") or source)
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
+            teacher_answers = list(row.get("teacher_answers") or [])
+            teacher_scores = list(row.get("teacher_scores") or [])
             if len(instructions) != len(answers):
                 raise ValueError(
                     f"UDD row {sample_id!r} has {len(instructions)} instructions "
@@ -186,6 +203,25 @@ class UDDStudentDataset:
                 )
             for qa_index, (question, golds) in enumerate(zip(instructions, answers)):
                 if str(question).strip() and _valid_answers(golds):
+                    qa_sample_id = f"{sample_id}:qa{qa_index}"
+                    teacher_available = bool(
+                        qa_index < len(teacher_answers)
+                        and qa_index < len(teacher_scores)
+                        and str(teacher_answers[qa_index]).strip()
+                        and float(teacher_scores[qa_index]) >= teacher_min_score
+                    )
+                    payload = (
+                        f"{self.teacher_target_seed}:{qa_sample_id}:teacher-target"
+                    ).encode("utf-8")
+                    draw = int.from_bytes(
+                        hashlib.blake2b(payload, digest_size=8).digest(),
+                        "big",
+                    ) / float(2**64)
+                    target_source = (
+                        "teacher"
+                        if teacher_available and draw < teacher_target_probability
+                        else "gold"
+                    )
                     self._refs.append(
                         _ExampleRef(
                             row_index,
@@ -195,7 +231,8 @@ class UDDStudentDataset:
                             source,
                             language,
                             component,
-                            f"{sample_id}:qa{qa_index}",
+                            target_source,
+                            qa_sample_id,
                         )
                     )
             elements = _parse_elements(row)
@@ -214,6 +251,7 @@ class UDDStudentDataset:
                             source,
                             language,
                             component,
+                            "gold",
                             f"{sample_id}:box{element_index}",
                         )
                     )
@@ -242,6 +280,10 @@ class UDDStudentDataset:
     def components(self) -> list[str]:
         return [ref.component for ref in self._refs]
 
+    @property
+    def target_sources(self) -> list[str]:
+        return [ref.target_source for ref in self._refs]
+
     def groups(self, key: str) -> list[str]:
         if key == "task":
             return self.tasks
@@ -263,6 +305,8 @@ class UDDStudentDataset:
         if ref.kind == "qa":
             question = str(row["instructions"][ref.item_index])
             answer = _valid_answers(row["answers"][ref.item_index])[0]
+            if ref.target_source == "teacher":
+                answer = str(row["teacher_answers"][ref.item_index]).strip()
             return StudentExample(
                 sample_id=ref.sample_id,
                 source=ref.source,
@@ -272,6 +316,7 @@ class UDDStudentDataset:
                 image=image,
                 image_key=image_key,
                 language=ref.language,
+                target_source=ref.target_source,
             )
 
         elements = _parse_elements(row)
