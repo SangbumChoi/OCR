@@ -40,6 +40,8 @@ def test_qa_spotting_table_and_probes_become_samples():
 def test_probe_answer_mapping():
     s = {x.sample_id: x for x in case_to_samples(GT, "img.png", "inv")}
     assert s["inv:probe:abstain0"].answers == ABSTAIN_OK
+    assert s["inv:probe:abstain0"].meta["abstain_expected"] is True
+    assert s["inv:probe:direction1"].meta["abstain_expected"] is False
     assert "rtl" in s["inv:probe:direction1"].answers
     assert "yes" in s["inv:probe:consistency2"].answers
     assert all(x.answer_type.startswith("probe:") for k, x in s.items() if ":probe:" in k)
@@ -101,3 +103,71 @@ def test_multiple_evidence_boxes_reach_posttraining_metadata():
     sample = case_to_samples(gt, "/tmp/hard.png", "hard")[0]
     assert sample.meta["boxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]
     assert sample.meta["rationale"] == "10 + 20 = 30."
+
+
+def _write_counterfactual_case(
+    path,
+    *,
+    pair_id,
+    role,
+    answer,
+):
+    path.mkdir(parents=True)
+    gt = {
+        "type": "hard chart",
+        "languages": ["en"],
+        "counterfactual": {
+            "pair_id": pair_id,
+            "role": role,
+            "edit_scope": "latent_values",
+        },
+        "qa": [
+            {
+                "question": "What is the change?",
+                "answers": [answer],
+                "answer_type": "H-chart-change",
+                "metric": "relaxed_acc",
+                "graph_query_id": "change",
+            }
+        ],
+        "render": {"size_px": [100, 100]},
+    }
+    (path / "gt.json").write_text(json.dumps(gt), encoding="utf-8")
+
+
+def test_loader_keeps_only_answer_changing_counterfactual_pairs(tmp_path):
+    _write_counterfactual_case(
+        tmp_path / "hard_chart" / "0000",
+        pair_id="hard_chart:0000",
+        role="factual",
+        answer="10",
+    )
+    _write_counterfactual_case(
+        tmp_path / "hard_chart" / "0001",
+        pair_id="hard_chart:0000",
+        role="edited",
+        answer="20",
+    )
+    _write_counterfactual_case(
+        tmp_path / "hard_chart" / "0002",
+        pair_id="hard_chart:0001",
+        role="factual",
+        answer="30",
+    )
+    _write_counterfactual_case(
+        tmp_path / "hard_chart" / "0003",
+        pair_id="hard_chart:0001",
+        role="edited",
+        answer="30",
+    )
+
+    samples = load_realistic_samples(tmp_path)
+    by_id = {sample.sample_id: sample for sample in samples}
+    changed = by_id["hard_chart_0000:qa0"]
+    unchanged = by_id["hard_chart_0002:qa0"]
+
+    assert changed.meta["counterfactual_group"] == "hard_chart:0000:change"
+    assert changed.meta["counterfactual_eligible"] is True
+    assert by_id["hard_chart_0001:qa0"].meta["control"] is True
+    assert unchanged.meta["counterfactual_eligible"] is False
+    assert "counterfactual_group" not in unchanged.meta

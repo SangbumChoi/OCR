@@ -148,6 +148,18 @@ _ABSTAIN_FORMS = {
     "can't tell",
     "no",
     "absent",
+    "no aparece",
+    "no se muestra",
+    "no disponible",
+    "기재되어 있지 않음",
+    "없음",
+    "알 수 없음",
+    "記載なし",
+    "不明",
+    "ありません",
+    "未提供",
+    "未显示",
+    "未知",
 }
 _ABSTAIN_NORMALIZED = {
     re.sub(r"\s+", " ", value.lower()).strip(" .[]")

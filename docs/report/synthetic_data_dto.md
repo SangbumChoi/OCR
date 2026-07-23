@@ -56,7 +56,8 @@ the ablation factors are *stored as data*, not implied:
 DocSample
 ├─ doc_id, doc_type, domain, acquisition, stressors, anchor_metric, languages, source
 ├─ fields:  [ Field(key, value, role, bbox, language, script, font_px, is_small, reading_index) ]
-├─ qa:      [ QAItem(question, answers, answer_type, metric, rationale, answer_bbox, languages) ]
+├─ qa:      [ QAItem(question, answers, answer_type, metric, rationale, answer_bbox,
+│                    languages, graph_query_id) ]
 ├─ table_html, selection, redacted, reading_order, probes
 ├─ semantic_graph: executable facts, relations, queries, answers, and semantic fingerprints
 ├─ difficulty: level, reasoning hops, distractors, density, cross-region flag, skills
@@ -81,6 +82,19 @@ Hard queries may cite more than one region. `QAItem.evidence_keys` links a graph
 fields or cells; after PDF box resolution, `evidence_bboxes` carries every exact pixel box into the
 structured SFT/RLVR target. See
 [`hard_synthetic_pipeline.md`](hard_synthetic_pipeline.md) for the executable graph and split gates.
+
+Hard-document variants are emitted in adjacent factual/edited pairs when
+`emit_counterfactual_pairs` is enabled. A pair shares its document family, locale, graph program,
+and visual-theme seed while its latent values are independently regenerated. The benchmark loader
+retains a reasoning pair only when both roles exist and their gold answers differ. It records the
+stable pair plus graph-query ID in `counterfactual_group`, allowing evaluation to test value
+sensitivity instead of template memorization. Counts above one must be even so no authored pair is
+silently orphaned.
+
+Every hard document also contains a locale-matched absent-field question. The converted sample
+sets `abstain_expected: true`, includes the localized absence form among valid answers, and feeds
+the same locale forms to the calibrated-abstention reward. This makes the hallucination slice part
+of the generated held-out benchmark rather than an optional hand-authored add-on.
 
 ## 2b. The model-free understanding layer (the part that isn't OCR)
 
@@ -116,6 +130,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **A4 multilingual** | single vs mixed languages; which pairs transfer | `Field.language`/`script`, `DocSample.languages` | `languages`, `language_weights` |
 | **A7 preprocessing** | resolution / tiling / aspect; small-text legibility | `RenderSpec.*`, `Field.is_small` | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
+| **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
 
 (*A5 LoRA-placement* and *A6 HPO* are training-side — they consume this GT but need no generator
 knob.)
@@ -139,8 +154,8 @@ python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablati
 python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablation A7_dynamic_tiling
 ```
 
-`--count N` fans each case out into `…/<NNNN>/` with reseeded content (and a fresh language draw per
-doc, so the mix is realised across the corpus). The resolved config is also written to
+`--count N` fans each case out into `…/<NNNN>/` with reseeded content. Counterfactual pair members
+share one language draw; independent pairs realize the configured corpus mix. The resolved config is also written to
 `gen_config.json` next to the data for provenance, and embedded per-sample under `gen_config`.
 The production base uses a weighted English/Spanish/Korean/Japanese/Chinese mix; A4 overrides clear
 that weight map and sample uniformly from only the languages named by each arm.

@@ -29,7 +29,9 @@ def _probe_answers(probe: dict) -> tuple[list[str], str]:
     kind = probe.get("kind", "")
     exp = (probe.get("expected") or "").lower()
     if kind == "abstain":
-        return ABSTAIN_OK, "anls"
+        expected = str(probe.get("expected") or "").strip()
+        answers = [*ABSTAIN_OK, *([expected] if expected else [])]
+        return list(dict.fromkeys(answers)), "anls"
     if kind == "direction":
         if "right" in exp or "rtl" in exp:
             return ["right-to-left", "rtl"], "anls"
@@ -57,10 +59,29 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
         "split": gt.get("split", "synthetic"),
         "difficulty": gt.get("difficulty"),
         "template_family": (gt.get("semantic_graph") or {}).get("template_family"),
+        "counterfactual": gt.get("counterfactual"),
     }
 
     for i, qa in enumerate(gt.get("qa", [])):
         meta = {**base_meta, "qa_key": qa.get("key")}
+        graph_query_id = qa.get("graph_query_id")
+        if graph_query_id:
+            meta["graph_query_id"] = graph_query_id
+        counterfactual = gt.get("counterfactual")
+        if (
+            isinstance(counterfactual, dict)
+            and graph_query_id
+            and str(qa.get("answer_type", "")).startswith("H-")
+        ):
+            pair = f"{counterfactual['pair_id']}:{graph_query_id}"
+            meta.update(
+                {
+                    "counterfactual_pair": pair,
+                    "counterfactual_group": pair,
+                    "counterfactual_role": counterfactual["role"],
+                    "control": counterfactual["role"] == "edited",
+                }
+            )
         if qa.get("rationale"):
             meta["rationale"] = qa["rationale"]
         if qa.get("box"):
@@ -91,10 +112,46 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
     if include_probes:
         for i, p in enumerate(gt.get("probes", [])):
             answers, metric = _probe_answers(p)
+            kind = str(p.get("kind", "x"))
             out.append(Sample(
-                f"{prefix}:probe:{p.get('kind','x')}{i}", image_path, p["question"], answers,
-                f"probe:{p.get('kind','x')}", metric, {**base_meta, "probe": p}))
+                f"{prefix}:probe:{kind}{i}", image_path, p["question"], answers,
+                f"probe:{kind}", metric,
+                {
+                    **base_meta,
+                    "probe": p,
+                    "abstain_expected": kind == "abstain",
+                }))
     return out
+
+
+def _validate_counterfactual_pairs(samples: list[Sample]) -> None:
+    groups: dict[str, list[Sample]] = {}
+    for sample in samples:
+        group = sample.meta.get("counterfactual_group")
+        if group:
+            groups.setdefault(str(group), []).append(sample)
+    for grouped in groups.values():
+        roles = {
+            str(sample.meta.get("counterfactual_role"))
+            for sample in grouped
+        }
+        answers = {
+            tuple(str(answer).strip() for answer in sample.answers)
+            for sample in grouped
+        }
+        eligible = (
+            len(grouped) == 2
+            and roles == {"factual", "edited"}
+            and len(answers) == 2
+        )
+        if eligible:
+            for sample in grouped:
+                sample.meta["counterfactual_eligible"] = True
+            continue
+        for sample in grouped:
+            sample.meta["counterfactual_eligible"] = False
+            sample.meta.pop("counterfactual_group", None)
+            sample.meta.pop("control", None)
 
 
 def load_case_dir(case_dir: str | Path, *, variant: str = "clean",
@@ -126,4 +183,5 @@ def load_realistic_samples(root: str | Path, *, variant: str = "clean",
         if not img.exists():
             img = case_dir / "clean.png"
         samples.extend(case_to_samples(gt, str(img), prefix, include_probes=include_probes))
+    _validate_counterfactual_pairs(samples)
     return samples

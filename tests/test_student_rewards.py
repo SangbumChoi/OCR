@@ -164,6 +164,36 @@ def test_table_formula_and_abstention_rewards_use_task_specific_masks():
 
 
 @pytest.mark.parametrize(
+    "answer",
+    [
+        "no aparece",
+        "기재되어 있지 않음",
+        "記載なし",
+        "未提供",
+    ],
+)
+def test_calibrated_abstention_accepts_supported_locales(answer):
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+
+    result = score_structured_response(
+        build_structured_target(answer),
+        RewardContext(
+            sample_id="localized-absence",
+            answers=(answer,),
+            answer_type="probe:abstain",
+            abstain_expected=True,
+        ),
+        _config(),
+    )
+
+    assert result.components["calibrated_abstention"] == 1.0
+
+
+@pytest.mark.parametrize(
     ("predicted", "gold"),
     [
         ("x+x", "2x"),

@@ -101,6 +101,7 @@ class QAItem:
     evidence_bboxes: list[BBox] = field(default_factory=list)
     languages: list[str] = field(default_factory=lambda: ["en"])
     key: str | None = None
+    graph_query_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -189,6 +190,7 @@ class GenConfig:
     # model-free UNDERSTANDING layer: where/how-many/totals derived from the render (derive.py).
     # The OCR GT is free; this is the non-OCR understanding GT that needs no external model.
     emit_understanding: bool = True
+    emit_counterfactual_pairs: bool = True
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -357,6 +359,7 @@ class DocSample:
                     [getattr(builder, "language", "en")],
                 ),
                 key=q.get("key"),
+                graph_query_id=q.get("graph_query_id"),
             ))
 
         rj = gt.get("render", {}) or {}
@@ -429,7 +432,9 @@ class DocSample:
                         **({"evidence_keys": q.evidence_keys} if q.evidence_keys else {}),
                         **({"evidence_bboxes": [b.to_list() for b in q.evidence_bboxes]}
                            if q.evidence_bboxes else {}),
-                        **({"rationale": q.rationale} if q.rationale else {})} for q in self.qa]
+                        **({"rationale": q.rationale} if q.rationale else {}),
+                        **({"graph_query_id": q.graph_query_id}
+                           if q.graph_query_id else {})} for q in self.qa]
         if self.table_html:
             d["table_html"] = self.table_html
         if self.selection:

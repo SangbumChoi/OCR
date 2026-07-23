@@ -26,6 +26,7 @@ base:
   emit_spotting: true       # A1: include bbox targets (Field.bbox / QAItem.answer_bbox)
   emit_rationale: true      # A2: include chain-of-thought rationales
   emit_understanding: true  # model-free understanding GT (where / how-many / totals) from derive.py
+  emit_counterfactual_pairs: true  # adjacent hard docs share locale/style but edit latent values
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true

@@ -13,6 +13,8 @@ _CATALOG: dict[str, dict[str, str]] = {
     "en": {
         "concise": "Answer concisely, no explanation.",
         "fulltext": "Transcribe all text in this document in reading order.",
+        "absence_q": "What fax number is reported in this document?",
+        "absence_expected": "not present",
         "region_north": "North",
         "region_south": "South",
         "region_east": "East",
@@ -94,6 +96,8 @@ _CATALOG: dict[str, dict[str, str]] = {
     "es": {
         "concise": "Responde brevemente, sin explicación.",
         "fulltext": "Transcribe todo el texto de este documento en orden de lectura.",
+        "absence_q": "¿Qué número de fax aparece en este documento?",
+        "absence_expected": "no aparece",
         "region_north": "Norte",
         "region_south": "Sur",
         "region_east": "Este",
@@ -175,6 +179,8 @@ _CATALOG: dict[str, dict[str, str]] = {
     "ko": {
         "concise": "설명 없이 간단히 답하세요.",
         "fulltext": "이 문서의 모든 텍스트를 읽기 순서대로 전사하세요.",
+        "absence_q": "이 문서에 기재된 팩스 번호는 무엇입니까?",
+        "absence_expected": "기재되어 있지 않음",
         "region_north": "북부",
         "region_south": "남부",
         "region_east": "동부",
@@ -256,6 +262,8 @@ _CATALOG: dict[str, dict[str, str]] = {
     "ja": {
         "concise": "説明せず簡潔に答えてください。",
         "fulltext": "この文書のすべての文字を読み順に転記してください。",
+        "absence_q": "この文書に記載されているファックス番号は何ですか？",
+        "absence_expected": "記載なし",
         "region_north": "北部",
         "region_south": "南部",
         "region_east": "東部",
@@ -337,6 +345,8 @@ _CATALOG: dict[str, dict[str, str]] = {
     "zh": {
         "concise": "请简洁作答，无需解释。",
         "fulltext": "请按阅读顺序转录此文档中的所有文字。",
+        "absence_q": "本文档中报告的传真号码是什么？",
+        "absence_expected": "未提供",
         "region_north": "北部",
         "region_south": "南部",
         "region_east": "东部",

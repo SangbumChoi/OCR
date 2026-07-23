@@ -51,6 +51,11 @@ def _difficulty(
 
 def _attach(builder: DocBuilder, graph: LatentDocumentGraph, difficulty: DifficultySpec) -> None:
     graph.add_questions(builder)
+    builder.probe(
+        "abstain",
+        hard_text(graph.language, "absence_q"),
+        hard_text(graph.language, "absence_expected"),
+    )
     builder.difficulty = difficulty.to_dict()
     builder.semantic_graph["difficulty"] = difficulty.to_dict()
 

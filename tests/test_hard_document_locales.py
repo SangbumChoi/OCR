@@ -71,6 +71,12 @@ def test_hard_document_render_and_labels_share_one_locale(name, language):
     } == {(language,)}
     assert record["semantic_graph"]["language"] == language
     assert record["fields"]["full_text"]
+    assert all(
+        qa["graph_query_id"]
+        for qa in record["qa"]
+        if qa["answer_type"].startswith(("T-", "H-"))
+    )
+    assert any(probe["kind"] == "abstain" for probe in record["probes"])
 
 
 def test_hard_document_numeric_programs_are_locale_invariant():

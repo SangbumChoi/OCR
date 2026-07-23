@@ -53,6 +53,46 @@ CURRENT_LANG: str = "en"
 records: list[dict] = []
 
 
+def _counterfactual_variant_index() -> int | None:
+    if (
+        not CFG.emit_counterfactual_pairs
+        or CURRENT_VARIANT is None
+        or not CURRENT_VARIANT.isdigit()
+    ):
+        return None
+    return int(CURRENT_VARIANT)
+
+
+def _validate_counterfactual_records() -> None:
+    grouped: dict[str, list[dict]] = {}
+    for record in records:
+        counterfactual = record.get("counterfactual")
+        if counterfactual:
+            grouped.setdefault(str(counterfactual["pair_id"]), []).append(
+                record
+            )
+    for pair_id, pair in grouped.items():
+        roles = {
+            str(record["counterfactual"]["role"])
+            for record in pair
+        }
+        languages = {str(record["language"]) for record in pair}
+        templates = {str(record["template_fingerprint"]) for record in pair}
+        contents = {str(record["content_fingerprint"]) for record in pair}
+        if (
+            len(pair) != 2
+            or roles != {"factual", "edited"}
+            or len(languages) != 1
+            or len(templates) != 1
+            or len(contents) != 2
+        ):
+            raise ValueError(
+                f"invalid counterfactual pair {pair_id!r}: "
+                f"roles={sorted(roles)}, languages={sorted(languages)}, "
+                f"templates={len(templates)}, contents={len(contents)}"
+            )
+
+
 def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
     """Apply the A7 resize knobs to the image AND rescale every box (spotting + derived grounding
     answers) so GT stays exact at the new resolution."""
@@ -136,7 +176,11 @@ def _theme_css(rng: random.Random, *, structural: bool = True) -> str:
 
 def _doc_rng(key: str) -> random.Random:
     """Deterministic per-(seed,case,variant) RNG for visual jitter."""
-    return random.Random(f"{CFG.seed}:{key}:{CURRENT_VARIANT}:{CURRENT_LANG}")
+    variant = CURRENT_VARIANT
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        variant = f"pair-{counterfactual_index // 2:04d}"
+    return random.Random(f"{CFG.seed}:{key}:{variant}:{CURRENT_LANG}")
 
 
 # --- content randomisers (avoid constant-content templates -> true duplicates -> memorization) ---
@@ -216,6 +260,15 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     )
     doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
     out = doc.to_dict()
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        out["counterfactual"] = {
+            "schema_version": 1,
+            "pair_id": f"{key}:{counterfactual_index // 2:04d}",
+            "role": "factual" if counterfactual_index % 2 == 0 else "edited",
+            "edit_scope": "latent_values",
+            "language": CURRENT_LANG,
+        }
     if key in HARD_CASE_FACTORIES:
         validate_hard_document_language(out, CURRENT_LANG)
     if out.get("semantic_graph"):
@@ -231,7 +284,8 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                     "template_fingerprint": (out.get("semantic_graph") or {}).get(
                         "template_fingerprint"),
                     "content_fingerprint": (out.get("semantic_graph") or {}).get(
-                        "content_fingerprint")})
+                        "content_fingerprint"),
+                    "counterfactual": out.get("counterfactual")})
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
         flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
                         ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
@@ -831,6 +885,18 @@ def main():
         CFG.split_name = args.split_name
     if args.no_degrade:
         CFG.degrade_prob = 0.0
+    if (
+        CFG.emit_counterfactual_pairs
+        and CFG.count > 1
+        and CFG.count % 2
+        and any(
+            key in HARD_CASE_FACTORIES
+            for key in (args.only or CASES)
+        )
+    ):
+        raise ValueError(
+            "counterfactual hard-document generation requires an even count"
+        )
 
     # Simulation-only guard: keep generation LLM-/network-free by default. The "corpus"/"llm" text
     # sources are documented future seams (docs/report/synth_generation_survey.md §4), not yet wired.
@@ -842,6 +908,11 @@ def main():
 
     OUT.mkdir(parents=True, exist_ok=True)
     keys = args.only or list(CASES)
+    pair_languages = (
+        CFG.emit_counterfactual_pairs
+        and CFG.count > 1
+        and any(key in HARD_CASE_FACTORIES for key in keys)
+    )
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
@@ -858,7 +929,12 @@ def main():
             )
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
-        rng = random.Random(CFG.seed + v)
+        language_variant = (
+            v // 2
+            if pair_languages
+            else v
+        )
+        rng = random.Random(CFG.seed + language_variant)
         for k in keys:
             CURRENT_LANG = _choose_lang(rng)
             # Reseed BOTH global random and Faker per (variant, case) with a stable, well-spread seed.
@@ -874,6 +950,7 @@ def main():
         # generation heartbeat for the variant fan-out (~20 lines total) so a big sweep isn't silent
         if CFG.count > 1 and (v == 0 or (v + 1) % max(1, CFG.count // 20) == 0 or v + 1 == CFG.count):
             print(f"[gen] variant {v+1}/{CFG.count}  (~{(v+1)*len(keys)} docs)", flush=True)
+    _validate_counterfactual_records()
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")
     print(f"\n[done] {len(keys)} cases x {CFG.count} variant(s) = {len(records)} docs -> {OUT}")
