@@ -97,12 +97,15 @@ class QAItem:
     metric: str = "anls"
     rationale: str | None = None   # A2: chain-of-thought target (None when emit_rationale is off)
     answer_bbox: BBox | None = None  # A1: box of the answer span, when localisable
+    evidence_keys: list[str] = field(default_factory=list)
+    evidence_bboxes: list[BBox] = field(default_factory=list)
     languages: list[str] = field(default_factory=lambda: ["en"])
     key: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["answer_bbox"] = self.answer_bbox.to_list() if self.answer_bbox else None
+        d["evidence_bboxes"] = [box.to_list() for box in self.evidence_bboxes]
         return d
 
 
@@ -206,10 +209,24 @@ class GenConfig:
     degrade_severity: float = 1.0
     doc_type_weights: dict[str, float] | None = None     # sampling weights when choosing doc types
 
+    # --- hard-document curriculum and split provenance ---
+    difficulty_level: int = 4
+    split_name: str = "synthetic"
+    split_seed: int = 7
+    split_group_by: str = "content"
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "GenConfig":
         known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
         return cls(**{k: v for k, v in d.items() if k in known})
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.difficulty_level <= 5:
+            raise ValueError("difficulty_level must be within [1, 5]")
+        if self.split_name not in {"synthetic", "train", "validation", "heldout"}:
+            raise ValueError("split_name must be synthetic, train, validation, or heldout")
+        if self.split_group_by not in {"content", "template", "document"}:
+            raise ValueError("split_group_by must be content, template, or document")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -257,6 +274,9 @@ class DocSample:
     acquisition: str | None = None        # pdf-native|scan|photo|screenshot (modality split)
     source: str = "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data"
     gen_config: dict[str, Any] | None = None
+    semantic_graph: dict[str, Any] | None = None
+    difficulty: dict[str, Any] | None = None
+    split: str = "synthetic"
 
     # -------------------------------------------------------------------- support flags
     def support(self) -> AblationSupport:
@@ -318,6 +338,11 @@ class DocSample:
                 answer_type=q.get("answer_type", "kie"), metric=q.get("metric", "anls"),
                 rationale=q.get("rationale"),
                 answer_bbox=BBox.from_list(abox),
+                evidence_keys=list(q.get("evidence_keys") or []),
+                evidence_bboxes=[
+                    box for key in (q.get("evidence_keys") or [])
+                    if (box := BBox.from_list(spotting.get(key))) is not None
+                ],
                 languages=q.get("languages", ["en"]), key=q.get("key"),
             ))
 
@@ -345,6 +370,9 @@ class DocSample:
             render=render, degradation=degradation, languages=langs or ["en"],
             domain=domain, acquisition=gt.get("acquisition") or acquisition,
             gen_config=(gen_config.to_dict() if gen_config else None),
+            semantic_graph=gt.get("semantic_graph"),
+            difficulty=gt.get("difficulty"),
+            split=(gen_config.split_name if gen_config else gt.get("split", "synthetic")),
         )
 
     # -------------------------------------------------------------------- serialisation
@@ -360,6 +388,7 @@ class DocSample:
             "anchor_metric": self.anchor_metric,
             "languages": list(self.languages),
             "source": self.source,
+            "split": self.split,
             # --- structured ---
             "fields_detailed": [f.to_dict() for f in self.fields],
             "qa_detailed": [q.to_dict() for q in self.qa],
@@ -371,6 +400,10 @@ class DocSample:
             d["degraded_preset"] = self.degradation.preset  # legacy key
         if self.gen_config is not None:
             d["gen_config"] = self.gen_config
+        if self.semantic_graph is not None:
+            d["semantic_graph"] = self.semantic_graph
+        if self.difficulty is not None:
+            d["difficulty"] = self.difficulty
 
         # --- legacy flat mirror (so to_samples.py and existing tests keep working) ---
         d["fields"] = {f.key: f.value for f in self.fields if f.value != ""}
@@ -380,6 +413,9 @@ class DocSample:
         if self.qa:
             d["qa"] = [{"key": q.key, "question": q.question, "answers": q.answers,
                         "metric": q.metric, "answer_type": q.answer_type,
+                        **({"evidence_keys": q.evidence_keys} if q.evidence_keys else {}),
+                        **({"evidence_bboxes": [b.to_list() for b in q.evidence_bboxes]}
+                           if q.evidence_bboxes else {}),
                         **({"rationale": q.rationale} if q.rationale else {})} for q in self.qa]
         if self.table_html:
             d["table_html"] = self.table_html

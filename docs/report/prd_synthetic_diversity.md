@@ -99,8 +99,11 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
     region GT were empty. Fix: normal-flow compact layout that fits one page (the `_FIXED_LAYOUT`
     cases also opt out of @page-margin/font-size jitter so they never overflow). MRZ now renders and
     its `extract-strict` + `region` GT resolve.
-- **v2:** layout templates per case (2–3 variants each), handwriting/stamp/seal overlays, more
-  languages, distractor fields, photographed-perspective warp (kept geometry-safe for boxes).
+- **v2a (implemented):** executable semantic graphs; difficulty levels 1–5; graph-authored hard
+  table, chart, investment, and scientific-paper families; multi-box evidence for SFT/RLVR; content
+  and template fingerprints; deterministic split assignment and a cross-split leakage validator.
+- **v2b:** layout templates per case (2–3 variants each), handwriting/stamp/seal overlays, more
+  languages, and photographed-perspective warp with transformed boxes.
 - **v3:** compositional multi-page docs; cross-document reasoning; programmatic charts/diagrams with
   next-action GT; curriculum scheduling of difficulty.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out

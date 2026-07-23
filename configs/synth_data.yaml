@@ -45,6 +45,12 @@ base:
                             #   invoice: [scan, photo]   prescription: [fax]
   doc_type_weights: null    # null = uniform over the requested cases
 
+  # --- executable hard-document curriculum and leakage-safe split provenance ---
+  difficulty_level: 4       # 1=direct reading, 5=multi-hop/cross-region with distractors
+  split_name: synthetic     # set train/validation/heldout when materializing a named split
+  split_seed: 7             # deterministic suggested split assignment for semantic fingerprints
+  split_group_by: content   # content | template | document
+
 # ----------------------------------------------------------------------------------------------
 # Ablation overrides — applied on top of `base` (deep-merged) when --ablation <id> is passed.
 # These are the *data-side* arms; the paired control is `base` itself unless noted.
@@ -109,6 +115,9 @@ ablation_overrides:
   #     next-action) is always emitted with the understanding layer; toggle it as a whole here.
   D_difficulty_on:  {emit_understanding: true,  emit_rationale: true}
   D_difficulty_off: {emit_understanding: false, emit_rationale: false}
+  D_hard_level_1:   {difficulty_level: 1}
+  D_hard_level_3:   {difficulty_level: 3}
+  D_hard_level_5:   {difficulty_level: 5}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}

@@ -32,6 +32,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
+from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
+from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
+from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
 
 OUT = ROOT / "data" / "probes" / "realistic_cases"
 
@@ -83,19 +86,6 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
                                   ).replace(f"{w}x{h}px", f"{nw}x{nh}px")
     gt.setdefault("render", {})["size_px"] = list(new)
     return img
-
-
-def _apply_emit_toggles(gt: dict) -> None:
-    """Honour the supervision switches by dropping GT the control arm must not see."""
-    if not CFG.emit_spotting:
-        gt.pop("spotting", None)
-    if not CFG.emit_rationale:
-        for q in gt.get("qa", []):
-            q.pop("rationale", None)
-    if not getattr(CFG, "emit_understanding", True):
-        gt["qa"] = [q for q in gt.get("qa", []) if not q.get("derived")]
-    # note: the internal "box"/"derived" keys are consumed by from_builder_gt and then dropped by
-    # DocSample.to_dict (which rebuilds qa from QAItem), so they never reach the saved gt.json.
 
 
 # --- visual-diversity themes (per-doc, deterministic). Photometric/typographic only -> boxes stay
@@ -204,7 +194,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         for k in list(builder.field_lang):
             if builder.field_lang[k] == "en":
                 builder.field_lang[k] = CURRENT_LANG
-    _apply_emit_toggles(gt)
+    apply_supervision_toggles(gt, CFG)
 
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
@@ -226,11 +216,20 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     )
     doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
     out = doc.to_dict()
+    if out.get("semantic_graph"):
+        policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
+        out["suggested_split"] = policy.assign(out)
     (folder / "gt.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     sup = out["ablation_support"]
     records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
                     "language": CURRENT_LANG, "stressors": gt["stressors"],
-                    "anchor_metric": gt["anchor_metric"], "support": sup})
+                    "anchor_metric": gt["anchor_metric"], "support": sup,
+                    "split": out["split"], "suggested_split": out.get("suggested_split"),
+                    "difficulty": out.get("difficulty"),
+                    "template_fingerprint": (out.get("semantic_graph") or {}).get(
+                        "template_fingerprint"),
+                    "content_fingerprint": (out.get("semantic_graph") or {}).get(
+                        "content_fingerprint")})
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
         flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
                         ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
@@ -334,7 +333,7 @@ def case_checkbox_form(do_degrade):
         contact[fake.random_int(0, 3)] = (contact[fake.random_int(0, 3)][0], True)
     _langs = ["English", "Korean", "Spanish", "Japanese"]
     _chosen = fake.random_int(0, len(_langs) - 1)
-    langs = [(l, i == _chosen) for i, l in enumerate(_langs)]
+    langs = [(language, i == _chosen) for i, language in enumerate(_langs)]
     b = DocBuilder("checkbox form", ["selection-marks", "layout", "hallucination"],
                    "selection-mark accuracy + F1", page="A5")
     b.title("SERVICE ENROLLMENT FORM", level=2)
@@ -366,7 +365,7 @@ def case_redacted(do_degrade):
                    "abstain (no-hallucination)", page="A5")
     b.title("CONFIDENTIAL MEMORANDUM", level=2)
     b.field("Subject", name, key="subject")
-    b.redaction(f"The disclosed account number ", fake.numerify("###########"),
+    b.redaction("The disclosed account number ", fake.numerify("###########"),
                 key="account_number", suffix_html=" has been sealed by court order.")
     b.redaction("Authorising officer: ", fake.name(), key="authorising_officer", bar="█" * 8)
     b.line(f"Next review: {fake.date('%Y-%m-%d')}.")
@@ -739,12 +738,44 @@ def _seg7(d, digits, x0, y0, on, off, w=60, h=58, t=10, gap=34):
         seg("c", [(x + w, y0 + h + t), (x + w + t, y0 + h + 2 * t), (x + w + t, y0 + 2 * h - t), (x + w, y0 + 2 * h)])
 
 
+def _emit_hard_case(key: str, do_degrade: bool) -> None:
+    """Build a graph-authored hard case from the isolated per-case RNG stream."""
+
+    case = HARD_CASE_FACTORIES[key](random.Random(random.randrange(2**31)), CFG.difficulty_level)
+    emit(
+        case.key,
+        case.builder,
+        case.degradation_preset,
+        do_degrade,
+        domain=case.domain,
+        acquisition=case.acquisition,
+    )
+
+
+def case_hard_table(do_degrade):
+    _emit_hard_case("hard_table", do_degrade)
+
+
+def case_hard_chart(do_degrade):
+    _emit_hard_case("hard_chart", do_degrade)
+
+
+def case_hard_investment(do_degrade):
+    _emit_hard_case("hard_investment", do_degrade)
+
+
+def case_hard_science(do_degrade):
+    _emit_hard_case("hard_science", do_degrade)
+
+
 CASES = {
     "invoice": case_invoice, "id_card": case_id_card, "checkbox_form": case_checkbox_form,
     "redacted": case_redacted, "bank_statement": case_bank_statement, "rtl_arabic": case_rtl_arabic,
     "webtoon": case_webtoon, "prescription": case_prescription, "cheque": case_cheque,
     "ancient": case_ancient, "website": case_website, "mobile_app": case_mobile_app,
     "pdf_paper": case_pdf_paper, "lcd_7seg": case_lcd,
+    "hard_table": case_hard_table, "hard_chart": case_hard_chart,
+    "hard_investment": case_hard_investment, "hard_science": case_hard_science,
 }
 
 
@@ -754,7 +785,7 @@ def _choose_lang(rng: random.Random) -> str:
     if len(langs) == 1:
         return langs[0]
     if CFG.language_weights:
-        ws = [CFG.language_weights.get(l, 0.0) for l in langs]
+        ws = [CFG.language_weights.get(language, 0.0) for language in langs]
         if sum(ws) > 0:
             return rng.choices(langs, weights=ws, k=1)[0]
     return rng.choice(langs)
@@ -772,6 +803,10 @@ def main():
     ap.add_argument("--count", type=int, default=None,
                     help="variants per case (overrides config.count; >1 fans out into <key>/<NNNN>/)")
     ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
+    ap.add_argument("--difficulty-level", type=int, choices=range(1, 6), default=None,
+                    help="hard-document curriculum level in [1,5] (overrides config)")
+    ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
+                    default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
                     help="output dir (default data/probes/realistic_cases) — use a different dir + "
                          "--seed for a held-out TEST split (memorization-vs-understanding, A0)")
@@ -784,6 +819,10 @@ def main():
         CFG.count = args.count
     if args.seed is not None:
         CFG.seed = args.seed
+    if args.difficulty_level is not None:
+        CFG.difficulty_level = args.difficulty_level
+    if args.split_name is not None:
+        CFG.split_name = args.split_name
     if args.no_degrade:
         CFG.degrade_prob = 0.0
 
@@ -799,7 +838,8 @@ def main():
     keys = args.only or list(CASES)
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
-          f"langs={CFG.languages} degrade_p={CFG.degrade_prob}")
+          f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
+          f"difficulty={CFG.difficulty_level} split={CFG.split_name}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

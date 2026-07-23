@@ -20,7 +20,12 @@ from .dto import (
     script_for,
 )
 from .patterns import DocBuilder, esc
+from .latent import (
+    DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
+)
 from .render import RenderResult, render_html, resolve_boxes
+from .splits import SplitPolicy, validate_split_leakage
+from .supervision import apply_supervision_toggles
 from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
 
 __all__ = [
@@ -32,4 +37,8 @@ __all__ = [
     # model-free understanding-GT derivation
     "Derivation", "resolve", "locate", "count_occurrences", "region_box", "union_box",
     "word_boxes", "aggregate",
+    # executable semantic graphs and leakage-safe splitting
+    "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
+    "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
+    "apply_supervision_toggles",
 ]

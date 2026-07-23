@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import html as _html
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PIL import Image
 
@@ -59,6 +59,8 @@ class DocBuilder:
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
         self.field_font_px: dict[str, float] = {}
+        self.semantic_graph: dict | None = None
+        self.difficulty: dict | None = None
 
     # -- low level ---------------------------------------------------------
     def raw(self, html: str) -> None:
@@ -195,7 +197,9 @@ class DocBuilder:
 
     def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
            key: str | None = None, concise: bool = True, rationale: str | None = None,
-           languages: list[str] | None = None) -> None:
+           languages: list[str] | None = None,
+           evidence_keys: list[str] | None = None, derived: bool = False,
+           graph_query_id: str | None = None) -> None:
         """Register an answerable (question, answer) pair over content already rendered, so the case
         can be turned into eval Samples. `answer` may be a string or a list of acceptable strings.
 
@@ -208,6 +212,9 @@ class DocBuilder:
         self.qas.append({"key": key, "question": q, "answers": ans,
                          "metric": metric, "answer_type": answer_type,
                          **({"rationale": rationale} if rationale else {}),
+                         **({"evidence_keys": evidence_keys} if evidence_keys else {}),
+                         **({"derived": True} if derived else {}),
+                         **({"graph_query_id": graph_query_id} if graph_query_id else {}),
                          **({"languages": languages} if languages else {})})
 
     def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:
@@ -326,6 +333,10 @@ class DocBuilder:
                 gt["reading_order"] = self.reading_order
             if self.probes:
                 gt["probes"] = self.probes
+            if self.semantic_graph is not None:
+                gt["semantic_graph"] = self.semantic_graph
+            if self.difficulty is not None:
+                gt["difficulty"] = self.difficulty
             return rr.image.copy(), gt
         finally:
             rr.close()

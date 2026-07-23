@@ -7,9 +7,7 @@ import textwrap
 
 import pytest
 
-from docvlm_eval.synth.dto import (
-    BBox, Degradation, DocSample, Field, GenConfig, QAItem, RenderSpec, script_for,
-)
+from docvlm_eval.synth.dto import BBox, DocSample, Field, GenConfig, QAItem, RenderSpec, script_for
 from docvlm_eval.synth.to_samples import case_to_samples
 
 
@@ -118,3 +116,31 @@ def test_genconfig_from_yaml_base_and_overrides(tmp_path):
 
     with pytest.raises(KeyError):
         GenConfig.from_yaml(str(p), ablation="nope")
+
+
+def test_graph_evidence_keys_resolve_to_multiple_boxes():
+    gt = {
+        "type": "hard table",
+        "stressors": ["multi-cell"],
+        "anchor_metric": "relaxed_acc",
+        "fields": {"left": "10", "right": "20"},
+        "spotting": {"left": [1, 2, 3, 4], "right": [5, 6, 7, 8]},
+        "qa": [
+            {
+                "question": "What is the total?",
+                "answers": ["30"],
+                "metric": "relaxed_acc",
+                "answer_type": "H-table",
+                "evidence_keys": ["left", "right"],
+            }
+        ],
+        "render": {"dpi": 150, "size_px": [100, 100], "page_count": 1},
+    }
+    doc = DocSample.from_builder_gt(gt)
+    assert doc.qa[0].evidence_keys == ["left", "right"]
+    assert [box.to_list() for box in doc.qa[0].evidence_bboxes] == [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+    ]
+    detailed = doc.to_dict()["qa_detailed"][0]
+    assert detailed["evidence_bboxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]

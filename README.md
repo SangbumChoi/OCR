@@ -115,8 +115,25 @@ Faker → WeasyPrint → PDF → PyMuPDF (rasterize + exact spotting boxes) → 
 See [`data/probes/realistic_cases/`](data/probes/realistic_cases/README.md):
 ```bash
 pip install -e ".[synth]"
-python scripts/make_realistic_cases.py           # 11 cases, each clean.png + degraded.png + gt.json
+python scripts/make_realistic_cases.py           # 18 cases, each clean.png + degraded.png + gt.json
 ```
+
+The generator also includes four executable-graph hard families: dense tables, labelled charts,
+multi-path beneficial ownership, and quantitative scientific papers. Their answers, rationales,
+and multi-box evidence are recomputed from the same graph that supplies the rendered values:
+
+```bash
+python scripts/make_realistic_cases.py \
+  --only hard_table hard_chart hard_investment hard_science \
+  --difficulty-level 5 --split-name train --count 100 --out data/generated/hard_train
+
+python scripts/validate_synth_splits.py \
+  --split train=data/generated/hard_train \
+  --split heldout=data/generated/hard_heldout
+```
+
+See [`docs/report/hard_synthetic_pipeline.md`](docs/report/hard_synthetic_pipeline.md) for the
+curriculum, semantic fingerprints, leakage policy, and structured SFT/RLVR evidence contract.
 
 ---
 

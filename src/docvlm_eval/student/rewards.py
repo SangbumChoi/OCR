@@ -53,6 +53,11 @@ class RewardContext:
         raw_box = meta.get("box")
         if isinstance(raw_box, (list, tuple)) and len(raw_box) >= 4:
             boxes.append(_normalize_box(raw_box[:4], size))
+        raw_boxes = meta.get("boxes")
+        if isinstance(raw_boxes, (list, tuple)):
+            for raw in raw_boxes:
+                if isinstance(raw, (list, tuple)) and len(raw) >= 4:
+                    boxes.append(_normalize_box(raw[:4], size))
         if sample.metric == "grounding":
             for answer in sample.answers:
                 parsed = parse_gold_box(answer)

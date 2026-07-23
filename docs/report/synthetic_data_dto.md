@@ -14,7 +14,7 @@ their stressors) → this file (how we synthesise them with built-in GT) →
 A synthetic corpus is only useful for fine-tuning if we can grow it along the two axes that make a
 document *hard*, while proving the model **understands** rather than **memorizes** the templates:
 
-- **Visual diversity** — the *image* distribution: document kinds (14 types), acquisition modality,
+- **Visual diversity** — the *image* distribution: document kinds (18 current families),
   lighting, colour cast, contrast, resolution, script. Knobs: `degrade_presets`/`degrade_prob`
   (acquisition + lighting; arm `D_visual_diverse`), `languages` (script), `dpi`/`target_long_side`.
 - **Annotation difficulty** — the *label* distribution: not just extraction but *understanding* —
@@ -58,6 +58,9 @@ DocSample
 ├─ fields:  [ Field(key, value, role, bbox, language, script, font_px, is_small, reading_index) ]
 ├─ qa:      [ QAItem(question, answers, answer_type, metric, rationale, answer_bbox, languages) ]
 ├─ table_html, selection, redacted, reading_order, probes
+├─ semantic_graph: executable facts, relations, queries, answers, and semantic fingerprints
+├─ difficulty: level, reasoning hops, distractors, density, cross-region flag, skills
+├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio)
 ├─ degradation:  Degradation(preset, severity, seed, geometry_preserved)
@@ -73,6 +76,11 @@ pipeline already read. Existing loaders keep working unchanged.
 
 `ablation_support` lets a sampler filter the corpus to documents that *can* exercise a given factor
 (e.g. "only docs with a rationale" for an A2 arm), so arms stay balanced.
+
+Hard queries may cite more than one region. `QAItem.evidence_keys` links a graph query to rendered
+fields or cells; after PDF box resolution, `evidence_bboxes` carries every exact pixel box into the
+structured SFT/RLVR target. See
+[`hard_synthetic_pipeline.md`](hard_synthetic_pipeline.md) for the executable graph and split gates.
 
 ## 2b. The model-free understanding layer (the part that isn't OCR)
 
@@ -107,6 +115,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **A3 spot+reason** | the four corners of {spot}×{reason} | both of the above | both flags (see `A3_*` overrides) |
 | **A4 multilingual** | single vs mixed languages; which pairs transfer | `Field.language`/`script`, `DocSample.languages` | `languages`, `language_weights` |
 | **A7 preprocessing** | resolution / tiling / aspect; small-text legibility | `RenderSpec.*`, `Field.is_small` | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
+| **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
 
 (*A5 LoRA-placement* and *A6 HPO* are training-side — they consume this GT but need no generator
 knob.)

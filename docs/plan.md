@@ -159,6 +159,9 @@ added factor lifting the score a step, ending well above the baseline.
   diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
   and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
   (simulation-only; LLM generators kept as future-optional seams).
+- **Generate hard reasoning:** [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md)
+  documents the executable latent graph, five-level curriculum, hard table/chart/investment/science
+  families, multi-box structured SFT/RLVR targets, and semantic train/heldout leakage gate.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
 - **Deliverable (updated):** the report is now **refocused on the single selected objective —
@@ -195,5 +198,6 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
+   [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md) ·
    [`report/synth_generation_survey.md`](report/synth_generation_survey.md) →
    [`report/technical_report.md`](report/technical_report.md)

@@ -53,6 +53,10 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
         "doc_type": gt.get("type"),
         "stressors": gt.get("stressors"),
         "size": size,
+        "language": (gt.get("languages") or ["und"])[0],
+        "split": gt.get("split", "synthetic"),
+        "difficulty": gt.get("difficulty"),
+        "template_family": (gt.get("semantic_graph") or {}).get("template_family"),
     }
 
     for i, qa in enumerate(gt.get("qa", [])):
@@ -61,6 +65,9 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
             meta["rationale"] = qa["rationale"]
         if qa.get("box"):
             meta["box"] = qa["box"]
+        boxes = qa.get("evidence_bboxes") or []
+        if boxes:
+            meta["boxes"] = boxes
         out.append(Sample(
             f"{prefix}:qa{i}", image_path, qa["question"], list(qa["answers"]),
             qa.get("answer_type", "kie"), qa.get("metric", "anls"),

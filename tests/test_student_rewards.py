@@ -188,6 +188,29 @@ def test_reward_context_normalizes_authored_sample_evidence():
     assert context.gold_rationale == "Read the total cell."
 
 
+def test_reward_context_accepts_multiple_pixel_evidence_boxes():
+    from docvlm_eval.schema import Sample
+    from docvlm_eval.student.rewards import RewardContext
+
+    sample = Sample(
+        "multi",
+        "/tmp/image.png",
+        "Question?",
+        ["answer"],
+        "H-table",
+        "anls",
+        {
+            "size": [100, 200],
+            "boxes": [[10, 20, 30, 40], [50, 60, 70, 80]],
+        },
+    )
+    context = RewardContext.from_sample(sample)
+    assert context.gold_boxes == (
+        (0.1, 0.1, 0.3, 0.2),
+        (0.5, 0.3, 0.7, 0.4),
+    )
+
+
 def test_malformed_output_is_gated_before_task_rewards():
     from docvlm_eval.student.rewards import RewardContext, score_structured_response
 

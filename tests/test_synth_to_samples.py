@@ -80,3 +80,24 @@ def test_loader_handles_flat_and_variant_layouts(tmp_path):
     assert "invoice:qa0" in ids
     assert "id_card_0000:qa0" in ids and "id_card_0001:qa0" in ids  # prefixed by relative path
     assert len(s) == 3
+
+
+def test_multiple_evidence_boxes_reach_posttraining_metadata():
+    gt = {
+        "type": "hard table",
+        "languages": ["en"],
+        "render": {"size_px": [100, 200]},
+        "qa": [
+            {
+                "question": "Total?",
+                "answers": ["30"],
+                "answer_type": "H-table",
+                "metric": "relaxed_acc",
+                "rationale": "10 + 20 = 30.",
+                "evidence_bboxes": [[1, 2, 3, 4], [5, 6, 7, 8]],
+            }
+        ],
+    }
+    sample = case_to_samples(gt, "/tmp/hard.png", "hard")[0]
+    assert sample.meta["boxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]
+    assert sample.meta["rationale"] == "10 + 20 = 30."
