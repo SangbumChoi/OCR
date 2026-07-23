@@ -305,3 +305,19 @@ RL rollout reuses one encoded visual prefix per image. SFT supports `torchrun`; 
 currently single-process and requires the full policy, frozen reference, and optimizer state on one
 device. See
 [`docs/report/student_posttraining_runner.md`](docs/report/student_posttraining_runner.md).
+
+Compare train and heldout generation from any native checkpoint:
+
+```bash
+python scripts/eval_student.py \
+  --split train=data/posttraining/train.jsonl \
+  --split heldout=data/posttraining/heldout.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_rlvr/full_reward/checkpoints/step-00001000/student \
+  --output outputs/student_eval/full_reward \
+  --wandb-project docvlm-ablation
+```
+
+This writes standard benchmark scores and structured rewards separately, including
+train-minus-heldout gaps and task/source/language slices. W&B receives both
+`eval/<split>_<axis>` and `eval_by_axis/<axis>/<split>` keys for paired panels.

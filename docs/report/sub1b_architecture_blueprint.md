@@ -194,12 +194,13 @@ what must be inherited, and what can be learned from the controlled document cur
 
 The model constructor, selective initialization, tokenizer, UDD adapter, samplers, multimodal
 collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict reward
-verifiers, and single-update GRPO runner are executable and tested. The contracts are detailed in
+verifiers, single-update GRPO runner, and multi-split held-out generation evaluator are executable
+and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and
 [`student_pretraining_runner.md`](student_pretraining_runner.md), and
 [`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
-step is to run matched initialization, SFT-target, and reward ablations at fixed token budgets, then
-publish held-out capability and efficiency curves.
+step is to run matched initialization, SFT-target, and reward ablations at fixed token budgets with
+the evaluator, then publish held-out capability and efficiency curves.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations

@@ -16,6 +16,14 @@ from .distillation import (
     NativeStudentTeacher,
     TeacherSignals,
 )
+from .evaluate import (
+    StructuredEvalConfig,
+    StructuredEvalResult,
+    compare_split_summaries,
+    evaluate_structured_student,
+    wandb_metrics_for_split,
+    write_split_comparison,
+)
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
 from .posttrain import (
@@ -26,6 +34,7 @@ from .posttrain import (
     completion_log_probs,
     group_relative_policy_loss,
     sample_completion_group,
+    posttraining_prompt_batch,
     train_grpo,
     train_sft,
 )
@@ -59,6 +68,8 @@ __all__ = [
     "StudentConfig",
     "StudentExample",
     "SFTConfig",
+    "StructuredEvalConfig",
+    "StructuredEvalResult",
     "StructuredPostTrainingDataset",
     "TaskHeadConfig",
     "TeacherSignals",
@@ -68,12 +79,17 @@ __all__ = [
     "VisionConfig",
     "student_model_inputs",
     "build_structured_target",
+    "compare_split_summaries",
     "completion_log_probs",
     "group_relative_policy_loss",
     "parse_structured_response",
     "sample_completion_group",
+    "posttraining_prompt_batch",
     "score_structured_response",
     "train_grpo",
     "train_sft",
     "train_student",
+    "evaluate_structured_student",
+    "wandb_metrics_for_split",
+    "write_split_comparison",
 ]

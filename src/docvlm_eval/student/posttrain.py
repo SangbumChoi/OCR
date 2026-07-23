@@ -361,7 +361,12 @@ def _device(name: str) -> torch.device:
     return torch.device(name)
 
 
-def _move_prompt_batch(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
+def posttraining_prompt_batch(
+    batch: dict[str, Any],
+    device: torch.device,
+) -> dict[str, Any]:
+    """Move one collated example and retain only its prompt-side model inputs."""
+
     moved = {
         key: value.to(device)
         if isinstance(value, torch.Tensor)
@@ -684,7 +689,7 @@ def train_grpo(
     while state.rollout_step < config.max_steps:
         sample_index = random.randrange(len(dataset))
         raw_batch = collator([dataset[sample_index]])
-        prompt_batch = _move_prompt_batch(raw_batch, device)
+        prompt_batch = posttraining_prompt_batch(raw_batch, device)
         with _autocast_context(device, config.precision):
             completion_ids, completion_mask, texts = sample_completion_group(
                 policy,

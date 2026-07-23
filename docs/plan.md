@@ -134,7 +134,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   sample-weighted held-out evaluation, and exact checkpoint resume.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
-  rewards, visual-prefix-cached rollout, single-update GRPO, and exact checkpoint resume.
+  rewards, visual-prefix-cached rollout, single-update GRPO, exact checkpoint resume, and
+  train/heldout generation evaluation.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the

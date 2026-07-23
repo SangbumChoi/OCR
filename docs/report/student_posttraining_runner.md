@@ -128,7 +128,65 @@ Resume rejects a changed tokenizer or reference checkpoint.
 
 Native RLVR currently runs in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not
-large enough. Distributed rollout, optimizer sharding, KV caching, RL replay mixing, held-out
-evaluation, and a symbolic formula engine remain future measured extensions. The current KL term is
-the implemented collapse constraint; general multimodal replay is not yet interleaved inside the
-RLVR loop.
+large enough. Distributed rollout, optimizer sharding, KV caching, RL replay mixing, and a symbolic
+formula engine remain future measured extensions. The current KL term is the implemented collapse
+constraint; general multimodal replay is not yet interleaved inside the RLVR loop.
+
+## Held-out generation evaluation
+
+Evaluate train and leakage-safe heldout JSONL with one loaded checkpoint:
+
+```bash
+python scripts/eval_student.py \
+  --split train=data/posttraining/train.jsonl \
+  --split heldout=data/posttraining/heldout.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_rlvr/full_reward/checkpoints/step-00001000/student \
+  --output outputs/student_eval/full_reward
+```
+
+The evaluator never passes gold targets to `generate`. It decodes the strict JSON completion, sends
+only its `answer` field through the sample's standard benchmark metric, and reports structured
+reward separately. This distinction prevents a high reward from being presented as ANLS, TEDS, or
+grounding accuracy.
+
+Each split writes:
+
+- `summary.json`: headline score, reward, structural validity, answer rate, latency, and
+  answer-type/source/language slices;
+- `per_sample.jsonl`: raw structured output, parsed fields, standard score, reward components, and
+  structural error;
+- root `comparison.json`: train-minus-heldout headline and matched answer-type gaps;
+- root `manifest.json`: checkpoint, tokenizer, split, and decoding provenance.
+
+Use `--max-samples N --seed S` for a deterministic smoke subset. The reported latency uses
+visual-prefix reuse but not a decoder KV cache, so it is a correctness baseline rather than a final
+serving benchmark.
+
+### Paired W&B metrics
+
+Add W&B logging without changing the evaluation:
+
+```bash
+python scripts/eval_student.py \
+  --split train=data/posttraining/train.jsonl \
+  --split heldout=data/posttraining/heldout.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
+  --output outputs/student_eval/sft \
+  --wandb-project docvlm-ablation \
+  --wandb-run native-sft-heldout
+```
+
+Both splits are logged in one call at the same checkpoint step. Every capability appears in both
+orientations:
+
+```text
+eval/train_<axis>                 eval/heldout_<axis>
+eval_by_axis/<axis>/train         eval_by_axis/<axis>/heldout
+```
+
+The actual split name is `heldout`, not `held`. Reward components use
+`eval_reward/<component>/<split>`; source and language slices use `eval_by_source` and
+`eval_by_language`. This makes one W&B panel per suffix possible without duplicating or manually
+aligning run steps.

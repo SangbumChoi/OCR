@@ -103,6 +103,26 @@ eval_by_axis/<axis>/<split>  ← same numbers regrouped by axis (x = epoch) [tra
 > "for grounding specifically, how do train and heldout compare?"). Pick whichever W&B panel grouping
 > you want — the values are identical.
 
+### Native student checkpoint evaluation
+
+[`scripts/eval_student.py`](../../scripts/eval_student.py) uses the same paired naming contract for
+the native pretraining/SFT/RLVR checkpoints. Pass both splits and one W&B project:
+
+```bash
+python scripts/eval_student.py \
+  --split train=data/posttraining/train.jsonl \
+  --split heldout=data/posttraining/heldout.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint /path/to/checkpoint/student \
+  --output outputs/student_eval/run \
+  --wandb-project docvlm-ablation
+```
+
+The command logs all train and heldout values in one W&B call at the same checkpoint step. Use
+`eval_by_axis/<axis>/train` and `eval_by_axis/<axis>/heldout` in one panel. The real key is
+`heldout`, not `held`. Structured reward components are kept separate under
+`eval_reward/<component>/<split>` so reward gains cannot be mistaken for benchmark-score gains.
+
 ## 7. Glossary — every term you'll see
 
 ### Splits (the `<split>` in `eval/<split>_*`)
