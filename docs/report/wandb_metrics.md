@@ -123,6 +123,31 @@ The command logs all train and heldout values in one W&B call at the same checkp
 `heldout`, not `held`. Structured reward components are kept separate under
 `eval_reward/<component>/<split>` so reward gains cannot be mistaken for benchmark-score gains.
 
+### Packed visual backend benchmark
+
+The target-GPU runner described in
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) logs one W&B run with:
+
+```text
+visual_benchmark/visual_tokens
+visual_benchmark/batch_size
+visual_benchmark/<requested_backend>/success
+visual_benchmark/<requested_backend>/resolved_flex
+visual_benchmark/<requested_backend>/median_ms
+visual_benchmark/<requested_backend>/p95_ms
+visual_benchmark/<requested_backend>/tokens_per_second
+visual_benchmark/<requested_backend>/median_speedup_vs_loop
+visual_benchmark/<requested_backend>/peak_memory_allocated_bytes
+visual_benchmark/<requested_backend>/peak_memory_reserved_bytes
+visual_benchmark/<requested_backend>/peak_memory_reduction_fraction_vs_loop
+visual_benchmark/<requested_backend>/max_abs_delta_vs_loop
+```
+
+Here `<requested_backend>` is `loop`, `auto`, or `flex`. Filter or group by the W&B config fields
+`mode`, `precision`, `sequence_lengths`, `student_config_fingerprint`, and device metadata before
+comparing latency. `resolved_flex=0` on an `auto` run means the portable fallback executed; it must
+not be presented as a FlexAttention measurement.
+
 ## 7. Glossary — every term you'll see
 
 ### Splits (the `<split>` in `eval/<split>_*`)

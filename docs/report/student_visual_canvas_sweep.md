@@ -58,6 +58,45 @@ sample count with backward-compatible migration. Sweep aggregation reads the fin
 reports the resolved attention backend, per-arm means, paired baseline deltas, and deterministic
 95% intervals under `pretraining_efficiency*`.
 
+## Target-GPU backend gate
+
+[`scripts/benchmark_student_visual_backend.py`](../../scripts/benchmark_student_visual_backend.py)
+isolates the exact blueprint ViT and gated resampler affected by packed attention. It deliberately
+does not allocate the unchanged language decoder. The runner excludes warmup and compilation from
+timing, measures either forward-only or forward-plus-backward latency, synchronizes CUDA around
+every sample, resets peak-memory statistics after warmup, and compares every output with the
+portable loop backend using the same weights and input.
+
+Run this on the same GPU type and software image intended for training:
+
+```bash
+python scripts/benchmark_student_visual_backend.py \
+  --config configs/sub1b_architecture.yaml \
+  --sequence-lengths 2520,2520 \
+  --backends loop auto flex \
+  --mode training \
+  --precision bfloat16 \
+  --warmup-iterations 3 \
+  --iterations 10 \
+  --device cuda \
+  --require-flex \
+  --output outputs/visual_backend_a100_bf16.json \
+  --wandb-project docvlm-ablation \
+  --wandb-group visual-backend-gate
+```
+
+Use `float16` on devices without BF16. `--require-flex` exits nonzero if either `auto` or explicit
+`flex` errors or resolves to `loop`, but writes the JSON and W&B evidence first. The report includes
+requested and resolved backends, median/p95 latency, visual-token throughput, allocated and
+reserved peak CUDA memory, output checksum, maximum absolute delta from `loop`, PyTorch/CUDA/device
+metadata, loop-relative speed and memory ratios, and a fingerprint of the complete student
+configuration.
+
+Do not compare records across different sequence lengths, modes, precision, GPU models, or
+configuration fingerprints. Accept FlexAttention only when the gate passes, numerical delta is
+within the recorded tolerance, and repeated target-GPU runs improve median latency or peak memory.
+An `auto` record resolving to `loop` is valid fallback evidence, not FlexAttention performance.
+
 ## Matched experiment
 
 [`configs/sub1b_visual_canvas_sweep.yaml`](../../configs/sub1b_visual_canvas_sweep.yaml) compiles
