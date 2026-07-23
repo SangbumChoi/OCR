@@ -109,6 +109,9 @@ def test_default_experiment_compiles_complete_stage_dag():
         stage for stage in plan.stages if stage.name == "initialize_student"
     )
     assert "visual_backend_benchmark" in initialize.dependencies
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    assert "--visual-backend-benchmark" in evaluate.command
+    assert "visual_backend_benchmark" in evaluate.dependencies
 
 
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):

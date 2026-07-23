@@ -32,8 +32,10 @@ The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`,
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
 actual loaded model count. Generalization, grounding, counterfactual reasoning, and reliability
 require a matched reference-checkpoint evaluation, while multilingual retention requires a
-per-language monolingual-control evaluation. Configured evaluation roots are content-addressed so
-changing a baseline invalidates the evaluation stage.
+per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight JSON
+and requires matched loop/candidate measurements from the exact resolved student configuration.
+Configured evaluation roots are content-addressed so changing a baseline invalidates the
+evaluation stage.
 
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
@@ -80,6 +82,14 @@ experiment fingerprint. `initialize_student` depends on the resulting JSON. Set 
 true` on the target CUDA image to stop before model initialization when `auto` or explicit `flex`
 falls back or fails. Keep it false when the portable loop backend is an accepted treatment; the
 resolved fallback remains visible in the artifact and W&B.
+
+The final evaluator receives that artifact through `--visual-backend-benchmark`. The default
+`visual_efficiency` gate requires CUDA training-mode evidence over at least 4,096 visual tokens,
+batch size two, three warmup iterations, and ten measured iterations. The `auto` candidate must
+resolve to `flex`, be at least 1.05 times as fast as `loop` at median latency, stay within 1.05
+times loop peak allocated memory, and remain within 0.02 maximum absolute output delta. A CPU
+report or short benchmark is `insufficient_evidence`; a mismatched architecture, fallback,
+execution error, numerical violation, or runtime regression is `fail`.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication

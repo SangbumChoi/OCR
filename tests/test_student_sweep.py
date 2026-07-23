@@ -403,6 +403,17 @@ def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
         in variant.plan.raw_spec["evaluation"]["wandb_tags"]
         for variant in plan.variants
     )
+    for variant in plan.variants:
+        benchmark_enabled = variant.arm_id == "packed"
+        assert (
+            variant.plan.raw_spec["runtime"]["visual_backend_benchmark"][
+                "enabled"
+            ]
+            is benchmark_enabled
+        )
+        assert (
+            "visual_backend_benchmark" in variant.plan.stage_names
+        ) is benchmark_enabled
 
 
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):

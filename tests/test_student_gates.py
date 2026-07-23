@@ -136,6 +136,61 @@ def _matched_gate_rows():
     return current, baseline
 
 
+def _visual_report(
+    *,
+    device_type="cuda",
+    resolved_backend="flex",
+    speedup=1.2,
+    memory_ratio=0.95,
+    numerical_delta=0.01,
+    measured_iterations=10,
+):
+    from docvlm_eval.student.config import (
+        StudentConfig,
+        student_config_fingerprint,
+    )
+
+    student = StudentConfig.from_blueprint(_blueprint())
+    return {
+        "schema_version": 1,
+        "scope": "student_vision_tower_and_gated_resampler",
+        "student_config_fingerprint": student_config_fingerprint(student),
+        "student_config": student.to_dict(),
+        "benchmark_config": {
+            "mode": "training",
+            "warmup_iterations": 3,
+            "measured_iterations": measured_iterations,
+        },
+        "resolved_precision": "bfloat16",
+        "environment": {
+            "device": "cuda:0" if device_type == "cuda" else "cpu",
+            "device_type": device_type,
+            "device_name": "test-gpu" if device_type == "cuda" else None,
+            "torch": "2.9.1",
+            "cuda": "12.8" if device_type == "cuda" else None,
+        },
+        "visual_tokens": 5040,
+        "batch_size": 2,
+        "results": [
+            {
+                "status": "ok",
+                "requested_backend": "loop",
+                "resolved_backend": "loop",
+                "median_ms": 120.0,
+            },
+            {
+                "status": "ok",
+                "requested_backend": "auto",
+                "resolved_backend": resolved_backend,
+                "median_ms": 100.0,
+                "median_speedup_vs_loop": speedup,
+                "peak_memory_ratio_vs_loop": memory_ratio,
+                "max_abs_delta_vs_loop": numerical_delta,
+            },
+        ],
+    }
+
+
 def test_gates_do_not_turn_missing_comparisons_into_success():
     from docvlm_eval.student.gates import evaluate_deployment_gates
 
@@ -153,7 +208,7 @@ def test_gates_do_not_turn_missing_comparisons_into_success():
     assert report["counts"] == {
         "pass": 1,
         "fail": 0,
-        "insufficient_evidence": 5,
+        "insufficient_evidence": 6,
     }
 
 
@@ -176,11 +231,12 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
                 "ko": {"score": 0.81},
             },
         ),
+        visual_backend_report=_visual_report(),
     )
 
     assert report["overall_status"] == "pass"
     assert report["counts"] == {
-        "pass": 6,
+        "pass": 7,
         "fail": 0,
         "insufficient_evidence": 0,
     }
@@ -192,6 +248,109 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
         "en": 0.01,
         "ko": 0.01,
     }
+    assert evidence["visual_efficiency"]["median_speedup_vs_loop"] == 1.2
+
+
+def test_visual_efficiency_gate_rejects_fallback_and_regressions():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.82, 0.8),
+        {"heldout": current_rows},
+        baseline_comparison=_comparison(0.74, 0.7),
+        baseline_rows={"heldout": baseline_rows},
+        visual_backend_report=_visual_report(
+            resolved_backend="loop",
+            speedup=0.9,
+            memory_ratio=1.1,
+            numerical_delta=0.03,
+        ),
+    )
+
+    gate = next(
+        gate for gate in report["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert gate["status"] == "fail"
+    assert gate["evidence"]["violations"] == [
+        "resolved_backend",
+        "median_speedup",
+        "peak_memory",
+        "numerical_parity",
+    ]
+
+
+def test_visual_efficiency_gate_requires_target_gpu_and_measurement_dose():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    cpu = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(device_type="cpu"),
+    )
+    short = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(measured_iterations=2),
+    )
+
+    cpu_gate = next(
+        gate for gate in cpu["gates"] if gate["id"] == "visual_efficiency"
+    )
+    short_gate = next(
+        gate for gate in short["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert cpu_gate["status"] == "insufficient_evidence"
+    assert short_gate["status"] == "insufficient_evidence"
+
+
+def test_visual_efficiency_gate_does_not_approve_dense_execution():
+    from copy import deepcopy
+
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    blueprint = deepcopy(_blueprint())
+    blueprint["training"]["pretraining"]["input_pipeline"][
+        "visual_sequence_mode"
+    ] = "dense"
+    report = evaluate_deployment_gates(
+        blueprint,
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(),
+    )
+
+    gate = next(
+        gate for gate in report["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert gate["status"] == "insufficient_evidence"
+    assert gate["evidence"]["visual_sequence_mode"] == "dense"
+
+
+def test_visual_efficiency_gate_rejects_wrong_student_config():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    visual = _visual_report()
+    visual["student_config"]["vision"]["layers"] = 1
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=visual,
+    )
+
+    gate = next(
+        gate for gate in report["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert gate["status"] == "fail"
 
 
 def test_gate_report_fails_real_threshold_violations():
@@ -222,6 +381,7 @@ def test_gate_report_fails_real_threshold_violations():
 def test_gate_artifacts_round_trip(tmp_path):
     from docvlm_eval.student.gates import (
         load_evaluation_artifacts,
+        load_visual_backend_report,
         write_gate_report,
     )
 
@@ -247,3 +407,9 @@ def test_gate_artifacts_round_trip(tmp_path):
         {"schema_version": 1, "overall_status": "pass"},
     )
     assert json.loads(path.read_text(encoding="utf-8"))["overall_status"] == "pass"
+    visual_path = tmp_path / "visual_backend.json"
+    visual_path.write_text(
+        json.dumps(_visual_report()),
+        encoding="utf-8",
+    )
+    assert load_visual_backend_report(visual_path)["visual_tokens"] == 5040

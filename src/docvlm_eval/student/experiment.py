@@ -1464,6 +1464,13 @@ def build_experiment_plan(
             eval_command.extend(
                 [flag, str(_resolve_path(repo_root, evaluation[key]))]
             )
+    if visual_benchmark_enabled:
+        eval_command.extend(
+            [
+                "--visual-backend-benchmark",
+                str(artifacts / "benchmarks" / "visual_backend.json"),
+            ]
+        )
     for key, flag in (
         ("wandb_project", "--wandb-project"),
         ("wandb_entity", "--wandb-entity"),
@@ -1482,6 +1489,7 @@ def build_experiment_plan(
                 final_checkpoint_stage,
                 "build_train_samples",
                 "build_heldout_samples",
+                *visual_benchmark_stage_names,
             ),
             (
                 Artifact(str(eval_dir / "manifest.json")),

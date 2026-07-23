@@ -22,6 +22,7 @@ from docvlm_eval.student.evaluate import (
 from docvlm_eval.student.gates import (
     evaluate_deployment_gates,
     load_evaluation_artifacts,
+    load_visual_backend_report,
     write_gate_report,
 )
 from docvlm_eval.student.model import DocumentVLMStudent
@@ -162,6 +163,11 @@ def main() -> None:
         type=Path,
         help="Evaluation root containing per-language monolingual controls.",
     )
+    parser.add_argument(
+        "--visual-backend-benchmark",
+        type=Path,
+        help="Target-device JSON from benchmark_student_visual_backend.py.",
+    )
     args = parser.parse_args()
 
     split_paths = _parse_splits(args.split)
@@ -244,6 +250,11 @@ def main() -> None:
             monolingual_comparison, _ = load_evaluation_artifacts(
                 args.monolingual_control_evaluation
             )
+        visual_backend_report = None
+        if args.visual_backend_benchmark is not None:
+            visual_backend_report = load_visual_backend_report(
+                args.visual_backend_benchmark
+            )
         gate_report = evaluate_deployment_gates(
             blueprint,
             count_unique_parameters(model),
@@ -252,6 +263,7 @@ def main() -> None:
             baseline_comparison=baseline_comparison,
             baseline_rows=baseline_rows,
             monolingual_control_comparison=monolingual_comparison,
+            visual_backend_report=visual_backend_report,
         )
         gate_path = write_gate_report(args.output / "gates.json", gate_report)
         manifest = {
@@ -269,6 +281,11 @@ def main() -> None:
             "monolingual_control_evaluation": (
                 str(args.monolingual_control_evaluation)
                 if args.monolingual_control_evaluation is not None
+                else None
+            ),
+            "visual_backend_benchmark": (
+                str(args.visual_backend_benchmark)
+                if args.visual_backend_benchmark is not None
                 else None
             ),
         }

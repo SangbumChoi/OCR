@@ -664,6 +664,7 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "reasoning",
         "multilingual",
         "reliability",
+        "visual_efficiency",
     }
     if not isinstance(gates, list):
         errors.append("evaluation_gates must be a list")
@@ -709,6 +710,7 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 "min_selective_risk_reduction",
                 "max_hallucination_increase",
             ),
+            "visual_efficiency": ("max_abs_delta_vs_loop",),
         }
         for gate_id, fields in nonnegative_fields.items():
             gate = by_id.get(gate_id, {})
@@ -743,4 +745,47 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 "evaluation_gates.reliability.coverage must be within (0, 1]"
             )
+        efficiency = by_id.get("visual_efficiency", {})
+        if efficiency.get("candidate_requested_backend") not in {
+            "auto",
+            "flex",
+        }:
+            errors.append(
+                "evaluation_gates.visual_efficiency."
+                "candidate_requested_backend must be auto or flex"
+            )
+        if efficiency.get("required_resolved_backend") != "flex":
+            errors.append(
+                "evaluation_gates.visual_efficiency."
+                "required_resolved_backend must be flex"
+            )
+        if efficiency.get("required_device_type") != "cuda":
+            errors.append(
+                "evaluation_gates.visual_efficiency."
+                "required_device_type must be cuda"
+            )
+        if efficiency.get("required_mode") != "training":
+            errors.append(
+                "evaluation_gates.visual_efficiency.required_mode must be training"
+            )
+        for field in (
+            "min_visual_tokens",
+            "min_batch_size",
+            "min_warmup_iterations",
+            "min_measured_iterations",
+        ):
+            if int(efficiency.get(field, -1)) <= 0:
+                errors.append(
+                    f"evaluation_gates.visual_efficiency.{field} "
+                    "must be positive"
+                )
+        for field in (
+            "min_median_speedup_vs_loop",
+            "max_peak_memory_ratio_vs_loop",
+        ):
+            if float(efficiency.get(field, 0)) <= 0:
+                errors.append(
+                    f"evaluation_gates.visual_efficiency.{field} "
+                    "must be positive"
+                )
     return estimates, errors

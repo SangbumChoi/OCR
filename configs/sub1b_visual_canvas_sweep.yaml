@@ -107,6 +107,7 @@ variants:
   - id: dense_adaptive_bucketed
     hypothesis: "Rotation-aware aspect buckets preserve task weights while minimizing dense visual padding in multi-sample batches."
     experiment_patches:
+      - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
@@ -122,6 +123,7 @@ variants:
   - id: dense_adaptive_unbucketed
     hypothesis: "Adaptive canvases without shape buckets isolate the sampler's incremental efficiency effect."
     experiment_patches:
+      - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
@@ -137,6 +139,7 @@ variants:
   - id: dense_fixed_square
     hypothesis: "A fixed square canvas controls for stable shape at the cost of dense padding."
     experiment_patches:
+      - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:fixed-square}

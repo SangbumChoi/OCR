@@ -60,6 +60,13 @@ Actual batch shapes drive runtime accounting. The final update can cross the tar
 completed phase must reach its budget without exceeding the configured 2% overshoot tolerance.
 `compute_budget_report.json` fails the suite when any run violates that gate.
 
+All profiles deliberately use dense fixed-square execution to isolate resolution and resampler
+capacity. The packed FlexAttention preflight is therefore disabled for these runs; their
+`visual_efficiency` deployment gate remains `insufficient_evidence` instead of attributing
+packed-path latency to a dense architecture. Target-device latency for the selected packed
+deployment profile is measured separately by
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md).
+
 ## Run
 
 Compile all 15 DAGs without downloading data or checkpoints:

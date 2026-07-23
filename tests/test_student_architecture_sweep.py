@@ -41,6 +41,12 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
     assert len(plan.profiles) == 5
     assert len(plan.sweep.variants) == 15
     assert plan.budgets.pretrain > plan.budgets.sft > plan.budgets.rlvr
+    assert (
+        plan.sweep.control_values_by_replicate["seed_0"][
+            "experiment:/runtime/visual_backend_benchmark/enabled"
+        ]
+        is False
+    )
     for variant in plan.sweep.variants:
         blueprint = variant.plan.resolved_blueprint
         pretrain = blueprint["training"]["pretraining"]
@@ -65,6 +71,13 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
         assert rlvr["max_steps"] is None
         tags = variant.plan.raw_spec["evaluation"]["wandb_tags"]
         assert "compute-matched-architecture" in tags
+        assert (
+            variant.plan.raw_spec["runtime"]["visual_backend_benchmark"][
+                "enabled"
+            ]
+            is False
+        )
+        assert "visual_backend_benchmark" not in variant.plan.stage_names
 
 
 def test_architecture_sweep_profiles_have_expected_compute_order(tmp_path):

@@ -115,6 +115,7 @@ python scripts/eval_student.py \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint /path/to/checkpoint/student \
   --output outputs/student_eval/run \
+  --visual-backend-benchmark outputs/visual_backend.json \
   --wandb-project docvlm-ablation
 ```
 
@@ -122,6 +123,9 @@ The command logs all train and heldout values in one W&B call at the same checkp
 `eval_by_axis/<axis>/train` and `eval_by_axis/<axis>/heldout` in one panel. The real key is
 `heldout`, not `held`. Structured reward components are kept separate under
 `eval_reward/<component>/<split>` so reward gains cannot be mistaken for benchmark-score gains.
+The final `gate/visual_efficiency` value is logged only when target-device evidence is sufficient;
+`1` means parity, resolved FlexAttention, speed, and memory all passed, while `0` means a measured
+threshold failed. An absent key means the gate remained `insufficient_evidence`.
 
 ### Packed visual backend benchmark
 

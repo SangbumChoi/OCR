@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import platform
 import statistics
@@ -14,7 +13,7 @@ from typing import Any, Literal
 
 import torch
 
-from .config import StudentConfig
+from .config import StudentConfig, student_config_fingerprint
 from .model import DocumentVLMStudent, GatedResampler, VisionTower
 
 
@@ -100,15 +99,6 @@ def _percentile(values: list[float], quantile: float) -> float:
     ordered = sorted(values)
     index = max(0, math.ceil(quantile * len(ordered)) - 1)
     return ordered[index]
-
-
-def _config_fingerprint(student: StudentConfig) -> str:
-    payload = json.dumps(
-        student.to_dict(),
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _environment(device: torch.device) -> dict[str, Any]:
@@ -399,7 +389,7 @@ def run_visual_backend_benchmark(
         "schema_version": 1,
         "scope": "student_vision_tower_and_gated_resampler",
         "language_decoder_included": False,
-        "student_config_fingerprint": _config_fingerprint(student),
+        "student_config_fingerprint": student_config_fingerprint(student),
         "student_config": student.to_dict(),
         "benchmark_config": asdict(config),
         "resolved_precision": precision,

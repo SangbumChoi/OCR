@@ -136,3 +136,23 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     assert any("rollout.top_p must be within" in error for error in errors)
     assert any("interval and coefficient" in error for error in errors)
     assert any("unsupported_reward" in error for error in errors)
+
+
+def test_blueprint_rejects_invalid_visual_efficiency_gate():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    gate = next(
+        gate
+        for gate in blueprint["evaluation_gates"]
+        if gate["id"] == "visual_efficiency"
+    )
+    gate["candidate_requested_backend"] = "loop"
+    gate["required_device_type"] = "cpu"
+    gate["min_measured_iterations"] = 0
+    gate["min_median_speedup_vs_loop"] = 0.0
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("candidate_requested_backend" in error for error in errors)
+    assert any("required_device_type" in error for error in errors)
+    assert any("min_measured_iterations" in error for error in errors)
+    assert any("min_median_speedup_vs_loop" in error for error in errors)

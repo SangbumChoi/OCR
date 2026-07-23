@@ -1,6 +1,13 @@
 """Native sub-1B document VLM student and selective initialization tools."""
 
-from .config import ConnectorConfig, LanguageConfig, StudentConfig, TaskHeadConfig, VisionConfig
+from .config import (
+    ConnectorConfig,
+    LanguageConfig,
+    StudentConfig,
+    TaskHeadConfig,
+    VisionConfig,
+    student_config_fingerprint,
+)
 from .data import (
     BalancedGroupBatchSampler,
     DeterministicDistributedBatchSampler,
@@ -28,6 +35,7 @@ from .evaluate import (
 from .gates import (
     evaluate_deployment_gates,
     load_evaluation_artifacts,
+    load_visual_backend_report,
     write_gate_report,
 )
 from .factorial import (
@@ -131,6 +139,7 @@ __all__ = [
     "StudentCollator",
     "StudentCollatorConfig",
     "StudentConfig",
+    "student_config_fingerprint",
     "StudentExample",
     "SFTConfig",
     "StructuredEvalConfig",
@@ -176,6 +185,7 @@ __all__ = [
     "estimate_rlvr_step_flops",
     "estimate_training_flops",
     "load_evaluation_artifacts",
+    "load_visual_backend_report",
     "wandb_metrics_for_split",
     "write_split_comparison",
     "write_gate_report",

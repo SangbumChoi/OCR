@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .config import StudentConfig, student_config_fingerprint
+
 
 _STATUSES = {"pass", "fail", "insufficient_evidence"}
 _ABSTENTIONS = {"", "none", "n/a", "na", "not available", "unknown", "absent"}
@@ -436,6 +438,240 @@ def _reliability(
     )
 
 
+def _visual_efficiency(
+    gate: Mapping[str, Any],
+    blueprint: Mapping[str, Any],
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    sequence_mode = (
+        blueprint.get("training", {})
+        .get("pretraining", {})
+        .get("input_pipeline", {})
+        .get("visual_sequence_mode")
+    )
+    if sequence_mode != "packed":
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "the packed visual backend gate does not evaluate dense execution",
+            {"visual_sequence_mode": sequence_mode},
+        )
+    if report is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a target-device visual backend benchmark is required",
+        )
+    if (
+        int(report.get("schema_version", 0)) != 1
+        or report.get("scope")
+        != "student_vision_tower_and_gated_resampler"
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "visual backend benchmark schema or scope is invalid",
+        )
+    expected_student = StudentConfig.from_blueprint(dict(blueprint))
+    expected_config = expected_student.to_dict()
+    expected_fingerprint = student_config_fingerprint(expected_student)
+    if (
+        report.get("student_config") != expected_config
+        or report.get("student_config_fingerprint")
+        != expected_fingerprint
+    ):
+        return _result(
+            gate,
+            "fail",
+            "visual backend evidence was measured on a different student configuration",
+            {
+                "reported_fingerprint": report.get(
+                    "student_config_fingerprint"
+                ),
+                "expected_fingerprint": expected_fingerprint,
+            },
+        )
+
+    environment = report.get("environment")
+    benchmark_config = report.get("benchmark_config")
+    records = report.get("results")
+    if (
+        not isinstance(environment, Mapping)
+        or not isinstance(benchmark_config, Mapping)
+        or not isinstance(records, Sequence)
+        or isinstance(records, (str, bytes))
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "visual backend benchmark metadata is incomplete",
+        )
+    required_device = str(gate.get("required_device_type", "cuda"))
+    if environment.get("device_type") != required_device:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            f"benchmark must run on {required_device}",
+            {
+                "reported_device_type": environment.get("device_type"),
+                "reported_device": environment.get("device"),
+            },
+        )
+
+    requested = str(gate.get("candidate_requested_backend", "auto"))
+    candidate = next(
+        (
+            record
+            for record in records
+            if isinstance(record, Mapping)
+            and record.get("requested_backend") == requested
+        ),
+        None,
+    )
+    loop = next(
+        (
+            record
+            for record in records
+            if isinstance(record, Mapping)
+            and record.get("requested_backend") == "loop"
+        ),
+        None,
+    )
+    if candidate is None or loop is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "matched loop and candidate backend records are required",
+            {
+                "candidate_requested_backend": requested,
+                "candidate_available": candidate is not None,
+                "loop_available": loop is not None,
+            },
+        )
+    if candidate.get("status") != "ok" or loop.get("status") != "ok":
+        return _result(
+            gate,
+            "fail",
+            "the loop reference or candidate backend failed",
+            {
+                "candidate_status": candidate.get("status"),
+                "candidate_error": candidate.get("error"),
+                "loop_status": loop.get("status"),
+                "loop_error": loop.get("error"),
+            },
+        )
+
+    required_mode = str(gate.get("required_mode", "training"))
+    minimum_tokens = int(gate.get("min_visual_tokens", 1))
+    minimum_batch = int(gate.get("min_batch_size", 1))
+    minimum_warmup = int(gate.get("min_warmup_iterations", 0))
+    minimum_iterations = int(gate.get("min_measured_iterations", 1))
+    evidence = {
+        "device": environment.get("device"),
+        "device_name": environment.get("device_name"),
+        "torch": environment.get("torch"),
+        "cuda": environment.get("cuda"),
+        "mode": benchmark_config.get("mode"),
+        "precision": report.get("resolved_precision"),
+        "visual_tokens": report.get("visual_tokens"),
+        "batch_size": report.get("batch_size"),
+        "warmup_iterations": benchmark_config.get("warmup_iterations"),
+        "measured_iterations": benchmark_config.get("measured_iterations"),
+        "requested_backend": requested,
+        "resolved_backend": candidate.get("resolved_backend"),
+        "median_ms": candidate.get("median_ms"),
+        "median_speedup_vs_loop": candidate.get(
+            "median_speedup_vs_loop"
+        ),
+        "peak_memory_ratio_vs_loop": candidate.get(
+            "peak_memory_ratio_vs_loop"
+        ),
+        "max_abs_delta_vs_loop": candidate.get(
+            "max_abs_delta_vs_loop"
+        ),
+        "student_config_fingerprint": report.get(
+            "student_config_fingerprint"
+        ),
+    }
+    try:
+        evidence_sufficient = (
+            benchmark_config.get("mode") == required_mode
+            and int(report["visual_tokens"]) >= minimum_tokens
+            and int(report["batch_size"]) >= minimum_batch
+            and int(benchmark_config["warmup_iterations"]) >= minimum_warmup
+            and int(benchmark_config["measured_iterations"])
+            >= minimum_iterations
+            and candidate.get("median_speedup_vs_loop") is not None
+            and candidate.get("peak_memory_ratio_vs_loop") is not None
+            and candidate.get("max_abs_delta_vs_loop") is not None
+        )
+    except (KeyError, TypeError, ValueError):
+        evidence_sufficient = False
+    if not evidence_sufficient:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "benchmark dose, mode, or loop-relative measurements are insufficient",
+            evidence,
+        )
+
+    required_backend = str(gate.get("required_resolved_backend", "flex"))
+    try:
+        speedup = float(candidate["median_speedup_vs_loop"])
+        memory_ratio = float(candidate["peak_memory_ratio_vs_loop"])
+        numerical_delta = float(candidate["max_abs_delta_vs_loop"])
+    except (TypeError, ValueError):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "loop-relative benchmark measurements must be numeric",
+            evidence,
+        )
+    minimum_speedup = float(gate.get("min_median_speedup_vs_loop", 1.0))
+    maximum_memory_ratio = float(
+        gate.get("max_peak_memory_ratio_vs_loop", 1.0)
+    )
+    maximum_delta = float(gate.get("max_abs_delta_vs_loop", 0.0))
+    violations = []
+    valid_measurements = (
+        math.isfinite(speedup)
+        and speedup > 0
+        and math.isfinite(memory_ratio)
+        and memory_ratio >= 0
+        and math.isfinite(numerical_delta)
+        and numerical_delta >= 0
+    )
+    if not valid_measurements:
+        violations.append("invalid_measurement")
+    if candidate.get("resolved_backend") != required_backend:
+        violations.append("resolved_backend")
+    if valid_measurements and speedup < minimum_speedup:
+        violations.append("median_speedup")
+    if valid_measurements and memory_ratio > maximum_memory_ratio:
+        violations.append("peak_memory")
+    if valid_measurements and numerical_delta > maximum_delta:
+        violations.append("numerical_parity")
+    evidence.update(
+        {
+            "required_resolved_backend": required_backend,
+            "min_median_speedup_vs_loop": minimum_speedup,
+            "max_peak_memory_ratio_vs_loop": maximum_memory_ratio,
+            "max_abs_delta_threshold": maximum_delta,
+            "violations": violations,
+        }
+    )
+    return _result(
+        gate,
+        "fail" if violations else "pass",
+        (
+            "target-device visual backend violates deployment thresholds"
+            if violations
+            else "target-device visual backend meets parity, speed, and memory thresholds"
+        ),
+        evidence,
+    )
+
+
 def evaluate_deployment_gates(
     blueprint: Mapping[str, Any],
     parameter_counts: Mapping[str, int],
@@ -445,6 +681,7 @@ def evaluate_deployment_gates(
     baseline_comparison: Mapping[str, Any] | None = None,
     baseline_rows: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     monolingual_control_comparison: Mapping[str, Any] | None = None,
+    visual_backend_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Evaluate every declared gate without treating missing evidence as success."""
 
@@ -491,6 +728,12 @@ def evaluate_deployment_gates(
                 pair_error,
                 baseline_comparison is not None,
             )
+        elif gate_id == "visual_efficiency":
+            result = _visual_efficiency(
+                gate,
+                blueprint,
+                visual_backend_report,
+            )
         else:
             result = _result(
                 gate,
@@ -535,6 +778,18 @@ def load_evaluation_artifacts(
             if line.strip()
         ]
     return comparison, rows
+
+
+def load_visual_backend_report(path: str | Path) -> dict[str, Any]:
+    """Load one visual backend report without treating malformed JSON as evidence."""
+
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"missing visual backend benchmark: {path}")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict):
+        raise ValueError("visual backend benchmark root must be a mapping")
+    return report
 
 
 def write_gate_report(path: str | Path, report: Mapping[str, Any]) -> Path:

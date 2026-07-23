@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -138,3 +140,14 @@ class StudentConfig:
                 "vision max_position_tokens must form a square two-dimensional grid"
             )
         return errors
+
+
+def student_config_fingerprint(config: StudentConfig) -> str:
+    """Return the canonical architecture fingerprint used by runtime evidence."""
+
+    payload = json.dumps(
+        config.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()

@@ -299,3 +299,16 @@ evaluation_gates:
     coverage: 0.8
     min_selective_risk_reduction: 0.001
     max_hallucination_increase: 0.0
+  - id: visual_efficiency
+    requirement: "the target-GPU fused visual path preserves parity and improves loop throughput"
+    candidate_requested_backend: auto
+    required_resolved_backend: flex
+    required_device_type: cuda
+    required_mode: training
+    min_visual_tokens: 4096
+    min_batch_size: 2
+    min_warmup_iterations: 3
+    min_measured_iterations: 10
+    min_median_speedup_vs_loop: 1.05
+    max_peak_memory_ratio_vs_loop: 1.05
+    max_abs_delta_vs_loop: 0.02

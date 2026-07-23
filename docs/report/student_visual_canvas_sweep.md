@@ -96,6 +96,12 @@ Do not compare records across different sequence lengths, modes, precision, GPU 
 configuration fingerprints. Accept FlexAttention only when the gate passes, numerical delta is
 within the recorded tolerance, and repeated target-GPU runs improve median latency or peak memory.
 An `auto` record resolving to `loop` is valid fallback evidence, not FlexAttention performance.
+The end-to-end evaluator consumes this JSON as the `visual_efficiency` deployment gate; throughput
+is therefore part of the same final acceptance report as held-out quality, grounding, reasoning,
+multilingual retention, and reliability rather than an unattached benchmark.
+This packed-backend runner is enabled only for the packed sweep arm. Dense controls disable the
+preflight and receive `insufficient_evidence` for this gate rather than being incorrectly approved
+using packed-path timing.
 
 ## Matched experiment
 

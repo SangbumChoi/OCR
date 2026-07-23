@@ -400,6 +400,15 @@ def compile_architecture_sweep(
         }
     )
     child["shared_blueprint_patches"] = shared_blueprint
+    shared_experiment = list(child.get("shared_experiment_patches") or [])
+    shared_experiment.append(
+        {
+            "op": "replace",
+            "path": "/runtime/visual_backend_benchmark/enabled",
+            "value": False,
+        }
+    )
+    child["shared_experiment_patches"] = shared_experiment
     controls = list(child.get("matched_controls") or [])
     for path in (
         "/training/pretraining/optimizer/total_student_flops",
@@ -410,6 +419,12 @@ def compile_architecture_sweep(
         "/training/pretraining/input_pipeline/aspect_ratio_bucketing",
     ):
         controls.append({"document": "blueprint", "path": path})
+    controls.append(
+        {
+            "document": "experiment",
+            "path": "/runtime/visual_backend_benchmark/enabled",
+        }
+    )
     child["matched_controls"] = controls
     child["variants"] = [
         {
