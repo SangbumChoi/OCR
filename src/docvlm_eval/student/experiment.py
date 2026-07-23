@@ -364,6 +364,41 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError("experiment.initialization must be a mapping")
     if int(initialization.get("seed", 0)) < 0:
         raise ValueError("initialization.seed must be non-negative")
+    posttraining = _require_mapping(raw, "posttraining")
+    sft = posttraining.get("sft")
+    rlvr = posttraining.get("rlvr")
+    if not isinstance(sft, dict):
+        raise ValueError("experiment.posttraining.sft must be a mapping")
+    if not isinstance(rlvr, dict):
+        raise ValueError("experiment.posttraining.rlvr must be a mapping")
+    if "enabled" in sft and not isinstance(sft["enabled"], bool):
+        raise ValueError("posttraining.sft.enabled must be a boolean")
+    if not bool(sft.get("enabled", True)):
+        raise ValueError("posttraining.sft.enabled=false is not supported")
+    if sft.get("target_mode", "evidence_linked") not in {
+        "answer_only",
+        "free_rationale",
+        "evidence_linked",
+    }:
+        raise ValueError("posttraining.sft.target_mode is invalid")
+    if "enabled" in rlvr and not isinstance(rlvr["enabled"], bool):
+        raise ValueError("posttraining.rlvr.enabled must be a boolean")
+    if not bool(rlvr.get("enabled", True)):
+        ignored = sorted(
+            key
+            for key in (
+                "max_steps",
+                "replay_every_steps",
+                "replay_loss_coefficient",
+                "replay_samples",
+            )
+            if rlvr.get(key) is not None
+        )
+        if ignored:
+            raise ValueError(
+                "disabled RLVR cannot set stage-specific overrides: "
+                f"{ignored}"
+            )
     return name, output_root, blueprint
 
 
@@ -488,10 +523,10 @@ def build_experiment_plan(
     input_fingerprints: dict[str, Any] = {
         "synthetic_config": _file_fingerprint(synth_config_path),
     }
+    rlvr_spec = ((raw.get("posttraining") or {}).get("rlvr") or {})
+    rlvr_enabled = bool(rlvr_spec.get("enabled", True))
     configured_replay = (
-        ((raw.get("posttraining") or {}).get("rlvr") or {}).get(
-            "replay_samples"
-        )
+        rlvr_spec.get("replay_samples") if rlvr_enabled else None
     )
     if configured_replay:
         input_fingerprints["rlvr_replay_samples"] = _file_fingerprint(
@@ -1106,49 +1141,52 @@ def build_experiment_plan(
     )
 
     rlvr = posttraining.get("rlvr") or {}
-    rlvr_command = [
-        python,
-        script("posttrain_student.py"),
-        "rlvr",
-        "--config",
-        str(resolved_blueprint_path),
-        "--samples",
-        str(train_samples),
-        "--tokenizer",
-        str(tokenizer_dir),
-        "--checkpoint",
-        "@student:sft",
-        "--output",
-        str(rlvr_dir),
-        "--device",
-        device,
-    ]
-    _add_optional(rlvr_command, "--max-steps", rlvr.get("max_steps"))
-    _add_optional(
-        rlvr_command,
-        "--replay-every-steps",
-        rlvr.get("replay_every_steps"),
-    )
-    _add_optional(
-        rlvr_command,
-        "--replay-loss-coefficient",
-        rlvr.get("replay_loss_coefficient"),
-    )
-    if rlvr.get("replay_samples"):
-        rlvr_command.extend(
-            [
-                "--replay-samples",
-                str(_resolve_path(repo_root, rlvr["replay_samples"])),
-            ]
-        )
-    stages.append(
-        ExperimentStage(
+    final_checkpoint_stage = "sft"
+    if rlvr_enabled:
+        rlvr_command = [
+            python,
+            script("posttrain_student.py"),
             "rlvr",
-            tuple(rlvr_command),
-            ("sft",),
-            (Artifact(str(rlvr_dir / "latest_checkpoint.txt")),),
+            "--config",
+            str(resolved_blueprint_path),
+            "--samples",
+            str(train_samples),
+            "--tokenizer",
+            str(tokenizer_dir),
+            "--checkpoint",
+            "@student:sft",
+            "--output",
+            str(rlvr_dir),
+            "--device",
+            device,
+        ]
+        _add_optional(rlvr_command, "--max-steps", rlvr.get("max_steps"))
+        _add_optional(
+            rlvr_command,
+            "--replay-every-steps",
+            rlvr.get("replay_every_steps"),
         )
-    )
+        _add_optional(
+            rlvr_command,
+            "--replay-loss-coefficient",
+            rlvr.get("replay_loss_coefficient"),
+        )
+        if rlvr.get("replay_samples"):
+            rlvr_command.extend(
+                [
+                    "--replay-samples",
+                    str(_resolve_path(repo_root, rlvr["replay_samples"])),
+                ]
+            )
+        stages.append(
+            ExperimentStage(
+                "rlvr",
+                tuple(rlvr_command),
+                ("sft",),
+                (Artifact(str(rlvr_dir / "latest_checkpoint.txt")),),
+            )
+        )
+        final_checkpoint_stage = "rlvr"
 
     evaluation = raw.get("evaluation") or {}
     eval_command = [
@@ -1163,7 +1201,7 @@ def build_experiment_plan(
         "--tokenizer",
         str(tokenizer_dir),
         "--checkpoint",
-        "@student:rlvr",
+        f"@student:{final_checkpoint_stage}",
         "--output",
         str(eval_dir),
         "--device",
@@ -1201,7 +1239,11 @@ def build_experiment_plan(
         ExperimentStage(
             "evaluate",
             tuple(eval_command),
-            ("rlvr", "build_train_samples", "build_heldout_samples"),
+            (
+                final_checkpoint_stage,
+                "build_train_samples",
+                "build_heldout_samples",
+            ),
             (
                 Artifact(str(eval_dir / "manifest.json")),
                 Artifact(str(eval_dir / "comparison.json")),

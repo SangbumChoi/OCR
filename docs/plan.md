@@ -147,6 +147,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   rewards, visual-prefix-cached rollout, single-update GRPO, periodic supervised multimodal replay,
   bounded symbolic formula equivalence, exact checkpoint resume, and train/heldout generation
   evaluation.
+- **Isolate post-training choices:**
+  [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) — paired
+  pre-RLVR SFT-target comparisons and SFT-only versus correctness-only/full-reward RLVR.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
@@ -224,6 +227,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
+   [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) ·
    [`report/student_factorial_runner.md`](report/student_factorial_runner.md) ·

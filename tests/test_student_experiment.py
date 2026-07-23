@@ -69,6 +69,50 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert "@student:pretrain" in sft.command
 
 
+def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["posttraining"]["rlvr"] = {
+        "enabled": False,
+        "max_steps": None,
+        "replay_every_steps": None,
+        "replay_loss_coefficient": None,
+        "replay_samples": None,
+    }
+    config = tmp_path / "sft-only.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+    assert "rlvr" not in plan.stage_names
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    assert "@student:sft" in evaluate.command
+    assert evaluate.dependencies == (
+        "sft",
+        "build_train_samples",
+        "build_heldout_samples",
+    )
+
+
+def test_experiment_rejects_ignored_disabled_rlvr_overrides(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["posttraining"]["rlvr"]["enabled"] = False
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "invalid-sft-only.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="disabled RLVR cannot set"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
 def test_tiny_student_can_host_byte_level_tokenizer():
     assert StudentConfig.tiny(vocab_size=512).language.vocab_size >= 260
 

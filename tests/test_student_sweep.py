@@ -198,6 +198,89 @@ def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
         ]
 
 
+def test_sft_target_sweep_compiles_three_sft_only_targets(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_sft_target_sweep.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "sft-target-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "evidence_linked"
+    expected_modes = {
+        "evidence_linked": "evidence_linked",
+        "free_rationale": "free_rationale",
+        "answer_only": "answer_only",
+    }
+    for variant in plan.variants:
+        assert (
+            variant.plan.raw_spec["posttraining"]["sft"]["target_mode"]
+            == expected_modes[variant.arm_id]
+        )
+        assert "rlvr" not in variant.plan.stage_names
+        evaluate = next(
+            stage for stage in variant.plan.stages if stage.name == "evaluate"
+        )
+        assert "@student:sft" in evaluate.command
+        assert "sft-target-ablation" in variant.plan.raw_spec["evaluation"][
+            "wandb_tags"
+        ]
+
+
+def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_rlvr_reward_sweep.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "rlvr-reward-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "full_reward"
+    for variant in plan.variants:
+        evaluate = next(
+            stage for stage in variant.plan.stages if stage.name == "evaluate"
+        )
+        if variant.arm_id == "sft_only":
+            assert "rlvr" not in variant.plan.stage_names
+            assert "@student:sft" in evaluate.command
+        else:
+            assert "rlvr" in variant.plan.stage_names
+            assert "@student:rlvr" in evaluate.command
+        reward_mix = variant.plan.resolved_blueprint["training"][
+            "posttraining"
+        ]["rlvr"]["reward_mix"]
+        if variant.arm_id == "correctness_only":
+            assert reward_mix["answer_correctness"] == 1.0
+            assert all(
+                weight == 0.0
+                for name, weight in reward_mix.items()
+                if name != "answer_correctness"
+            )
+        assert "rlvr-reward-ablation" in variant.plan.raw_spec["evaluation"][
+            "wandb_tags"
+        ]
+
+
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):
     config = _tiny_sweep(tmp_path)
     first = compile_sweep_plan(

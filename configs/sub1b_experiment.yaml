@@ -88,6 +88,7 @@ posttraining:
     num_workers: null
     target_mode: evidence_linked
   rlvr:
+    enabled: true
     max_steps: null
     replay_every_steps: null
     replay_loss_coefficient: null

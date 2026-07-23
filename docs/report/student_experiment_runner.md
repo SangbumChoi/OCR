@@ -22,6 +22,9 @@ generator, model, loss, reward, or runner implementation changes.
 RLVR uses periodic supervised replay from its active samples by default. Set
 `posttraining.rlvr.replay_samples` to an external benchmark JSONL to anchor broader multimodal
 capabilities; the compiler content-addresses that file and passes it to the RLVR stage.
+Set `posttraining.rlvr.enabled: false` with all RLVR runtime overrides null to compile an SFT-only
+DAG. In that mode evaluation loads `@student:sft` directly. Non-null disabled-stage overrides fail
+before data generation so an intended RLVR treatment cannot disappear silently.
 
 The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
@@ -45,7 +48,7 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The CPU contract test uses the same 16 stages with a dummy cross-tokenizer teacher, one
+The CPU contract test uses the same 17 stages with a dummy cross-tokenizer teacher, one
 587k-parameter student, and one optimizer step per training phase:
 
 ```bash

@@ -10,8 +10,9 @@ the fast experimental base and a teacher candidate; it is not the deployment-siz
 The first question is not whether transfer is allowed. It is **which inherited representations are
 worth their dependency on a pretrained checkpoint**. Five initialization arms therefore span fully
 random, vision-only, language-only, dual-tower, and alternating-block selective transfer. Every arm
-uses the same architecture and token budget, then receives the same feature and output
-distillation. This separates initialization benefit from teacher supervision.
+uses the same architecture, token budget, offline sequence targets, and native objectives. Online
+native-teacher feature and output distillation is a separate checkpoint-dependent experiment. This
+separates initialization benefit from teacher supervision.
 
 ## Architecture and parameter budget
 
@@ -120,9 +121,11 @@ rendered text/formulas, 10% natural image-text replay, and 5% text-only replay. 
 provides exact boxes, table trees, chart values, formula source, and counterfactual pairs. Public
 data constrains renderer bias. Replay protects general visual and language capability.
 
-The autoregressive target is accompanied by teacher KL, hidden-feature distillation, region-text
-contrast, box regression, and orientation losses. Losses are logged separately. This is necessary
-because a low total loss can hide a connector or vision tower receiving almost no useful gradient.
+The autoregressive target is accompanied by region-text contrast, box regression, and orientation
+losses. Same-tokenizer teacher KL and hidden-feature distillation are supported but remain zero
+unless a native teacher checkpoint is explicitly configured. Losses are logged separately. This is
+necessary because a low total loss can hide a connector or vision tower receiving almost no useful
+gradient.
 
 The native model exposes autoregressive, symmetric contrastive, four-way orientation, and normalized
 box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
@@ -216,7 +219,9 @@ compiled with analytical runtime accounting and an overshoot gate by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md). These suites must
 still be executed before their effects can be claimed. The active native losses are isolated by
 [`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); online native-teacher
-losses remain a separate checkpoint-dependent experiment. The current LoRA ablations answer where
+losses remain a separate checkpoint-dependent experiment. SFT target and RLVR reward effects are
+isolated by [`student_posttraining_sweeps.md`](student_posttraining_sweeps.md), including a true
+SFT-only evaluation path. The current LoRA ablations answer where
 existing LFM capabilities are easiest to adapt. This blueprint answers the next question: which
 capabilities can be built into a deployment-size student, what must be inherited, and what can be
 learned from the controlled document curriculum.

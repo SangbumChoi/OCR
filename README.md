@@ -365,6 +365,11 @@ resolved supervision contract, and online native-teacher losses now fail closed 
 teacher is supplied. See
 [`docs/report/student_pretraining_loss_sweep.md`](docs/report/student_pretraining_loss_sweep.md).
 
+Two nine-run paired post-training suites separate target and reward effects. The SFT suite compares
+answer-only, free-rationale, and evidence-linked checkpoints before RLVR. The RLVR suite fixes
+evidence-linked SFT and compares SFT-only, correctness-only RLVR, and the full decomposed reward.
+See [`docs/report/student_posttraining_sweeps.md`](docs/report/student_posttraining_sweeps.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

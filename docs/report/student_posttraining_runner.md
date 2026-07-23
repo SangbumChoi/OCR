@@ -16,6 +16,11 @@ This is training infrastructure, not evidence that the default SFT or RLVR recip
 capability. Claims still require matched SFT-only and RLVR runs on template-, graph-, and
 source-held-out evaluations.
 
+Those comparisons are compiled by
+[`student_posttraining_sweeps.md`](student_posttraining_sweeps.md). The SFT-target suite evaluates
+all three target modes before RLVR. The reward suite fixes evidence-linked SFT and compares its
+checkpoint directly with correctness-only and full-reward RLVR.
+
 ## Response contract
 
 Every target and sampled completion is exactly one JSON object:

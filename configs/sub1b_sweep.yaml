@@ -158,7 +158,7 @@ variants:
         value: 0.0
 
   - id: sft_answer_only
-    hypothesis: "Tests whether evidence-linked structured SFT beats answer-only supervision."
+    hypothesis: "Tests whether changing SFT targets propagates through the same full RLVR phase; the pre-RLVR effect is isolated in the dedicated SFT sweep."
     experiment_patches:
       - op: replace
         path: /posttraining/sft/target_mode
