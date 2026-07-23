@@ -281,3 +281,27 @@ Use `torchrun --standalone --nproc-per-node=N` for data parallel training and `-
 after interruption. LFM and other cross-tokenizer teachers supply offline sequence targets, while
 online KL is restricted by a matching tokenizer fingerprint. See
 [`docs/report/student_pretraining_runner.md`](docs/report/student_pretraining_runner.md).
+
+The second stage is also executable. It teaches a strict
+`{"answer","evidence","rationale"}` contract with exhaustive SFT, then optionally runs
+single-update GRPO with task-applicable exact, text, box, table, chart, formula, grounding, and
+abstention rewards:
+
+```bash
+python scripts/posttrain_student.py sft \
+  --samples data/posttraining/train.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_pretrain/I0_random/checkpoints/step-00010000/student \
+  --output outputs/student_sft/evidence_linked
+
+python scripts/posttrain_student.py rlvr \
+  --samples data/posttraining/rlvr.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
+  --output outputs/student_rlvr/full_reward
+```
+
+RL rollout reuses one encoded visual prefix per image. SFT supports `torchrun`; native RLVR is
+currently single-process and requires the full policy, frozen reference, and optimizer state on one
+device. See
+[`docs/report/student_posttraining_runner.md`](docs/report/student_posttraining_runner.md).

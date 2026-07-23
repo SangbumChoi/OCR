@@ -268,6 +268,31 @@ def test_resume_rejects_a_different_tokenizer_fingerprint(tmp_path):
         train_student(model, _loader(), resumed)
 
 
+def test_resume_rejects_a_different_training_stage(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(),
+        replace(
+            _config(tmp_path / "stage", max_steps=1),
+            run_stage="sft:evidence_linked",
+        ),
+    )
+    resumed = replace(
+        _config(tmp_path / "stage", max_steps=2, resume="latest"),
+        run_stage="sft:answer_only",
+    )
+
+    with pytest.raises(ValueError, match="run stage"):
+        train_student(model, _loader(), resumed)
+
+
 def test_token_cosine_scheduler_is_driven_by_tokens_not_step_count():
     import torch
 

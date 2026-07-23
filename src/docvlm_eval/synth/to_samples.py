@@ -47,7 +47,13 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
                     include_probes: bool = True) -> list[Sample]:
     """Convert one case's GT dict + image into a list of Samples (ids prefixed by `prefix`)."""
     out: list[Sample] = []
-    base_meta = {"case": prefix, "doc_type": gt.get("type"), "stressors": gt.get("stressors")}
+    size = gt.get("render", {}).get("size_px") or [None, None]
+    base_meta = {
+        "case": prefix,
+        "doc_type": gt.get("type"),
+        "stressors": gt.get("stressors"),
+        "size": size,
+    }
 
     for i, qa in enumerate(gt.get("qa", [])):
         meta = {**base_meta, "qa_key": qa.get("key")}
@@ -61,7 +67,6 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
             meta,
         ))
 
-    size = gt.get("render", {}).get("size_px") or [None, None]
     w, h = size[0], size[1]
     for key, box in gt.get("spotting", {}).items():
         q = (f"Return the bounding box of the {key.replace('_', ' ')} as [x1, y1, x2, y2] in "

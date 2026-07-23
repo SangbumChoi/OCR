@@ -158,6 +158,26 @@ training:
   posttraining:
     sft:
       objective: "Teach grounded instructions, structured output, abstention, and concise reasoning."
+      response_format: structured_json_v1
+      target_mode: evidence_linked
+      optimizer:
+        epochs: 2
+        max_steps: null
+        micro_batch_size: 1
+        grad_accum_steps: 8
+        learning_rate: 0.00002
+        min_lr_ratio: 0.1
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        warmup_tokens: 10000000
+        total_tokens: 1000000000
+        precision: bfloat16
+        checkpoint_every_steps: 500
+        eval_every_steps: 0
+        log_every_steps: 10
+        num_workers: 4
+        seed: 17
       data_mix:
         extraction_and_spotting: 0.30
         tables_charts_formulas: 0.20
@@ -167,9 +187,26 @@ training:
         general_multimodal_replay: 0.05
     rlvr:
       algorithm: grpo
+      update_policy: one_on_policy_update_per_group
       reference_policy: sft_checkpoint
       group_size: 8
       kl_coefficient: 0.04
+      advantage_epsilon: 0.0001
+      malformed_reward: 0.0
+      rollout:
+        max_new_tokens: 128
+        temperature: 0.8
+        top_p: 0.95
+      optimizer:
+        max_steps: 1000
+        learning_rate: 0.000005
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        precision: bfloat16
+        checkpoint_every_steps: 100
+        log_every_steps: 1
+        seed: 23
       reward_mix:
         answer_correctness: 0.25
         normalized_text_similarity: 0.15

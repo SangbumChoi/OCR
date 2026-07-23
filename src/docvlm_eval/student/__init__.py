@@ -3,6 +3,7 @@
 from .config import ConnectorConfig, LanguageConfig, StudentConfig, TaskHeadConfig, VisionConfig
 from .data import (
     BalancedGroupBatchSampler,
+    DeterministicDistributedBatchSampler,
     StudentCollator,
     StudentCollatorConfig,
     StudentExample,
@@ -17,6 +18,26 @@ from .distillation import (
 )
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
+from .posttrain import (
+    RLVRConfig,
+    RLVRResult,
+    SFTConfig,
+    StructuredPostTrainingDataset,
+    completion_log_probs,
+    group_relative_policy_loss,
+    sample_completion_group,
+    train_grpo,
+    train_sft,
+)
+from .rewards import (
+    RewardConfig,
+    RewardContext,
+    RewardResult,
+    StructuredResponse,
+    build_structured_target,
+    parse_structured_response,
+    score_structured_response,
+)
 
 __all__ = [
     "BalancedGroupBatchSampler",
@@ -24,18 +45,35 @@ __all__ = [
     "DocumentTokenizer",
     "DistillationConfig",
     "DistillationLoss",
+    "DeterministicDistributedBatchSampler",
     "LanguageConfig",
     "NativeStudentTeacher",
     "PretrainConfig",
+    "RLVRConfig",
+    "RLVRResult",
+    "RewardConfig",
+    "RewardContext",
+    "RewardResult",
     "StudentCollator",
     "StudentCollatorConfig",
     "StudentConfig",
     "StudentExample",
+    "SFTConfig",
+    "StructuredPostTrainingDataset",
     "TaskHeadConfig",
     "TeacherSignals",
     "TrainingResult",
+    "StructuredResponse",
     "UDDStudentDataset",
     "VisionConfig",
     "student_model_inputs",
+    "build_structured_target",
+    "completion_log_probs",
+    "group_relative_policy_loss",
+    "parse_structured_response",
+    "sample_completion_group",
+    "score_structured_response",
+    "train_grpo",
+    "train_sft",
     "train_student",
 ]

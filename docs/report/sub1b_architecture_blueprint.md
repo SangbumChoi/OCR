@@ -129,6 +129,11 @@ formula transcription, relational answers, calibrated abstention, and short evid
 rationales. Rationales cite authored regions or cells. Free-form chain-of-thought is not a target
 because fluent unsupported reasoning is particularly dangerous at this scale.
 
+The executable runner keeps a strict `{"answer","evidence","rationale"}` JSON schema across all
+three target ablations. It shuffles exhaustively per epoch rather than sampling curated SFT rows
+with replacement. See
+[`student_posttraining_runner.md`](student_posttraining_runner.md) for commands and contracts.
+
 ### RL with verifiable rewards
 
 Run GRPO from the SFT checkpoint. All default rewards are computed from authored or normalized
@@ -143,8 +148,9 @@ ground truth:
 - abstention utility on absent, unreadable, and contradictory inputs.
 
 Final-answer and rationale rewards stay separate. Structural validity is a gate, not a bonus. Every
-reward is also reported alone on held-out templates to expose reward hacking. KL to the SFT policy
-and general multimodal replay constrain capability collapse.
+reward component is logged independently so held-out evaluation can expose reward hacking. The
+current runner implements KL to the frozen SFT policy; multimodal replay inside the RL loop remains
+an explicit follow-up rather than a claimed safeguard.
 
 ## Data construction for hard document reasoning
 
@@ -186,17 +192,19 @@ what must be inherited, and what can be learned from the controlled document cur
 
 ## Current implementation boundary
 
-The model constructor, selective initialization, tokenizer, UDD adapter, balanced sampler,
-multimodal collator, same-tokenizer teacher interface, and pretraining runner are executable and
-tested. The contracts are detailed in
+The model constructor, selective initialization, tokenizer, UDD adapter, samplers, multimodal
+collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict reward
+verifiers, and single-update GRPO runner are executable and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and
-[`student_pretraining_runner.md`](student_pretraining_runner.md). The next evidence-producing step
-is to run matched initialization and teacher ablations at fixed token budgets, then publish
-held-out capability and efficiency curves.
+[`student_pretraining_runner.md`](student_pretraining_runner.md), and
+[`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
+step is to run matched initialization, SFT-target, and reward ablations at fixed token budgets, then
+publish held-out capability and efficiency curves.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations
-rather than claimed capabilities.
+rather than claimed capabilities. Native RLVR is currently single-process and does not yet
+interleave replay; its formula reward is deterministic normalization rather than symbolic algebra.
 
 ## Evidence basis
 

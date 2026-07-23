@@ -118,8 +118,8 @@ hand-offs, error compounding, no joint reasoning). The conclusion: **bake these 
 the model** via targeted fine-tuning, rather than bolting on stages.
 
 - **Decision:** prefer in-model capability injection over a model pipeline.
-- **Implemented in the native student:** an explicit four-way **orientation head**; the upcoming
-  UDD collator supplies controlled rotation labels and transforms evidence boxes with the image.
+- **Implemented in the native student:** an explicit four-way **orientation head**; the UDD
+  collator supplies controlled rotation labels and transforms evidence boxes with the image.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
   capability × scale, grounding-supervision causality (does "where" improve "whether"?).
 - **Build:** [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) —
@@ -132,6 +132,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Pretrain:** [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) —
   same-tokenizer online distillation, token-based scheduling, mixed precision, `torchrun`,
   sample-weighted held-out evaluation, and exact checkpoint resume.
+- **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
+  exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
+  rewards, visual-prefix-cached rollout, single-update GRPO, and exact checkpoint resume.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
@@ -187,6 +190,7 @@ added factor lifting the score a step, ending well above the baseline.
 5. [`report/research_novelty.md`](report/research_novelty.md) ·
    [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
+   [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·

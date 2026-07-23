@@ -259,6 +259,56 @@ def test_balanced_sampler_reads_the_blueprint_grouping_policy():
     assert len(list(sampler)) == 1
 
 
+def test_exhaustive_sampler_covers_every_example_once_on_one_rank():
+    from docvlm_eval.student.data import DeterministicDistributedBatchSampler
+
+    sampler = DeterministicDistributedBatchSampler(
+        dataset_size=7,
+        batch_size=3,
+        seed=41,
+    )
+    first_epoch = list(sampler)
+    sampler.set_epoch(1)
+    second_epoch = list(sampler)
+
+    assert [len(batch) for batch in first_epoch] == [3, 3, 1]
+    assert sorted(index for batch in first_epoch for index in batch) == list(range(7))
+    assert sorted(index for batch in second_epoch for index in batch) == list(range(7))
+    assert first_epoch != second_epoch
+
+
+def test_exhaustive_sampler_pads_only_for_distributed_batch_alignment():
+    from docvlm_eval.student.data import DeterministicDistributedBatchSampler
+
+    rank_zero = DeterministicDistributedBatchSampler(
+        dataset_size=5,
+        batch_size=2,
+        seed=43,
+        num_replicas=2,
+        rank=0,
+    )
+    rank_one = DeterministicDistributedBatchSampler(
+        dataset_size=5,
+        batch_size=2,
+        seed=43,
+        num_replicas=2,
+        rank=1,
+    )
+    zero_batches = list(rank_zero)
+    one_batches = list(rank_one)
+    observed = [
+        index
+        for rank_batches in (zero_batches, one_batches)
+        for batch in rank_batches
+        for index in batch
+    ]
+
+    assert len(zero_batches) == len(one_batches) == 2
+    assert all(len(batch) == 2 for batch in zero_batches + one_batches)
+    assert set(observed) == set(range(5))
+    assert len(observed) == 8
+
+
 def test_text_only_replay_batch_omits_visual_targets():
     from docvlm_eval.student.data import (
         StudentCollator,

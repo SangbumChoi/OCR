@@ -141,3 +141,6 @@ there is no separate reading-order scalar. Metrics are appended to `metrics.json
 are written under `outputs/.../checkpoints/step-NNNNNNNN`. Downstream capability claims must use
 generation metrics on template-, source-, and image-identity-held-out data rather than treating
 training loss as document-understanding accuracy.
+
+Continue with structured SFT and optional verifiable-reward GRPO using
+[`student_posttraining_runner.md`](student_posttraining_runner.md).

@@ -249,6 +249,100 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(f"training.pretraining.losses.{name} is not implemented")
         if float(weight) < 0:
             errors.append(f"training.pretraining.losses.{name} must be non-negative")
+    posttraining = training["posttraining"]
+    sft = posttraining["sft"]
+    if sft.get("response_format") != "structured_json_v1":
+        errors.append("training.posttraining.sft.response_format must be structured_json_v1")
+    if sft.get("target_mode") not in {
+        "answer_only",
+        "free_rationale",
+        "evidence_linked",
+    }:
+        errors.append("training.posttraining.sft.target_mode is invalid")
+    sft_optimizer = sft.get("optimizer", {})
+    for field in (
+        "epochs",
+        "micro_batch_size",
+        "grad_accum_steps",
+        "learning_rate",
+        "max_grad_norm",
+        "total_tokens",
+        "log_every_steps",
+    ):
+        if float(sft_optimizer.get(field, 0)) <= 0:
+            errors.append(f"training.posttraining.sft.optimizer.{field} must be positive")
+    sft_warmup = int(sft_optimizer.get("warmup_tokens", -1))
+    sft_total = int(sft_optimizer.get("total_tokens", 0))
+    if not 0 <= sft_warmup < sft_total:
+        errors.append(
+            "training.posttraining.sft.optimizer requires "
+            "0 <= warmup_tokens < total_tokens"
+        )
+    sft_betas = sft_optimizer.get("betas", ())
+    if len(sft_betas) != 2 or any(
+        not 0 <= float(beta) < 1 for beta in sft_betas
+    ):
+        errors.append(
+            "training.posttraining.sft.optimizer.betas must contain two values in [0, 1)"
+        )
+    rlvr = posttraining["rlvr"]
+    if rlvr.get("algorithm") != "grpo":
+        errors.append("training.posttraining.rlvr.algorithm must be grpo")
+    if rlvr.get("update_policy") != "one_on_policy_update_per_group":
+        errors.append(
+            "training.posttraining.rlvr.update_policy must be "
+            "one_on_policy_update_per_group"
+        )
+    if int(rlvr.get("group_size", 0)) < 2:
+        errors.append("training.posttraining.rlvr.group_size must be at least two")
+    if float(rlvr.get("kl_coefficient", -1)) < 0:
+        errors.append("training.posttraining.rlvr.kl_coefficient must be non-negative")
+    if float(rlvr.get("advantage_epsilon", 0)) <= 0:
+        errors.append("training.posttraining.rlvr.advantage_epsilon must be positive")
+    malformed_reward = float(rlvr.get("malformed_reward", -1))
+    if not 0 <= malformed_reward <= 1:
+        errors.append("training.posttraining.rlvr.malformed_reward must be within [0, 1]")
+    rollout = rlvr.get("rollout", {})
+    if int(rollout.get("max_new_tokens", 0)) <= 0:
+        errors.append(
+            "training.posttraining.rlvr.rollout.max_new_tokens must be positive"
+        )
+    if float(rollout.get("temperature", 0)) <= 0:
+        errors.append("training.posttraining.rlvr.rollout.temperature must be positive")
+    if not 0 < float(rollout.get("top_p", 0)) <= 1:
+        errors.append("training.posttraining.rlvr.rollout.top_p must be within (0, 1]")
+    supported_rewards = {
+        "answer_correctness",
+        "normalized_text_similarity",
+        "box_iou",
+        "table_tree_similarity",
+        "chart_numeric_tolerance",
+        "formula_equivalence",
+        "grounded_rationale_consistency",
+        "calibrated_abstention",
+    }
+    unknown_rewards = set(rlvr["reward_mix"]) - supported_rewards
+    if unknown_rewards:
+        errors.append(
+            "training.posttraining.rlvr.reward_mix has unsupported rewards: "
+            f"{sorted(unknown_rewards)}"
+        )
+    rl_optimizer = rlvr.get("optimizer", {})
+    for field in (
+        "max_steps",
+        "learning_rate",
+        "max_grad_norm",
+        "log_every_steps",
+    ):
+        if float(rl_optimizer.get(field, 0)) <= 0:
+            errors.append(f"training.posttraining.rlvr.optimizer.{field} must be positive")
+    rl_betas = rl_optimizer.get("betas", ())
+    if len(rl_betas) != 2 or any(
+        not 0 <= float(beta) < 1 for beta in rl_betas
+    ):
+        errors.append(
+            "training.posttraining.rlvr.optimizer.betas must contain two values in [0, 1)"
+        )
     _validate_mix("training.pretraining.data_mix", training["pretraining"]["data_mix"], errors)
     _validate_mix(
         "training.posttraining.sft.data_mix",

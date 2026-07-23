@@ -535,6 +535,20 @@ class DocumentVLMStudent(nn.Module):
             positions.to(device=text.device, dtype=torch.long),
         ]
 
+    def encode_images(
+        self,
+        pixel_values: torch.Tensor,
+        pixel_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Encode an image batch once into the fixed visual prefix."""
+
+        vision_tokens, vision_mask = self.vision(
+            pixel_values,
+            pixel_mask,
+            return_mask=True,
+        )
+        return self.connector(vision_tokens, vision_mask)
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -550,6 +564,7 @@ class DocumentVLMStudent(nn.Module):
         contrastive_ids: torch.Tensor | None = None,
         loss_weights: dict[str, float] | None = None,
         feature_layers: dict[str, list[int] | tuple[int, ...]] | None = None,
+        visual_prefix: torch.Tensor | None = None,
     ) -> StudentOutput:
         weights = {
             "autoregressive": 1.0,
@@ -564,7 +579,23 @@ class DocumentVLMStudent(nn.Module):
         language_features: dict[int, torch.Tensor] = {}
         requested_vision = set((feature_layers or {}).get("vision", ()))
         requested_language = set((feature_layers or {}).get("language", ()))
-        if pixel_values is not None:
+        if visual_prefix is not None:
+            if pixel_values is not None or pixel_mask is not None:
+                raise ValueError(
+                    "visual_prefix cannot be combined with pixel_values or pixel_mask"
+                )
+            if visual_prefix.ndim != 3:
+                raise ValueError("visual_prefix must have shape [batch, tokens, width]")
+            if visual_prefix.shape[0] != input_ids.shape[0]:
+                raise ValueError("visual_prefix batch dimension must match input_ids")
+            if visual_prefix.shape[-1] != self.config.language.width:
+                raise ValueError("visual_prefix width must match the language width")
+            if requested_vision or orientation_labels is not None or contrastive:
+                raise ValueError(
+                    "cached visual_prefix is inference-only for vision-side outputs"
+                )
+            prefix = visual_prefix
+        elif pixel_values is not None:
             vision_result = self.vision(
                 pixel_values,
                 pixel_mask,
@@ -575,13 +606,11 @@ class DocumentVLMStudent(nn.Module):
                 vision_tokens, vision_mask, vision_features = vision_result
             else:
                 vision_tokens, vision_mask = vision_result
+            prefix = self.connector(vision_tokens, vision_mask)
         elif pixel_mask is not None:
             raise ValueError("pixel_mask requires pixel_values")
-        prefix = (
-            self.connector(vision_tokens, vision_mask)
-            if vision_tokens is not None
-            else None
-        )
+        else:
+            prefix = None
         text_embeddings = self.language.token_embedding(input_ids)
         prefix_length = 0 if prefix is None else prefix.shape[1]
         embeddings = (
@@ -748,11 +777,17 @@ class DocumentVLMStudent(nn.Module):
         eos_token_id: int | None = None,
     ) -> torch.Tensor:
         generated = input_ids
+        if pixel_values is None and pixel_mask is not None:
+            raise ValueError("pixel_mask requires pixel_values")
+        visual_prefix = (
+            self.encode_images(pixel_values, pixel_mask)
+            if pixel_values is not None
+            else None
+        )
         for _ in range(max_new_tokens):
             output = self(
                 generated,
-                pixel_values=pixel_values,
-                pixel_mask=pixel_mask,
+                visual_prefix=visual_prefix,
             )
             next_token = output.logits[:, -1].argmax(dim=-1, keepdim=True)
             generated = torch.cat((generated, next_token), dim=1)

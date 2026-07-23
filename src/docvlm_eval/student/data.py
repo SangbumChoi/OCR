@@ -715,3 +715,55 @@ class BalancedGroupBatchSampler:
             ]
             start = self.rank * self.batch_size
             yield selected_indices[start : start + self.batch_size]
+
+
+class DeterministicDistributedBatchSampler:
+    """Shuffle exhaustively per epoch, padding only to align distributed ranks."""
+
+    def __init__(
+        self,
+        dataset_size: int,
+        batch_size: int,
+        *,
+        seed: int = 7,
+        num_replicas: int = 1,
+        rank: int = 0,
+    ):
+        if dataset_size <= 0 or batch_size <= 0:
+            raise ValueError("dataset_size and batch_size must be positive")
+        if num_replicas <= 0 or not 0 <= rank < num_replicas:
+            raise ValueError("distributed sampler rank must be within num_replicas")
+        self.dataset_size = int(dataset_size)
+        self.batch_size = int(batch_size)
+        self.seed = int(seed)
+        self.num_replicas = int(num_replicas)
+        self.rank = int(rank)
+        self.epoch = 0
+        self.num_batches = math.ceil(
+            self.dataset_size / (self.batch_size * self.num_replicas)
+        )
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def __len__(self) -> int:
+        return self.num_batches
+
+    def __iter__(self) -> Iterator[list[int]]:
+        indices = list(range(self.dataset_size))
+        random.Random(self.seed + self.epoch).shuffle(indices)
+        if self.num_replicas == 1:
+            for start in range(0, self.dataset_size, self.batch_size):
+                yield indices[start : start + self.batch_size]
+            return
+
+        global_batch_size = self.batch_size * self.num_replicas
+        total_size = self.num_batches * global_batch_size
+        indices.extend(
+            indices[index % self.dataset_size]
+            for index in range(total_size - self.dataset_size)
+        )
+        rank_start = self.rank * self.batch_size
+        for start in range(0, total_size, global_batch_size):
+            global_batch = indices[start : start + global_batch_size]
+            yield global_batch[rank_start : rank_start + self.batch_size]

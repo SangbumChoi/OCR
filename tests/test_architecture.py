@@ -47,3 +47,19 @@ def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     _, errors = validate_blueprint(blueprint)
 
     assert any("future_objective is not implemented" in error for error in errors)
+
+
+def test_blueprint_rejects_invalid_posttraining_contracts():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    blueprint["training"]["posttraining"]["sft"]["target_mode"] = "hidden_reasoning"
+    rlvr = blueprint["training"]["posttraining"]["rlvr"]
+    rlvr["group_size"] = 1
+    rlvr["rollout"]["top_p"] = 2.0
+    rlvr["reward_mix"]["unsupported_reward"] = 0.0
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("sft.target_mode is invalid" in error for error in errors)
+    assert any("group_size must be at least two" in error for error in errors)
+    assert any("rollout.top_p must be within" in error for error in errors)
+    assert any("unsupported_reward" in error for error in errors)

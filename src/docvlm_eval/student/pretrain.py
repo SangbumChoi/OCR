@@ -42,6 +42,7 @@ class PretrainConfig:
     device: str = "auto"
     resume_from: str | None = None
     tokenizer_fingerprint: str | None = None
+    run_stage: str = "pretraining"
     loss_weights: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -65,6 +66,8 @@ class PretrainConfig:
             raise ValueError("log_every_steps must be positive")
         if any(weight < 0 for weight in self.loss_weights.values()):
             raise ValueError("pretraining loss weights must be non-negative")
+        if not self.run_stage.strip():
+            raise ValueError("run_stage cannot be empty")
 
     @classmethod
     def from_blueprint(
@@ -371,6 +374,7 @@ def _save_checkpoint(
             "trainer_state": asdict(state),
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "world_size": context.world_size,
+            "run_stage": config.run_stage,
         },
     )
     payload = {
@@ -413,6 +417,7 @@ def _load_checkpoint(
     scaler: torch.amp.GradScaler,
     context: _DistributedContext,
     expected_tokenizer_fingerprint: str | None,
+    expected_run_stage: str,
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
     metadata = (
@@ -427,6 +432,12 @@ def _load_checkpoint(
     ):
         raise ValueError(
             "resume checkpoint tokenizer fingerprint does not match the active tokenizer"
+        )
+    saved_run_stage = str(metadata.get("run_stage", "pretraining"))
+    if saved_run_stage != expected_run_stage:
+        raise ValueError(
+            f"resume checkpoint run stage {saved_run_stage!r} does not match "
+            f"{expected_run_stage!r}"
         )
     saved_world_size = int(metadata.get("world_size", 1))
     if saved_world_size != context.world_size:
@@ -557,6 +568,7 @@ def train_student(
             scaler,
             context,
             config.tokenizer_fingerprint,
+            config.run_stage,
         )
         scheduler.step(state.tokens_seen)
 

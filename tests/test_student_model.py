@@ -64,6 +64,65 @@ def test_tiny_student_supports_text_replay_and_generation():
     assert generated.shape == (1, 6)
 
 
+def test_cached_visual_prefix_matches_direct_multimodal_forward():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(5)
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    input_ids = torch.randint(0, 256, (2, 5))
+    pixel_values = torch.randn(2, 3, 31, 29)
+
+    direct = model(input_ids, pixel_values=pixel_values).logits
+    prefix = model.encode_images(pixel_values)
+    cached = model(input_ids, visual_prefix=prefix).logits
+
+    assert torch.equal(direct, cached)
+
+
+def test_multimodal_generation_encodes_the_image_once(monkeypatch):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    input_ids = torch.randint(0, 256, (1, 4))
+    calls = 0
+    original = model.vision.forward
+
+    def counted_forward(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(model.vision, "forward", counted_forward)
+    generated = model.generate(
+        input_ids,
+        pixel_values=torch.randn(1, 3, 32, 32),
+        max_new_tokens=3,
+    )
+
+    assert generated.shape == (1, 7)
+    assert calls == 1
+
+
+def test_generation_rejects_a_mask_without_an_image():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    with pytest.raises(ValueError, match="pixel_mask requires pixel_values"):
+        model.generate(
+            torch.randint(0, 256, (1, 4)),
+            pixel_mask=torch.ones(1, 32, 32, dtype=torch.bool),
+        )
+
+
 def test_random_init_first_step_reaches_the_vision_tower():
     import torch
 
