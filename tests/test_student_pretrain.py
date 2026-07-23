@@ -313,6 +313,23 @@ def test_token_cosine_scheduler_is_driven_by_tokens_not_step_count():
     assert scheduler.step(1000) == pytest.approx(0.1)
 
 
+def test_planned_optimizer_steps_accounts_for_partial_epoch_windows():
+    from docvlm_eval.student.curriculum import planned_optimizer_steps
+
+    assert planned_optimizer_steps(
+        num_batches=5,
+        grad_accum_steps=2,
+        epochs=3,
+        max_steps=None,
+    ) == 9
+    assert planned_optimizer_steps(
+        num_batches=5,
+        grad_accum_steps=2,
+        epochs=3,
+        max_steps=4,
+    ) == 4
+
+
 def test_evaluation_weights_losses_by_sample_count():
     import torch
 
@@ -369,6 +386,12 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.warmup_tokens == 100_000_000
     assert config.total_tokens == 20_000_000_000
     assert config.loss_weights["teacher_kl"] == 0.35
+    assert [stage.id for stage in config.curriculum.stages] == [
+        "perception_bootstrap",
+        "dense_multilingual_alignment",
+        "hard_reasoning_refinement",
+    ]
+    assert config.curriculum.fingerprint.startswith("sha256:")
 
 
 def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
@@ -387,4 +410,137 @@ def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
             warmup_tokens=0,
             total_tokens=10,
             loss_weights={"autoregressive": -1.0},
+        )
+
+
+def test_curriculum_changes_logged_loss_weights_at_optimizer_boundaries(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(
+                id="bootstrap",
+                until_fraction=0.5,
+                loss_weights={"autoregressive": 0.25},
+            ),
+            CurriculumStage(
+                id="refine",
+                until_fraction=1.0,
+                loss_weights={"autoregressive": 1.5},
+            ),
+        )
+    )
+    output = tmp_path / "curriculum"
+    train_student(
+        DocumentVLMStudent(StudentConfig.tiny()),
+        _loader(),
+        replace(
+            _config(output, max_steps=4),
+            curriculum=schedule,
+        ),
+    )
+    metrics = [
+        json.loads(line)
+        for line in (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert [row["train/curriculum_stage"] for row in metrics] == [
+        "bootstrap",
+        "bootstrap",
+        "refine",
+        "refine",
+    ]
+    assert [row["train/loss_weight/autoregressive"] for row in metrics] == [
+        0.25,
+        0.25,
+        1.5,
+        1.5,
+    ]
+
+
+def test_resume_rejects_a_changed_curriculum(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    first_schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(
+                id="all",
+                until_fraction=1.0,
+                loss_weights={"autoregressive": 1.0},
+            ),
+        )
+    )
+    changed_schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(
+                id="all",
+                until_fraction=1.0,
+                loss_weights={"autoregressive": 0.5},
+            ),
+        )
+    )
+    output = tmp_path / "curriculum-resume"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(),
+        replace(
+            _config(output, max_steps=1),
+            curriculum=first_schedule,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="curriculum fingerprint"):
+        train_student(
+            model,
+            _loader(),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                curriculum=changed_schedule,
+            ),
+        )
+
+
+def test_resume_rejects_a_changed_curriculum_horizon(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(id="all", until_fraction=1.0),
+        )
+    )
+    output = tmp_path / "curriculum-horizon"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(),
+        replace(
+            _config(output, max_steps=1),
+            curriculum=schedule,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="curriculum horizon"):
+        train_student(
+            model,
+            _loader(),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                curriculum=schedule,
+            ),
         )

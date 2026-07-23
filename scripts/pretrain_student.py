@@ -199,10 +199,27 @@ def main() -> None:
         if args.num_workers is not None
         else int(optimizer_raw["num_workers"])
     )
+    overrides = {
+        "resume_from": args.resume,
+        "device": str(device),
+        "tokenizer_fingerprint": tokenizer.fingerprint,
+    }
+    if args.epochs is not None:
+        overrides["epochs"] = args.epochs
+    if args.max_steps is not None:
+        overrides["max_steps"] = args.max_steps
+    config = PretrainConfig.from_blueprint(
+        blueprint,
+        args.output,
+        **overrides,
+    )
     sampler = BalancedGroupBatchSampler.from_blueprint(
         train_dataset,
         blueprint,
         batch_size,
+        grad_accum_steps=config.grad_accum_steps,
+        epochs=config.epochs,
+        max_steps=config.max_steps,
     )
     train_loader = DataLoader(
         train_dataset,
@@ -245,20 +262,6 @@ def main() -> None:
             teacher_model.config,
             distillation_config,
         )
-    overrides = {
-        "resume_from": args.resume,
-        "device": str(device),
-        "tokenizer_fingerprint": tokenizer.fingerprint,
-    }
-    if args.epochs is not None:
-        overrides["epochs"] = args.epochs
-    if args.max_steps is not None:
-        overrides["max_steps"] = args.max_steps
-    config = PretrainConfig.from_blueprint(
-        blueprint,
-        args.output,
-        **overrides,
-    )
     result = train_student(
         student,
         train_loader,

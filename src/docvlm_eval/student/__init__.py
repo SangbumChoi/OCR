@@ -10,6 +10,7 @@ from .data import (
     UDDStudentDataset,
     student_model_inputs,
 )
+from .curriculum import CurriculumSchedule, CurriculumStage, planned_optimizer_steps
 from .distillation import (
     DistillationConfig,
     DistillationLoss,
@@ -58,6 +59,8 @@ from .rewards import (
 __all__ = [
     "BalancedGroupBatchSampler",
     "ConnectorConfig",
+    "CurriculumSchedule",
+    "CurriculumStage",
     "DocumentTokenizer",
     "DistillationConfig",
     "DistillationLoss",
@@ -98,6 +101,7 @@ __all__ = [
     "generate_teacher_predictions",
     "materialize_component",
     "parse_structured_response",
+    "planned_optimizer_steps",
     "sample_completion_group",
     "posttraining_prompt_batch",
     "score_structured_response",

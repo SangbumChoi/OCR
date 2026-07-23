@@ -4,8 +4,8 @@
 
 [`scripts/pretrain_student.py`](../../scripts/pretrain_student.py) trains the native sub-1B
 student directly from UDD. It supports random or selectively initialized students, an optional
-native online teacher, token-count scheduling, mixed precision, `torchrun` data parallelism,
-held-out evaluation, and exact checkpoint resume.
+native online teacher, token-count learning-rate scheduling, deterministic curriculum scheduling,
+mixed precision, `torchrun` data parallelism, held-out evaluation, and exact checkpoint resume.
 
 This is training infrastructure, not evidence that the default 20B-token run has been completed.
 Published model claims still require the controlled initialization, teacher, data-scale, and
@@ -127,6 +127,42 @@ Evaluation losses are weighted by sample count and reduced across ranks. The lea
 schedule advances by the globally reduced count of supervised answer tokens, not by microbatch or
 optimizer-step count.
 
+## Executable curriculum
+
+`training.pretraining.curriculum` is an optimizer-step-fraction schedule shared by data sampling
+and loss composition. Every stage has a unique ID, an increasing `until_fraction`, and optional
+partial overrides:
+
+```yaml
+curriculum:
+  unit: optimizer_step_fraction
+  stages:
+    - id: recognition_bootstrap
+      until_fraction: 0.2
+      group_weights:
+        recognition: 3.0
+        localization: 1.0
+      loss_weights:
+        region_text_contrastive: 0.25
+        box_regression: 0.30
+    - id: mixed_reasoning
+      until_fraction: 1.0
+      group_weights: {}
+      loss_weights: {}
+```
+
+The base `input_pipeline.group_weights` and `losses` remain in force for keys a stage does not
+override. Sampler group names must exist under the active `balance_by` dimension; unknown groups,
+negative weights, a stage that disables every available group, duplicate IDs, non-increasing
+boundaries, and a final boundary other than `1.0` fail closed.
+
+Stage selection uses the zero-based optimizer update and the exact planned number of updates,
+including gradient accumulation, epoch-end partial windows, and `max_steps`. The sampler derives the
+same update index from epoch and batch position, so worker prefetch cannot move a sample across a
+curriculum boundary. This also makes the sequence reproducible after resume. Each training record
+includes `train/curriculum_stage`, `train/curriculum_progress`, and
+`train/loss_weight/<name>` values for audit and W&B ingestion.
+
 ## Exact resume
 
 Resume the latest atomic checkpoint:
@@ -146,13 +182,13 @@ Each checkpoint contains:
 - optimizer and AMP scaler state;
 - Python, CPU Torch, and CUDA RNG state;
 - epoch, batch cursor, optimizer step, and supervised-token count;
-- tokenizer fingerprint and a `latest_checkpoint.txt` pointer.
+- tokenizer and curriculum fingerprints and a `latest_checkpoint.txt` pointer.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
 Combined with the deterministic balanced sampler and `persistent_workers=False`, an interrupted run
 reconstructs the same next batch and augmentation. A tokenizer mismatch is rejected before state
-loading. Exact continuation also requires the original `torchrun` world size because every rank has
-its own saved RNG stream and sampler slice.
+loading, as is a changed curriculum or training horizon. Exact continuation also requires the
+original `torchrun` world size because every rank has its own saved RNG stream and sampler slice.
 
 ## Loss and metric boundary
 

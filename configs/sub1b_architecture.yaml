@@ -155,9 +155,30 @@ training:
       box_regression: 0.20
       orientation: 0.05
     curriculum:
-      - "clean single-region recognition"
-      - "dense pages, multilingual text, tables, charts, and formulas"
-      - "degradation, distractors, long pages, and cross-region reasoning"
+      unit: optimizer_step_fraction
+      stages:
+        - id: perception_bootstrap
+          until_fraction: 0.15
+          group_weights: {}
+          loss_weights:
+            teacher_kl: 0.20
+            hidden_feature_distillation: 0.10
+            region_text_contrastive: 0.25
+            box_regression: 0.30
+            orientation: 0.10
+        - id: dense_multilingual_alignment
+          until_fraction: 0.65
+          group_weights: {}
+          loss_weights: {}
+        - id: hard_reasoning_refinement
+          until_fraction: 1.0
+          group_weights: {}
+          loss_weights:
+            teacher_kl: 0.45
+            hidden_feature_distillation: 0.15
+            region_text_contrastive: 0.10
+            box_regression: 0.25
+            orientation: 0.03
 
   posttraining:
     sft:

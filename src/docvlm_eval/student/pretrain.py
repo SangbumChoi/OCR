@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 
 from .data import student_model_inputs
+from .curriculum import CurriculumSchedule, planned_optimizer_steps
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .model import DocumentVLMStudent
 
@@ -44,6 +45,7 @@ class PretrainConfig:
     tokenizer_fingerprint: str | None = None
     run_stage: str = "pretraining"
     loss_weights: dict[str, float] = field(default_factory=dict)
+    curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
 
     def __post_init__(self) -> None:
         if self.epochs <= 0 or self.grad_accum_steps <= 0:
@@ -68,6 +70,7 @@ class PretrainConfig:
             raise ValueError("pretraining loss weights must be non-negative")
         if not self.run_stage.strip():
             raise ValueError("run_stage cannot be empty")
+        self.curriculum.validate()
 
     @classmethod
     def from_blueprint(
@@ -101,6 +104,7 @@ class PretrainConfig:
                 str(name): float(weight)
                 for name, weight in blueprint["training"]["pretraining"]["losses"].items()
             },
+            "curriculum": CurriculumSchedule.from_blueprint(blueprint),
         }
         values.update(overrides)
         return cls(**values)
@@ -344,6 +348,7 @@ def _save_checkpoint(
     state: TrainerState,
     config: PretrainConfig,
     context: _DistributedContext,
+    curriculum_total_steps: int,
 ) -> Path:
     output = Path(config.output_dir)
     checkpoints = output / "checkpoints"
@@ -375,6 +380,10 @@ def _save_checkpoint(
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "world_size": context.world_size,
             "run_stage": config.run_stage,
+            "curriculum_fingerprint": config.curriculum.fingerprint,
+            "curriculum_total_steps": (
+                curriculum_total_steps if config.curriculum.stages else None
+            ),
         },
     )
     payload = {
@@ -418,6 +427,8 @@ def _load_checkpoint(
     context: _DistributedContext,
     expected_tokenizer_fingerprint: str | None,
     expected_run_stage: str,
+    expected_curriculum_fingerprint: str | None,
+    expected_curriculum_total_steps: int,
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
     metadata = (
@@ -438,6 +449,21 @@ def _load_checkpoint(
         raise ValueError(
             f"resume checkpoint run stage {saved_run_stage!r} does not match "
             f"{expected_run_stage!r}"
+        )
+    saved_curriculum = metadata.get("curriculum_fingerprint")
+    if saved_curriculum != expected_curriculum_fingerprint:
+        raise ValueError(
+            "resume checkpoint curriculum fingerprint does not match the active schedule"
+        )
+    saved_curriculum_steps = metadata.get("curriculum_total_steps")
+    expected_steps = (
+        expected_curriculum_total_steps
+        if expected_curriculum_fingerprint is not None
+        else None
+    )
+    if saved_curriculum_steps != expected_steps:
+        raise ValueError(
+            "resume checkpoint curriculum horizon does not match the active training plan"
         )
     saved_world_size = int(metadata.get("world_size", 1))
     if saved_world_size != context.world_size:
@@ -558,6 +584,12 @@ def train_student(
         config.total_tokens,
         config.min_lr_ratio,
     )
+    total_curriculum_steps = planned_optimizer_steps(
+        num_batches=len(train_loader),
+        grad_accum_steps=config.grad_accum_steps,
+        epochs=config.epochs,
+        max_steps=config.max_steps,
+    )
     state = TrainerState()
     resume_path = _resolve_resume(config)
     if resume_path is not None:
@@ -569,6 +601,8 @@ def train_student(
             context,
             config.tokenizer_fingerprint,
             config.run_stage,
+            config.curriculum.fingerprint,
+            total_curriculum_steps,
         )
         scheduler.step(state.tokens_seen)
 
@@ -599,6 +633,15 @@ def train_student(
             if epoch == state.epoch and batch_index < state.batch_in_epoch:
                 continue
             batch = _move_batch(raw_batch, context.device)
+            curriculum_stage = config.curriculum.stage_for_step(
+                state.global_step,
+                total_curriculum_steps,
+            )
+            active_loss_weights = config.curriculum.loss_weights_for_step(
+                config.loss_weights,
+                state.global_step,
+                total_curriculum_steps,
+            )
             is_last_batch = batch_index + 1 == loader_length
             microbatch_number = accumulated_microbatches + 1
             should_step = (
@@ -615,7 +658,7 @@ def train_student(
                     total, losses = wrapped(
                         batch,
                         teacher_signals,
-                        config.loss_weights,
+                        active_loss_weights,
                     )
                     scaled_loss = total / config.grad_accum_steps
                 scaler.scale(scaled_loss).backward()
@@ -662,6 +705,18 @@ def train_student(
                     "train/gradient_norm": float(gradient_norm),
                     "train/tokens_seen": float(state.tokens_seen),
                     "train/global_step": float(state.global_step),
+                    "train/curriculum_stage": (
+                        curriculum_stage.id if curriculum_stage is not None else "base"
+                    ),
+                    "train/curriculum_progress": min(
+                        state.global_step - 1,
+                        total_curriculum_steps - 1,
+                    )
+                    / total_curriculum_steps,
+                    **{
+                        f"train/loss_weight/{name}": weight
+                        for name, weight in sorted(active_loss_weights.items())
+                    },
                 }
             )
             accumulated_tokens = 0
@@ -675,7 +730,8 @@ def train_student(
                 _append_metric(output_dir, {"kind": "train", **means})
                 print(
                     f"[student] step={state.global_step} tokens={state.tokens_seen:,} "
-                    f"loss={sum(means.get(name, 0.0) * config.loss_weights.get(name, 1.0) for name in losses):.4f} "
+                    f"loss={sum(means.get(name, 0.0) * active_loss_weights.get(name, 1.0) for name in losses):.4f} "
+                    f"curriculum={means['train/curriculum_stage']} "
                     f"lr={learning_rate:.3e}",
                     flush=True,
                 )
@@ -688,7 +744,7 @@ def train_student(
                     module.student,
                     eval_loaders,
                     context,
-                    config.loss_weights,
+                    active_loss_weights,
                     config.precision,
                 )
                 if context.is_main:
@@ -715,6 +771,7 @@ def train_student(
                     state,
                     config,
                     context,
+                    total_curriculum_steps,
                 )
             if config.max_steps is not None and state.global_step >= config.max_steps:
                 stop = True
@@ -735,6 +792,7 @@ def train_student(
             state,
             config,
             context,
+            total_curriculum_steps,
         )
     if context.world_size > 1:
         import torch.distributed as dist

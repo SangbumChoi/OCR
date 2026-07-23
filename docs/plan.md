@@ -133,8 +133,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   immutable Hub revisions, deterministic fold/filter sampling, schema and image validation,
   duplicate gates, and end-to-end component provenance.
 - **Pretrain:** [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) —
-  same-tokenizer online distillation, token-based scheduling, mixed precision, `torchrun`,
-  sample-weighted held-out evaluation, and exact checkpoint resume.
+  same-tokenizer online distillation, token-based learning-rate scheduling, deterministic
+  sampler/loss curricula, mixed precision, `torchrun`, sample-weighted held-out evaluation, and
+  exact checkpoint resume.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, single-update GRPO, exact checkpoint resume, and

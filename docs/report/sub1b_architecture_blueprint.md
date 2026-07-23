@@ -100,6 +100,13 @@ Pretraining establishes perception and alignment before instruction behavior:
 2. Add dense pages, multilingual scripts, tables, charts, formulas, and long visual sequences.
 3. Add acquisition degradation, distractors, relocated evidence, and cross-region questions.
 
+These are executable stages rather than narrative labels. The machine-readable curriculum assigns
+each stage an optimizer-step-fraction boundary and partial sampler/loss overrides. The balanced
+sampler and loss composer resolve the same stage deterministically, including after exact resume;
+the stage ID and every active loss weight are logged. A curriculum fingerprint in each checkpoint
+prevents continuation under silently changed boundaries or weights. See
+[`student_pretraining_runner.md`](student_pretraining_runner.md) for the schema and failure gates.
+
 The default data mixture is 45% authored synthetic documents, 25% public document data, 15%
 rendered text/formulas, 10% natural image-text replay, and 5% text-only replay. Synthetic data
 provides exact boxes, table trees, chart values, formula source, and counterfactual pairs. Public
@@ -199,8 +206,8 @@ what must be inherited, and what can be learned from the controlled document cur
 
 ## Current implementation boundary
 
-The model constructor, selective initialization, tokenizer, UDD adapter, samplers, multimodal
-collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict reward
+The model constructor, selective initialization, tokenizer, UDD adapter, curriculum-aware samplers,
+multimodal collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict reward
 verifiers, single-update GRPO runner, and multi-split held-out generation evaluator are executable
 and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and

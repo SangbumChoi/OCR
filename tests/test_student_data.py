@@ -259,6 +259,59 @@ def test_balanced_sampler_reads_the_blueprint_grouping_policy():
     assert len(list(sampler)) == 1
 
 
+def test_balanced_sampler_applies_curriculum_weights_at_step_boundaries():
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(
+                id="rare-first",
+                until_fraction=0.5,
+                group_weights={"rare": 1.0, "common": 0.0},
+            ),
+            CurriculumStage(
+                id="common-last",
+                until_fraction=1.0,
+                group_weights={"rare": 0.0, "common": 1.0},
+            ),
+        )
+    )
+    sampler = BalancedGroupBatchSampler(
+        ["rare", "common"],
+        batch_size=1,
+        num_batches=4,
+        curriculum=schedule,
+        grad_accum_steps=1,
+        epochs=1,
+        max_steps=4,
+    )
+
+    assert list(sampler) == [[0], [0], [1], [1]]
+
+
+def test_balanced_sampler_rejects_unknown_curriculum_groups():
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    schedule = CurriculumSchedule(
+        stages=(
+            CurriculumStage(
+                id="invalid",
+                until_fraction=1.0,
+                group_weights={"missing": 1.0},
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="unknown groups"):
+        BalancedGroupBatchSampler(
+            ["available"],
+            batch_size=1,
+            curriculum=schedule,
+        )
+
+
 def test_exhaustive_sampler_covers_every_example_once_on_one_rank():
     from docvlm_eval.student.data import DeterministicDistributedBatchSampler
 

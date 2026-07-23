@@ -56,6 +56,22 @@ def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     assert any("future_objective is not implemented" in error for error in errors)
 
 
+def test_blueprint_rejects_invalid_curriculum_contracts():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    stages = blueprint["training"]["pretraining"]["curriculum"]["stages"]
+    stages[1]["id"] = stages[0]["id"]
+    stages[1]["until_fraction"] = 0.1
+    stages[-1]["until_fraction"] = 0.9
+    stages[-1]["loss_weights"]["future_objective"] = 0.1
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("id must be non-empty and unique" in error for error in errors)
+    assert any("until_fraction must increase" in error for error in errors)
+    assert any("unsupported losses" in error for error in errors)
+    assert any("final stage must end at 1.0" in error for error in errors)
+
+
 def test_blueprint_rejects_invalid_posttraining_contracts():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["posttraining"]["sft"]["target_mode"] = "hidden_reasoning"

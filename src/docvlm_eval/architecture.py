@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -262,6 +263,55 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(f"training.pretraining.losses.{name} is not implemented")
         if float(weight) < 0:
             errors.append(f"training.pretraining.losses.{name} must be non-negative")
+    curriculum = training["pretraining"].get("curriculum", {})
+    if not isinstance(curriculum, dict):
+        errors.append("training.pretraining.curriculum must be a mapping")
+    else:
+        if curriculum.get("unit") != "optimizer_step_fraction":
+            errors.append(
+                "training.pretraining.curriculum.unit must be "
+                "optimizer_step_fraction"
+            )
+        stages = curriculum.get("stages")
+        if not isinstance(stages, list) or not stages:
+            errors.append("training.pretraining.curriculum.stages must be a non-empty list")
+        else:
+            stage_ids: set[str] = set()
+            previous_boundary = 0.0
+            for index, stage in enumerate(stages):
+                prefix = f"training.pretraining.curriculum.stages[{index}]"
+                if not isinstance(stage, dict):
+                    errors.append(f"{prefix} must be a mapping")
+                    continue
+                stage_id = str(stage.get("id", ""))
+                if not stage_id or stage_id in stage_ids:
+                    errors.append(f"{prefix}.id must be non-empty and unique")
+                stage_ids.add(stage_id)
+                boundary = float(stage.get("until_fraction", -1.0))
+                if not previous_boundary < boundary <= 1.0:
+                    errors.append(
+                        f"{prefix}.until_fraction must increase within (0, 1]"
+                    )
+                previous_boundary = boundary
+                for field in ("group_weights", "loss_weights"):
+                    weights = stage.get(field, {})
+                    if not isinstance(weights, dict):
+                        errors.append(f"{prefix}.{field} must be a mapping")
+                        continue
+                    if any(float(weight) < 0 for weight in weights.values()):
+                        errors.append(f"{prefix}.{field} must be non-negative")
+                unknown_losses = set(stage.get("loss_weights", {})) - (
+                    supported_pretraining_losses
+                )
+                if unknown_losses:
+                    errors.append(
+                        f"{prefix}.loss_weights has unsupported losses: "
+                        f"{sorted(unknown_losses)}"
+                    )
+            if not math.isclose(previous_boundary, 1.0, abs_tol=1e-9):
+                errors.append(
+                    "training.pretraining.curriculum final stage must end at 1.0"
+                )
     posttraining = training["posttraining"]
     sft = posttraining["sft"]
     if sft.get("response_format") != "structured_json_v1":

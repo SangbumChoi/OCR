@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from .curriculum import CurriculumSchedule, planned_optimizer_steps
+
 
 STUDENT_MODEL_INPUTS = frozenset(
     {
@@ -692,6 +694,10 @@ class BalancedGroupBatchSampler:
         seed: int = 7,
         num_replicas: int = 1,
         rank: int = 0,
+        curriculum: CurriculumSchedule | None = None,
+        grad_accum_steps: int = 1,
+        epochs: int = 1,
+        max_steps: int | None = None,
     ):
         if not groups:
             raise ValueError("balanced sampler requires at least one example")
@@ -705,6 +711,17 @@ class BalancedGroupBatchSampler:
             raise ValueError("distributed sampler rank must be within num_replicas")
         self.num_replicas = num_replicas
         self.rank = rank
+        if grad_accum_steps <= 0 or epochs <= 0:
+            raise ValueError("grad_accum_steps and epochs must be positive")
+        self.grad_accum_steps = int(grad_accum_steps)
+        self.steps_per_epoch = math.ceil(self.num_batches / self.grad_accum_steps)
+        self.curriculum = curriculum or CurriculumSchedule()
+        self.total_steps = planned_optimizer_steps(
+            num_batches=self.num_batches,
+            grad_accum_steps=self.grad_accum_steps,
+            epochs=epochs,
+            max_steps=max_steps,
+        )
         self.indices: dict[str, list[int]] = {}
         for index, group in enumerate(groups):
             self.indices.setdefault(str(group), []).append(index)
@@ -713,9 +730,23 @@ class BalancedGroupBatchSampler:
         unknown = set(supplied) - set(self.group_names)
         if unknown:
             raise ValueError(f"weights reference unknown groups: {sorted(unknown)}")
-        self.weights = [float(supplied.get(group, 1.0)) for group in self.group_names]
+        self.base_weights = {
+            group: float(supplied.get(group, 1.0)) for group in self.group_names
+        }
+        self.weights = [self.base_weights[group] for group in self.group_names]
         if any(weight < 0 for weight in self.weights) or not any(self.weights):
             raise ValueError("group weights must be non-negative with at least one positive value")
+        curriculum_groups = {
+            group
+            for stage in self.curriculum.stages
+            for group in stage.group_weights
+        }
+        unknown_curriculum = curriculum_groups - set(self.group_names)
+        if unknown_curriculum:
+            raise ValueError(
+                "curriculum weights reference unknown groups: "
+                f"{sorted(unknown_curriculum)}"
+            )
 
     @classmethod
     def from_blueprint(
@@ -728,8 +759,12 @@ class BalancedGroupBatchSampler:
         seed: int = 7,
         num_replicas: int | None = None,
         rank: int | None = None,
+        grad_accum_steps: int | None = None,
+        epochs: int | None = None,
+        max_steps: int | None = None,
     ) -> "BalancedGroupBatchSampler":
         pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+        optimizer = blueprint["training"]["pretraining"]["optimizer"]
         balance_by = str(pipeline["balance_by"])
         return cls(
             dataset.groups(balance_by),
@@ -750,6 +785,22 @@ class BalancedGroupBatchSampler:
                 if rank is None
                 else rank
             ),
+            curriculum=CurriculumSchedule.from_blueprint(blueprint),
+            grad_accum_steps=(
+                int(optimizer["grad_accum_steps"])
+                if grad_accum_steps is None
+                else int(grad_accum_steps)
+            ),
+            epochs=int(optimizer["epochs"]) if epochs is None else int(epochs),
+            max_steps=(
+                (
+                    None
+                    if optimizer.get("max_steps") is None
+                    else int(optimizer["max_steps"])
+                )
+                if max_steps is None
+                else int(max_steps)
+            ),
         )
 
     def set_epoch(self, epoch: int) -> None:
@@ -760,10 +811,23 @@ class BalancedGroupBatchSampler:
 
     def __iter__(self) -> Iterator[list[int]]:
         rng = random.Random(self.seed + self.epoch)
-        for _ in range(self.num_batches):
+        for batch_index in range(self.num_batches):
+            step = (
+                self.epoch * self.steps_per_epoch
+                + batch_index // self.grad_accum_steps
+            )
+            stage = self.curriculum.stage_for_step(step, self.total_steps)
+            weights = dict(self.base_weights)
+            if stage is not None:
+                weights.update(stage.group_weights)
+            selected_weights = [weights[group] for group in self.group_names]
+            if not any(selected_weights):
+                raise ValueError(
+                    f"curriculum stage {stage.id!r} disables every sampler group"
+                )
             selected_groups = rng.choices(
                 self.group_names,
-                weights=self.weights,
+                weights=selected_weights,
                 k=self.batch_size * self.num_replicas,
             )
             selected_indices = [
