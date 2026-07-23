@@ -126,6 +126,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   the adjustable approximately 790M student, selective-transfer controls, multimodal pretraining,
   grounded SFT, and verifiable-reward RL design. Its machine-readable source is
   [`../configs/sub1b_architecture.yaml`](../configs/sub1b_architecture.yaml).
+- **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
+  catalog of 100 primary methods across vision, connectors, document models, compact LMs,
+  transfer/distillation, data construction, RL, and reliability. Every entry records both the
+  useful mechanism and the failure risk in the sub-1B document regime.
 - **Read:** [`report/ablation_plan.md`](report/ablation_plan.md) — A1 spotting,
   A7 preprocessing, A5 LoRA placement are exactly the "fold the pipeline into the model" moves.
 
@@ -175,7 +179,8 @@ added factor lifting the score a step, ending well above the baseline.
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md) ·
-   [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md)
+   [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
+   [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
    [`report/synth_generation_survey.md`](report/synth_generation_survey.md) →

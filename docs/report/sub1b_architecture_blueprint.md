@@ -140,6 +140,12 @@ what must be inherited, and what can be learned from the controlled document cur
 
 ## Evidence basis
 
+The wider design-space review is maintained as a validated 100-method catalog:
+[`frontier_method_survey.md`](frontier_method_survey.md). Its machine-readable source records the
+benefit, sub-1B limitation, decision, and adjustable knobs for every method. The default blueprint
+uses only entries marked `adopt`; entries marked `ablate` require matched evidence at the same
+student size and compute budget.
+
 The architecture follows the controlled connector, resolution, and data-mixture analysis in
 [MM1](https://arxiv.org/abs/2403.09611), the compact visual-token findings in
 [SmolVLM](https://arxiv.org/abs/2504.05299), and contrastive vision transfer established by
