@@ -128,6 +128,12 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     connector = student["connector"]
     if int(vision["width"]) % int(vision["attention_heads"]):
         errors.append("student.vision.width must be divisible by attention_heads")
+    visual_positions = int(vision["max_position_tokens"])
+    if math.isqrt(visual_positions) ** 2 != visual_positions:
+        errors.append(
+            "student.vision.max_position_tokens must form a square "
+            "two-dimensional grid"
+        )
     if int(language["width"]) % int(language["attention_heads"]):
         errors.append("student.language.width must be divisible by attention_heads")
     if int(language["attention_heads"]) % int(language["kv_heads"]):
@@ -148,6 +154,14 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("training.pretraining.input_pipeline.max_text_tokens must be positive")
     if int(input_pipeline.get("max_image_long_side", 0)) <= 0:
         errors.append("training.pretraining.input_pipeline.max_image_long_side must be positive")
+    if input_pipeline.get("visual_canvas_mode", "fixed_square") not in {
+        "fixed_square",
+        "batch_adaptive",
+    }:
+        errors.append(
+            "training.pretraining.input_pipeline.visual_canvas_mode must be "
+            "fixed_square or batch_adaptive"
+        )
     rotation_probability = float(input_pipeline.get("rotation_probability", -1.0))
     if not 0.0 <= rotation_probability <= 1.0:
         errors.append(

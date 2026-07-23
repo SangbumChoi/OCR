@@ -238,6 +238,8 @@ Each checkpoint contains:
 - optimizer and AMP scaler state;
 - Python, CPU Torch, and CUDA RNG state;
 - epoch, batch cursor, optimizer step, and supervised/text/effective token counts;
+- cumulative actual-shape student FLOPs, dense visual tokens, valid visual tokens, and visual
+  sample count;
 - tokenizer, curriculum, and token-budget contracts plus a `latest_checkpoint.txt` pointer.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
@@ -263,6 +265,11 @@ there is no separate reading-order scalar. Metrics are appended to `metrics.json
 are written under `outputs/.../checkpoints/step-NNNNNNNN`. Downstream capability claims must use
 generation metrics on template-, source-, and image-identity-held-out data rather than treating
 training loss as document-understanding accuracy.
+
+Input-efficiency records additionally include `train/dense_visual_tokens_per_sample` and
+`train/valid_visual_token_fraction`. These are cumulative utilization diagnostics, not quality
+metrics. [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) pairs them with heldout
+generation scores and deployment gates.
 
 Continue with structured SFT and optional verifiable-reward GRPO using
 [`student_posttraining_runner.md`](student_posttraining_runner.md).

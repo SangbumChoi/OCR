@@ -155,7 +155,7 @@ Each suite root contains:
 - `gates/<variant>--<replicate>.json` and `gates/<variant>.json` with matched baseline decisions;
 - `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
   deltas, document-family/language/evidence-count/degradation deltas, confidence intervals,
-  gate status, and ranking;
+  final-checkpoint pretraining efficiency statistics, gate status, and ranking;
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
   generalization gap, evidence conclusion, and deployment-gate status.
 

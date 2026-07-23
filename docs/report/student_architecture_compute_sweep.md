@@ -36,8 +36,9 @@ multiply-add operations as two FLOPs. It includes:
 
 The estimate excludes normalization, activation, softmax, loss, optimizer, data loading, and
 external-teacher compute. It is a reproducible student-compute estimand, not a claim about hardware
-throughput, energy, or total experiment cost. The current collator uses a fixed square canvas, so
-the estimator intentionally counts the dense padded shape executed by the model.
+throughput, energy, or total experiment cost. The estimator counts the actual dense batch tensor.
+This architecture sweep pins `fixed_square` to preserve its square-canvas estimand; the separate
+visual-canvas sweep isolates adaptive padding.
 
 ## Budget derivation
 
@@ -93,5 +94,7 @@ uses more optimizer updates is not disadvantaged: that is the intended consequen
 total student compute. Report both quality and realized steps because one reveals the architecture
 trade and the other explains how the fixed budget was spent.
 
-This sweep does not isolate native aspect-ratio packing, tiling, wall-clock latency, memory, or
-teacher-generation cost. Those require separate controlled experiments.
+This sweep does not isolate adaptive canvas padding, true sequence packing, tiling, wall-clock
+training latency, peak memory, or teacher-generation cost. Adaptive padding is isolated by
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md); the remaining systems questions
+require separate controlled experiments.

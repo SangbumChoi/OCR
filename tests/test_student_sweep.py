@@ -343,6 +343,42 @@ def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
         )
 
 
+def test_visual_canvas_sweep_changes_only_the_canvas_policy(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_visual_canvas_sweep.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "visual-canvas-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "batch_adaptive"
+    policies = {
+        variant.arm_id: variant.plan.resolved_blueprint["training"][
+            "pretraining"
+        ]["input_pipeline"]["visual_canvas_mode"]
+        for variant in plan.variants
+    }
+    assert policies == {
+        "batch_adaptive": "batch_adaptive",
+        "fixed_square": "fixed_square",
+    }
+    assert all(
+        "visual-canvas-ablation"
+        in variant.plan.raw_spec["evaluation"]["wandb_tags"]
+        for variant in plan.variants
+    )
+
+
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):
     config = _tiny_sweep(tmp_path)
     first = compile_sweep_plan(
@@ -562,6 +598,27 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
                 json.dumps(row) + "\n",
                 encoding="utf-8",
             )
+        pretrain = Path(variant.plan.root) / "artifacts" / "pretrain"
+        checkpoint = pretrain / "checkpoints" / "step-00000001"
+        checkpoint.mkdir(parents=True)
+        dense_tokens = (
+            100 if variant.arm_id == "baseline" else 60
+        )
+        (checkpoint / "trainer_state.json").write_text(
+            json.dumps(
+                {
+                    "student_flops_seen": dense_tokens * 1_000,
+                    "dense_visual_tokens_seen": dense_tokens,
+                    "valid_visual_tokens_seen": 50,
+                    "visual_samples_seen": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (pretrain / "latest_checkpoint.txt").write_text(
+            str(checkpoint),
+            encoding="utf-8",
+        )
         path = Path(variant.plan.root) / "artifacts" / "evaluation" / "comparison.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         heldout_score, milliseconds = scores[
@@ -626,6 +683,9 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
     assert robustness["n"] == 2
     assert robustness["mean"] == pytest.approx(0.125)
     assert robustness["ci95"] == pytest.approx([0.1, 0.15])
+    efficiency = candidate["pretraining_efficiency_delta_statistics"]
+    assert efficiency["dense_visual_tokens_per_sample"]["mean"] == -20.0
+    assert efficiency["student_flops"]["mean"] == -40_000.0
     assert Path(candidate["gate_report"]).is_file()
     assert all(Path(record["gate_report"]).is_file() for record in result["runs"].values())
     assert (Path(plan.root) / "comparison.json").is_file()

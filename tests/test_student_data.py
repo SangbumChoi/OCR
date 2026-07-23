@@ -88,6 +88,7 @@ def test_collator_config_is_owned_by_the_machine_readable_blueprint():
     assert config.max_visual_tokens == 4096
     assert config.vocab_size == 64000
     assert config.rotation_probability == 1.0
+    assert config.visual_canvas_mode == "batch_adaptive"
 
 
 def test_rotate_normalized_box_covers_all_quarter_turns():
@@ -138,6 +139,68 @@ def test_collator_masks_prompts_and_transforms_boxes_to_the_padded_canvas():
         assert torch.all(batch["labels"][row, : position + 1] == -100)
         assert batch["labels"][row, position + 1] != -100
     assert torch.all(batch["labels"][~batch["attention_mask"]] == -100)
+
+
+def test_batch_adaptive_canvas_reduces_dense_visual_tokens_without_resizing():
+    import torch
+
+    from docvlm_eval.student.data import (
+        StudentCollator,
+        StudentCollatorConfig,
+        UDDStudentDataset,
+    )
+    from docvlm_eval.student.compute import estimate_batch_training_flops
+    from docvlm_eval.student.config import StudentConfig
+
+    dataset = UDDStudentDataset(_udd_rows())
+    adaptive = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(
+            max_length=128,
+            max_image_long_side=32,
+            patch_size=8,
+            max_visual_tokens=16,
+            rotation_probability=0.0,
+            visual_canvas_mode="batch_adaptive",
+        ),
+    )
+    fixed = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(
+            max_length=128,
+            max_image_long_side=32,
+            patch_size=8,
+            max_visual_tokens=16,
+            rotation_probability=0.0,
+            visual_canvas_mode="fixed_square",
+        ),
+    )
+
+    batch = adaptive([dataset[0], dataset[2]])
+    fixed_batch = fixed([dataset[0], dataset[2]])
+
+    assert batch["pixel_values"].shape == (2, 3, 16, 24)
+    visual_batch = batch["metadata"]["visual_batch"]
+    assert visual_batch["height"] == 16
+    assert visual_batch["width"] == 24
+    assert visual_batch["coordinate_canvas_height"] == 32
+    assert visual_batch["coordinate_canvas_width"] == 32
+    assert visual_batch["dense_patch_tokens_per_image"] == 6
+    assert visual_batch["valid_pixel_fraction"] == pytest.approx(
+        200 / (16 * 24)
+    )
+    assert torch.allclose(
+        batch["box_targets"][1],
+        torch.tensor([0.0625, 0.0625, 0.3125, 0.1875]),
+    )
+    assert torch.equal(batch["box_targets"], fixed_batch["box_targets"])
+    assert estimate_batch_training_flops(
+        StudentConfig.tiny(),
+        batch,
+    ) < estimate_batch_training_flops(
+        StudentConfig.tiny(),
+        fixed_batch,
+    )
 
 
 def test_collated_udd_batch_runs_all_available_student_losses():

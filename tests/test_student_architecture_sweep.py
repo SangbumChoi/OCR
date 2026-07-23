@@ -54,6 +54,9 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
         assert pretrain["curriculum"]["unit"] == (
             "training_compute_fraction"
         )
+        assert pretrain["input_pipeline"]["visual_canvas_mode"] == (
+            "fixed_square"
+        )
         assert sft["total_student_flops"] == plan.budgets.sft
         assert sft["schedule_unit"] == "student_flops"
         assert rlvr["total_student_flops"] == plan.budgets.rlvr

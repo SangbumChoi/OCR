@@ -51,6 +51,51 @@ def test_tiny_student_multimodal_forward_and_auxiliary_losses():
     assert output.loss is not None and torch.isfinite(output.loss)
 
 
+def test_visual_position_ids_are_stable_across_batch_canvas_widths():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    tower = DocumentVLMStudent(StudentConfig.tiny()).vision
+
+    assert tower._position_ids(2, 2, torch.device("cpu")).tolist() == [
+        0,
+        1,
+        8,
+        9,
+    ]
+    assert tower._position_ids(2, 3, torch.device("cpu")).tolist() == [
+        0,
+        1,
+        2,
+        8,
+        9,
+        10,
+    ]
+
+
+def test_visual_prefix_is_invariant_to_fully_masked_canvas_extension():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(31)
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    pixels = torch.randn(1, 3, 16, 16)
+    compact_mask = torch.ones(1, 16, 16, dtype=torch.bool)
+    extended = torch.zeros(1, 3, 16, 24)
+    extended[:, :, :, :16] = pixels
+    extended_mask = torch.zeros(1, 16, 24, dtype=torch.bool)
+    extended_mask[:, :, :16] = True
+
+    compact = model.encode_images(pixels, compact_mask)
+    padded = model.encode_images(extended, extended_mask)
+
+    assert torch.allclose(compact, padded, atol=1e-6)
+
+
 def test_tiny_student_supports_text_replay_and_generation():
     import torch
 

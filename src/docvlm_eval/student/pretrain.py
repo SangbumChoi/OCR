@@ -268,6 +268,9 @@ class TrainerState:
     text_tokens_seen: int = 0
     effective_tokens_seen: int = 0
     student_flops_seen: int = 0
+    dense_visual_tokens_seen: int = 0
+    valid_visual_tokens_seen: int = 0
+    visual_samples_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -278,6 +281,9 @@ class TrainingResult:
     text_tokens_seen: int
     effective_tokens_seen: int
     student_flops_seen: int
+    dense_visual_tokens_seen: int
+    valid_visual_tokens_seen: int
+    visual_samples_seen: int
     budget_tokens_seen: int
     token_unit: str
     schedule_unit: str
@@ -571,6 +577,32 @@ def _uses_fp16(device: torch.device, precision: str) -> bool:
 def _append_metric(output_dir: Path, payload: dict[str, Any]) -> None:
     with (output_dir / "metrics.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _batch_visual_counts(
+    batch: dict[str, Any],
+    patch_size: int,
+) -> tuple[int, int, int]:
+    pixel_values = batch.get("pixel_values")
+    batch_size = int(batch["input_ids"].shape[0])
+    if pixel_values is None:
+        return 0, 0, 0
+    pixel_mask = batch.get("pixel_mask")
+    if pixel_mask is None:
+        raise ValueError("visual efficiency accounting requires pixel_mask")
+    _, _, height, width = pixel_values.shape
+    patch_height = math.ceil(height / patch_size)
+    patch_width = math.ceil(width / patch_size)
+    dense = int(batch_size * patch_height * patch_width)
+    valid = int(
+        torch.nn.functional.max_pool2d(
+            pixel_mask[:, None].to(dtype=torch.float32),
+            kernel_size=patch_size,
+            stride=patch_size,
+            ceil_mode=True,
+        ).sum().item()
+    )
+    return dense, valid, batch_size
 
 
 def _save_checkpoint(
@@ -906,6 +938,9 @@ def train_student(
     accumulated_losses: dict[str, float] = {}
     accumulated_microbatches = 0
     accumulated_student_flops = 0
+    accumulated_dense_visual_tokens = 0
+    accumulated_valid_visual_tokens = 0
+    accumulated_samples = 0
     epoch = state.epoch
     while not stop and (config.epochs is None or epoch < config.epochs):
         _set_loader_epoch(train_loader, epoch, config.seed, context.rank)
@@ -988,6 +1023,13 @@ def train_student(
                 module.student.config,
                 batch,
             )
+            dense_visual, valid_visual, visual_samples = _batch_visual_counts(
+                batch,
+                module.student.config.vision.patch_size,
+            )
+            accumulated_dense_visual_tokens += dense_visual
+            accumulated_valid_visual_tokens += valid_visual
+            accumulated_samples += visual_samples
             for name, count in batch_token_counts.items():
                 accumulated_token_counts[name] += count
             for name, value in losses.items():
@@ -1011,6 +1053,18 @@ def train_student(
                 context,
             )
             state.student_flops_seen += global_student_flops
+            global_dense_visual_tokens = _all_reduce_int(
+                accumulated_dense_visual_tokens,
+                context,
+            )
+            global_valid_visual_tokens = _all_reduce_int(
+                accumulated_valid_visual_tokens,
+                context,
+            )
+            global_samples = _all_reduce_int(accumulated_samples, context)
+            state.dense_visual_tokens_seen += global_dense_visual_tokens
+            state.valid_visual_tokens_seen += global_valid_visual_tokens
+            state.visual_samples_seen += global_samples
             schedule_count = _state_schedule_count(state, config)
             learning_rate = scheduler.step(schedule_count)
             scaler.unscale_(optimizer)
@@ -1049,6 +1103,18 @@ def train_student(
                     "train/student_flops_seen": float(
                         state.student_flops_seen
                     ),
+                    "train/dense_visual_tokens_per_sample": (
+                        state.dense_visual_tokens_seen
+                        / state.visual_samples_seen
+                        if state.visual_samples_seen
+                        else 0.0
+                    ),
+                    "train/valid_visual_token_fraction": (
+                        state.valid_visual_tokens_seen
+                        / state.dense_visual_tokens_seen
+                        if state.dense_visual_tokens_seen
+                        else 0.0
+                    ),
                     "train/schedule_count": float(schedule_count),
                     "train/global_step": float(state.global_step),
                     "train/curriculum_stage": (
@@ -1069,6 +1135,9 @@ def train_student(
             accumulated_losses = {}
             accumulated_microbatches = 0
             accumulated_student_flops = 0
+            accumulated_dense_visual_tokens = 0
+            accumulated_valid_visual_tokens = 0
+            accumulated_samples = 0
 
             if context.is_main and (
                 state.global_step == 1
@@ -1200,6 +1269,9 @@ def train_student(
         text_tokens_seen=state.text_tokens_seen,
         effective_tokens_seen=state.effective_tokens_seen,
         student_flops_seen=state.student_flops_seen,
+        dense_visual_tokens_seen=state.dense_visual_tokens_seen,
+        valid_visual_tokens_seen=state.valid_visual_tokens_seen,
+        visual_samples_seen=state.visual_samples_seen,
         budget_tokens_seen=budget_tokens_seen,
         token_unit=config.token_unit,
         schedule_unit=config.schedule_unit,

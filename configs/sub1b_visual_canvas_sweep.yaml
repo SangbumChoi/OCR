@@ -1,0 +1,108 @@
+# Two visual-canvas policies by three paired replicates at matched data and token dose.
+
+schema_version: 1
+name: docvlm-visual-canvas-ablation
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-visual-canvas-ablation
+baseline: batch_adaptive
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/heldout_count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: blueprint, path: /student/vision/patch_size}
+  - {document: blueprint, path: /student/vision/max_position_tokens}
+  - {document: blueprint, path: /student/connector/latent_tokens}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/max_image_long_side}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/allow_upscale}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/micro_batch_size}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_steps}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /sequence_teacher/seed, value: 7}
+      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /sequence_teacher/seed, value: 107}
+      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /sequence_teacher/seed, value: 207}
+      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: batch_adaptive
+    hypothesis: "Patch-aligned batch canvases preserve image scale while reducing dense visual padding."
+    experiment_patches:
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
+
+  - id: fixed_square
+    hypothesis: "A fixed square canvas controls for stable shape at the cost of dense padding."
+    experiment_patches:
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: canvas:fixed-square}
+    blueprint_patches:
+      - op: replace
+        path: /training/pretraining/input_pipeline/visual_canvas_mode
+        value: fixed_square

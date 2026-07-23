@@ -622,6 +622,29 @@ def _evaluation_set_fingerprint(run_root: Path, split: str) -> str:
     return _fingerprint(rows)
 
 
+def _pretraining_efficiency(run_root: Path) -> dict[str, float]:
+    pointer = run_root / "artifacts" / "pretrain" / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        return {}
+    checkpoint = Path(pointer.read_text(encoding="utf-8").strip())
+    state_path = checkpoint / "trainer_state.json"
+    if not state_path.is_file():
+        return {}
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    dense = int(state.get("dense_visual_tokens_seen", 0))
+    valid = int(state.get("valid_visual_tokens_seen", 0))
+    samples = int(state.get("visual_samples_seen", 0))
+    if dense < 0 or valid < 0 or samples < 0 or valid > dense:
+        raise ValueError(f"invalid visual efficiency counters in {state_path}")
+    return {
+        "student_flops": float(state.get("student_flops_seen", 0)),
+        "dense_visual_tokens_per_sample": (
+            dense / samples if samples else 0.0
+        ),
+        "valid_visual_token_fraction": valid / dense if dense else 0.0,
+    }
+
+
 def _axis_scores(comparison: dict[str, Any], split: str) -> dict[str, float]:
     axes = comparison["splits"][split].get("by_answer_type", {})
     return {name: float(values["score"]) for name, values in sorted(axes.items())}
@@ -837,6 +860,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 "heldout",
             ),
             "train_slice_scores": _robustness_scores(comparison, "train"),
+            "pretraining_efficiency": _pretraining_efficiency(run_root),
             "comparison": str(comparison_path),
             "evaluation_root": str(evaluation_root),
         }
@@ -869,6 +893,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         baseline_metrics = baseline["metrics"]
         baseline_axes = baseline["heldout_by_answer_type"]
         baseline_slices = baseline["heldout_slice_scores"]
+        baseline_efficiency = baseline["pretraining_efficiency"]
         record["delta_vs_baseline"] = {
             name: round(float(value) - float(baseline_metrics[name]), 8)
             for name, value in record["metrics"].items()
@@ -882,6 +907,11 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             name: round(float(value) - float(baseline_slices[name]), 8)
             for name, value in record["heldout_slice_scores"].items()
             if name in baseline_slices
+        }
+        record["pretraining_efficiency_delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_efficiency[name]), 8)
+            for name, value in record["pretraining_efficiency"].items()
+            if name in baseline_efficiency
         }
         evaluation_root = Path(record["evaluation_root"])
         current_comparison, current_rows = load_evaluation_artifacts(
@@ -1032,6 +1062,43 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 for record in ordered
             )
         }
+        efficiency_names = sorted(
+            set.intersection(
+                *[
+                    set(record["pretraining_efficiency"])
+                    for record in ordered
+                ]
+            )
+        )
+        efficiency_statistics = {
+            name: _distribution(
+                [
+                    float(record["pretraining_efficiency"][name])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:pretraining-efficiency",
+            )
+            for name in efficiency_names
+        }
+        efficiency_delta_statistics = {
+            name: _distribution(
+                [
+                    float(
+                        record["pretraining_efficiency_delta_vs_baseline"][name]
+                    )
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{name}:"
+                    "paired-pretraining-efficiency"
+                ),
+            )
+            for name in efficiency_names
+            if all(
+                name in record["pretraining_efficiency_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
         arm_gate_report = _aggregate_gate_reports(
             {
                 record["replicate_id"]: run_gate_reports[record["run_id"]]
@@ -1111,6 +1178,18 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             ),
             "heldout_robustness_delta_statistics": _nested_slice_values(
                 heldout_slice_delta_statistics
+            ),
+            "pretraining_efficiency": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_statistics.items()
+            },
+            "pretraining_efficiency_statistics": efficiency_statistics,
+            "pretraining_efficiency_delta_vs_baseline": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_delta_statistics.items()
+            },
+            "pretraining_efficiency_delta_statistics": (
+                efficiency_delta_statistics
             ),
             "heldout_score_conclusion": (
                 "reference"

@@ -372,12 +372,22 @@ def compile_architecture_sweep(
     child["baseline"] = baseline
     shared_blueprint = list(child.get("shared_blueprint_patches") or [])
     shared_blueprint.extend(_compute_patches(budgets))
+    shared_blueprint.append(
+        {
+            "op": "replace",
+            "path": (
+                "/training/pretraining/input_pipeline/visual_canvas_mode"
+            ),
+            "value": "fixed_square",
+        }
+    )
     child["shared_blueprint_patches"] = shared_blueprint
     controls = list(child.get("matched_controls") or [])
     for path in (
         "/training/pretraining/optimizer/total_student_flops",
         "/training/posttraining/sft/optimizer/total_student_flops",
         "/training/posttraining/rlvr/optimizer/total_student_flops",
+        "/training/pretraining/input_pipeline/visual_canvas_mode",
     ):
         controls.append({"document": "blueprint", "path": path})
     child["matched_controls"] = controls

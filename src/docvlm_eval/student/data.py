@@ -385,6 +385,7 @@ class StudentCollatorConfig:
     rotation_probability: float = 1.0
     augmentation_seed: int = 7
     allow_upscale: bool = False
+    visual_canvas_mode: str = "fixed_square"
     prompt_template: str = "User: {prompt}\nAssistant:"
     image_mean: tuple[float, float, float] = (0.5, 0.5, 0.5)
     image_std: tuple[float, float, float] = (0.5, 0.5, 0.5)
@@ -407,6 +408,9 @@ class StudentCollatorConfig:
             "rotation_probability": float(pipeline["rotation_probability"]),
             "augmentation_seed": int(pipeline.get("augmentation_seed", 7)),
             "allow_upscale": bool(pipeline.get("allow_upscale", False)),
+            "visual_canvas_mode": str(
+                pipeline.get("visual_canvas_mode", "fixed_square")
+            ),
             "contrastive": bool(pipeline.get("contrastive", True)),
         }
         values.update(overrides)
@@ -423,6 +427,10 @@ class StudentCollatorConfig:
             raise ValueError("image and patch dimensions must be positive")
         if not 0.0 <= self.rotation_probability <= 1.0:
             raise ValueError("rotation_probability must be in [0, 1]")
+        if self.visual_canvas_mode not in {"fixed_square", "batch_adaptive"}:
+            raise ValueError(
+                "visual_canvas_mode must be fixed_square or batch_adaptive"
+            )
 
 
 def _open_image(value: Any):
@@ -576,8 +584,20 @@ class StudentCollator:
         pixel_values = pixel_mask = None
         canvas_boxes: list[tuple[float, float, float, float] | None] = transformed_boxes
         if image_tensors:
-            batch_height = canvas_side
-            batch_width = canvas_side
+            if self.config.visual_canvas_mode == "fixed_square":
+                batch_height = canvas_side
+                batch_width = canvas_side
+            else:
+                batch_height = (
+                    math.ceil(max(height for height, _ in resized_sizes)
+                              / self.config.patch_size)
+                    * self.config.patch_size
+                )
+                batch_width = (
+                    math.ceil(max(width for _, width in resized_sizes)
+                              / self.config.patch_size)
+                    * self.config.patch_size
+                )
             pixel_values = torch.zeros(
                 len(examples),
                 3,
@@ -604,10 +624,10 @@ class StudentCollator:
                     None
                     if box is None
                     else (
-                        box[0] * width / batch_width,
-                        box[1] * height / batch_height,
-                        box[2] * width / batch_width,
-                        box[3] * height / batch_height,
+                        box[0] * width / canvas_side,
+                        box[1] * height / canvas_side,
+                        box[2] * width / canvas_side,
+                        box[3] * height / canvas_side,
                     )
                 )
 
@@ -653,9 +673,21 @@ class StudentCollator:
                 "task": [example.task for example in examples],
                 "language": [example.language for example in examples],
                 "image_key": [example.image_key for example in examples],
+                "visual_canvas_mode": self.config.visual_canvas_mode,
             },
         }
         if pixel_values is not None and pixel_mask is not None:
+            valid_pixels = int(pixel_mask.sum().item())
+            batch["metadata"]["visual_batch"] = {
+                "height": batch_height,
+                "width": batch_width,
+                "coordinate_canvas_height": canvas_side,
+                "coordinate_canvas_width": canvas_side,
+                "dense_patch_tokens_per_image": (
+                    batch_height // self.config.patch_size
+                ) * (batch_width // self.config.patch_size),
+                "valid_pixel_fraction": valid_pixels / pixel_mask.numel(),
+            }
             batch["pixel_values"] = pixel_values
             batch["pixel_mask"] = pixel_mask
             batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)

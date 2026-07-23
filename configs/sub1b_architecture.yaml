@@ -100,6 +100,7 @@ training:
     input_pipeline:
       max_text_tokens: 2048
       max_image_long_side: 896
+      visual_canvas_mode: batch_adaptive
       rotation_probability: 1.0
       augmentation_seed: 7
       allow_upscale: false

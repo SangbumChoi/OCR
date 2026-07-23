@@ -132,4 +132,9 @@ class StudentConfig:
             errors.append("connector output width must equal language width")
         if self.vision.max_position_tokens <= 0:
             errors.append("vision max_position_tokens must be positive")
+        position_side = int(self.vision.max_position_tokens**0.5)
+        if position_side * position_side != self.vision.max_position_tokens:
+            errors.append(
+                "vision max_position_tokens must form a square two-dimensional grid"
+            )
         return errors

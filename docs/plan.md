@@ -168,6 +168,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) —
   analytical dense student FLOPs, compute-driven schedules and stopping, five
   resolution-by-latent profiles, paired seeds, and realized-budget overshoot gates.
+- **Remove visual padding waste:**
+  [`report/student_visual_canvas_sweep.md`](report/student_visual_canvas_sweep.md) —
+  patch-aligned batch-adaptive canvases, stable two-dimensional visual positions, measured dense
+  token utilization, and a paired fixed-square control.
 - **Measure sample efficiency:** [`report/student_factorial_runner.md`](report/student_factorial_runner.md)
   — fixed-heldout initialization-by-data-scale experiments, actual-row provenance, paired
   difference-in-differences, and capability-axis interactions.
@@ -238,6 +242,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) ·
+   [`report/student_visual_canvas_sweep.md`](report/student_visual_canvas_sweep.md) ·
    [`report/student_factorial_runner.md`](report/student_factorial_runner.md) ·
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·

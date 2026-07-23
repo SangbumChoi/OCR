@@ -113,6 +113,27 @@ class VisionTower(nn.Module):
         self.blocks = nn.ModuleList([VisionBlock(config) for _ in range(config.layers)])
         self.norm = nn.LayerNorm(config.width)
 
+    def _position_ids(
+        self,
+        patch_height: int,
+        patch_width: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        grid_side = int(self.position_embedding.shape[0] ** 0.5)
+        if grid_side * grid_side != self.position_embedding.shape[0]:
+            raise ValueError(
+                "stable two-dimensional visual positions require a square "
+                "max_position_tokens grid"
+            )
+        if patch_height > grid_side or patch_width > grid_side:
+            raise ValueError(
+                f"image patch grid {patch_height}x{patch_width} exceeds "
+                f"the configured {grid_side}x{grid_side} position grid"
+            )
+        rows = torch.arange(patch_height, device=device)[:, None]
+        columns = torch.arange(patch_width, device=device)[None, :]
+        return (rows * grid_side + columns).flatten()
+
     def forward(
         self,
         pixel_values: torch.Tensor,
@@ -163,7 +184,14 @@ class VisionTower(nn.Module):
                 .flatten(1)
                 .bool()
             )
-        x = x + self.position_embedding[: x.shape[1]].unsqueeze(0).to(x.dtype)
+        patch_height = pixel_values.shape[-2] // patch
+        patch_width = pixel_values.shape[-1] // patch
+        position_ids = self._position_ids(
+            patch_height,
+            patch_width,
+            x.device,
+        )
+        x = x + self.position_embedding[position_ids].unsqueeze(0).to(x.dtype)
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
             x = block(x, patch_mask)

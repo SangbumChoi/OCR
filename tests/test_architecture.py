@@ -35,6 +35,8 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
     pipeline["rotation_probability"] = 2.0
     pipeline["balance_by"] = "anything"
+    pipeline["visual_canvas_mode"] = "implicit-crop"
+    blueprint["student"]["vision"]["max_position_tokens"] = 4095
     sequence_targets = blueprint["training"]["pretraining"]["distillation"]["sequence_targets"]
     sequence_targets["probability"] = 1.1
     sequence_targets["min_score"] = -0.1
@@ -45,6 +47,8 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
 
     assert any("rotation_probability must be between" in error for error in errors)
     assert any("balance_by must be task, source, language, or component" in error for error in errors)
+    assert any("visual_canvas_mode" in error for error in errors)
+    assert any("max_position_tokens" in error for error in errors)
     assert any("sequence_targets.probability" in error for error in errors)
     assert any("sequence_targets.min_score" in error for error in errors)
     assert any("sequence_targets.seed" in error for error in errors)

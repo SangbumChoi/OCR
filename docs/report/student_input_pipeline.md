@@ -60,15 +60,19 @@ the exact same transform:
 | 180 | `[1-x2, 1-y2, 1-x1, 1-y1]` |
 | 270 clockwise | `[y1, 1-x2, y2, 1-x1]` |
 
-Images retain aspect ratio and are padded at the bottom and right into a fixed 896 by 896 canvas.
-This is exactly 64 by 64 patches at patch size 14, matching the 4,096 visual-position limit.
-Targets are converted from original-image coordinates to normalized canvas coordinates after
-rotation and resize. The same transformed numbers supervise both the generated box string and the
-box head.
+Images retain aspect ratio and are resized only when their long side exceeds 896 pixels. The
+default `batch_adaptive` mode pads the batch at the bottom and right only to its patch-aligned
+maximum height and width. Neither dimension can exceed 896, or 64 patches at patch size 14, so the
+4,096 visual-position limit remains hard. The `fixed_square` control pads every image to 896 by
+896. Targets are converted from original-image coordinates to the normalized canonical 896-square
+coordinate canvas after rotation and resize, regardless of the smaller dense batch tensor. The
+same document therefore keeps identical box targets across batch compositions. The transformed
+numbers supervise both the generated box string and the box head.
 
 `pixel_mask` is pooled into a patch mask. Invalid patches are excluded from ViT self-attention,
-resampler cross-attention, and vision pooling. Fixed canvas positions also make a sample's visual
-position IDs independent of which other examples share its batch.
+resampler cross-attention, and vision pooling. Visual positions use a fixed two-dimensional
+64-by-64 index grid rather than the flattened batch tensor width. A sample's valid patch position
+IDs therefore remain independent of which other examples share its batch.
 
 ## Text and loss contract
 
@@ -94,10 +98,11 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 
 - maximum text tokens;
 - image long side and visual-token budget;
+- visual canvas mode (`batch_adaptive` or `fixed_square`);
 - quarter-turn augmentation probability;
 - upscaling policy;
 - contrastive objective switch;
-- task/source/language balancing key and group weights.
+- task/source/language balancing key and group weights;
 - cross-tokenizer teacher target probability, minimum quality score, and deterministic seed.
 
 `StudentCollatorConfig.from_blueprint()` binds these controls to the model's patch size, visual
@@ -107,5 +112,6 @@ position count, and language vocabulary.
 
 The input path is consumed by the mixed-precision, token-scheduled, exactly resumable runner
 documented in [`student_pretraining_runner.md`](student_pretraining_runner.md). Batch provenance is
-retained for auditing but stripped before model calls. True NaViT-style packed visual sequences
-remain an efficiency ablation beyond the fixed masked canvas baseline.
+retained for auditing but stripped before model calls. The runner records cumulative dense visual
+tokens per sample, valid-token fraction, and actual-shape student FLOPs. True NaViT multi-example
+sequence packing remains a separate step beyond batch-adaptive rectangular tensors.
