@@ -75,6 +75,14 @@ def main() -> None:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--samples", type=Path)
     source.add_argument("--realistic-root", type=Path)
+    parser.add_argument(
+        "--replay-samples",
+        type=Path,
+        help=(
+            "Optional supervised replay JSONL for RLVR. "
+            "Defaults to the active RLVR samples."
+        ),
+    )
     parser.add_argument("--variant", choices=["clean", "degraded"], default="clean")
     parser.add_argument("--no-probes", action="store_true")
     parser.add_argument("--tokenizer", type=Path, required=True)
@@ -87,6 +95,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume", help="Checkpoint path or 'latest'.")
     parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--replay-every-steps", type=int)
+    parser.add_argument("--replay-loss-coefficient", type=float)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--num-workers", type=int)
     parser.add_argument(
@@ -114,6 +124,12 @@ def main() -> None:
     collator = StudentCollator(tokenizer, collator_config)
 
     if args.stage == "sft":
+        if (
+            args.replay_samples is not None
+            or args.replay_every_steps is not None
+            or args.replay_loss_coefficient is not None
+        ):
+            raise SystemExit("replay options apply only to RLVR")
         overrides = {
             "device": device,
             "resume_from": args.resume,
@@ -152,6 +168,12 @@ def main() -> None:
     }
     if args.max_steps is not None:
         overrides["max_steps"] = args.max_steps
+    if args.replay_every_steps is not None:
+        overrides["supervised_replay_every_steps"] = args.replay_every_steps
+    if args.replay_loss_coefficient is not None:
+        overrides["supervised_replay_loss_coefficient"] = (
+            args.replay_loss_coefficient
+        )
     reference_id = _checkpoint_id(args.checkpoint)
     config = RLVRConfig.from_blueprint(
         blueprint,
@@ -160,6 +182,14 @@ def main() -> None:
         **overrides,
     )
     dataset = StructuredPostTrainingDataset(samples, target_mode="evidence_linked")
+    replay_dataset = (
+        StructuredPostTrainingDataset(
+            load_jsonl(args.replay_samples),
+            target_mode="evidence_linked",
+        )
+        if args.replay_samples is not None
+        else None
+    )
     policy = DocumentVLMStudent.from_pretrained(
         args.checkpoint,
         map_location=device,
@@ -176,6 +206,7 @@ def main() -> None:
         tokenizer,
         config,
         RewardConfig.from_blueprint(blueprint),
+        replay_dataset=replay_dataset,
     )
     print(
         f"Finished RLVR step={result.rollout_step} "

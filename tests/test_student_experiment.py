@@ -92,6 +92,12 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
         stage for stage in plan.stages if stage.name == "generate_teacher_predictions"
     )
     assert generate.command[generate.command.index("--model") + 1] == "dummy-echo"
+    rlvr = next(stage for stage in plan.stages if stage.name == "rlvr")
+    assert rlvr.command[rlvr.command.index("--replay-every-steps") + 1] == "1"
+    assert (
+        rlvr.command[rlvr.command.index("--replay-loss-coefficient") + 1]
+        == "0.1"
+    )
 
 
 def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):
@@ -147,6 +153,37 @@ def test_experiment_fingerprint_tracks_synthetic_config_content(tmp_path):
     )
     assert first.input_fingerprints["python_source"]["files"] > 20
     assert first.input_fingerprints["python_source"]["sha256"].startswith("sha256:")
+
+
+def test_experiment_tracks_configured_rlvr_replay_samples(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    replay = tmp_path / "replay.jsonl"
+    replay.write_text('{"sample_id":"replay-1"}\n', encoding="utf-8")
+    raw["posttraining"]["rlvr"]["replay_samples"] = str(replay)
+    raw["blueprint"] = str(ROOT / "configs" / "sub1b_architecture.yaml")
+    raw["synthetic"]["config"] = str(ROOT / "configs" / "synth_data.yaml")
+    raw["output_root"] = str(tmp_path / "output")
+    experiment_config = tmp_path / "experiment.yaml"
+    experiment_config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = build_experiment_plan(
+        experiment_config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+    rlvr = next(stage for stage in plan.stages if stage.name == "rlvr")
+
+    assert rlvr.command[rlvr.command.index("--replay-samples") + 1] == str(
+        replay
+    )
+    assert plan.input_fingerprints["rlvr_replay_samples"]["bytes"] > 0
 
 
 def _runner_plan(tmp_path: Path) -> ExperimentPlan:

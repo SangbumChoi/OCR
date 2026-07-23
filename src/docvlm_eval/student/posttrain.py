@@ -17,6 +17,7 @@ from .data import (
     DeterministicDistributedBatchSampler,
     StudentCollator,
     StudentExample,
+    student_model_inputs,
 )
 from .model import DocumentVLMStudent
 from .pretrain import (
@@ -274,6 +275,8 @@ class RLVRConfig:
     beta2: float = 0.95
     kl_coefficient: float = 0.04
     advantage_epsilon: float = 1e-4
+    supervised_replay_every_steps: int = 0
+    supervised_replay_loss_coefficient: float = 0.0
     max_grad_norm: float = 1.0
     precision: str = "bfloat16"
     checkpoint_every_steps: int = 100
@@ -295,6 +298,19 @@ class RLVRConfig:
             raise ValueError("RLVR optimizer betas must be within [0, 1)")
         if self.kl_coefficient < 0 or self.advantage_epsilon <= 0:
             raise ValueError("RLVR KL and advantage controls are invalid")
+        if self.supervised_replay_every_steps < 0:
+            raise ValueError("RLVR supervised replay interval must be non-negative")
+        if self.supervised_replay_loss_coefficient < 0:
+            raise ValueError("RLVR supervised replay coefficient must be non-negative")
+        if (
+            self.supervised_replay_every_steps == 0
+        ) != (
+            self.supervised_replay_loss_coefficient == 0
+        ):
+            raise ValueError(
+                "RLVR supervised replay interval and coefficient must both be zero "
+                "or both be positive"
+            )
         if self.checkpoint_every_steps < 0 or self.log_every_steps <= 0:
             raise ValueError("RLVR checkpoint/log intervals are invalid")
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
@@ -314,6 +330,7 @@ class RLVRConfig:
         raw = blueprint["training"]["posttraining"]["rlvr"]
         optimizer = raw["optimizer"]
         rollout = raw["rollout"]
+        supervised_replay = raw.get("supervised_replay") or {}
         values = {
             "output_dir": str(output_dir),
             "max_steps": int(optimizer["max_steps"]),
@@ -327,6 +344,12 @@ class RLVRConfig:
             "beta2": float(optimizer["betas"][1]),
             "kl_coefficient": float(raw["kl_coefficient"]),
             "advantage_epsilon": float(raw["advantage_epsilon"]),
+            "supervised_replay_every_steps": int(
+                supervised_replay.get("every_steps", 0)
+            ),
+            "supervised_replay_loss_coefficient": float(
+                supervised_replay.get("loss_coefficient", 0.0)
+            ),
             "max_grad_norm": float(optimizer["max_grad_norm"]),
             "precision": str(optimizer["precision"]),
             "checkpoint_every_steps": int(optimizer["checkpoint_every_steps"]),
@@ -545,6 +568,50 @@ def group_relative_policy_loss(
     }
 
 
+def supervised_replay_loss(
+    policy: DocumentVLMStudent,
+    dataset: StructuredPostTrainingDataset,
+    collator: StudentCollator,
+    sample_index: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, int]:
+    """Compute one answer-target cross-entropy anchor without auxiliary heads."""
+
+    raw_batch = collator([dataset[sample_index]])
+    batch = {
+        key: value.to(device) if isinstance(value, torch.Tensor) else value
+        for key, value in raw_batch.items()
+    }
+    inputs = student_model_inputs(batch)
+    inputs = {
+        key: value
+        for key, value in inputs.items()
+        if key
+        in {
+            "input_ids",
+            "pixel_values",
+            "pixel_mask",
+            "attention_mask",
+            "labels",
+        }
+    }
+    output = policy(**inputs)
+    loss = output.losses.get("autoregressive")
+    if loss is None:
+        raise RuntimeError("supervised replay batch produced no autoregressive loss")
+    supervised_tokens = int((batch["labels"] != policy.config.ignore_index).sum().item())
+    if supervised_tokens <= 0:
+        raise RuntimeError("supervised replay batch contains no answer tokens")
+    return loss, supervised_tokens
+
+
+def _supervised_replay_contract(config: RLVRConfig) -> dict[str, float | int]:
+    return {
+        "every_steps": config.supervised_replay_every_steps,
+        "loss_coefficient": config.supervised_replay_loss_coefficient,
+    }
+
+
 def _save_rlvr_checkpoint(
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
@@ -566,6 +633,7 @@ def _save_rlvr_checkpoint(
             "trainer_state": asdict(state),
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "reference_id": config.reference_id,
+            "supervised_replay": _supervised_replay_contract(config),
         },
     )
     torch.save(
@@ -621,6 +689,8 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR tokenizer fingerprint mismatch")
     if metadata.get("reference_id") != config.reference_id:
         raise ValueError("RLVR frozen reference mismatch")
+    if metadata.get("supervised_replay") != _supervised_replay_contract(config):
+        raise ValueError("RLVR supervised replay contract mismatch")
     model.load_state_dict(
         torch.load(
             path / "student" / "model.pt",
@@ -652,8 +722,10 @@ def train_grpo(
     tokenizer: Any,
     config: RLVRConfig,
     reward_config: RewardConfig,
+    *,
+    replay_dataset: StructuredPostTrainingDataset | None = None,
 ) -> RLVRResult:
-    """Run resumable one-update-per-group GRPO against a frozen SFT reference."""
+    """Run resumable GRPO with an optional supervised multimodal replay anchor."""
 
     device = _device(config.device)
     random.seed(config.seed)
@@ -686,6 +758,7 @@ def train_grpo(
         )
     last_checkpoint = resume_path
     final_metrics: dict[str, float] = {}
+    active_replay_dataset = replay_dataset or dataset
     while state.rollout_step < config.max_steps:
         sample_index = random.randrange(len(dataset))
         raw_batch = collator([dataset[sample_index]])
@@ -732,8 +805,37 @@ def train_grpo(
                 kl_coefficient=config.kl_coefficient,
                 advantage_epsilon=config.advantage_epsilon,
             )
+        replay_applied = (
+            config.supervised_replay_every_steps > 0
+            and (state.rollout_step + 1)
+            % config.supervised_replay_every_steps
+            == 0
+        )
+        replay_loss = torch.zeros((), dtype=loss.dtype, device=device)
+        replay_tokens = 0
+        replay_sample_id = ""
         optimizer.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
+        if replay_applied:
+            replay_index = random.randrange(len(active_replay_dataset))
+            with _autocast_context(device, config.precision):
+                replay_loss, replay_tokens = supervised_replay_loss(
+                    policy,
+                    active_replay_dataset,
+                    collator,
+                    replay_index,
+                    device,
+                )
+            replay_sample_id = active_replay_dataset.samples[
+                replay_index
+            ].sample_id
+            scaler.scale(
+                config.supervised_replay_loss_coefficient * replay_loss
+            ).backward()
+        total_loss = (
+            loss.detach()
+            + config.supervised_replay_loss_coefficient * replay_loss.detach()
+        )
         scaler.unscale_(optimizer)
         gradient_norm = torch.nn.utils.clip_grad_norm_(
             policy.parameters(),
@@ -756,6 +858,10 @@ def train_grpo(
                 "rlvr/valid_structure_fraction": valid_fraction,
                 "rlvr/rollout_step": float(state.rollout_step),
                 "rlvr/optimizer_step": float(state.optimizer_step),
+                "rlvr/total_loss": float(total_loss),
+                "rlvr/supervised_replay_applied": float(replay_applied),
+                "rlvr/supervised_replay_loss": float(replay_loss.detach()),
+                "rlvr/supervised_replay_tokens": float(replay_tokens),
             }
         )
         for name in reward_config.weights:
@@ -775,6 +881,7 @@ def train_grpo(
                 {
                     "kind": "rlvr",
                     "sample_id": dataset.samples[sample_index].sample_id,
+                    "supervised_replay_sample_id": replay_sample_id,
                     **final_metrics,
                 },
             )
@@ -782,7 +889,8 @@ def train_grpo(
                 f"[rlvr] step={state.rollout_step} "
                 f"reward={float(tensors['reward_mean'].detach()):.4f} "
                 f"valid={valid_fraction:.2f} "
-                f"kl={float(tensors['reference_kl'].detach()):.5f}",
+                f"kl={float(tensors['reference_kl'].detach()):.5f} "
+                f"replay={int(replay_applied)}",
                 flush=True,
             )
         if (

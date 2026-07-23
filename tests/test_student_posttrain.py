@@ -64,7 +64,14 @@ def _collator():
     )
 
 
-def _rl_config(output, max_steps, resume=None):
+def _rl_config(
+    output,
+    max_steps,
+    resume=None,
+    *,
+    replay_every=0,
+    replay_coefficient=0.0,
+):
     from docvlm_eval.student.posttrain import RLVRConfig
 
     return RLVRConfig(
@@ -77,6 +84,8 @@ def _rl_config(output, max_steps, resume=None):
         learning_rate=1e-3,
         weight_decay=0.0,
         kl_coefficient=0.04,
+        supervised_replay_every_steps=replay_every,
+        supervised_replay_loss_coefficient=replay_coefficient,
         max_grad_norm=1.0,
         precision="float32",
         checkpoint_every_steps=1,
@@ -168,6 +177,67 @@ def test_group_relative_policy_loss_uses_reward_rank_and_reference_kl():
     assert policy.grad[0].mean() < policy.grad[1].mean()
 
 
+def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import RewardConfig, build_structured_target
+
+    tied = build_structured_target("17")
+
+    def tied_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [5, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [tied, tied],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        tied_group,
+    )
+    torch.manual_seed(41)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    policy = copy.deepcopy(initial)
+    reference = copy.deepcopy(initial)
+    result = train_grpo(
+        policy,
+        reference,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(
+            tmp_path / "replay",
+            1,
+            replay_every=1,
+            replay_coefficient=0.5,
+        ),
+        RewardConfig(
+            weights={
+                "answer_correctness": 0.8,
+                "normalized_text_similarity": 0.2,
+            }
+        ),
+    )
+
+    assert result.final_metrics["rlvr/advantage_abs_mean"] == 0
+    assert result.final_metrics["rlvr/supervised_replay_applied"] == 1
+    assert result.final_metrics["rlvr/supervised_replay_loss"] > 0
+    assert result.final_metrics["rlvr/supervised_replay_tokens"] > 0
+    assert any(
+        not torch.equal(initial.state_dict()[name], value)
+        for name, value in policy.state_dict().items()
+    )
+    metric = json.loads(
+        (tmp_path / "replay" / "metrics.jsonl").read_text(encoding="utf-8")
+    )
+    assert metric["supervised_replay_sample_id"] == "post-1"
+
+
 def test_structured_sft_runs_and_marks_the_checkpoint_stage(tmp_path):
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
@@ -253,7 +323,12 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _rl_config(tmp_path / "full", 2),
+        _rl_config(
+            tmp_path / "full",
+            2,
+            replay_every=1,
+            replay_coefficient=0.5,
+        ),
         rewards,
     )
     first_result = train_grpo(
@@ -262,7 +337,12 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _rl_config(tmp_path / "resumed", 1),
+        _rl_config(
+            tmp_path / "resumed",
+            1,
+            replay_every=1,
+            replay_coefficient=0.5,
+        ),
         rewards,
     )
     resumed_result = train_grpo(
@@ -271,7 +351,13 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _rl_config(tmp_path / "resumed", 2, "latest"),
+        _rl_config(
+            tmp_path / "resumed",
+            2,
+            "latest",
+            replay_every=1,
+            replay_coefficient=0.5,
+        ),
         rewards,
     )
 
@@ -286,3 +372,65 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
         assert torch.equal(expected, resumed.state_dict()[name]), name
     for name, expected in initial.state_dict().items():
         assert torch.equal(expected, reference_resumed.state_dict()[name]), name
+
+
+def test_rlvr_resume_rejects_changed_supervised_replay_contract(
+    tmp_path,
+    monkeypatch,
+):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import RewardConfig, build_structured_target
+
+    target = build_structured_target("42")
+
+    def fixed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [target, target],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        fixed_group,
+    )
+    policy = DocumentVLMStudent(StudentConfig.tiny())
+    reference = copy.deepcopy(policy)
+    reward = RewardConfig(
+        weights={
+            "answer_correctness": 0.8,
+            "normalized_text_similarity": 0.2,
+        }
+    )
+    train_grpo(
+        policy,
+        reference,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(tmp_path / "run", 1),
+        reward,
+    )
+
+    with pytest.raises(ValueError, match="supervised replay contract mismatch"):
+        train_grpo(
+            policy,
+            reference,
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            _rl_config(
+                tmp_path / "run",
+                2,
+                "latest",
+                replay_every=1,
+                replay_coefficient=0.5,
+            ),
+            reward,
+        )

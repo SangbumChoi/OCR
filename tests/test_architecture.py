@@ -9,10 +9,14 @@ CONFIG = ROOT / "configs" / "sub1b_architecture.yaml"
 
 
 def test_default_blueprint_is_valid_and_sub1b():
-    estimates, errors = validate_blueprint(load_blueprint(CONFIG))
+    blueprint = load_blueprint(CONFIG)
+    estimates, errors = validate_blueprint(blueprint)
     assert errors == []
     assert 700_000_000 < estimates["total"] < 1_000_000_000
     assert estimates["language"] > estimates["vision"]
+    assert blueprint["training"]["posttraining"]["rlvr"][
+        "supervised_replay"
+    ] == {"every_steps": 20, "loss_coefficient": 0.10}
 
 
 def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
@@ -78,6 +82,7 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     rlvr = blueprint["training"]["posttraining"]["rlvr"]
     rlvr["group_size"] = 1
     rlvr["rollout"]["top_p"] = 2.0
+    rlvr["supervised_replay"]["every_steps"] = 0
     rlvr["reward_mix"]["unsupported_reward"] = 0.0
 
     _, errors = validate_blueprint(blueprint)
@@ -85,4 +90,5 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     assert any("sft.target_mode is invalid" in error for error in errors)
     assert any("group_size must be at least two" in error for error in errors)
     assert any("rollout.top_p must be within" in error for error in errors)
+    assert any("interval and coefficient" in error for error in errors)
     assert any("unsupported_reward" in error for error in errors)

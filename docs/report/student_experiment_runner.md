@@ -17,6 +17,10 @@ and initialization token maps receive the same treatment. A combined SHA-256 ove
 `docvlm_eval` Python source tree and every compiled script entrypoint also invalidates resume after
 generator, model, loss, reward, or runner implementation changes.
 
+RLVR uses periodic supervised replay from its active samples by default. Set
+`posttraining.rlvr.replay_samples` to an external benchmark JSONL to anchor broader multimodal
+capabilities; the compiler content-addresses that file and passes it to the RLVR stage.
+
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
 patches, rejects changes to declared fixed controls, reuses this runner for every variant, and

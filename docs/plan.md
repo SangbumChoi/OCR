@@ -138,8 +138,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   exact checkpoint resume.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
-  rewards, visual-prefix-cached rollout, single-update GRPO, exact checkpoint resume, and
-  train/heldout generation evaluation.
+  rewards, visual-prefix-cached rollout, single-update GRPO, periodic supervised multimodal replay,
+  exact checkpoint resume, and train/heldout generation evaluation.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.

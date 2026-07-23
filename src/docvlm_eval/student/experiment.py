@@ -352,6 +352,15 @@ def build_experiment_plan(
     input_fingerprints: dict[str, Any] = {
         "synthetic_config": _file_fingerprint(synth_config_path),
     }
+    configured_replay = (
+        ((raw.get("posttraining") or {}).get("rlvr") or {}).get(
+            "replay_samples"
+        )
+    )
+    if configured_replay:
+        input_fingerprints["rlvr_replay_samples"] = _file_fingerprint(
+            _resolve_path(repo_root, configured_replay)
+        )
     synthetic_enabled = bool(synthetic.get("enabled", True))
     artifacts = output_root / "artifacts"
     train_cases = artifacts / "synthetic" / "train"
@@ -876,6 +885,23 @@ def build_experiment_plan(
         device,
     ]
     _add_optional(rlvr_command, "--max-steps", rlvr.get("max_steps"))
+    _add_optional(
+        rlvr_command,
+        "--replay-every-steps",
+        rlvr.get("replay_every_steps"),
+    )
+    _add_optional(
+        rlvr_command,
+        "--replay-loss-coefficient",
+        rlvr.get("replay_loss_coefficient"),
+    )
+    if rlvr.get("replay_samples"):
+        rlvr_command.extend(
+            [
+                "--replay-samples",
+                str(_resolve_path(repo_root, rlvr["replay_samples"])),
+            ]
+        )
     stages.append(
         ExperimentStage(
             "rlvr",

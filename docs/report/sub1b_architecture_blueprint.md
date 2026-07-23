@@ -163,8 +163,10 @@ ground truth:
 
 Final-answer and rationale rewards stay separate. Structural validity is a gate, not a bonus. Every
 reward component is logged independently so held-out evaluation can expose reward hacking. The
-current runner implements KL to the frozen SFT policy; multimodal replay inside the RL loop remains
-an explicit follow-up rather than a claimed safeguard.
+runner combines KL to the frozen SFT policy with a periodic supervised multimodal replay loss.
+The default applies one evidence-linked replay anchor every 20 rollout updates with coefficient
+0.10. A separate replay JSONL can replace the active RLVR set, allowing general multimodal examples
+to protect capabilities outside the reward dataset.
 
 ## Data construction for hard document reasoning
 
@@ -207,9 +209,9 @@ what must be inherited, and what can be learned from the controlled document cur
 ## Current implementation boundary
 
 The model constructor, selective initialization, tokenizer, UDD adapter, curriculum-aware samplers,
-multimodal collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict reward
-verifiers, single-update GRPO runner, and multi-split held-out generation evaluator are executable
-and tested. The contracts are detailed in
+multimodal collator, same-tokenizer teacher interface, pretraining runner, structured SFT, strict
+reward verifiers, supervised-replay-anchored single-update GRPO runner, and multi-split held-out
+generation evaluator are executable and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and
 [`student_pretraining_runner.md`](student_pretraining_runner.md), and
 [`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
@@ -219,8 +221,8 @@ replicates, then publish held-out capability and efficiency curves with confiden
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations
-rather than claimed capabilities. Native RLVR is currently single-process and does not yet
-interleave replay; its formula reward is deterministic normalization rather than symbolic algebra.
+rather than claimed capabilities. Native RLVR is currently single-process, and its formula reward
+is deterministic normalization rather than symbolic algebra.
 
 ## Evidence basis
 

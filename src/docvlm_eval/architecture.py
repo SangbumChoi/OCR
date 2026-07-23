@@ -362,6 +362,24 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("training.posttraining.rlvr.kl_coefficient must be non-negative")
     if float(rlvr.get("advantage_epsilon", 0)) <= 0:
         errors.append("training.posttraining.rlvr.advantage_epsilon must be positive")
+    replay = rlvr.get("supervised_replay", {})
+    replay_every = int(replay.get("every_steps", -1))
+    replay_coefficient = float(replay.get("loss_coefficient", -1))
+    if replay_every < 0:
+        errors.append(
+            "training.posttraining.rlvr.supervised_replay.every_steps "
+            "must be non-negative"
+        )
+    if replay_coefficient < 0:
+        errors.append(
+            "training.posttraining.rlvr.supervised_replay.loss_coefficient "
+            "must be non-negative"
+        )
+    if (replay_every == 0) != (replay_coefficient == 0):
+        errors.append(
+            "training.posttraining.rlvr.supervised_replay interval and "
+            "coefficient must both be zero or both be positive"
+        )
     malformed_reward = float(rlvr.get("malformed_reward", -1))
     if not 0 <= malformed_reward <= 1:
         errors.append("training.posttraining.rlvr.malformed_reward must be within [0, 1]")

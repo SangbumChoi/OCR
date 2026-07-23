@@ -1,4 +1,4 @@
-# Matched native-student ablations: five arms by three paired replicates (15 complete DAGs).
+# Matched native-student ablations: six arms by three paired replicates (18 complete DAGs).
 
 schema_version: 1
 name: docvlm-core-ablation
@@ -174,3 +174,13 @@ variants:
           formula_equivalence: 0.0
           grounded_rationale_consistency: 0.0
           calibrated_abstention: 0.0
+
+  - id: no_supervised_replay
+    hypothesis: "Tests whether periodic supervised replay prevents capability loss during RLVR."
+    blueprint_patches:
+      - op: replace
+        path: /training/posttraining/rlvr/supervised_replay/every_steps
+        value: 0
+      - op: replace
+        path: /training/posttraining/rlvr/supervised_replay/loss_coefficient
+        value: 0.0

@@ -87,6 +87,9 @@ posttraining:
     target_mode: evidence_linked
   rlvr:
     max_steps: null
+    replay_every_steps: null
+    replay_loss_coefficient: null
+    replay_samples: null
 
 evaluation:
   max_new_tokens: 128

@@ -14,7 +14,7 @@ and token budgets.
 
 ## Configurations
 
-Inspect the five-arm by three-replicate full suite without creating an output root:
+Inspect the six-arm by three-replicate full suite without creating an output root:
 
 ```bash
 python scripts/run_student_sweep.py \
@@ -28,7 +28,8 @@ The full suite compares:
 - no cross-tokenizer sequence distillation;
 - no spatial auxiliary pretraining losses;
 - answer-only instead of evidence-linked SFT;
-- answer-correctness-only instead of decomposed grounded RLVR rewards.
+- answer-correctness-only instead of decomposed grounded RLVR rewards;
+- no supervised replay anchor during RLVR.
 
 Run the two-arm by two-replicate CPU contract:
 

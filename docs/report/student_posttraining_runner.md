@@ -8,6 +8,7 @@ stage for the native sub-1B document VLM. It supports:
 - exhaustive structured SFT with answer-only, free-rationale, and evidence-linked targets;
 - strict answer/evidence/rationale JSON generation;
 - single-update group-relative policy optimization from an SFT checkpoint;
+- periodic supervised multimodal replay during RLVR;
 - independently reported verifiable reward components;
 - atomic checkpoints and exact continuation with tokenizer and reference guards.
 
@@ -94,6 +95,25 @@ The visual tower and connector run once per image during autoregressive rollout;
 prefix is reused across every group member and generated token. Policy and frozen-reference
 log-probabilities are each computed in one teacher-forced pass over the completed sequences.
 
+Every 20 rollout updates by default, the optimizer also receives an evidence-linked supervised
+cross-entropy anchor with coefficient 0.10. This preserves structured answering and supplies a
+learning signal when every completion in a reward group receives the same score. Without
+`--replay-samples`, the anchor is sampled from the active RLVR dataset. Pass a separate
+general-multimodal JSONL when broader capability retention is required:
+
+```bash
+python scripts/posttrain_student.py rlvr \
+  --samples data/posttraining/rlvr.jsonl \
+  --replay-samples data/posttraining/general_multimodal_replay.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
+  --output outputs/student_rlvr/replay_anchored
+```
+
+`supervised_replay.every_steps` and `loss_coefficient` are explicit blueprint controls. Set both
+to zero for the no-replay ablation. A checkpoint records this pair and rejects resume under a
+different replay contract.
+
 ## Reward contract
 
 The active reward weights are renormalized per task, so unavailable annotations do not silently
@@ -115,10 +135,10 @@ verifier proves cited-region overlap and rationale presence, not semantic entail
 metrics separate and add stronger offline verifiers before making symbolic-equivalence or
 faithful-reasoning claims.
 
-`metrics.jsonl` reports total reward, reward variance, policy loss, reference KL, gradient norm,
-structural-validity fraction, and every applicable reward component independently. A group with no
-reward variance receives zero policy advantage; at the initial SFT reference it therefore produces
-no update.
+`metrics.jsonl` reports total reward, reward variance, policy loss, reference KL, total loss,
+gradient norm, structural-validity fraction, replay application/loss/token count, the replay sample
+ID, and every applicable reward component independently. A group with no reward variance receives
+zero policy advantage; a scheduled replay anchor can still provide a supervised update.
 
 ## Resume and operational boundary
 
@@ -128,9 +148,9 @@ Resume rejects a changed tokenizer or reference checkpoint.
 
 Native RLVR currently runs in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not
-large enough. Distributed rollout, optimizer sharding, KV caching, RL replay mixing, and a symbolic
-formula engine remain future measured extensions. The current KL term is the implemented collapse
-constraint; general multimodal replay is not yet interleaved inside the RLVR loop.
+large enough. Distributed rollout, optimizer sharding, KV caching, multi-epoch off-policy replay,
+and a symbolic formula engine remain future measured extensions. The implemented collapse
+constraints are frozen-reference KL and periodic supervised replay.
 
 ## Held-out generation evaluation
 

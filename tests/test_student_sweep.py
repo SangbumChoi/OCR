@@ -208,8 +208,9 @@ def test_full_sweep_compiles_loss_sft_and_reward_ablation_contracts(tmp_path):
         "no_spatial_auxiliary",
         "sft_answer_only",
         "correctness_only_rlvr",
+        "no_supervised_replay",
     }
-    assert len(plan.variants) == 15
+    assert len(plan.variants) == 18
     no_spatial = variants["no_spatial_auxiliary"].plan.resolved_blueprint
     assert no_spatial["training"]["pretraining"]["losses"]["box_regression"] == 0.0
     assert (
@@ -227,6 +228,10 @@ def test_full_sweep_compiles_loss_sft_and_reward_ablation_contracts(tmp_path):
     ]["rlvr"]["reward_mix"]
     assert reward_mix["answer_correctness"] == 1.0
     assert sum(reward_mix.values()) == pytest.approx(1.0)
+    no_replay = variants["no_supervised_replay"].plan.resolved_blueprint[
+        "training"
+    ]["posttraining"]["rlvr"]["supervised_replay"]
+    assert no_replay == {"every_steps": 0, "loss_coefficient": 0.0}
 
 
 def _comparison(score: float, milliseconds: float) -> dict:
