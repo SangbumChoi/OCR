@@ -61,7 +61,7 @@ The full blueprint sets `epochs: null`, `stop_at_total_tokens: true`, and
 token is either a non-padding text token or one of the connector's 64 resampled visual-prefix
 tokens. The accounting deliberately does not call every raw image patch a decoder token.
 
-Every optimizer update records three cumulative counters:
+Every optimizer update records four cumulative counters:
 
 - `train/tokens_seen`: supervised answer tokens;
 - `train/text_tokens_seen`: all non-padding prompt and answer tokens;
@@ -82,6 +82,20 @@ the compute counter. `training_compute_fraction` does the same for curriculum bo
 fields are part of the checkpoint resume contract, so a resumed run cannot silently change its
 compute estimand or budget. The complete fixed-compute design is documented in
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
+
+## Fail-closed supervision
+
+The default DAG uses cross-tokenizer LFM outputs as quality-gated offline sequence targets.
+`teacher_kl` and `hidden_feature_distillation` remain zero unless
+`pretraining.teacher_checkpoint` supplies a same-tokenizer native teacher. The runner resolves
+every curriculum stage before optimization and rejects active online-teacher losses without that
+checkpoint, a teacher checkpoint with no active online loss, or any stage with no active loss.
+Teacher inference is skipped in stages where its losses are both zero.
+
+Checkpoint metadata records stage-level active losses, online-teacher status, and selected
+gold/offline-teacher target counts. Exact resume requires the same supervision contract. The paired
+leave-one-loss-out design is
+[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md).
 
 ## Teacher contract
 

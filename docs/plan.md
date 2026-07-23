@@ -136,6 +136,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   same-tokenizer online distillation, token-based learning-rate scheduling, deterministic
   sampler/loss curricula, mixed precision, `torchrun`, sample-weighted held-out evaluation, and
   exact checkpoint resume.
+- **Isolate pretraining losses:**
+  [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
+  fail-closed supervision provenance and paired leave-one-active-loss-out experiments.
 - **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
   — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
   transfer, and the matched random/vision/language/dual/selective suite.
@@ -219,6 +222,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
    [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
+   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) ·

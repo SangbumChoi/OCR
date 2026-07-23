@@ -310,11 +310,19 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
         teacher_config,
         distill_config,
     )
+    training_config = _config(tmp_path / "distilled", max_steps=1)
 
     result = train_student(
         student,
         _loader(),
-        _config(tmp_path / "distilled", max_steps=1),
+        replace(
+            training_config,
+            loss_weights={
+                **training_config.loss_weights,
+                "teacher_kl": 0.3,
+                "hidden_feature_distillation": 0.2,
+            },
+        ),
         teacher=NativeStudentTeacher(teacher_model, distill_config),
         distillation_loss=loss_module,
     )
@@ -531,7 +539,7 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.stop_at_total_tokens is True
     assert config.token_unit == "effective"
     assert config.visual_tokens_per_image == 64
-    assert config.loss_weights["teacher_kl"] == 0.35
+    assert config.loss_weights["teacher_kl"] == 0.0
     assert [stage.id for stage in config.curriculum.stages] == [
         "perception_bootstrap",
         "dense_multilingual_alignment",
@@ -539,6 +547,63 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     ]
     assert config.curriculum.fingerprint.startswith("sha256:")
     assert config.curriculum.unit == "training_token_fraction"
+
+
+def test_supervision_contract_rejects_silent_online_teacher_mismatch(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.pretrain import (
+        pretraining_supervision_contract,
+    )
+
+    base = _config(tmp_path, max_steps=1)
+    with pytest.raises(ValueError, match="require a native teacher"):
+        pretraining_supervision_contract(
+            replace(
+                base,
+                loss_weights={
+                    **base.loss_weights,
+                    "teacher_kl": 0.2,
+                },
+            ),
+            has_online_teacher=False,
+        )
+    with pytest.raises(ValueError, match="provided but"):
+        pretraining_supervision_contract(
+            base,
+            has_online_teacher=True,
+        )
+
+
+def test_checkpoint_records_resolved_supervision_contract(tmp_path):
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    train_student(
+        DocumentVLMStudent(StudentConfig.tiny()),
+        _loader(),
+        _config(tmp_path / "contract", max_steps=1),
+    )
+    metadata = json.loads(
+        (
+            tmp_path
+            / "contract"
+            / "checkpoints"
+            / "step-00000001"
+            / "student"
+            / "metadata.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    contract = metadata["supervision_contract"]
+    assert contract["has_online_teacher"] is False
+    assert contract["online_teacher_losses"] == []
+    assert contract["stages"][0]["active_losses"] == [
+        "autoregressive",
+        "box_regression",
+        "orientation",
+    ]
 
 
 def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):

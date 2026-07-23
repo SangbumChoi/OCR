@@ -142,6 +142,39 @@ def test_invalid_experiment_rejects_negative_initialization_seed(tmp_path):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
+def test_experiment_rejects_online_teacher_loss_without_checkpoint(tmp_path):
+    blueprint = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_architecture.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    blueprint["training"]["pretraining"]["losses"]["teacher_kl"] = 0.2
+    blueprint_path = tmp_path / "blueprint.yaml"
+    blueprint_path.write_text(
+        yaml.safe_dump(blueprint, sort_keys=False),
+        encoding="utf-8",
+    )
+    experiment = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    experiment["blueprint"] = str(blueprint_path)
+    experiment["output_root"] = str(tmp_path / "output")
+    experiment_path = tmp_path / "experiment.yaml"
+    experiment_path.write_text(
+        yaml.safe_dump(experiment, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="require a native teacher"):
+        build_experiment_plan(
+            experiment_path,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
+
+
 def _write_initialization_experiment(tmp_path, initialization):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(

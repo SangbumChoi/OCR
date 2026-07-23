@@ -146,6 +146,58 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
     )
 
 
+def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
+    from docvlm_eval.student.pretrain import (
+        PretrainConfig,
+        pretraining_supervision_contract,
+    )
+
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_pretraining_loss_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "loss-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 15
+    assert plan.baseline == "full_objective"
+    expected_removed = {
+        "no_autoregressive": "autoregressive",
+        "no_region_text_contrastive": "region_text_contrastive",
+        "no_box_regression": "box_regression",
+        "no_orientation": "orientation",
+    }
+    for variant in plan.variants:
+        training = PretrainConfig.from_blueprint(
+            variant.plan.resolved_blueprint,
+            tmp_path / variant.id,
+        )
+        contract = pretraining_supervision_contract(
+            training,
+            has_online_teacher=False,
+        )
+        assert contract["online_teacher_losses"] == []
+        assert all(stage["active_losses"] for stage in contract["stages"])
+        if variant.arm_id in expected_removed:
+            removed = expected_removed[variant.arm_id]
+            assert all(
+                removed not in stage["active_losses"]
+                for stage in contract["stages"]
+            )
+        assert "loss-ablation" in variant.plan.raw_spec["evaluation"][
+            "wandb_tags"
+        ]
+
+
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):
     config = _tiny_sweep(tmp_path)
     first = compile_sweep_plan(

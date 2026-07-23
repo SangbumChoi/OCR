@@ -26,6 +26,7 @@ from .checkpoint_acquisition import (
 )
 from .config import StudentConfig
 from .mixture import MixtureComponent, validate_components
+from .pretrain import PretrainConfig, pretraining_supervision_contract
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -591,6 +592,15 @@ def build_experiment_plan(
         ),
         sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
         sequence_target_seed=int(sequence_teacher.get("seed", 7)),
+    )
+    pretraining_supervision_contract(
+        PretrainConfig.from_blueprint(
+            blueprint,
+            output_root / "artifacts" / "pretrain",
+        ),
+        has_online_teacher=bool(
+            (raw.get("pretraining") or {}).get("teacher_checkpoint")
+        ),
     )
     for component, allowed in (
         ("vision", {"student", "siglip"}),

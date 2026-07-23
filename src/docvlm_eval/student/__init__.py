@@ -71,7 +71,12 @@ from .compute import (
     visual_tokens_for_canvas,
 )
 from .tokenizer import DocumentTokenizer
-from .pretrain import PretrainConfig, TrainingResult, train_student
+from .pretrain import (
+    PretrainConfig,
+    TrainingResult,
+    pretraining_supervision_contract,
+    train_student,
+)
 from .posttrain import (
     RLVRConfig,
     RLVRResult,
@@ -157,6 +162,7 @@ __all__ = [
     "materialize_component",
     "parse_structured_response",
     "planned_optimizer_steps",
+    "pretraining_supervision_contract",
     "sample_completion_group",
     "posttraining_prompt_batch",
     "score_structured_response",

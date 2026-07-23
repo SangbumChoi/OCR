@@ -214,7 +214,9 @@ The initialization-by-data-scale cross is compiled by
 [`student_factorial_runner.md`](student_factorial_runner.md). The resolution-by-latent cross is
 compiled with analytical runtime accounting and an overshoot gate by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md). These suites must
-still be executed before their effects can be claimed. The current LoRA ablations answer where
+still be executed before their effects can be claimed. The active native losses are isolated by
+[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); online native-teacher
+losses remain a separate checkpoint-dependent experiment. The current LoRA ablations answer where
 existing LFM capabilities are easiest to adapt. This blueprint answers the next question: which
 capabilities can be built into a deployment-size student, what must be inherited, and what can be
 learned from the controlled document curriculum.

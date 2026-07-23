@@ -91,7 +91,7 @@ initialization_arms:
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
-    policy: "Copy alternating depth-matched blocks; distill selected depth anchors and logits."
+    policy: "Copy alternating depth-matched blocks; optionally distill selected depth anchors and logits with a native teacher."
     purpose: "Separates useful inherited features from wholesale checkpoint dependence."
 
 training:
@@ -158,8 +158,10 @@ training:
       text_only_replay: 0.05
     losses:
       autoregressive: 1.00
-      teacher_kl: 0.35
-      hidden_feature_distillation: 0.20
+      # Native online distillation is opt-in and requires pretraining.teacher_checkpoint.
+      # Cross-tokenizer LFM supervision enters through offline sequence targets.
+      teacher_kl: 0.00
+      hidden_feature_distillation: 0.00
       region_text_contrastive: 0.15
       box_regression: 0.20
       orientation: 0.05
@@ -170,8 +172,8 @@ training:
           until_fraction: 0.15
           group_weights: {}
           loss_weights:
-            teacher_kl: 0.20
-            hidden_feature_distillation: 0.10
+            teacher_kl: 0.00
+            hidden_feature_distillation: 0.00
             region_text_contrastive: 0.25
             box_regression: 0.30
             orientation: 0.10
@@ -183,8 +185,8 @@ training:
           until_fraction: 1.0
           group_weights: {}
           loss_weights:
-            teacher_kl: 0.45
-            hidden_feature_distillation: 0.15
+            teacher_kl: 0.00
+            hidden_feature_distillation: 0.00
             region_text_contrastive: 0.10
             box_regression: 0.25
             orientation: 0.03

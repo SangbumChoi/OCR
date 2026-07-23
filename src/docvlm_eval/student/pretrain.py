@@ -22,6 +22,11 @@ from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .model import DocumentVLMStudent
 
 
+_ONLINE_TEACHER_LOSSES = frozenset(
+    {"teacher_kl", "hidden_feature_distillation"}
+)
+
+
 @dataclass(frozen=True)
 class PretrainConfig:
     output_dir: str
@@ -53,6 +58,7 @@ class PretrainConfig:
     tokenizer_fingerprint: str | None = None
     run_stage: str = "pretraining"
     loss_weights: dict[str, float] = field(default_factory=dict)
+    target_source_counts: dict[str, int] = field(default_factory=dict)
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
 
     def __post_init__(self) -> None:
@@ -116,6 +122,8 @@ class PretrainConfig:
             raise ValueError("log_every_steps must be positive")
         if any(weight < 0 for weight in self.loss_weights.values()):
             raise ValueError("pretraining loss weights must be non-negative")
+        if any(count < 0 for count in self.target_source_counts.values()):
+            raise ValueError("target source counts must be non-negative")
         if not self.run_stage.strip():
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
@@ -193,6 +201,62 @@ class PretrainConfig:
         }
         values.update(overrides)
         return cls(**values)
+
+
+def pretraining_supervision_contract(
+    config: PretrainConfig,
+    *,
+    has_online_teacher: bool,
+) -> dict[str, Any]:
+    """Resolve stage-level active losses and reject silent supervision gaps."""
+
+    if config.curriculum.stages:
+        profiles: list[dict[str, Any]] = [
+            {
+                "id": stage.id,
+                "weights": {
+                    **config.loss_weights,
+                    **stage.loss_weights,
+                },
+            }
+            for stage in config.curriculum.stages
+        ]
+    else:
+        profiles = [{"id": "base", "weights": dict(config.loss_weights)}]
+    active_online: set[str] = set()
+    for profile in profiles:
+        active = sorted(
+            name
+            for name, weight in profile["weights"].items()
+            if float(weight) > 0
+        )
+        if not active:
+            raise ValueError(
+                f"pretraining supervision stage {profile['id']!r} "
+                "has no active loss"
+            )
+        profile["active_losses"] = active
+        del profile["weights"]
+        active_online.update(_ONLINE_TEACHER_LOSSES.intersection(active))
+    if active_online and not has_online_teacher:
+        raise ValueError(
+            "active online-teacher losses require a native teacher checkpoint: "
+            f"{sorted(active_online)}"
+        )
+    if has_online_teacher and not active_online:
+        raise ValueError(
+            "native teacher checkpoint provided but teacher_kl and "
+            "hidden_feature_distillation are inactive"
+        )
+    return {
+        "has_online_teacher": has_online_teacher,
+        "online_teacher_losses": sorted(active_online),
+        "target_source_counts": {
+            name: int(count)
+            for name, count in sorted(config.target_source_counts.items())
+        },
+        "stages": profiles,
+    }
 
 
 @dataclass
@@ -517,6 +581,7 @@ def _save_checkpoint(
     config: PretrainConfig,
     context: _DistributedContext,
     curriculum_total_steps: int,
+    supervision_contract: dict[str, Any],
 ) -> Path:
     output = Path(config.output_dir)
     checkpoints = output / "checkpoints"
@@ -552,6 +617,7 @@ def _save_checkpoint(
             "curriculum_total_steps": (
                 curriculum_total_steps if config.curriculum.stages else None
             ),
+            "supervision_contract": supervision_contract,
             "token_budget": {
                 **_budget_contract(config),
             },
@@ -601,6 +667,7 @@ def _load_checkpoint(
     expected_curriculum_fingerprint: str | None,
     expected_curriculum_total_steps: int,
     expected_token_budget: dict[str, Any],
+    expected_supervision_contract: dict[str, Any],
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
     metadata = (
@@ -641,6 +708,11 @@ def _load_checkpoint(
     if saved_token_budget != expected_token_budget:
         raise ValueError(
             "resume checkpoint token-budget contract does not match the active training plan"
+        )
+    if metadata.get("supervision_contract") != expected_supervision_contract:
+        raise ValueError(
+            "resume checkpoint supervision contract does not match "
+            "the active training plan"
         )
     saved_world_size = int(metadata.get("world_size", 1))
     if saved_world_size != context.world_size:
@@ -733,6 +805,10 @@ def train_student(
 
     if (teacher is None) != (distillation_loss is None):
         raise ValueError("teacher and distillation_loss must be provided together")
+    supervision_contract = pretraining_supervision_contract(
+        config,
+        has_online_teacher=teacher is not None,
+    )
     if getattr(train_loader, "persistent_workers", False):
         raise ValueError("exact-resume augmentation requires persistent_workers=False")
     context = _distributed_context(config.device)
@@ -792,6 +868,7 @@ def train_student(
             config.curriculum.fingerprint,
             curriculum_horizon,
             _budget_contract(config),
+            supervision_contract,
         )
         scheduler.step(_state_schedule_count(state, config))
 
@@ -886,7 +963,15 @@ def train_student(
             )
             with sync_context:
                 with _autocast_context(context.device, config.precision):
-                    teacher_signals = teacher(batch) if teacher is not None else None
+                    online_teacher_active = any(
+                        active_loss_weights.get(name, 0.0) > 0
+                        for name in _ONLINE_TEACHER_LOSSES
+                    )
+                    teacher_signals = (
+                        teacher(batch)
+                        if teacher is not None and online_teacher_active
+                        else None
+                    )
                     total, losses = wrapped(
                         batch,
                         teacher_signals,
@@ -1036,6 +1121,7 @@ def train_student(
                     config,
                     context,
                     curriculum_horizon,
+                    supervision_contract,
                 )
             reached_step_limit = (
                 config.max_steps is not None
@@ -1075,6 +1161,7 @@ def train_student(
             config,
             context,
             curriculum_horizon,
+            supervision_contract,
         )
     budget_tokens_seen = _state_token_count(state, config.token_unit)
     if (

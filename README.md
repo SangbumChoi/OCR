@@ -359,6 +359,12 @@ and RLVR. Runtime counters, compute-progress schedules, and a realized-budget ov
 the fixed-compute claim executable. See
 [`docs/report/student_architecture_compute_sweep.md`](docs/report/student_architecture_compute_sweep.md).
 
+The 15-run `configs/sub1b_pretraining_loss_sweep.yaml` removes each active native pretraining loss
+one at a time while preserving offline LFM targets and paired controls. Checkpoints record the
+resolved supervision contract, and online native-teacher losses now fail closed when no compatible
+teacher is supplied. See
+[`docs/report/student_pretraining_loss_sweep.md`](docs/report/student_pretraining_loss_sweep.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

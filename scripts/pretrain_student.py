@@ -203,6 +203,10 @@ def main() -> None:
         "resume_from": args.resume,
         "device": str(device),
         "tokenizer_fingerprint": tokenizer.fingerprint,
+        "target_source_counts": {
+            "gold": len(train_dataset) - teacher_targets,
+            "teacher": teacher_targets,
+        },
     }
     if args.epochs is not None:
         overrides["epochs"] = args.epochs
