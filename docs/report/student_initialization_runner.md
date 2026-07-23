@@ -91,6 +91,8 @@ initialization. Within each replicate they hold synthetic and public data, the 2
 budget, teacher targets, SFT, RLVR, evaluation sampling, and every stochastic seed fixed. The same
 Hub cache serves all arms and replicates.
 
-This suite isolates initialization at the full data scale. The architecture blueprint also requires
-crossing initialization with data scale; that second factorial axis still needs a separately
-matched low-data suite and must not be inferred from these runs.
+This suite isolates initialization at the full data scale. Sample efficiency is tested separately
+by the executable 45-run initialization-by-data-scale design in
+[`student_factorial_runner.md`](student_factorial_runner.md). It holds optimization tokens and
+heldout documents fixed, records actual training rows, and reports paired
+difference-in-differences rather than inferring low-data behavior from this suite.

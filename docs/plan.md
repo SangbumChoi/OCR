@@ -151,6 +151,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
   train/heldout comparison.
+- **Measure sample efficiency:** [`report/student_factorial_runner.md`](report/student_factorial_runner.md)
+  — fixed-heldout initialization-by-data-scale experiments, actual-row provenance, paired
+  difference-in-differences, and capability-axis interactions.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
@@ -214,6 +217,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
+   [`report/student_factorial_runner.md`](report/student_factorial_runner.md) ·
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·

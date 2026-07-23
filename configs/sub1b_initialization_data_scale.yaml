@@ -1,0 +1,25 @@
+# Five initialization arms by three data scales by three paired replicates.
+#
+# Pretraining and post-training token budgets remain fixed. Only unique
+# training-data diversity changes; heldout generation stays identical.
+
+schema_version: 1
+name: docvlm-initialization-data-scale
+base_sweep: configs/sub1b_initialization_sweep.yaml
+output_root: outputs/factorials/docvlm-initialization-data-scale
+reference_scale: full
+heldout_count: 100
+public_component_index: 1
+
+scales:
+  - id: low
+    synthetic_train_count: 10
+    public_max_rows: 256
+
+  - id: medium
+    synthetic_train_count: 32
+    public_max_rows: 2048
+
+  - id: full
+    synthetic_train_count: 100
+    public_max_rows: null

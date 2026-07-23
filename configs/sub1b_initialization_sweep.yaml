@@ -9,6 +9,8 @@ baseline: random
 matched_controls:
   - {document: experiment, path: /initialization/seed}
   - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/heldout_count}
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
   - {document: experiment, path: /data/components}

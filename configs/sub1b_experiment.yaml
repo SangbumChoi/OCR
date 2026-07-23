@@ -15,6 +15,8 @@ synthetic:
   config: configs/synth_data.yaml
   cases: [hard_table, hard_chart, hard_investment, hard_science]
   count: 100
+  train_count: null
+  heldout_count: null
   difficulty_level: 5
   train_seed: 7
   heldout_seed: 7007

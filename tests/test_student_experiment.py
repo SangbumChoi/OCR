@@ -102,6 +102,30 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     )
 
 
+def test_experiment_supports_independent_train_and_heldout_synthetic_counts(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["synthetic"]["train_count"] = 2
+    raw["synthetic"]["heldout_count"] = 5
+    config = tmp_path / "experiment.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    train = next(stage for stage in plan.stages if stage.name == "synthetic_train")
+    heldout = next(
+        stage for stage in plan.stages if stage.name == "synthetic_heldout"
+    )
+
+    assert train.command[train.command.index("--count") + 1] == "2"
+    assert heldout.command[heldout.command.index("--count") + 1] == "5"
+
+
 def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):
     raw = (ROOT / "configs" / "sub1b_experiment.yaml").read_text(encoding="utf-8")
     config = tmp_path / "invalid.yaml"

@@ -165,3 +165,7 @@ Tags include `native-student-sweep`, `variant:<id>`, and `replicate:<id>`.
 Ranking sorts mean heldout score descending, then prefers a smaller mean train-minus-heldout score.
 Ranking remains a navigation aid: paired intervals, capability slices, multiple-comparison
 discipline, and failure inspection are required before selecting the deployment recipe.
+
+Initialization sample efficiency requires a baseline inside every data scale rather than one global
+baseline. [`student_factorial_runner.md`](student_factorial_runner.md) composes independent matched
+sweeps and estimates paired difference-in-differences while requiring one unchanged heldout set.

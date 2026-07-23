@@ -30,6 +30,13 @@ from .gates import (
     load_evaluation_artifacts,
     write_gate_report,
 )
+from .factorial import (
+    FactorialPlan,
+    FactorialRunner,
+    FactorialScale,
+    aggregate_factorial_results,
+    compile_factorial_plan,
+)
 from .mixture import MixtureComponent, build_weighted_mixture
 from .acquisition import HubComponentSpec, acquire_hub_component, materialize_component
 from .teacher_targets import (
@@ -80,6 +87,9 @@ __all__ = [
     "DistillationConfig",
     "DistillationLoss",
     "DeterministicDistributedBatchSampler",
+    "FactorialPlan",
+    "FactorialRunner",
+    "FactorialScale",
     "LanguageConfig",
     "HubComponentSpec",
     "MixtureComponent",
@@ -135,4 +145,6 @@ __all__ = [
     "write_split_comparison",
     "write_gate_report",
     "aggregate_sweep_results",
+    "aggregate_factorial_results",
+    "compile_factorial_plan",
 ]

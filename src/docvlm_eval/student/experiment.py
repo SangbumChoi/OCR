@@ -301,6 +301,11 @@ def _require_mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
+def _synthetic_count(synthetic: dict[str, Any], split: str) -> int:
+    value = synthetic.get(f"{split}_count")
+    return int(synthetic.get("count", 0) if value is None else value)
+
+
 def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Path]:
     if int(raw.get("schema_version", 0)) != 1:
         raise ValueError("experiment schema_version must be 1")
@@ -317,13 +322,17 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     synthetic = _require_mapping(raw, "synthetic")
     if not bool(synthetic.get("enabled", True)):
         raise ValueError("synthetic.enabled=false is not supported by the end-to-end schema")
-    count = int(synthetic.get("count", 0))
+    train_count = _synthetic_count(synthetic, "train")
+    heldout_count = _synthetic_count(synthetic, "heldout")
     difficulty = int(synthetic.get("difficulty_level", 0))
     train_seed = int(synthetic.get("train_seed", 0))
     heldout_seed = int(synthetic.get("heldout_seed", 0))
     cases = synthetic.get("cases")
-    if count <= 0 or not 1 <= difficulty <= 5:
-        raise ValueError("synthetic count must be positive and difficulty_level within [1, 5]")
+    if min(train_count, heldout_count) <= 0 or not 1 <= difficulty <= 5:
+        raise ValueError(
+            "synthetic train/heldout counts must be positive and "
+            "difficulty_level within [1, 5]"
+        )
     if train_seed == heldout_seed:
         raise ValueError("synthetic train_seed and heldout_seed must differ")
     if not isinstance(cases, list) or not cases:
@@ -658,16 +667,24 @@ def build_experiment_plan(
             str(_resolve_path(repo_root, synthetic.get("config") or "configs/synth_data.yaml")),
             "--only",
             *[str(case) for case in synthetic["cases"]],
-            "--count",
-            str(int(synthetic["count"])),
             "--difficulty-level",
             str(int(synthetic["difficulty_level"])),
         ]
         if bool(synthetic.get("no_degrade", False)):
             common.append("--no-degrade")
-        for split, seed, output in (
-            ("train", synthetic["train_seed"], train_cases),
-            ("heldout", synthetic["heldout_seed"], heldout_cases),
+        for split, seed, count, output in (
+            (
+                "train",
+                synthetic["train_seed"],
+                _synthetic_count(synthetic, "train"),
+                train_cases,
+            ),
+            (
+                "heldout",
+                synthetic["heldout_seed"],
+                _synthetic_count(synthetic, "heldout"),
+                heldout_cases,
+            ),
         ):
             stages.append(
                 ExperimentStage(
@@ -675,6 +692,8 @@ def build_experiment_plan(
                     tuple(
                         [
                             *common,
+                            "--count",
+                            str(count),
                             "--seed",
                             str(int(seed)),
                             "--split-name",

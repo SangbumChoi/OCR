@@ -12,6 +12,10 @@ matched_controls:
   - document: experiment
     path: /synthetic/count
   - document: experiment
+    path: /synthetic/train_count
+  - document: experiment
+    path: /synthetic/heldout_count
+  - document: experiment
     path: /synthetic/train_seed
   - document: experiment
     path: /synthetic/heldout_seed

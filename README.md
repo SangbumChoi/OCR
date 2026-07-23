@@ -348,6 +348,11 @@ Their revisions and cached files are validated before transfer, and the five-arm
 `configs/sub1b_initialization_sweep.yaml`. See
 [`docs/report/student_initialization_runner.md`](docs/report/student_initialization_runner.md).
 
+The 45-run `configs/sub1b_initialization_data_scale.yaml` factorial crosses those five arms with
+three unique-data scales at fixed token budgets and fixed heldout documents. It reports paired
+difference-in-differences and actual mixed rows. See
+[`docs/report/student_factorial_runner.md`](docs/report/student_factorial_runner.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

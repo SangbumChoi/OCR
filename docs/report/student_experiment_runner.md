@@ -58,10 +58,12 @@ deterministic sampler epochs until that counter is reached; `pretraining.max_ste
 smoke or ablation ceiling. Checkpoints preserve supervised, text, and effective counters so a
 resumed run continues the same learning-rate and curriculum position.
 
-The experiment YAML controls synthetic families, difficulty, independent split seeds, degradation,
-data components and weights, tokenizer size, initialization arm and transfer sources, training
-limits, evaluation settings, and W&B metadata. The runner writes a resolved architecture blueprint
-whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+The experiment YAML controls synthetic families, difficulty, independent split seeds and counts,
+degradation, data components and weights, tokenizer size, initialization arm and transfer sources,
+training limits, evaluation settings, and W&B metadata. `synthetic.train_count` and
+`synthetic.heldout_count` may override the legacy shared `synthetic.count`, allowing training-scale
+experiments to retain one fixed benchmark. The runner writes a resolved architecture blueprint whose
+`data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
