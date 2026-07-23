@@ -34,6 +34,7 @@ def apply_supervision_toggles(gt: dict[str, Any], cfg: Any) -> None:
             provenance_keys = {
                 "schema_version",
                 "graph_id",
+                "language",
                 "template_family",
                 "template_fingerprint",
                 "content_fingerprint",

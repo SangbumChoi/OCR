@@ -23,6 +23,33 @@ The operation registry currently covers direct lookup, sum, mean, difference, ra
 change, relative reduction, extrema, weighted sum, path products, and sums of independent path
 products. This is deliberately small and auditable: no teacher model invents hard labels.
 
+## Multilingual projection
+
+Every hard family has executable locale projections for English, Spanish, Korean, Japanese, and
+Simplified Chinese. The latent node IDs, edge programs, numeric values, evidence keys, and canonical
+machine units remain language-independent. Titles, table headers, explanatory body text, questions,
+text-valued answers, concise-answer instructions, and operation rationales are projected from one
+validated message catalog.
+
+The default generation mix is weighted toward English while retaining all five languages:
+`en=0.35`, `es=0.15`, `ko=0.20`, `ja=0.15`, and `zh=0.15`. A generated hard record is rejected
+unless:
+
+- every detailed field and QA carries the selected locale;
+- the semantic graph records the same locale;
+- every family produces a non-empty full-page text-layer target;
+- Korean, Japanese, and Chinese content contains the expected script in both rendered text and
+  questions;
+- Spanish questions contain the locale-specific interrogative form;
+- a CJK-capable font is available before generation starts.
+
+This replaces the previous behavior that could render English hard documents and relabel only their
+metadata as non-English. Template fingerprints remain language-independent because translated
+display text never changes graph topology or canonical units.
+
+The end-to-end experiment plan content-addresses `configs/synth_data.yaml`. Locale catalog or mix
+changes therefore invalidate synthesis and all dependent training stages under exact resume.
+
 Each `gt.json` records:
 
 - the complete `semantic_graph`;
@@ -100,3 +127,8 @@ and reward-context tests. A real four-family render at difficulty 5 produced twe
 samples; every sample retained a non-empty rationale and between two and eleven normalized evidence
 boxes in the structured post-training target. A second-seed heldout render produced eight unique
 semantic contents across train and heldout, with template overlap reported separately.
+
+A multilingual CLI smoke generated 40 clean difficulty-5 documents across all four hard families
+and all five supported languages. All 40 GT/image pairs passed locale validation and had unique
+content fingerprints. A direct 20-cell family-by-language render verified searchable text, exact
+program answers, localized text answers, and language-independent template fingerprints.

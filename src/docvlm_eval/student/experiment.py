@@ -7,10 +7,11 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -24,6 +25,7 @@ from .mixture import MixtureComponent, validate_components
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _CHECKPOINT_STAGES = {"pretrain", "sft", "rlvr"}
+_OUTPUT_FLAGS = {"--out", "--output", "--save"}
 
 
 def _stable_json(value: Any) -> str:
@@ -32,6 +34,42 @@ def _stable_json(value: Any) -> str:
 
 def _fingerprint(value: Any) -> str:
     return f"sha256:{hashlib.sha256(_stable_json(value).encode('utf-8')).hexdigest()}"
+
+
+def _file_fingerprint(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "sha256": f"sha256:{digest.hexdigest()}",
+    }
+
+
+def _source_fingerprint(
+    repo_root: Path,
+    stages: Iterable["ExperimentStage"],
+) -> dict[str, Any]:
+    files = set((repo_root / "src" / "docvlm_eval").rglob("*.py"))
+    for stage in stages:
+        for argument in stage.command:
+            path = Path(argument)
+            if path.suffix == ".py" and path.is_file():
+                files.add(path.resolve())
+    records = []
+    for path in sorted(files):
+        record = _file_fingerprint(path)
+        try:
+            record["path"] = str(path.relative_to(repo_root))
+        except ValueError:
+            record["path"] = str(path)
+        records.append(record)
+    return {
+        "files": len(records),
+        "sha256": _fingerprint(records),
+    }
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -98,6 +136,7 @@ class ExperimentPlan:
     components: tuple[MixtureComponent, ...]
     stages: tuple[ExperimentStage, ...]
     fingerprint: str
+    input_fingerprints: dict[str, Any] = field(default_factory=dict)
 
     @property
     def stage_names(self) -> list[str]:
@@ -110,6 +149,7 @@ class ExperimentPlan:
             "root": self.root,
             "blueprint": self.blueprint,
             "fingerprint": self.fingerprint,
+            "input_fingerprints": self.input_fingerprints,
             "components": [asdict(component) for component in self.components],
             "stages": [
                 {
@@ -305,6 +345,13 @@ def build_experiment_plan(
         raise ValueError("experiment root must be a mapping")
     name, output_root, blueprint_path = _validate_spec(raw, repo_root)
     synthetic = raw["synthetic"]
+    synth_config_path = _resolve_path(
+        repo_root,
+        synthetic.get("config") or "configs/synth_data.yaml",
+    )
+    input_fingerprints: dict[str, Any] = {
+        "synthetic_config": _file_fingerprint(synth_config_path),
+    }
     synthetic_enabled = bool(synthetic.get("enabled", True))
     artifacts = output_root / "artifacts"
     train_cases = artifacts / "synthetic" / "train"
@@ -361,6 +408,16 @@ def build_experiment_plan(
     tokenizer = raw.get("tokenizer") or {}
     sequence_teacher = raw.get("sequence_teacher") or {}
     sequence_teacher_enabled = bool(sequence_teacher.get("enabled", False))
+    if sequence_teacher.get("predictions"):
+        predictions_input = _resolve_path(repo_root, sequence_teacher["predictions"])
+        input_fingerprints["sequence_teacher_predictions"] = _file_fingerprint(
+            predictions_input
+        )
+    token_map = initialization.get("token_map")
+    if token_map:
+        input_fingerprints["initialization_token_map"] = _file_fingerprint(
+            _resolve_path(repo_root, token_map)
+        )
     blueprint = _resolved_blueprint(
         blueprint_path,
         components,
@@ -876,11 +933,16 @@ def build_experiment_plan(
         )
     )
 
+    input_fingerprints["python_source"] = _source_fingerprint(
+        repo_root,
+        stages,
+    )
     fingerprint = _fingerprint(
         {
             "config": raw,
             "blueprint": blueprint,
             "components": [asdict(component) for component in components],
+            "input_fingerprints": input_fingerprints,
         }
     )
     return ExperimentPlan(
@@ -892,6 +954,7 @@ def build_experiment_plan(
         components=components,
         stages=tuple(stages),
         fingerprint=fingerprint,
+        input_fingerprints=input_fingerprints,
     )
 
 
@@ -937,6 +1000,49 @@ def _with_training_resume(
     if pointer.is_file():
         return [*command, "--resume", "latest"]
     return command
+
+
+def _owned_output_paths(
+    stage: ExperimentStage,
+    command: list[str],
+    root: Path,
+) -> tuple[Path, ...]:
+    candidates = {Path(artifact.path).resolve() for artifact in stage.artifacts}
+    for index, argument in enumerate(command[:-1]):
+        if argument in _OUTPUT_FLAGS:
+            candidates.add(Path(command[index + 1]).resolve())
+    owned = []
+    resolved_root = root.resolve()
+    for path in sorted(candidates, key=lambda value: len(value.parts)):
+        if path == resolved_root or resolved_root not in path.parents:
+            raise ValueError(
+                f"stage {stage.name!r} output is outside experiment root: {path}"
+            )
+        if any(parent == path or parent in path.parents for parent in owned):
+            continue
+        owned.append(path)
+    return tuple(owned)
+
+
+def _clear_stale_outputs(
+    stage: ExperimentStage,
+    command: list[str],
+    root: Path,
+) -> list[str]:
+    removed = []
+    for path in _owned_output_paths(stage, command, root):
+        if path.is_dir():
+            shutil.rmtree(path)
+            removed.append(str(path))
+        elif path.exists():
+            path.unlink()
+            removed.append(str(path))
+        for suffix in (".manifest.json", ".tmp"):
+            sidecar = Path(str(path) + suffix)
+            if sidecar.is_file():
+                sidecar.unlink()
+                removed.append(str(sidecar))
+    return removed
 
 
 class ExperimentRunner:
@@ -1039,14 +1145,39 @@ class ExperimentRunner:
                 outcomes.append({"stage": stage.name, "status": "skipped"})
                 continue
             prior_state = self._load_state(stage.name)
+            resolved_command = _resolve_command(stage.command, self.root)
             resume_interrupted = bool(
                 resume
                 and prior_state
                 and prior_state.get("signature") == signature
                 and prior_state.get("status") in {"running", "failed"}
             )
+            signature_changed = bool(
+                prior_state
+                and prior_state.get("signature") != signature
+            )
+            invalid_completed_artifacts = bool(
+                prior_state
+                and prior_state.get("status") == "completed"
+                and not stage.artifacts_valid()
+            )
+            clear_outputs = (
+                signature_changed
+                or invalid_completed_artifacts
+                or (
+                    resume_interrupted
+                    and stage.name not in _CHECKPOINT_STAGES
+                )
+            )
+            removed_outputs = (
+                _clear_stale_outputs(stage, resolved_command, self.root)
+                if clear_outputs
+                else []
+            )
+            if clear_outputs:
+                resume_interrupted = False
             command = _with_training_resume(
-                _resolve_command(stage.command, self.root),
+                resolved_command,
                 stage.name,
                 self.root,
                 eligible=resume_interrupted,
@@ -1059,6 +1190,8 @@ class ExperimentRunner:
                 "command": command,
                 "started_at_unix": started,
             }
+            if removed_outputs:
+                state["invalidated_outputs"] = removed_outputs
             _atomic_write_json(self._state_path(stage.name), state)
             log_path = self.log_dir / f"{stage.name}.log"
             with log_path.open("w", encoding="utf-8") as log:

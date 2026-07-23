@@ -10,6 +10,13 @@ Random initialization is reproducible: `initialization.seed` is validated, passe
 construction before parameter allocation, included in the stage signature, and written into the
 initial checkpoint metadata.
 
+External generation inputs are content-addressed. The plan records the byte count and SHA-256 of
+`synthetic.config`; changing that YAML invalidates the experiment fingerprint and every dependent
+stage instead of incorrectly resuming old documents. Configured sequence-teacher prediction files
+and initialization token maps receive the same treatment. A combined SHA-256 over the
+`docvlm_eval` Python source tree and every compiled script entrypoint also invalidates resume after
+generator, model, loss, reward, or runner implementation changes.
+
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
 patches, rejects changes to declared fixed controls, reuses this runner for every variant, and
@@ -68,6 +75,11 @@ skipped only when their state signature still matches and every artifact remains
 pretraining, SFT, and RLVR stages automatically pass `--resume latest` only when the interrupted
 state has the same signature and a checkpoint pointer exists. A changed upstream checkpoint starts
 the dependent stage fresh.
+
+When a signature changes, the runner removes only that stage's declared outputs inside the
+experiment root before rebuilding them. It applies the same cleanup to interrupted
+non-checkpoint stages and completed stages with invalid artifacts. Checkpoints remain intact for
+an interrupted training stage with the same signature, preserving exact resume.
 
 Each run root contains:
 

@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable
 
+from .hard_locale import hard_text
 from .latent import (
     DifficultySpec,
     GraphEdge,
@@ -53,17 +55,28 @@ def _attach(builder: DocBuilder, graph: LatentDocumentGraph, difficulty: Difficu
     builder.semantic_graph["difficulty"] = difficulty.to_dict()
 
 
-def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
+def hard_table_case(
+    rng: random.Random,
+    level: int = 4,
+    language: str = "en",
+) -> HardCase:
     """Dense regional operating table with multi-cell arithmetic and cross-region comparison."""
 
+    text = partial(hard_text, language)
     difficulty = _difficulty(
         level,
         skills=("table-structure", "aggregation", "margin", "cross-region"),
         base_hops=2,
         cross_region=True,
     )
-    regions = ["North", "South", "East", "West"] + [
-        f"Aux-{index + 1}" for index in range(difficulty.distractor_count)
+    regions = [
+        text("region_north"),
+        text("region_south"),
+        text("region_east"),
+        text("region_west"),
+    ] + [
+        text("region_aux", index=index + 1)
+        for index in range(difficulty.distractor_count)
     ]
     rows: list[list[str]] = []
     nodes: list[GraphNode] = []
@@ -74,7 +87,11 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         units = rng.randrange(80, 260)
         rows.append([region, f"${revenue:,}", f"${cost:,}", str(units)])
         for col_index, (name, value, unit) in enumerate(
-            (("revenue", revenue, "USD"), ("cost", cost, "USD"), ("units", units, "count")),
+            (
+                ("revenue", revenue, "USD"),
+                ("cost", cost, "USD"),
+                ("units", units, "count"),
+            ),
             start=1,
         ):
             node_id = f"{name}_{row_index}"
@@ -84,7 +101,7 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
                     node_id,
                     "table-cell",
                     value,
-                    f"{region} {name}",
+                    f"{region} {text(name)}",
                     unit,
                     {"field_key": field_key, "row": row_index, "column": col_index},
                 )
@@ -96,7 +113,7 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
             "budget",
             "summary-field",
             budget,
-            "approved operating budget",
+            text("budget_label"),
             "USD",
             {"field_key": "budget"},
         )
@@ -106,7 +123,7 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
     queries = [
         GraphQuery(
             "north_revenue",
-            "What revenue is reported for North?",
+            text("table_q_north"),
             "value",
             ("revenue_0",),
             "T-table-lookup",
@@ -114,7 +131,7 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "core_revenue",
-            "What is the combined revenue of North, South, East, and West?",
+            text("table_q_core_revenue"),
             "sum",
             core_revenues,
             "H-table-multicell",
@@ -122,7 +139,7 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "core_profit",
-            "What is total operating profit across the four primary regions?",
+            text("table_q_profit"),
             "difference",
             ("core_revenue_total", "core_cost_total"),
             "H-table-multistep",
@@ -131,17 +148,17 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "largest_revenue",
-            "Which primary region has the highest revenue?",
+            text("table_q_largest"),
             "argmax",
             core_revenues,
             "H-table-argmax",
             metric="anls",
             answer_format="text",
-            parameters={"outputs": ["North", "South", "East", "West"]},
+            parameters={"outputs": regions[:4]},
         ),
         GraphQuery(
             "budget_headroom",
-            "How much approved budget remains after all listed operating costs?",
+            text("table_q_budget"),
             "difference",
             ("budget", "all_cost_total"),
             "H-table-cross-region",
@@ -157,21 +174,21 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
                 "core_revenue_total",
                 "latent-aggregate",
                 sum(node.value for node in nodes if node.node_id in core_revenues),
-                "four-region revenue",
+                text("four_region_revenue"),
                 "USD",
             ),
             GraphNode(
                 "core_cost_total",
                 "latent-aggregate",
                 sum(node.value for node in nodes if node.node_id in core_costs),
-                "four-region cost",
+                text("four_region_cost"),
                 "USD",
             ),
             GraphNode(
                 "all_cost_total",
                 "latent-aggregate",
                 sum(node.value for node in nodes if node.node_id.startswith("cost_")),
-                "all listed costs",
+                text("all_costs"),
                 "USD",
             ),
         ]
@@ -181,7 +198,11 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         template_family="hard-operating-table-v1",
         nodes=nodes,
         queries=queries[:level],
-        metadata={"primary_rows": 4, "distractor_rows": difficulty.distractor_count},
+        metadata={
+            "primary_rows": 4,
+            "distractor_rows": difficulty.distractor_count,
+        },
+        language=language,
     )
     b = DocBuilder(
         "dense operating table",
@@ -189,25 +210,42 @@ def hard_table_case(rng: random.Random, level: int = 4) -> HardCase:
         "TEDS + relaxed accuracy",
         page="A4",
         css=".summary{border:1px solid #666;padding:8px;margin-top:12px}.num{text-align:right}",
+        language=language,
     )
-    b.title("REGIONAL OPERATING REVIEW")
-    b.field("Approved operating budget", f"${budget:,}", key="budget", spot=True, cls="summary")
+    b.title(text("table_title"))
+    b.field(
+        text("table_budget"),
+        f"${budget:,}",
+        key="budget",
+        spot=True,
+        cls="summary",
+    )
     b.table(
-        ["Region", "Revenue", "Operating cost", "Units"],
+        [
+            text("table_h_region"),
+            text("table_h_revenue"),
+            text("table_h_cost"),
+            text("table_h_units"),
+        ],
         rows,
         key="operations",
         spot_cells=spot_cells,
-        region="the regional operating table",
+        region=text("table_region"),
     )
-    b.task("Reconstruct the table and answer multi-cell operating questions.")
+    b.task(text("table_task"))
     _attach(b, graph, difficulty)
-    b.want_fulltext()
+    b.want_fulltext(text("fulltext"))
     return HardCase("hard_table", b, "operations", "pdf-native", "scan")
 
 
-def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
+def hard_chart_case(
+    rng: random.Random,
+    level: int = 4,
+    language: str = "en",
+) -> HardCase:
     """Programmatic bar chart with exact numeric labels and temporal reasoning."""
 
+    text = partial(hard_text, language)
     difficulty = _difficulty(
         level,
         skills=("chart-reading", "temporal-comparison", "percent-change", "argmax"),
@@ -232,7 +270,7 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
     queries = [
         GraphQuery(
             "latest_value",
-            f"What index value is shown for {years[-1]}?",
+            text("chart_q_latest", latest=years[-1]),
             "value",
             (f"value_{len(values)-1}",),
             "T-chart-read",
@@ -240,7 +278,7 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "end_change",
-            f"What is the percentage change in the index from {years[0]} to {years[-1]}?",
+            text("chart_q_change", first=years[0], latest=years[-1]),
             "percent_change",
             (f"value_{len(values)-1}", "value_0"),
             "H-chart-percent-change",
@@ -248,7 +286,7 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "peak_year",
-            "In which year does the chart reach its highest value?",
+            text("chart_q_peak"),
             "argmax",
             tuple(f"value_{index}" for index in range(len(values))),
             "H-chart-argmax",
@@ -258,7 +296,7 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
         ),
         GraphQuery(
             "recent_mean",
-            "What is the mean index value across the final three years?",
+            text("chart_q_mean"),
             "mean",
             tuple(f"value_{index}" for index in range(len(values) - 3, len(values))),
             "H-chart-aggregate",
@@ -270,6 +308,7 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
         template_family="hard-labelled-bar-chart-v1",
         nodes=nodes,
         queries=queries[:level],
+        language=language,
     )
     b = DocBuilder(
         "labelled temporal bar chart",
@@ -282,9 +321,10 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
             "background:#2f6c9e;color:white;display:flex;align-items:flex-start;justify-content:center;"
             "padding-top:4px;font-weight:bold}.year{font-size:9px;margin-top:5px}.note{font-size:9px}"
         ),
+        language=language,
     )
-    b.title("SUPPLY RESILIENCE INDEX")
-    b.line("Annual composite score (higher is better)", cls="note")
+    b.title(text("chart_title"))
+    b.line(text("chart_note"), cls="note")
     b.raw("<div class=chart>")
     for index, (year, value) in enumerate(zip(years, values)):
         b.raw(
@@ -293,14 +333,20 @@ def hard_chart_case(rng: random.Random, level: int = 4) -> HardCase:
         )
         b.spot(f"bar_{index}", str(value))
     b.raw("</div>")
-    b.task("Read exact labels before performing temporal chart calculations.")
+    b.task(text("chart_task"))
     _attach(b, graph, difficulty)
+    b.want_fulltext(text("fulltext"))
     return HardCase("hard_chart", b, "analytics", "pdf-native", "photo")
 
 
-def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
+def hard_investment_case(
+    rng: random.Random,
+    level: int = 5,
+    language: str = "en",
+) -> HardCase:
     """Multi-path beneficial-ownership document with exact look-through reasoning."""
 
+    text = partial(hard_text, language)
     difficulty = _difficulty(
         level,
         skills=("entity-resolution", "ownership-paths", "multi-hop-relation", "percentage"),
@@ -330,7 +376,11 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
                 f"stake_{index}",
                 "relation-label",
                 value * 100,
-                f"{edge.source} to {edge.target} ownership",
+                text(
+                    "ownership_label",
+                    source=edge.source,
+                    target=edge.target,
+                ),
                 "percent",
                 {"field_key": key},
             )
@@ -338,7 +388,7 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
     queries = [
         GraphQuery(
             "direct_birch",
-            "What direct ownership does Aurora Fund report in Birch Holdings?",
+            text("investment_q_direct"),
             "value",
             ("stake_0",),
             "T-finance-relation",
@@ -346,7 +396,7 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
         ),
         GraphQuery(
             "via_birch",
-            "What indirect ownership does Aurora Fund have in Delta Labs through Birch Holdings?",
+            text("investment_q_path"),
             "path_product",
             ("ab", "bd"),
             "H-finance-path",
@@ -355,7 +405,7 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
         ),
         GraphQuery(
             "effective_delta",
-            "What is Aurora Fund's total effective ownership of Delta Labs across both disclosed paths?",
+            text("investment_q_total"),
             "sum_products",
             (),
             "H-finance-multipath",
@@ -375,6 +425,7 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
             *([queries[2]] if level >= 5 else []),
         ],
         metadata={"path_count": 2, "relation_depth": 2},
+        language=language,
     )
     rows = [
         [companies[0], companies[1], f"{direct_ab * 100:.0f}%"],
@@ -388,35 +439,47 @@ def hard_investment_case(rng: random.Random, level: int = 5) -> HardCase:
         "relaxed accuracy",
         page="A5",
         css=".legal{font-size:9px;color:#444;border-top:1px solid #999;margin-top:14px;padding-top:8px}",
+        language=language,
     )
-    b.title("BENEFICIAL OWNERSHIP DISCLOSURE")
+    b.title(text("investment_title"))
     b.table(
-        ["Investor", "Direct holding", "Ownership"],
+        [
+            text("investment_h_investor"),
+            text("investment_h_holding"),
+            text("investment_h_ownership"),
+        ],
         rows,
         key="holding",
         spot_cells=[(index, 2) for index in range(4)],
-        region="the direct ownership schedule",
+        region=text("investment_region"),
     )
-    b.line(
-        "Effective ownership must include every disclosed indirect path. Direct percentages are "
-        "multiplicative along a path and additive across independent paths.",
-        cls="legal",
-    )
-    b.task("Resolve entities and calculate indirect beneficial ownership without double-counting.")
+    b.line(text("investment_legal"), cls="legal")
+    b.task(text("investment_task"))
     _attach(b, graph, difficulty)
+    b.want_fulltext(text("fulltext"))
     return HardCase("hard_investment", b, "finance", "pdf-native", "scan")
 
 
-def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
+def hard_science_case(
+    rng: random.Random,
+    level: int = 5,
+    language: str = "en",
+) -> HardCase:
     """Two-column research result with control-relative effect and best-condition selection."""
 
+    text = partial(hard_text, language)
     difficulty = _difficulty(
         level,
         skills=("scientific-table", "control-comparison", "effect-size", "claim-verification"),
         base_hops=3,
         cross_region=True,
     )
-    conditions = ["Control", "Compound A", "Compound B", "A+B"]
+    conditions = [
+        text("condition_control"),
+        text("condition_a"),
+        text("condition_b"),
+        text("condition_ab"),
+    ]
     control = rng.randrange(92, 112)
     means = [
         control,
@@ -435,7 +498,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
                 f"mean_{index}",
                 "experimental-result",
                 mean,
-                f"{condition} response",
+                text("response_label", condition=condition),
                 "relative fluorescence units",
                 {"field_key": f"results_r{index}c1"},
             )
@@ -444,7 +507,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
     queries = [
         GraphQuery(
             "control_value",
-            "What mean response is reported for Control?",
+            text("science_q_control"),
             "value",
             ("mean_0",),
             "T-science-read",
@@ -452,7 +515,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
         ),
         GraphQuery(
             "combination_reduction",
-            "By what percentage did A+B reduce the mean response relative to Control?",
+            text("science_q_reduction"),
             "relative_reduction",
             ("mean_3", "mean_0"),
             "H-science-effect",
@@ -460,7 +523,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
         ),
         GraphQuery(
             "lowest_response",
-            "Which condition produced the lowest mean response?",
+            text("science_q_lowest"),
             "argmin",
             tuple(f"mean_{index}" for index in range(4)),
             "H-science-claim",
@@ -470,7 +533,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
         ),
         GraphQuery(
             "a_vs_b",
-            "What is the difference between the mean responses for Compound A and Compound B?",
+            text("science_q_difference"),
             "difference",
             ("mean_1", "mean_2"),
             "H-science-comparison",
@@ -488,6 +551,7 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
             *([queries[3]] if level >= 5 else []),
         ],
         metadata={"control_node": "mean_0", "reported_uncertainty": "standard error"},
+        language=language,
     )
     b = DocBuilder(
         "scientific research paper",
@@ -499,33 +563,35 @@ def hard_science_case(rng: random.Random, level: int = 5) -> HardCase:
             "font-size:9px;text-align:justify}.equation{text-align:center;font-family:serif;"
             "margin:12px}.caption{font-size:8px;color:#444}"
         ),
+        language=language,
     )
-    b.title("Combinatorial Modulation of Cellular Stress Response", level=2)
+    b.title(text("science_title"), level=2)
     b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
-    b.raw(
-        "<div class=abstract><b>Abstract.</b> We compared two compounds and their combination "
-        "against an untreated control. Lower fluorescence indicates reduced stress signalling. "
-        "All values are independently generated means with standard errors.</div>"
-    )
-    b.line("Relative effect = (treatment - control) / |control| x 100", cls="equation")
+    b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
+    b.line(text("science_equation"), cls="equation")
     b.table(
-        ["Condition", "Mean response", "SE", "n"],
+        [
+            text("science_h_condition"),
+            text("science_h_mean"),
+            text("science_h_se"),
+            text("science_h_n"),
+        ],
         rows,
         key="results",
         spot_cells=spots,
-        region="Table 1 experimental results",
+        region=text("science_region"),
     )
-    b.line(
-        "Table 1. Mean response, standard error, and replicate count by intervention.",
-        cls="caption",
-    )
-    b.task("Verify quantitative claims against Table 1 and the stated control-relative equation.")
+    b.line(text("science_caption"), cls="caption")
+    b.task(text("science_task"))
     _attach(b, graph, difficulty)
-    b.want_fulltext()
+    b.want_fulltext(text("fulltext"))
     return HardCase("hard_science", b, "science", "pdf-native", "scan")
 
 
-HARD_CASE_FACTORIES: dict[str, Callable[[random.Random, int], HardCase]] = {
+HARD_CASE_FACTORIES: dict[
+    str,
+    Callable[[random.Random, int, str], HardCase],
+] = {
     "hard_table": hard_table_case,
     "hard_chart": hard_chart_case,
     "hard_investment": hard_investment_case,

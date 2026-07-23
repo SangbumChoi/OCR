@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+from .hard_locale import HARD_DOCUMENT_LANGUAGES, hard_text
 from .render import render_html, resolve_boxes
 
 
@@ -41,6 +42,7 @@ class DocBuilder:
     css: str = ""
     page: str = "A5"            # CSS @page size token, e.g. "A5", "A4", "90mm 58mm", "1280px 900px"
     margin: str = "12mm"
+    language: str = "en"
 
     def __post_init__(self):
         self._html: list[str] = []
@@ -84,11 +86,12 @@ class DocBuilder:
         self.raw(f"<p class='{cls}'>{html}</p>")
 
     def field(self, label: str | None, value: str, *, key: str, spot: bool = False,
-              cls: str = "", lang: str = "en", role: str = "kie-value",
+              cls: str = "", lang: str | None = None, role: str = "kie-value",
               font_px: float | None = None) -> None:
         """A labelled value. Registers fields[key]=value; optionally a spotting box on the value.
 
         ``lang`` (A4) and ``font_px`` (A7 small-text slice) are recorded as per-field metadata."""
+        lang = lang or self.language
         self.fields[key] = value
         self.field_lang[key] = lang
         self.field_role[key] = role
@@ -99,10 +102,12 @@ class DocBuilder:
         if spot:
             self._spot(key, value)
 
-    def transcript(self, text: str, *, key: str = "transcript", cls: str = "", lang: str = "en",
+    def transcript(self, text: str, *, key: str = "transcript", cls: str = "",
+                   lang: str | None = None,
                    spot: bool = False, role: str = "transcript",
                    font_px: float | None = None) -> None:
         """A block of text whose exact string is the GT (for NED/CER)."""
+        lang = lang or self.language
         self.fields[key] = text
         self.field_lang[key] = lang
         self.field_role[key] = role
@@ -130,6 +135,7 @@ class DocBuilder:
         gold = f"<table>{row(header, 'td')}{body}{foot}</table>"
         self.table_html = gold
         self.fields[key + "_rows"] = len(rows)
+        self.field_lang[key + "_rows"] = self.language
         self.raw(f"<table class='{cls}'>{row(header,'th')}{body}{foot}</table>")
         for (r, c) in (spot_cells or []):
             if 0 <= r < len(rows) and 0 <= c < len(rows[r]):
@@ -208,14 +214,21 @@ class DocBuilder:
         ans = answer if isinstance(answer, list) else [answer]
         q = question
         if concise and metric not in ("grounding", "teds"):
-            q += " Answer concisely, no explanation."
+            question_language = (languages or [self.language])[0]
+            locale = (
+                question_language
+                if question_language in HARD_DOCUMENT_LANGUAGES
+                else "en"
+            )
+            q += f" {hard_text(locale, 'concise')}"
+        qa_languages = languages or [self.language]
         self.qas.append({"key": key, "question": q, "answers": ans,
                          "metric": metric, "answer_type": answer_type,
                          **({"rationale": rationale} if rationale else {}),
                          **({"evidence_keys": evidence_keys} if evidence_keys else {}),
                          **({"derived": True} if derived else {}),
                          **({"graph_query_id": graph_query_id} if graph_query_id else {}),
-                         **({"languages": languages} if languages else {})})
+                         "languages": qa_languages})
 
     def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:
         """Auto-generate ``n`` varied, model-free REASONING QAs over a typed table (count / sum / mean
@@ -307,8 +320,10 @@ class DocBuilder:
                 txt = rr.full_text()
                 if txt:
                     self.fields["full_text"] = txt
+                    self.field_lang["full_text"] = self.language
                     self.qas.append({"key": "full_text", "question": self._fulltext_q,
-                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full"})
+                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full",
+                                     "languages": [self.language]})
                 else:
                     print(f"  [warn] full_text empty for {self.doc_type} — skipped")
             gt = {

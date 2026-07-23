@@ -35,8 +35,8 @@ base:
   text_source: offline
 
   # --- A4 multilingual mix (real-world script distribution) ---
-  languages: [en]
-  language_weights: null    # e.g. {en: 0.5, es: 0.2, ko: 0.15, ja: 0.1, zh: 0.05}
+  languages: [en, es, ko, ja, zh]
+  language_weights: {en: 0.35, es: 0.15, ko: 0.20, ja: 0.15, zh: 0.15}
 
   # --- realism / distribution matching (real-world acquisition mix) ---
   degrade_prob: 1.0         # fraction of docs that also get a degraded copy
@@ -82,12 +82,12 @@ ablation_overrides:
   A3_spot_and_reason: {emit_spotting: true,  emit_rationale: true}
 
   # A4 — multilingual mixing & language correlation. Equal total samples across arms (count fixed).
-  A4_en:        {languages: [en]}
-  A4_en_es:     {languages: [en, es]}
-  A4_en_ja:     {languages: [en, ja]}
-  A4_ko_en:     {languages: [ko, en]}
-  A4_en_zh:     {languages: [en, zh]}
-  A4_all:       {languages: [en, es, ko, ja, zh]}
+  A4_en:        {languages: [en], language_weights: null}
+  A4_en_es:     {languages: [en, es], language_weights: null}
+  A4_en_ja:     {languages: [en, ja], language_weights: null}
+  A4_ko_en:     {languages: [ko, en], language_weights: null}
+  A4_en_zh:     {languages: [en, zh], language_weights: null}
+  A4_all:       {languages: [en, es, ko, ja, zh], language_weights: null}
 
   # Understanding layer (model-free where/how-many/totals) on vs off — isolates its contribution.
   U_understanding_off: {emit_understanding: false}

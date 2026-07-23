@@ -172,7 +172,8 @@ added factor lifting the score a step, ending well above the baseline.
   (simulation-only; LLM generators kept as future-optional seams).
 - **Generate hard reasoning:** [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md)
   documents the executable latent graph, five-level curriculum, hard table/chart/investment/science
-  families, multi-box structured SFT/RLVR targets, and semantic train/heldout leakage gate.
+  families, exact five-language locale projection, multi-box structured SFT/RLVR targets, and
+  semantic train/heldout leakage gate.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
   (A1–A7, `integration_order`) → [`../scripts/plot_ablation.py`](../scripts/plot_ablation.py).
 - **Deliverable (updated):** the report is now **refocused on the single selected objective —

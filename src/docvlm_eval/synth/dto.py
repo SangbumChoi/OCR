@@ -327,7 +327,16 @@ class DocSample:
         # boxes that have no matching field (e.g. table cells, ui buttons) still carry A1 signal
         for key, box in spotting.items():
             if key not in {f.key for f in fields}:
-                fields.append(Field(key=key, value="", role="region", bbox=BBox.from_list(box)))
+                fields.append(
+                    Field(
+                        key=key,
+                        value="",
+                        role="region",
+                        bbox=BBox.from_list(box),
+                        language=getattr(builder, "language", "en"),
+                        script=script_for(getattr(builder, "language", "en")),
+                    )
+                )
 
         qa: list[QAItem] = []
         for q in gt.get("qa", []):
@@ -343,7 +352,11 @@ class DocSample:
                     box for key in (q.get("evidence_keys") or [])
                     if (box := BBox.from_list(spotting.get(key))) is not None
                 ],
-                languages=q.get("languages", ["en"]), key=q.get("key"),
+                languages=q.get(
+                    "languages",
+                    [getattr(builder, "language", "en")],
+                ),
+                key=q.get("key"),
             ))
 
         rj = gt.get("render", {}) or {}

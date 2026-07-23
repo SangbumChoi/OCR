@@ -102,8 +102,11 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
 - **v2a (implemented):** executable semantic graphs; difficulty levels 1–5; graph-authored hard
   table, chart, investment, and scientific-paper families; multi-box evidence for SFT/RLVR; content
   and template fingerprints; deterministic split assignment and a cross-split leakage validator.
-- **v2b:** layout templates per case (2–3 variants each), handwriting/stamp/seal overlays, more
-  languages, and photographed-perspective warp with transformed boxes.
+- **v2b (multilingual projection implemented):** the four executable hard families now render
+  English, Spanish, Korean, Japanese, and Simplified Chinese titles, tables, body text, questions,
+  text answers, and rationales from one validated locale catalog. Remaining v2b work is 2–3 layout
+  templates per case, handwriting/stamp/seal overlays, and photographed-perspective warp with
+  transformed boxes.
 - **v3:** compositional multi-page docs; cross-document reasoning; programmatic charts/diagrams with
   next-action GT; curriculum scheduling of difficulty.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out

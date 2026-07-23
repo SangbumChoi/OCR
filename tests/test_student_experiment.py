@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from docvlm_eval.student.experiment import (
     Artifact,
@@ -109,6 +110,45 @@ def test_invalid_experiment_rejects_negative_initialization_seed(tmp_path):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
+def test_experiment_fingerprint_tracks_synthetic_config_content(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    synthetic_config = tmp_path / "synth.yaml"
+    original = (ROOT / "configs" / "synth_data.yaml").read_text(encoding="utf-8")
+    synthetic_config.write_text(original, encoding="utf-8")
+    raw["synthetic"]["config"] = str(synthetic_config)
+    raw["blueprint"] = str(ROOT / "configs" / "sub1b_architecture.yaml")
+    raw["output_root"] = str(tmp_path / "output")
+    experiment_config = tmp_path / "experiment.yaml"
+    experiment_config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    first = build_experiment_plan(
+        experiment_config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+    synthetic_config.write_text(original + "\n# provenance change\n", encoding="utf-8")
+    second = build_experiment_plan(
+        experiment_config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+
+    assert first.fingerprint != second.fingerprint
+    assert (
+        first.input_fingerprints["synthetic_config"]["sha256"]
+        != second.input_fingerprints["synthetic_config"]["sha256"]
+    )
+    assert first.input_fingerprints["python_source"]["files"] > 20
+    assert first.input_fingerprints["python_source"]["sha256"].startswith("sha256:")
+
+
 def _runner_plan(tmp_path: Path) -> ExperimentPlan:
     root = tmp_path / "run"
     first = root / "first.txt"
@@ -169,6 +209,67 @@ def test_runner_dry_run_is_read_only_and_resume_checks_artifacts(tmp_path):
         (Path(plan.root) / "state" / "stages" / "second.json").read_text(encoding="utf-8")
     )
     assert state["status"] == "completed"
+
+
+def test_runner_clears_owned_output_directory_when_signature_changes(tmp_path):
+    root = tmp_path / "run"
+    output = root / "generated"
+    artifact = output / "result.txt"
+    command = (
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import sys; "
+            "output = Path(sys.argv[2]); output.mkdir(); "
+            "(output / 'result.txt').write_text(sys.argv[3])"
+        ),
+        "--output",
+        str(output),
+        "first",
+    )
+    stage = ExperimentStage(
+        "generate",
+        command,
+        (),
+        (Artifact(str(artifact)),),
+    )
+    first_plan = ExperimentPlan(
+        name="test",
+        root=str(root),
+        blueprint=str(root / "resolved_blueprint.yaml"),
+        resolved_blueprint={"schema_version": 1},
+        raw_spec={"schema_version": 1},
+        components=(),
+        stages=(stage,),
+        fingerprint="sha256:first",
+    )
+    ExperimentRunner(first_plan, repo_root=ROOT).run()
+    assert artifact.read_text(encoding="utf-8") == "first"
+
+    second_stage = ExperimentStage(
+        "generate",
+        (*command[:-1], "second"),
+        (),
+        (Artifact(str(artifact)),),
+    )
+    second_plan = ExperimentPlan(
+        name="test",
+        root=str(root),
+        blueprint=str(root / "resolved_blueprint.yaml"),
+        resolved_blueprint={"schema_version": 1},
+        raw_spec={"schema_version": 1},
+        components=(),
+        stages=(second_stage,),
+        fingerprint="sha256:second",
+    )
+    result = ExperimentRunner(second_plan, repo_root=ROOT).run()
+
+    assert result["outcomes"] == [{"stage": "generate", "status": "completed"}]
+    assert artifact.read_text(encoding="utf-8") == "second"
+    state = json.loads(
+        (root / "state" / "stages" / "generate.json").read_text(encoding="utf-8")
+    )
+    assert state["invalidated_outputs"] == [str(output)]
 
 
 def test_checkpoint_placeholder_and_training_resume(tmp_path):

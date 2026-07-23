@@ -13,6 +13,8 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
+from .hard_locale import hard_text
+
 
 def _stable_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -136,6 +138,7 @@ class LatentDocumentGraph:
         edges: Iterable[GraphEdge] = (),
         queries: Iterable[GraphQuery] = (),
         metadata: dict[str, Any] | None = None,
+        language: str = "en",
     ):
         self.graph_id = graph_id
         self.template_family = template_family
@@ -143,6 +146,7 @@ class LatentDocumentGraph:
         self.edges = tuple(edges)
         self.queries = tuple(queries)
         self.metadata = dict(metadata or {})
+        self.language = language
         self._nodes = {node.node_id: node for node in self.nodes}
         self._edges = {edge.edge_id: edge for edge in self.edges}
         self._queries = {query.query_id: query for query in self.queries}
@@ -200,7 +204,12 @@ class LatentDocumentGraph:
         if query.operation == "value":
             if len(values) != 1:
                 raise ValueError("value requires exactly one node")
-            return values[0], f"Read {labels[0]} directly: {values[0]}."
+            return values[0], hard_text(
+                self.language,
+                "r_read",
+                label=labels[0],
+                value=values[0],
+            )
         if query.operation in {
             "sum",
             "mean",
@@ -214,30 +223,63 @@ class LatentDocumentGraph:
                 raise ValueError(f"{query.operation} requires at least one node")
             if query.operation == "sum":
                 value = sum(nums)
-                return value, f"Add {', '.join(str(v) for v in nums)} = {value:g}."
+                return value, hard_text(
+                    self.language,
+                    "r_add",
+                    values=", ".join(str(v) for v in nums),
+                    result=f"{value:g}",
+                )
             if query.operation == "mean":
                 value = sum(nums) / len(nums)
-                return value, f"Average ({' + '.join(str(v) for v in nums)}) / {len(nums)} = {value:g}."
+                return value, hard_text(
+                    self.language,
+                    "r_average",
+                    values=" + ".join(str(v) for v in nums),
+                    count=len(nums),
+                    result=f"{value:g}",
+                )
             if len(nums) != 2:
                 raise ValueError(f"{query.operation} requires exactly two nodes")
             if query.operation == "difference":
                 value = nums[0] - nums[1]
-                return value, f"Subtract {labels[1]} ({nums[1]:g}) from {labels[0]} ({nums[0]:g}) = {value:g}."
+                return value, hard_text(
+                    self.language,
+                    "r_subtract",
+                    right_label=labels[1],
+                    right=f"{nums[1]:g}",
+                    left_label=labels[0],
+                    left=f"{nums[0]:g}",
+                    result=f"{value:g}",
+                )
             if nums[1] == 0:
                 raise ValueError(f"{query.operation} denominator cannot be zero")
             if query.operation == "ratio":
                 value = nums[0] / nums[1]
-                return value, f"Divide {nums[0]:g} by {nums[1]:g} = {value:g}."
+                return value, hard_text(
+                    self.language,
+                    "r_divide",
+                    left=f"{nums[0]:g}",
+                    right=f"{nums[1]:g}",
+                    result=f"{value:g}",
+                )
             if query.operation == "relative_reduction":
                 value = (nums[1] - nums[0]) / abs(nums[1]) * 100.0
-                return value, (
-                    f"Relative reduction = ({nums[1]:g} - {nums[0]:g}) / "
-                    f"{abs(nums[1]):g} x 100 = {value:g}%."
+                return value, hard_text(
+                    self.language,
+                    "r_reduction",
+                    right=f"{nums[1]:g}",
+                    left=f"{nums[0]:g}",
+                    denominator=f"{abs(nums[1]):g}",
+                    result=f"{value:g}",
                 )
             value = (nums[0] - nums[1]) / abs(nums[1]) * 100.0
-            return value, (
-                f"Percent change = ({nums[0]:g} - {nums[1]:g}) / "
-                f"{abs(nums[1]):g} x 100 = {value:g}%."
+            return value, hard_text(
+                self.language,
+                "r_change",
+                left=f"{nums[0]:g}",
+                right=f"{nums[1]:g}",
+                denominator=f"{abs(nums[1]):g}",
+                result=f"{value:g}",
             )
         if query.operation in {"argmax", "argmin"}:
             if not values:
@@ -248,8 +290,17 @@ class LatentDocumentGraph:
             )
             output = query.parameters.get("outputs")
             answer = output[index] if isinstance(output, list) else labels[index]
-            direction = "largest" if query.operation == "argmax" else "smallest"
-            return answer, f"{labels[index]} has the {direction} value, {nums[index]:g}."
+            direction = hard_text(
+                self.language,
+                "largest" if query.operation == "argmax" else "smallest",
+            )
+            return answer, hard_text(
+                self.language,
+                "r_extreme",
+                label=labels[index],
+                direction=direction,
+                value=f"{nums[index]:g}",
+            )
         if query.operation == "weighted_sum":
             weights = query.parameters.get("weights")
             if not isinstance(weights, list) or len(weights) != len(values):
@@ -258,16 +309,25 @@ class LatentDocumentGraph:
             ws = [_number(weight, "weight") for weight in weights]
             terms = [value * weight for value, weight in zip(nums, ws)]
             total = sum(terms)
-            return total, (
-                "Weighted sum = "
-                + " + ".join(f"{value:g} x {weight:g}" for value, weight in zip(nums, ws))
-                + f" = {total:g}."
+            return total, hard_text(
+                self.language,
+                "r_weighted",
+                terms=" + ".join(
+                    f"{value:g} x {weight:g}"
+                    for value, weight in zip(nums, ws)
+                ),
+                result=f"{total:g}",
             )
         if query.operation == "path_product":
             edges = [self.edge(edge_id) for edge_id in query.inputs]
             weights = [_number(edge.weight, f"edge {edge.edge_id} weight") for edge in edges]
             value = math.prod(weights)
-            return value, "Multiply path weights " + " x ".join(f"{w:g}" for w in weights) + f" = {value:g}."
+            return value, hard_text(
+                self.language,
+                "r_path",
+                weights=" x ".join(f"{weight:g}" for weight in weights),
+                result=f"{value:g}",
+            )
         if query.operation == "sum_products":
             paths = query.parameters.get("paths")
             if not isinstance(paths, list) or not paths:
@@ -284,7 +344,12 @@ class LatentDocumentGraph:
                 products.append(math.prod(weights))
                 path_text.append(" x ".join(f"{weight:g}" for weight in weights))
             value = sum(products)
-            return value, f"Sum path products ({') + ('.join(path_text)}) = {value:g}."
+            return value, hard_text(
+                self.language,
+                "r_paths",
+                paths=") + (".join(path_text),
+                result=f"{value:g}",
+            )
         raise ValueError(f"unsupported graph operation {query.operation!r}")
 
     @staticmethod
@@ -342,6 +407,7 @@ class LatentDocumentGraph:
                 metric=query.metric,
                 answer_type=query.answer_type,
                 rationale=resolved.rationale,
+                languages=[self.language],
                 evidence_keys=list(resolved.evidence_keys),
                 derived=True,
                 graph_query_id=query.query_id,
@@ -408,6 +474,7 @@ class LatentDocumentGraph:
             "template_family": self.template_family,
             "template_fingerprint": self.template_fingerprint,
             "content_fingerprint": self.content_fingerprint,
+            "language": self.language,
             "nodes": [node.to_dict() for node in self.nodes],
             "edges": [edge.to_dict() for edge in self.edges],
             "queries": [

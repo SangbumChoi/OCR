@@ -70,6 +70,14 @@ _CJK_GLOB = [
     "/usr/share/fonts/**/*gothic*.ttf",
     "/usr/share/fonts/**/*CJK*.*",
     "/usr/share/fonts/**/*Han*.*",
+    "/opt/homebrew/share/fonts/**/*CJK*.*",
+    "/opt/homebrew/share/fonts/**/*Han*.*",
+    "/System/Library/Fonts/**/*Hiragino*.*",
+    "/System/Library/Fonts/**/*Heiti*.*",
+    "/System/Library/Fonts/**/*Gothic*.*",
+    "/System/Library/Fonts/**/*Songti*.*",
+    "/Library/Fonts/**/*CJK*.*",
+    "/Library/Fonts/**/*Gothic*.*",
 ]
 
 
@@ -98,4 +106,3 @@ def load_cjk_font(size: int):
 
 def have_cjk() -> bool:
     return _find_cjk() is not None
-

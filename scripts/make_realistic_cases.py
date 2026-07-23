@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
 from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
+from docvlm_eval.synth.hard_locale import validate_hard_document_language  # noqa: E402
 from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
 from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
 
@@ -182,6 +183,10 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     Writes the structured DocSample DTO (a superset of the legacy flat gt schema)."""
     if gt is None:
         builder = builder_or_img
+        builder.language = CURRENT_LANG
+        for field_key in list(builder.field_lang):
+            if builder.field_lang[field_key] == "en":
+                builder.field_lang[field_key] = CURRENT_LANG
         if getattr(CFG, "jitter", False):       # per-doc visual theme (paper/accent/font/margin)
             builder.css += _theme_css(_doc_rng(key), structural=key not in _FIXED_LAYOUT)
         img, gt = builder.build(dpi=CFG.dpi)
@@ -189,11 +194,6 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         img = builder_or_img
     # A7 resize (with box rescale) + A1/A2 supervision toggles
     img = _resize_with_boxes(img, gt)
-    # A4: this doc's content was generated under CURRENT_LANG's locale -> tag its fields
-    if builder is not None and CURRENT_LANG != "en":
-        for k in list(builder.field_lang):
-            if builder.field_lang[k] == "en":
-                builder.field_lang[k] = CURRENT_LANG
     apply_supervision_toggles(gt, CFG)
 
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
@@ -216,6 +216,8 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     )
     doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
     out = doc.to_dict()
+    if key in HARD_CASE_FACTORIES:
+        validate_hard_document_language(out, CURRENT_LANG)
     if out.get("semantic_graph"):
         policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
         out["suggested_split"] = policy.assign(out)
@@ -741,7 +743,11 @@ def _seg7(d, digits, x0, y0, on, off, w=60, h=58, t=10, gap=34):
 def _emit_hard_case(key: str, do_degrade: bool) -> None:
     """Build a graph-authored hard case from the isolated per-case RNG stream."""
 
-    case = HARD_CASE_FACTORIES[key](random.Random(random.randrange(2**31)), CFG.difficulty_level)
+    case = HARD_CASE_FACTORIES[key](
+        random.Random(random.randrange(2**31)),
+        CFG.difficulty_level,
+        CURRENT_LANG,
+    )
     emit(
         case.key,
         case.builder,
@@ -846,9 +852,10 @@ def main():
     if {"ko", "ja", "zh"} & set(CFG.languages or []):
         from docvlm_eval.benchmarks.fonts import have_cjk
         if not have_cjk():
-            print("[warn] CJK language(s) requested but NO Noto CJK font found on this system — CJK "
-                  "glyphs will not render into the text layer, so spotting/locate on CJK values will "
-                  "be skipped. Install it (apt-get install -y fonts-noto-cjk) to fix.", flush=True)
+            raise RuntimeError(
+                "CJK language generation requires a CJK-capable font, but none was found. "
+                "Install fonts-noto-cjk before generating this configuration."
+            )
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
         rng = random.Random(CFG.seed + v)

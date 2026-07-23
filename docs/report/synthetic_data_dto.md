@@ -142,10 +142,14 @@ python scripts/make_realistic_cases.py --config configs/synth_data.yaml --ablati
 `--count N` fans each case out into `…/<NNNN>/` with reseeded content (and a fresh language draw per
 doc, so the mix is realised across the corpus). The resolved config is also written to
 `gen_config.json` next to the data for provenance, and embedded per-sample under `gen_config`.
+The production base uses a weighted English/Spanish/Korean/Japanese/Chinese mix; A4 overrides clear
+that weight map and sample uniformly from only the languages named by each arm.
 
 ## 5. Guarantees
 
 - **No label drift:** every value is declared once and the box is read from the render.
+- **No false multilingual labels:** hard-document render text, questions, text answers, rationales,
+  fields, and graph locale must agree; unsupported locale projections and missing CJK fonts fail.
 - **Boxes survive degradation and resize:** degradation is photometric; the A7 resize rescales all
   boxes by the same factor (`scripts/make_realistic_cases.py::_resize_with_boxes`).
 - **One factor at a time:** an ablation override touches only its knob family; everything else

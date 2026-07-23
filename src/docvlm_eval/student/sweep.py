@@ -499,6 +499,7 @@ def compile_sweep_plan(
                     "replicate": replicate_id,
                     "experiment": canonical_experiment,
                     "blueprint": blueprint,
+                    "input_fingerprints": plan.input_fingerprints,
                 }
             )
             plan = replace(
