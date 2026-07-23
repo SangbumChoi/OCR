@@ -102,6 +102,7 @@ training:
       max_image_long_side: 896
       visual_canvas_mode: batch_adaptive
       visual_sequence_mode: packed
+      packed_attention_backend: auto
       aspect_ratio_bucketing: false
       aspect_ratio_bucket_log2_step: 0.5
       rotation_probability: 1.0

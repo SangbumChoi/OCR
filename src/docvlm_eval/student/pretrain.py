@@ -272,6 +272,7 @@ class TrainerState:
     executed_visual_tokens_seen: int = 0
     valid_visual_tokens_seen: int = 0
     visual_samples_seen: int = 0
+    visual_attention_backend: str = "none"
 
 
 @dataclass(frozen=True)
@@ -286,6 +287,7 @@ class TrainingResult:
     executed_visual_tokens_seen: int
     valid_visual_tokens_seen: int
     visual_samples_seen: int
+    visual_attention_backend: str
     budget_tokens_seen: int
     token_unit: str
     schedule_unit: str
@@ -1040,6 +1042,9 @@ def train_student(
                     scaled_loss = total / config.grad_accum_steps
                 scaler.scale(scaled_loss).backward()
             accumulated_microbatches = microbatch_number
+            state.visual_attention_backend = (
+                module.student.last_visual_attention_backend
+            )
             batch_token_counts = _batch_token_counts(
                 batch,
                 config.visual_tokens_per_image,
@@ -1153,6 +1158,9 @@ def train_student(
                         curriculum_stage.id if curriculum_stage is not None else "base"
                     ),
                     "train/curriculum_progress": curriculum_progress,
+                    "train/visual_attention_backend": (
+                        module.student.last_visual_attention_backend
+                    ),
                     **{
                         f"train/loss_weight/{name}": weight
                         for name, weight in sorted(active_loss_weights.items())
@@ -1305,6 +1313,7 @@ def train_student(
         executed_visual_tokens_seen=state.executed_visual_tokens_seen,
         valid_visual_tokens_seen=state.valid_visual_tokens_seen,
         visual_samples_seen=state.visual_samples_seen,
+        visual_attention_backend=state.visual_attention_backend,
         budget_tokens_seen=budget_tokens_seen,
         token_unit=config.token_unit,
         schedule_unit=config.schedule_unit,

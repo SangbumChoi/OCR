@@ -172,6 +172,52 @@ def test_generation_rejects_a_mask_without_an_image():
         )
 
 
+def test_explicit_flex_packing_rejects_an_unsupported_cpu_backend():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+
+    with pytest.raises(RuntimeError, match="requires CUDA"):
+        model(
+            torch.ones(1, 2, dtype=torch.long),
+            packed_pixel_values=torch.zeros(1, 3, 8, 8),
+            packed_position_ids=torch.zeros(1, dtype=torch.long),
+            packed_cu_seqlens=torch.tensor([0, 1]),
+            packed_attention_backend="flex",
+        )
+
+
+def test_flex_block_mask_prevents_cross_document_attention():
+    import torch
+
+    from docvlm_eval.student.model import _create_document_block_mask
+
+    cu_seqlens = torch.tensor([0, 3, 5])
+    block_mask = _create_document_block_mask(
+        cu_seqlens,
+        cu_seqlens,
+        q_length=5,
+        kv_length=5,
+        device=torch.device("cpu"),
+        compile_mask=False,
+    )
+    def scalar(value):
+        return torch.tensor(value, dtype=torch.long)
+
+    assert bool(
+        block_mask.mask_mod(scalar(0), scalar(0), scalar(1), scalar(2))
+    )
+    assert not bool(
+        block_mask.mask_mod(scalar(0), scalar(0), scalar(1), scalar(3))
+    )
+    assert bool(
+        block_mask.mask_mod(scalar(0), scalar(0), scalar(3), scalar(4))
+    )
+
+
 def test_generation_returns_bounded_sequence_confidence():
     import torch
 

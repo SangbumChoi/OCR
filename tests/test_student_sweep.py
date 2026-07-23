@@ -635,6 +635,7 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
                     "dense_visual_tokens_seen": dense_tokens,
                     "valid_visual_tokens_seen": 50,
                     "visual_samples_seen": 2,
+                    "visual_attention_backend": "loop",
                 }
             ),
             encoding="utf-8",
@@ -710,6 +711,10 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
     efficiency = candidate["pretraining_efficiency_delta_statistics"]
     assert efficiency["dense_visual_tokens_per_sample"]["mean"] == -20.0
     assert efficiency["student_flops"]["mean"] == -40_000.0
+    assert all(
+        record["pretraining_visual_attention_backend"] == "loop"
+        for record in result["runs"].values()
+    )
     assert Path(candidate["gate_report"]).is_file()
     assert all(Path(record["gate_report"]).is_file() for record in result["runs"].values())
     assert (Path(plan.root) / "comparison.json").is_file()

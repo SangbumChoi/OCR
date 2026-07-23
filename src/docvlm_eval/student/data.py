@@ -23,6 +23,7 @@ STUDENT_MODEL_INPUTS = frozenset(
         "packed_pixel_values",
         "packed_position_ids",
         "packed_cu_seqlens",
+        "packed_attention_backend",
         "attention_mask",
         "labels",
         "box_targets",
@@ -42,6 +43,7 @@ VISUAL_MODEL_INPUTS = (
     "packed_pixel_values",
     "packed_position_ids",
     "packed_cu_seqlens",
+    "packed_attention_backend",
 )
 
 
@@ -441,6 +443,7 @@ class StudentCollatorConfig:
     allow_upscale: bool = False
     visual_canvas_mode: str = "fixed_square"
     visual_sequence_mode: str = "dense"
+    packed_attention_backend: str = "auto"
     prompt_template: str = "User: {prompt}\nAssistant:"
     image_mean: tuple[float, float, float] = (0.5, 0.5, 0.5)
     image_std: tuple[float, float, float] = (0.5, 0.5, 0.5)
@@ -469,6 +472,9 @@ class StudentCollatorConfig:
             "visual_sequence_mode": str(
                 pipeline.get("visual_sequence_mode", "dense")
             ),
+            "packed_attention_backend": str(
+                pipeline.get("packed_attention_backend", "auto")
+            ),
             "contrastive": bool(pipeline.get("contrastive", True)),
         }
         values.update(overrides)
@@ -491,6 +497,10 @@ class StudentCollatorConfig:
             )
         if self.visual_sequence_mode not in {"dense", "packed"}:
             raise ValueError("visual_sequence_mode must be dense or packed")
+        if self.packed_attention_backend not in {"auto", "flex", "loop"}:
+            raise ValueError(
+                "packed_attention_backend must be auto, flex, or loop"
+            )
 
 
 def _open_image(value: Any):
@@ -861,6 +871,9 @@ class StudentCollator:
             batch["packed_pixel_values"] = packed_pixel_values
             batch["packed_position_ids"] = packed_position_ids
             batch["packed_cu_seqlens"] = packed_cu_seqlens
+            batch["packed_attention_backend"] = (
+                self.config.packed_attention_backend
+            )
             batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
             image_ids: dict[str, int] = {}
             batch["contrastive_ids"] = torch.tensor(

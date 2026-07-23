@@ -75,9 +75,10 @@ the exact same transform:
 Images retain aspect ratio and are resized only when their long side exceeds 896 pixels. The
 default `packed` sequence mode pads each image only to its own final patch boundary, unfolds
 `[total_patches, 3, 14, 14]`, and carries canonical position IDs plus cumulative sequence offsets.
-The ViT and resampler execute each offset range independently, so no image attends to another image
-and no batch-level visual padding enters their projections, attention, or MLPs. This portable exact
-path reuses the same Conv2d patch weights and does not require a fused accelerator-specific kernel.
+The ViT and resampler keep projections and MLPs concatenated while attention is block-diagonal, so
+no image attends to another image and no batch-level visual padding enters execution. The `auto`
+backend uses compiled PyTorch FlexAttention block masks on supported CUDA systems and falls back to
+range-wise SDPA elsewhere. This exact path reuses the same Conv2d patch weights.
 
 Dense controls remain available. `batch_adaptive` pads to the batch's patch-aligned maximum height
 and width; `fixed_square` pads every image to 896 by 896. Neither dimension can exceed 896, or 64
@@ -119,6 +120,7 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 - maximum text tokens;
 - image long side and visual-token budget;
 - visual sequence mode (`packed` or `dense`);
+- packed attention backend (`auto`, `flex`, or `loop`);
 - visual canvas mode (`batch_adaptive` or `fixed_square`);
 - rotation-aware aspect-ratio bucketing and its log2 bucket width;
 - quarter-turn augmentation probability;
@@ -135,7 +137,7 @@ position count, and language vocabulary.
 The input path is consumed by the mixed-precision, token-scheduled, exactly resumable runner
 documented in [`student_pretraining_runner.md`](student_pretraining_runner.md). Batch provenance is
 retained for auditing but stripped before model calls. The runner records cumulative dense visual
-tokens per sample, executed-token utilization, valid-token fraction, and sequence-aware student
-FLOPs. The packed path removes visual padding FLOPs, but its portable per-image attention calls are
-not evidence of higher wall-clock throughput; fused-kernel latency and peak-memory measurements
-remain deployment gates.
+tokens per sample, executed-token utilization, valid-token fraction, sequence-aware student FLOPs,
+and the resolved `train/visual_attention_backend`. The packed path removes visual padding FLOPs,
+but analytical savings are not evidence of higher wall-clock throughput. Fused-kernel latency and
+peak-memory measurements remain deployment gates.

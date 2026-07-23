@@ -101,6 +101,7 @@ variants:
     experiment_patches:
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:packed}
+      - {op: add, path: /evaluation/wandb_tags/-, value: packed-attention:auto}
       - {op: add, path: /evaluation/wandb_tags/-, value: aspect-buckets:off}
 
   - id: dense_adaptive_bucketed

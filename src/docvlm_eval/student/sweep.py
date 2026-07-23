@@ -657,6 +657,18 @@ def _pretraining_efficiency(run_root: Path) -> dict[str, float]:
     }
 
 
+def _pretraining_attention_backend(run_root: Path) -> str:
+    pointer = run_root / "artifacts" / "pretrain" / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        return "missing"
+    checkpoint = Path(pointer.read_text(encoding="utf-8").strip())
+    state_path = checkpoint / "trainer_state.json"
+    if not state_path.is_file():
+        return "missing"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    return str(state.get("visual_attention_backend") or "legacy")
+
+
 def _axis_scores(comparison: dict[str, Any], split: str) -> dict[str, float]:
     axes = comparison["splits"][split].get("by_answer_type", {})
     return {name: float(values["score"]) for name, values in sorted(axes.items())}
@@ -873,6 +885,9 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             ),
             "train_slice_scores": _robustness_scores(comparison, "train"),
             "pretraining_efficiency": _pretraining_efficiency(run_root),
+            "pretraining_visual_attention_backend": (
+                _pretraining_attention_backend(run_root)
+            ),
             "comparison": str(comparison_path),
             "evaluation_root": str(evaluation_root),
         }

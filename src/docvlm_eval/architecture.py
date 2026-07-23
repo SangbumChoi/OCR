@@ -170,6 +170,15 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "training.pretraining.input_pipeline.visual_sequence_mode must be "
             "dense or packed"
         )
+    if input_pipeline.get("packed_attention_backend", "auto") not in {
+        "auto",
+        "flex",
+        "loop",
+    }:
+        errors.append(
+            "training.pretraining.input_pipeline.packed_attention_backend must be "
+            "auto, flex, or loop"
+        )
     aspect_ratio_bucketing = input_pipeline.get(
         "aspect_ratio_bucketing",
         False,

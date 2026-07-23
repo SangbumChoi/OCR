@@ -249,10 +249,11 @@ The current input path uses per-image packed patch sequences with stable two-dim
 positions. Dense adaptive, aspect-bucketed, and fixed-square controls plus sequence-aware FLOP
 accounting are executable through
 [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md). Packed numerical equivalence is
-tested locally, while target-GPU throughput and quality remain measured efficiency ablations rather
-than claimed capabilities. Native RLVR is currently single-process. Formula reward supports bounded
-elementary symbolic equivalence, but deliberately rejects unbounded calculus and does not replace a
-full theorem prover.
+tested locally; compiled FlexAttention is attempted on supported CUDA systems with an explicit loop
+fallback and resolved-backend logging. Target-GPU throughput and quality remain measured efficiency
+ablations rather than claimed capabilities. Native RLVR is currently single-process. Formula reward
+supports bounded elementary symbolic equivalence, but deliberately rejects unbounded calculus and
+does not replace a full theorem prover.
 
 ## Evidence basis
 

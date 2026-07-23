@@ -15,6 +15,178 @@ from .config import ConnectorConfig, LanguageConfig, StudentConfig, VisionConfig
 from .losses import decode_normalized_box, generalized_box_iou_loss
 
 
+@dataclass
+class _PackedAttentionPlan:
+    requested_backend: str
+    q_cu_seqlens: torch.Tensor
+    kv_cu_seqlens: torch.Tensor
+    use_flex: bool = False
+    block_mask: Any = None
+
+
+_COMPILED_FLEX_ATTENTION: Any = None
+_FLEX_DISABLED_DEVICES: set[str] = set()
+
+
+def _compiled_flex_attention():
+    global _COMPILED_FLEX_ATTENTION
+    if _COMPILED_FLEX_ATTENTION is None:
+        from torch.nn.attention.flex_attention import flex_attention
+
+        _COMPILED_FLEX_ATTENTION = torch.compile(
+            flex_attention,
+            dynamic=True,
+        )
+    return _COMPILED_FLEX_ATTENTION
+
+
+def _create_document_block_mask(
+    q_cu_seqlens: torch.Tensor,
+    kv_cu_seqlens: torch.Tensor,
+    *,
+    q_length: int,
+    kv_length: int,
+    device: torch.device,
+    compile_mask: bool,
+):
+    from torch.nn.attention.flex_attention import create_block_mask
+
+    q_lengths = q_cu_seqlens[1:] - q_cu_seqlens[:-1]
+    kv_lengths = kv_cu_seqlens[1:] - kv_cu_seqlens[:-1]
+    q_documents = torch.repeat_interleave(
+        torch.arange(q_lengths.numel(), device=device),
+        q_lengths,
+    )
+    kv_documents = torch.repeat_interleave(
+        torch.arange(kv_lengths.numel(), device=device),
+        kv_lengths,
+    )
+
+    def same_document_mask(batch, head, q_index, kv_index):
+        del batch, head
+        return q_documents[q_index] == kv_documents[kv_index]
+
+    return create_block_mask(
+        same_document_mask,
+        B=None,
+        H=None,
+        Q_LEN=q_length,
+        KV_LEN=kv_length,
+        device=device,
+        BLOCK_SIZE=128,
+        _compile=compile_mask,
+    )
+
+
+def _prepare_packed_attention(
+    backend: str,
+    q_cu_seqlens: torch.Tensor,
+    kv_cu_seqlens: torch.Tensor,
+    *,
+    q_length: int,
+    kv_length: int,
+    device: torch.device,
+    dropout: float = 0.0,
+) -> _PackedAttentionPlan:
+    plan = _PackedAttentionPlan(
+        requested_backend=backend,
+        q_cu_seqlens=q_cu_seqlens,
+        kv_cu_seqlens=kv_cu_seqlens,
+    )
+    if backend not in {"auto", "flex", "loop"}:
+        raise ValueError("packed attention backend must be auto, flex, or loop")
+    if backend == "loop":
+        return plan
+    unsupported = (
+        device.type != "cuda"
+        or dropout != 0.0
+        or str(device) in _FLEX_DISABLED_DEVICES
+    )
+    if unsupported:
+        if backend == "flex":
+            raise RuntimeError(
+                "packed flex attention requires CUDA, zero vision dropout, "
+                "and a working torch.compile FlexAttention backend"
+            )
+        return plan
+    try:
+        plan.block_mask = _create_document_block_mask(
+            q_cu_seqlens,
+            kv_cu_seqlens,
+            q_length=q_length,
+            kv_length=kv_length,
+            device=device,
+            compile_mask=True,
+        )
+        plan.use_flex = True
+    except Exception as error:
+        if backend == "flex":
+            raise RuntimeError("failed to prepare packed FlexAttention") from error
+        _FLEX_DISABLED_DEVICES.add(str(device))
+    return plan
+
+
+def _loop_packed_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    plan: _PackedAttentionPlan,
+    *,
+    dropout_p: float,
+) -> torch.Tensor:
+    q_boundaries = [int(value) for value in plan.q_cu_seqlens.tolist()]
+    kv_boundaries = [int(value) for value in plan.kv_cu_seqlens.tolist()]
+    if len(q_boundaries) != len(kv_boundaries):
+        raise ValueError("packed query and source batches must have equal size")
+    return torch.cat(
+        [
+            F.scaled_dot_product_attention(
+                query[:, :, q_start:q_end],
+                key[:, :, kv_start:kv_end],
+                value[:, :, kv_start:kv_end],
+                dropout_p=dropout_p,
+            )
+            for (q_start, q_end), (kv_start, kv_end) in zip(
+                zip(q_boundaries, q_boundaries[1:]),
+                zip(kv_boundaries, kv_boundaries[1:]),
+            )
+        ],
+        dim=2,
+    )
+
+
+def _packed_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    plan: _PackedAttentionPlan,
+    *,
+    dropout_p: float = 0.0,
+) -> torch.Tensor:
+    if plan.use_flex:
+        try:
+            return _compiled_flex_attention()(
+                query.contiguous(),
+                key.contiguous(),
+                value.contiguous(),
+                block_mask=plan.block_mask,
+            )
+        except Exception as error:
+            if plan.requested_backend == "flex":
+                raise RuntimeError(
+                    "compiled packed FlexAttention execution failed"
+                ) from error
+            _FLEX_DISABLED_DEVICES.add(str(query.device))
+            plan.use_flex = False
+    return _loop_packed_attention(
+        query,
+        key,
+        value,
+        plan,
+        dropout_p=dropout_p,
+    )
+
+
 class RMSNorm(nn.Module):
     def __init__(self, width: int, eps: float = 1e-6):
         super().__init__()
@@ -64,6 +236,27 @@ class VisionAttention(nn.Module):
         )
         return self.o_proj(out.transpose(1, 2).contiguous().view(batch, length, -1))
 
+    def forward_packed(
+        self,
+        x: torch.Tensor,
+        plan: _PackedAttentionPlan,
+    ) -> torch.Tensor:
+        length = x.shape[0]
+        shape = (1, length, self.heads, self.head_dim)
+        q = self.q_proj(x).view(shape).transpose(1, 2)
+        k = self.k_proj(x).view(shape).transpose(1, 2)
+        v = self.v_proj(x).view(shape).transpose(1, 2)
+        out = _packed_attention(
+            q,
+            k,
+            v,
+            plan,
+            dropout_p=self.dropout if self.training else 0.0,
+        )
+        return self.o_proj(
+            out.transpose(1, 2).contiguous().view(length, -1)
+        )
+
 
 class VisionMLP(nn.Module):
     def __init__(self, width: int, hidden: int, dropout: float):
@@ -96,6 +289,14 @@ class VisionBlock(nn.Module):
         x = x + self.attn(self.norm1(x), token_mask)
         return x + self.mlp(self.norm2(x))
 
+    def forward_packed(
+        self,
+        x: torch.Tensor,
+        plan: _PackedAttentionPlan,
+    ) -> torch.Tensor:
+        x = x + self.attn.forward_packed(self.norm1(x), plan)
+        return x + self.mlp(self.norm2(x))
+
 
 class VisionTower(nn.Module):
     def __init__(self, config: VisionConfig):
@@ -112,6 +313,7 @@ class VisionTower(nn.Module):
         )
         self.blocks = nn.ModuleList([VisionBlock(config) for _ in range(config.layers)])
         self.norm = nn.LayerNorm(config.width)
+        self.last_packed_attention_backend = "none"
 
     def _position_ids(
         self,
@@ -216,6 +418,7 @@ class VisionTower(nn.Module):
         position_ids: torch.Tensor,
         cu_seqlens: torch.Tensor,
         *,
+        attention_backend: str = "auto",
         capture_layers: set[int] | None = None,
     ) -> tuple[torch.Tensor, dict[int, torch.Tensor]]:
         """Encode concatenated per-image patch sequences without batch padding."""
@@ -250,14 +453,18 @@ class VisionTower(nn.Module):
                 raise ValueError("packed_position_ids exceed the visual position grid")
         x = self.patch_embed(packed_pixel_values).flatten(1)
         x = x + self.position_embedding[position_ids].to(x.dtype)
+        plan = _prepare_packed_attention(
+            attention_backend,
+            cu_seqlens,
+            cu_seqlens,
+            q_length=token_count,
+            kv_length=token_count,
+            device=x.device,
+            dropout=self.config.dropout if self.training else 0.0,
+        )
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
-            x = torch.cat(
-                [
-                    block(x[start:end].unsqueeze(0)).squeeze(0)
-                    for start, end in zip(boundaries, boundaries[1:])
-                ]
-            )
+            x = block.forward_packed(x, plan)
             if capture_layers is not None and index in capture_layers:
                 features[index] = x
         x = self.norm(x)
@@ -267,6 +474,9 @@ class VisionTower(nn.Module):
             missing = capture_layers - features.keys()
             if missing:
                 raise ValueError(f"unknown vision feature layers: {sorted(missing)}")
+        self.last_packed_attention_backend = (
+            "flex" if plan.use_flex else "loop"
+        )
         return x, features
 
 
@@ -308,6 +518,39 @@ class CrossAttention(nn.Module):
             out.transpose(1, 2).contiguous().view(batch, query_length, width)
         )
 
+    def forward_packed(
+        self,
+        query: torch.Tensor,
+        source: torch.Tensor,
+        plan: _PackedAttentionPlan,
+    ) -> torch.Tensor:
+        batch, query_length, width = query.shape
+        source_length = source.shape[0]
+        q = self.q_proj(query).view(
+            1,
+            batch * query_length,
+            self.heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        k = self.k_proj(source).view(
+            1,
+            source_length,
+            self.heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        v = self.v_proj(source).view(
+            1,
+            source_length,
+            self.heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        out = _packed_attention(q, k, v, plan)
+        return self.o_proj(
+            out.transpose(1, 2)
+            .contiguous()
+            .view(batch, query_length, width)
+        )
+
 
 class SwiGLU(nn.Module):
     def __init__(self, width: int, hidden: int):
@@ -347,12 +590,27 @@ class ResamplerLayer(nn.Module):
         )
         return latents + self.mlp(self.norm2(latents))
 
+    def forward_packed(
+        self,
+        latents: torch.Tensor,
+        vision_tokens: torch.Tensor,
+        plan: _PackedAttentionPlan,
+    ) -> torch.Tensor:
+        gate = torch.tanh(self.cross_gate)
+        latents = latents + gate * self.cross_attn.forward_packed(
+            self.norm1(latents),
+            vision_tokens,
+            plan,
+        )
+        return latents + self.mlp(self.norm2(latents))
+
 
 class GatedResampler(nn.Module):
     def __init__(self, config: ConnectorConfig):
         super().__init__()
         self.latents = nn.Parameter(torch.empty(config.latent_tokens, config.output_width))
         self.layers = nn.ModuleList([ResamplerLayer(config) for _ in range(config.layers)])
+        self.last_packed_attention_backend = "none"
 
     def forward(
         self,
@@ -368,24 +626,33 @@ class GatedResampler(nn.Module):
         self,
         vision_tokens: torch.Tensor,
         cu_seqlens: torch.Tensor,
+        *,
+        attention_backend: str = "auto",
     ) -> torch.Tensor:
         """Resample packed image sequences without materializing padded sources."""
 
-        boundaries = [int(value) for value in cu_seqlens.tolist()]
-        batch_size = len(boundaries) - 1
+        batch_size = int(cu_seqlens.numel() - 1)
         latents = self.latents.unsqueeze(0).expand(batch_size, -1, -1)
+        latent_cu_seqlens = torch.arange(
+            0,
+            (batch_size + 1) * self.latents.shape[0],
+            self.latents.shape[0],
+            dtype=cu_seqlens.dtype,
+            device=cu_seqlens.device,
+        )
+        plan = _prepare_packed_attention(
+            attention_backend,
+            latent_cu_seqlens,
+            cu_seqlens,
+            q_length=batch_size * self.latents.shape[0],
+            kv_length=vision_tokens.shape[0],
+            device=vision_tokens.device,
+        )
         for layer in self.layers:
-            latents = torch.cat(
-                [
-                    layer(
-                        latents[index : index + 1],
-                        vision_tokens[start:end].unsqueeze(0),
-                    )
-                    for index, (start, end) in enumerate(
-                        zip(boundaries, boundaries[1:])
-                    )
-                ]
-            )
+            latents = layer.forward_packed(latents, vision_tokens, plan)
+        self.last_packed_attention_backend = (
+            "flex" if plan.use_flex else "loop"
+        )
         return latents
 
 
@@ -571,6 +838,7 @@ class StudentOutput:
     vision_features: dict[int, torch.Tensor] = field(default_factory=dict)
     language_features: dict[int, torch.Tensor] = field(default_factory=dict)
     vision_mask: torch.Tensor | None = None
+    visual_attention_backend: str = "none"
 
 
 class DocumentVLMStudent(nn.Module):
@@ -603,6 +871,7 @@ class DocumentVLMStudent(nn.Module):
         self.orientation_head = (
             nn.Linear(config.vision.width, 4) if heads.orientation else None
         )
+        self.last_visual_attention_backend = "none"
         self.box_head = (
             nn.Linear(config.language.width, 4) if heads.box_regression else None
         )
@@ -654,6 +923,7 @@ class DocumentVLMStudent(nn.Module):
         packed_pixel_values: torch.Tensor | None = None,
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
     ) -> torch.Tensor:
         """Encode an image batch once into the fixed visual prefix."""
 
@@ -671,11 +941,20 @@ class DocumentVLMStudent(nn.Module):
                 packed_pixel_values,
                 packed_position_ids,
                 packed_cu_seqlens,
+                attention_backend=packed_attention_backend,
             )
-            return self.connector.forward_packed(
+            prefix = self.connector.forward_packed(
                 vision_tokens,
                 packed_cu_seqlens,
+                attention_backend=packed_attention_backend,
             )
+            self.last_visual_attention_backend = (
+                "flex"
+                if self.vision.last_packed_attention_backend == "flex"
+                and self.connector.last_packed_attention_backend == "flex"
+                else "loop"
+            )
+            return prefix
         if pixel_values is None:
             raise ValueError("encode_images requires dense or packed visual inputs")
         vision_tokens, vision_mask = self.vision(
@@ -683,6 +962,7 @@ class DocumentVLMStudent(nn.Module):
             pixel_mask,
             return_mask=True,
         )
+        self.last_visual_attention_backend = "dense"
         return self.connector(vision_tokens, vision_mask)
 
     def forward(
@@ -693,6 +973,7 @@ class DocumentVLMStudent(nn.Module):
         packed_pixel_values: torch.Tensor | None = None,
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
         attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         box_targets: torch.Tensor | None = None,
@@ -746,6 +1027,7 @@ class DocumentVLMStudent(nn.Module):
                     "cached visual_prefix is inference-only for vision-side outputs"
                 )
             prefix = visual_prefix
+            self.last_visual_attention_backend = "cached"
         elif pixel_values is not None:
             vision_result = self.vision(
                 pixel_values,
@@ -758,11 +1040,13 @@ class DocumentVLMStudent(nn.Module):
             else:
                 vision_tokens, vision_mask = vision_result
             prefix = self.connector(vision_tokens, vision_mask)
+            self.last_visual_attention_backend = "dense"
         elif has_packed:
             vision_tokens, vision_features = self.vision.forward_packed(
                 packed_pixel_values,
                 packed_position_ids,
                 packed_cu_seqlens,
+                attention_backend=packed_attention_backend,
                 capture_layers=requested_vision if requested_vision else None,
             )
             vision_mask = torch.ones(
@@ -773,11 +1057,19 @@ class DocumentVLMStudent(nn.Module):
             prefix = self.connector.forward_packed(
                 vision_tokens,
                 packed_cu_seqlens,
+                attention_backend=packed_attention_backend,
+            )
+            self.last_visual_attention_backend = (
+                "flex"
+                if self.vision.last_packed_attention_backend == "flex"
+                and self.connector.last_packed_attention_backend == "flex"
+                else "loop"
             )
         elif pixel_mask is not None:
             raise ValueError("pixel_mask requires pixel_values")
         else:
             prefix = None
+            self.last_visual_attention_backend = "none"
         text_embeddings = self.language.token_embedding(input_ids)
         prefix_length = 0 if prefix is None else prefix.shape[1]
         embeddings = (
@@ -942,6 +1234,7 @@ class DocumentVLMStudent(nn.Module):
             vision_features=vision_features,
             language_features=language_features,
             vision_mask=vision_mask,
+            visual_attention_backend=self.last_visual_attention_backend,
         )
 
     @torch.no_grad()
@@ -953,6 +1246,7 @@ class DocumentVLMStudent(nn.Module):
         packed_pixel_values: torch.Tensor | None = None,
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -974,6 +1268,7 @@ class DocumentVLMStudent(nn.Module):
                 packed_pixel_values=packed_pixel_values,
                 packed_position_ids=packed_position_ids,
                 packed_cu_seqlens=packed_cu_seqlens,
+                packed_attention_backend=packed_attention_backend,
             )
             if pixel_values is not None or has_packed
             else None
@@ -1025,6 +1320,7 @@ class DocumentVLMStudent(nn.Module):
         packed_pixel_values: torch.Tensor | None = None,
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> torch.Tensor:
@@ -1035,6 +1331,7 @@ class DocumentVLMStudent(nn.Module):
             packed_pixel_values=packed_pixel_values,
             packed_position_ids=packed_position_ids,
             packed_cu_seqlens=packed_cu_seqlens,
+            packed_attention_backend=packed_attention_backend,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
         )
@@ -1049,6 +1346,7 @@ class DocumentVLMStudent(nn.Module):
         packed_pixel_values: torch.Tensor | None = None,
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -1061,6 +1359,7 @@ class DocumentVLMStudent(nn.Module):
             packed_pixel_values=packed_pixel_values,
             packed_position_ids=packed_position_ids,
             packed_cu_seqlens=packed_cu_seqlens,
+            packed_attention_backend=packed_attention_backend,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
         )

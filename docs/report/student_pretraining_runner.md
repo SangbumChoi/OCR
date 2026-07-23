@@ -270,7 +270,8 @@ Input-efficiency records additionally include `train/dense_visual_tokens_per_sam
 `train/executed_visual_tokens_per_sample`, and `train/valid_visual_token_fraction`. These are
 cumulative utilization diagnostics, not quality metrics.
 [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) pairs them with heldout
-generation scores and deployment gates.
+generation scores and deployment gates. `train/visual_attention_backend` records whether a step
+resolved to dense, portable loop, or compiled FlexAttention execution.
 
 Continue with structured SFT and optional verifiable-reward GRPO using
 [`student_posttraining_runner.md`](student_posttraining_runner.md).

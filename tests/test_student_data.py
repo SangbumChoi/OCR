@@ -101,6 +101,7 @@ def test_collator_config_is_owned_by_the_machine_readable_blueprint():
     assert config.rotation_probability == 1.0
     assert config.visual_canvas_mode == "batch_adaptive"
     assert config.visual_sequence_mode == "packed"
+    assert config.packed_attention_backend == "auto"
 
 
 def test_rotate_normalized_box_covers_all_quarter_turns():
@@ -278,6 +279,7 @@ def test_packed_visual_sequences_match_dense_outputs_without_padding_compute():
         atol=2e-5,
     )
     assert packed_output.vision_mask.shape == (8,)
+    assert packed_output.visual_attention_backend == "loop"
     for layer in (0, -1):
         assert torch.allclose(
             packed_output.vision_features[layer],

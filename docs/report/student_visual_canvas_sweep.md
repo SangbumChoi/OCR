@@ -20,9 +20,16 @@ canonical position grid:
 | `fixed_square` | configured maximum square, currently 896 by 896 |
 
 Packed collation unfolds normalized patches into one concatenated tensor and records position IDs
-and cumulative sequence lengths. The vision tower and gated resampler execute each image range
-independently. Conv2d patch weights, 2D positions, losses, and checkpoints are unchanged. This is an
-exact portable implementation rather than a fused NaViT/FlashAttention varlen kernel.
+and cumulative sequence lengths. Conv2d patch weights, 2D positions, losses, and checkpoints are
+unchanged. Projections and MLPs run once over concatenated tokens. Attention uses either:
+
+- compiled [PyTorch FlexAttention](https://docs.pytorch.org/docs/stable/nn.attention.flex_attention.html)
+  with a block-diagonal `BlockMask` on supported CUDA systems;
+- range-wise SDPA as a portable fallback.
+
+`auto` attempts FlexAttention only with CUDA and zero vision dropout, caches a failed device, and
+falls back to `loop`. Explicit `flex` fails rather than silently changing the experiment backend.
+The PyTorch API remains prototype, so the resolved backend is logged for every training step.
 
 For dense `batch_adaptive`, one portrait and one landscape page can recreate a large near-square
 tensor. The optional bucket sampler quantizes the post-augmentation log2 width/height ratio in
@@ -44,11 +51,12 @@ Every optimizer step records:
 - `train/dense_visual_tokens_per_sample` for backward-compatible allocation reporting;
 - `train/executed_visual_tokens_per_sample`;
 - `train/valid_visual_token_fraction`.
+- `train/visual_attention_backend` (`flex`, `loop`, `dense`, or `none`).
 
 The checkpoint trainer state stores cumulative allocated/executed tokens, valid tokens, and visual
 sample count with backward-compatible migration. Sweep aggregation reads the final checkpoint and
-reports per-arm means, paired baseline deltas, and deterministic 95% intervals under
-`pretraining_efficiency*`.
+reports the resolved attention backend, per-arm means, paired baseline deltas, and deterministic
+95% intervals under `pretraining_efficiency*`.
 
 ## Matched experiment
 
@@ -90,6 +98,6 @@ First compare packed with dense adaptive unbucketed to isolate sequence allocati
 adaptive arms to isolate bucketing, then compare unbucketed adaptive with fixed square to isolate
 canvas allocation. Retain packed only when it lowers executed visual tokens and student FLOPs while
 preserving heldout score, grounding, multilingual controls, robustness slices, and reliability
-gates. A higher valid-token fraction alone is not a quality result. The portable path launches
-attention per image, so wall-clock speed and peak memory must be reported from the target GPU
-before claiming deployment throughput.
+gates. A higher valid-token fraction alone is not a quality result. The loop fallback launches
+attention per image while FlexAttention has compile and mask-construction costs, so wall-clock
+speed and peak memory must be reported from the target GPU before claiming deployment throughput.
