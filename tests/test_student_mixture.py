@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,8 @@ def test_component_validation_normalizes_weights():
                 MixtureComponent("same", "/tmp/b", 1.0),
             ]
         )
+    with pytest.raises(ValueError, match="must match"):
+        MixtureComponent("../escape", "/tmp/a", 1.0)
 
 
 def test_build_mixture_preserves_rows_and_runtime_weights(tmp_path):
@@ -58,6 +61,10 @@ def test_build_mixture_preserves_rows_and_runtime_weights(tmp_path):
     second = tmp_path / "second"
     _write_dataset(first, image_path, source="source-a", count=2)
     _write_dataset(second, image_path, source="source-b", count=3)
+    (first / "component_manifest.json").write_text(
+        json.dumps({"revision": "a" * 40}),
+        encoding="utf-8",
+    )
 
     output = tmp_path / "mixture"
     manifest = build_weighted_mixture(
@@ -72,6 +79,10 @@ def test_build_mixture_preserves_rows_and_runtime_weights(tmp_path):
         "synthetic_documents": pytest.approx(0.7),
         "public_document_data": pytest.approx(0.3),
     }
+    assert manifest["components"][0]["upstream_manifest_fingerprint"].startswith(
+        "sha256:"
+    )
+    assert manifest["components"][1]["upstream_manifest_fingerprint"] is None
 
     mixed = load_from_disk(str(output))
     assert mixed["fold"] == ["train"] * 5

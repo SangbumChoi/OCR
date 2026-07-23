@@ -106,8 +106,8 @@ standardized view" check that the loader mapped each source correctly.
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **28,299 image-rows / 53,108 QAs** (one row per distinct image,
-> ≤1,000 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **39,837 image-rows / 77,063 QAs** (one row per distinct image,
+> ≤1,500 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -144,10 +144,9 @@ training pool and writes them to `heldout_<task>.jsonl` for public-data evaluati
 **One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
 duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
 pair is gathered into the native `instructions`/`answers` lists (identical questions deduped, index
-pairing kept) — current corpus: 16,616 QA-rows → **9,389 image-rows** (7,227 folded into 2,069
-survivors, ~40% smaller parquet, zero QAs lost — `unified_from_hf_row` maps multi-QA rows to the
-grouped `qas` state and `to_training_samples` recovers every pair; re-verified after the full
-33-benchmark × ≤1,000-image rebuild). A duplicate that sat in the other `fold` is
+pairing kept) — the current release stores **77,063 QAs in 39,837 image-rows** with zero QAs lost;
+`unified_from_hf_row` maps multi-QA rows to the grouped `qas` state and `to_training_samples`
+recovers every pair. A duplicate that sat in the other `fold` is
 removed, which also closes the identical-pixels-on-both-sides-of-the-split leak.
 
 **Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
@@ -195,11 +194,10 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (≤1,000 images/dataset, safety-checked, 0 failures):**
-**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 28,299 image-rows / 53,108 QAs across **7 tasks**
-(image-rows: vqa 11,004, reasoning 6,196, recognition 5,997, localization 1,976, kie 1,150,
-table 1,000, **classification 976**; languages en 23,087 · und 1,999 · zh 1,114 · ko 1,074 ·
-ja 183 · de 151; CORD and FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
+**Validated — all streamable datasets (≤1,500 images/dataset, safety-checked, 0 failures):**
+**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 39,837 image-rows /
+77,063 QAs across **7 tasks** (image-rows: vqa 15,133, recognition 8,994, reasoning 8,148,
+localization 2,952, kie 1,650, table 1,500, **classification 1,460**). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
 **rvl_cdip→classification** (16 document types — first source for that task),
 **screenqa→vqa with UI-element boxes** (the webui-probe counterpart),

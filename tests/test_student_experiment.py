@@ -32,6 +32,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "build_synthetic_udd",
         "build_train_samples",
         "build_heldout_samples",
+        "acquire_component_public_udd",
         "mix_pretraining_data",
         "export_teacher_requests",
         "generate_teacher_predictions",
@@ -45,11 +46,22 @@ def test_default_experiment_compiles_complete_stage_dag():
     ]
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["balance_by"] == "component"
-    assert pipeline["group_weights"] == {"synthetic_documents": 1.0}
+    assert pipeline["group_weights"] == {
+        "synthetic_documents": pytest.approx(0.45),
+        "public_udd": pytest.approx(0.55),
+    }
     sequence_targets = plan.resolved_blueprint["training"]["pretraining"]["distillation"][
         "sequence_targets"
     ]
     assert sequence_targets["probability"] == pytest.approx(0.5)
+    acquisition = next(
+        stage for stage in plan.stages if stage.name == "acquire_component_public_udd"
+    )
+    assert acquisition.command[acquisition.command.index("--revision") + 1] == (
+        "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9"
+    )
+    mixture = next(stage for stage in plan.stages if stage.name == "mix_pretraining_data")
+    assert "acquire_component_public_udd" in mixture.dependencies
     sft = next(stage for stage in plan.stages if stage.name == "sft")
     assert sft.command[0] == sys.executable
     assert sft.command.count(sys.executable) == 1

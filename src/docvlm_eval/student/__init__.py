@@ -25,6 +25,7 @@ from .evaluate import (
     write_split_comparison,
 )
 from .mixture import MixtureComponent, build_weighted_mixture
+from .acquisition import HubComponentSpec, acquire_hub_component, materialize_component
 from .teacher_targets import (
     apply_teacher_predictions,
     export_teacher_requests,
@@ -62,6 +63,7 @@ __all__ = [
     "DistillationLoss",
     "DeterministicDistributedBatchSampler",
     "LanguageConfig",
+    "HubComponentSpec",
     "MixtureComponent",
     "NativeStudentTeacher",
     "PretrainConfig",
@@ -88,11 +90,13 @@ __all__ = [
     "build_structured_target",
     "build_weighted_mixture",
     "apply_teacher_predictions",
+    "acquire_hub_component",
     "compare_split_summaries",
     "export_teacher_requests",
     "completion_log_probs",
     "group_relative_policy_loss",
     "generate_teacher_predictions",
+    "materialize_component",
     "parse_structured_response",
     "sample_completion_group",
     "posttraining_prompt_batch",

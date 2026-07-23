@@ -129,6 +129,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Input:** [`report/student_input_pipeline.md`](report/student_input_pipeline.md) — the executable
   UDD QA/grounding adapter, new multilingual tokenizer, balanced sampler, prompt-masked collator,
   rotation/box transforms, and visual padding-mask contract.
+- **Acquire data:** [`report/student_data_acquisition.md`](report/student_data_acquisition.md) —
+  immutable Hub revisions, deterministic fold/filter sampling, schema and image validation,
+  duplicate gates, and end-to-end component provenance.
 - **Pretrain:** [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) —
   same-tokenizer online distillation, token-based scheduling, mixed precision, `torchrun`,
   sample-weighted held-out evaluation, and exact checkpoint resume.
@@ -196,6 +199,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md) ·
    [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
+   [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·

@@ -27,7 +27,20 @@ data:
   components:
     - name: synthetic_documents
       path: "@synthetic"
-      weight: 1.0
+      weight: 0.45
+    - name: public_udd
+      weight: 0.55
+      hub:
+        repo_id: danelcsb/UDD
+        revision: f5eb52104627d20ddd1eab2130ad78f87cb0d7c9
+        split: train
+        fold: train
+        sources: []
+        tasks: []
+        languages: []
+        max_rows: null
+        seed: 7
+        decode_checks: 32
 
 sequence_teacher:
   enabled: true

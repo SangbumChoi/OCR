@@ -35,14 +35,14 @@ A reproducible **proof-of-concept** for the task *"Adapting Small Vision-Languag
 ## UDD — the Universal Document Dataset (public-data track)
 
 The Part-2 ablations now also run on **real public data** via
-[`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — 33 public benchmarks unified into
-**one sharded dataset** (28,299 image-rows / 53,108 QAs / 7 tasks, ≤1,000 images/source), built by
+[`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — 32 public sources unified into
+**one sharded dataset** (39,837 image-rows / 77,063 QAs / 7 tasks, ≤1,500 images/source), built by
 `scripts/build_udd.py` from the task-typed loader in `docvlm_eval.unified`. What the pipeline
 guarantees (full story: [`docs/report/unified_loader.md`](docs/report/unified_loader.md)):
 
 - **One row per image, native QA lists** — `instructions: list[str]` paired index-wise with
   `answers: list[list[str]]` (inner list = surface variants of one answer); same-phash duplicate
-  images are folded into the lists (52,929 QA-rows → 28,299 image-rows, zero QAs lost) and
+  images are folded into the lists (77,063 QAs in 39,837 image-rows, zero QAs lost) and
   the pairing/DTO shape is **enforced** at build time (`validate_payload_shapes`).
 - **Derived columns** for slicing and hygiene: heuristic `language`, `phash`, hosting-repo
   `license`, leakage-safe `fold` (train/heldout keyed by image identity), payload counts and
@@ -337,6 +337,11 @@ hard-document train/heldout generation, leakage validation, weighted UDD mixing,
 teacher generation and quality gating, tokenizer and student creation, pretraining, SFT, RLVR, and
 split evaluation. See
 [`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
+
+The full mixture now acquires the pinned public `danelcsb/UDD` train fold at 55% and combines it
+with 45% authored hard documents. Hub revision, selection, schema, duplicate identity, decoded
+image dimensions, and source distributions are recorded before mixing. See
+[`docs/report/student_data_acquisition.md`](docs/report/student_data_acquisition.md).
 
 Compare train and heldout generation from any native checkpoint:
 

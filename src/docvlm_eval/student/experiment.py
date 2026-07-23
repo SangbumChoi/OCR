@@ -17,6 +17,7 @@ from typing import Any, Iterable
 import yaml
 
 from ..architecture import estimate_parameters, load_blueprint, validate_blueprint
+from .acquisition import HubComponentSpec
 from .config import StudentConfig
 from .mixture import MixtureComponent, validate_components
 
@@ -191,13 +192,22 @@ def _component_specs(
     synthetic_udd: Path,
     *,
     synthetic_enabled: bool,
+    acquired_paths: dict[str, Path],
 ) -> tuple[MixtureComponent, ...]:
     components = []
     for item in raw["data"]["components"]:
         if not isinstance(item, dict):
             raise ValueError("every data component must be a mapping")
+        name = str(item.get("name") or "")
         configured_path = str(item.get("path") or "")
-        if configured_path == "@synthetic":
+        hub = item.get("hub")
+        if configured_path and hub:
+            raise ValueError(f"data component {name!r} cannot set both path and hub")
+        if hub:
+            if name not in acquired_paths:
+                raise ValueError(f"data component {name!r} has no compiled Hub acquisition")
+            path = acquired_paths[name]
+        elif configured_path == "@synthetic":
             if not synthetic_enabled:
                 raise ValueError("@synthetic requires synthetic.enabled=true")
             path = synthetic_udd
@@ -207,7 +217,7 @@ def _component_specs(
                 raise ValueError(f"data component path does not exist: {path}")
         components.append(
             MixtureComponent(
-                name=str(item.get("name") or ""),
+                name=name,
                 path=str(path),
                 weight=float(item.get("weight", 0.0)),
                 fold=(str(item["fold"]) if item.get("fold") is not None else None),
@@ -308,11 +318,39 @@ def build_experiment_plan(
     eval_dir = artifacts / "evaluation"
     leakage_report = artifacts / "data" / "split_leakage.json"
     resolved_blueprint_path = output_root / "resolved_blueprint.yaml"
+    component_root = artifacts / "data" / "components"
+    acquired_paths: dict[str, Path] = {}
+    hub_specs: dict[str, HubComponentSpec] = {}
+    for item in raw["data"]["components"]:
+        hub = item.get("hub") if isinstance(item, dict) else None
+        if not hub:
+            continue
+        if not isinstance(hub, dict):
+            raise ValueError("data component hub must be a mapping")
+        name = str(item.get("name") or "")
+        spec = HubComponentSpec(
+            repo_id=str(hub.get("repo_id") or ""),
+            revision=str(hub.get("revision") or ""),
+            split=str(hub.get("split") or "train"),
+            config_name=(
+                str(hub["config_name"]) if hub.get("config_name") is not None else None
+            ),
+            fold=(str(hub["fold"]) if hub.get("fold") is not None else None),
+            sources=tuple(str(value) for value in (hub.get("sources") or [])),
+            tasks=tuple(str(value) for value in (hub.get("tasks") or [])),
+            languages=tuple(str(value) for value in (hub.get("languages") or [])),
+            max_rows=(int(hub["max_rows"]) if hub.get("max_rows") is not None else None),
+            seed=int(hub.get("seed", 7)),
+            decode_checks=int(hub.get("decode_checks", 16)),
+        )
+        hub_specs[name] = spec
+        acquired_paths[name] = component_root / name
     components = _component_specs(
         raw,
         repo_root,
         synthetic_udd,
         synthetic_enabled=synthetic_enabled,
+        acquired_paths=acquired_paths,
     )
     initialization = raw.get("initialization") or {}
     tokenizer = raw.get("tokenizer") or {}
@@ -446,6 +484,45 @@ def build_experiment_plan(
             ]
         )
 
+    for name, spec in hub_specs.items():
+        output = acquired_paths[name]
+        command = [
+            python,
+            script("acquire_student_data.py"),
+            "--repo-id",
+            spec.repo_id,
+            "--revision",
+            spec.revision,
+            "--split",
+            spec.split,
+            "--seed",
+            str(spec.seed),
+            "--decode-checks",
+            str(spec.decode_checks),
+            "--output",
+            str(output),
+        ]
+        _add_optional(command, "--config-name", spec.config_name)
+        _add_optional(command, "--fold", spec.fold)
+        _add_optional(command, "--max-rows", spec.max_rows)
+        for value in spec.sources:
+            command.extend(["--source", value])
+        for value in spec.tasks:
+            command.extend(["--task", value])
+        for value in spec.languages:
+            command.extend(["--language", value])
+        stages.append(
+            ExperimentStage(
+                f"acquire_component_{name}",
+                tuple(command),
+                (),
+                (
+                    Artifact(str(output), "directory"),
+                    Artifact(str(output / "component_manifest.json")),
+                ),
+            )
+        )
+
     mix_command = [python, script("mix_student_data.py")]
     mix_dependencies: list[str] = []
     for component in components:
@@ -455,6 +532,8 @@ def build_experiment_plan(
             mix_command.extend(["--fold", f"{component.name}={component.fold}"])
         if Path(component.path) == synthetic_udd:
             mix_dependencies.append("build_synthetic_udd")
+        if component.name in hub_specs:
+            mix_dependencies.append(f"acquire_component_{component.name}")
     mix_command.extend(["--output", str(mixed_data)])
     stages.append(
         ExperimentStage(

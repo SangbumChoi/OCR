@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+
+_COMPONENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 @dataclass(frozen=True)
@@ -21,8 +26,10 @@ class MixtureComponent:
     fold: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.name or any(character.isspace() for character in self.name):
-            raise ValueError("mixture component names must be non-empty and contain no whitespace")
+        if not _COMPONENT_NAME.fullmatch(self.name):
+            raise ValueError(
+                "mixture component names must match [A-Za-z0-9][A-Za-z0-9_.-]*"
+            )
         if not math.isfinite(self.weight) or self.weight <= 0:
             raise ValueError("mixture component weights must be finite and positive")
 
@@ -146,6 +153,16 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _manifest_fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
 def build_weighted_mixture(
     components: Iterable[MixtureComponent],
     output_dir: str | Path,
@@ -169,6 +186,12 @@ def build_weighted_mixture(
         source = load_from_disk(component.path)
         dataset = _normalize_dataset(source, component)
         normalized.append(dataset)
+        upstream_path = Path(component.path) / "component_manifest.json"
+        upstream_manifest = (
+            json.loads(upstream_path.read_text(encoding="utf-8"))
+            if upstream_path.is_file()
+            else None
+        )
         records.append(
             {
                 **asdict(component),
@@ -176,6 +199,11 @@ def build_weighted_mixture(
                 "rows": len(dataset),
                 "source_fingerprint": getattr(source, "_fingerprint", None),
                 "normalized_fingerprint": getattr(dataset, "_fingerprint", None),
+                "upstream_manifest_fingerprint": (
+                    _manifest_fingerprint(upstream_manifest)
+                    if upstream_manifest is not None
+                    else None
+                ),
             }
         )
     combined = concatenate_datasets(normalized)

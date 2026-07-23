@@ -29,6 +29,12 @@ data components and weights, tokenizer size, initialization arm and transfer sou
 limits, evaluation settings, and W&B metadata. The runner writes a resolved architecture blueprint
 whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
 
+Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
+configuration acquires the public UDD train fold at an immutable commit, validates its schema,
+payload, duplicate identities, and image dimensions, then mixes it at 55% with 45% authored hard
+documents. See
+[`student_data_acquisition.md`](student_data_acquisition.md).
+
 The full configuration uses `lfm2_5-vl-1.6b` as an offline sequence teacher. It exports
 fingerprinted image-question requests, resumes deterministic teacher generation, applies each
 sample's native metric as a quality gate, and preserves rejected targets only as aggregate
@@ -37,10 +43,10 @@ that all teacher responses can be rejected while the pipeline safely trains on g
 
 ## Data mixture
 
-Each `data.components` entry names an on-disk UDD dataset, sampling weight, and optional source
-fold. `path: "@synthetic"` refers to the UDD produced by the experiment. The mixer normalizes every
-component to the canonical UDD superset, marks selected rows as training data, and records their
-component identity without duplicating rows.
+Each `data.components` entry names an on-disk or pinned-Hub UDD dataset, sampling weight, and
+optional source fold. `path: "@synthetic"` refers to the UDD produced by the experiment. The mixer
+normalizes every component to the canonical UDD superset, marks selected rows as training data, and
+records their component identity without duplicating rows.
 
 `mixture_manifest.json` records row counts, fingerprints, paths, and normalized weights. The
 balanced batch sampler applies those weights at runtime with `balance_by: component`. This keeps
