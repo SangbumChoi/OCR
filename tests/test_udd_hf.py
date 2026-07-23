@@ -48,13 +48,19 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
 
 
 def test_safety_check_roundtrip(tmp_path):
+    from datasets import load_from_disk
+
     img = _img(tmp_path)
     rows = [UnifiedSample(sample_id="cord_0_0", source="cord", task=Task.KIE, image_path=img,
                           fields=[Field("k", "v", Box(1, 2, 3, 4, False)),
                                   Field("k2", "v2", None)],
                           answers=['{"k": "v"}'])]
-    rep = safety_check(rows, str(tmp_path / "ds"))
+    output = tmp_path / "ds"
+    rep = safety_check(rows, str(output), enrich=True)
+    saved = load_from_disk(str(output))
     assert rep["rows"] == 1 and rep["fields"] == 2 and rep["image_ok"] is True
+    assert saved[0]["image_width"] == 40
+    assert saved[0]["image_height"] == 30
 
 
 def test_to_hf_dataset_requires_image():

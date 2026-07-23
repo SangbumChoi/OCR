@@ -41,10 +41,21 @@ example is requested. It expands:
   ambiguous.
 
 Every expanded record retains task, source, language, mixture component, target source, sample ID,
-and image identity. The same image can therefore supply several tasks without duplicating stored
-pixels. `BalancedGroupBatchSampler` can balance by task, source, language, or mixture component
-with explicit weights and deterministic epoch seeds. Under `torchrun`, it draws one global batch
-and gives each rank a disjoint local slice.
+image identity, and UDD image geometry. The same image can therefore supply several tasks without
+duplicating stored pixels. `BalancedGroupBatchSampler` can balance by task, source, language, or
+mixture component with explicit weights and deterministic epoch seeds. Under `torchrun`, it draws
+one global batch and gives each rank a disjoint local slice.
+
+By default, the sampler also groups the global batch into log2 aspect-ratio buckets. It applies the
+same sample/epoch rotation hash as the collator before assigning a bucket, so a 90-degree augmented
+page changes orientation in both places. The bucket width is configurable and defaults to 0.5
+octaves. Missing or invalid UDD dimensions enter a separate `unknown` bucket.
+
+Bucketing does not replace group balancing. For group weight \(w_g\), group size \(n_g\), and the
+number \(n_{gb}\) of its examples in bucket \(b\), the sampler chooses a bucket with mass
+\(\sum_g w_g n_{gb}/n_g\), then chooses groups within that bucket proportional to
+\(w_g n_{gb}/n_g\). Marginalizing over buckets recovers the requested group distribution while
+keeping every distributed global batch shape-homogeneous.
 
 ## Spatial contract
 
@@ -99,6 +110,7 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 - maximum text tokens;
 - image long side and visual-token budget;
 - visual canvas mode (`batch_adaptive` or `fixed_square`);
+- rotation-aware aspect-ratio bucketing and its log2 bucket width;
 - quarter-turn augmentation probability;
 - upscaling policy;
 - contrastive objective switch;

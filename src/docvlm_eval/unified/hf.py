@@ -90,18 +90,29 @@ def to_hf_dataset(rows: list[UnifiedSample]):
     return ds.cast(udd_features())
 
 
-def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
+def safety_check(
+    rows: list[UnifiedSample],
+    workdir: str,
+    *,
+    enrich: bool = False,
+) -> dict:
     """Build → save_to_disk → reload → verify nothing was lost. Returns a report; raises on mismatch.
 
     Confirms: row count preserved, the image decodes, and the JSON-encoded structured payload
-    round-trips (field/region counts survive). Run this BEFORE any upload."""
+    round-trips (field/region counts survive). ``enrich=True`` also persists deterministic UDD
+    metadata such as image dimensions before the round trip. Run this BEFORE any upload."""
     from pathlib import Path
 
     from datasets import load_from_disk
 
     ds = to_hf_dataset(rows)
+    if enrich:
+        from .enrich import enrich_dataset
+
+        ds = enrich_dataset(ds)
     src = [r for r in rows if r.image_path]
-    out = Path(workdir); out.mkdir(parents=True, exist_ok=True)
+    out = Path(workdir)
+    out.mkdir(parents=True, exist_ok=True)
     ds.save_to_disk(str(out))
     ds2 = load_from_disk(str(out))
 
@@ -110,10 +121,19 @@ def safety_check(rows: list[UnifiedSample], workdir: str) -> dict:
     assert getattr(img0, "size", None), "image did not decode after round-trip"
     # structured payload survived
     exp_fields = sum(len(r.fields) for r in src)
-    got_fields = sum(len(json.loads(x or "[]")) for x in ds2["fields_json"])
-    assert exp_fields == got_fields, f"fields lost: {exp_fields} -> {got_fields}"
     exp_reg = sum(len(r.regions) for r in src)
-    got_reg = sum(len(json.loads(x or "[]")) for x in ds2["regions_json"])
+    if "elements_json" in ds2.column_names:
+        elements = [
+            item
+            for payload in ds2["elements_json"]
+            for item in json.loads(payload or "[]")
+        ]
+        got_fields = sum(item.get("kind") == "field" for item in elements)
+        got_reg = sum(item.get("kind") == "region" for item in elements)
+    else:
+        got_fields = sum(len(json.loads(x or "[]")) for x in ds2["fields_json"])
+        got_reg = sum(len(json.loads(x or "[]")) for x in ds2["regions_json"])
+    assert exp_fields == got_fields, f"fields lost: {exp_fields} -> {got_fields}"
     assert exp_reg == got_reg, f"regions lost: {exp_reg} -> {got_reg}"
     validate_payload_shapes(ds2)
     return {"rows": len(ds2), "fields": got_fields, "regions": got_reg,

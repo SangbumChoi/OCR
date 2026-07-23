@@ -381,6 +381,15 @@ def compile_architecture_sweep(
             "value": "fixed_square",
         }
     )
+    shared_blueprint.append(
+        {
+            "op": "replace",
+            "path": (
+                "/training/pretraining/input_pipeline/aspect_ratio_bucketing"
+            ),
+            "value": False,
+        }
+    )
     child["shared_blueprint_patches"] = shared_blueprint
     controls = list(child.get("matched_controls") or [])
     for path in (
@@ -388,6 +397,7 @@ def compile_architecture_sweep(
         "/training/posttraining/sft/optimizer/total_student_flops",
         "/training/posttraining/rlvr/optimizer/total_student_flops",
         "/training/pretraining/input_pipeline/visual_canvas_mode",
+        "/training/pretraining/input_pipeline/aspect_ratio_bucketing",
     ):
         controls.append({"document": "blueprint", "path": path})
     child["matched_controls"] = controls

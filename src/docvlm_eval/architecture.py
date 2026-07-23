@@ -162,6 +162,15 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "training.pretraining.input_pipeline.visual_canvas_mode must be "
             "fixed_square or batch_adaptive"
         )
+    if not isinstance(input_pipeline.get("aspect_ratio_bucketing", False), bool):
+        errors.append(
+            "training.pretraining.input_pipeline.aspect_ratio_bucketing must be boolean"
+        )
+    if float(input_pipeline.get("aspect_ratio_bucket_log2_step", 0.5)) <= 0:
+        errors.append(
+            "training.pretraining.input_pipeline.aspect_ratio_bucket_log2_step "
+            "must be positive"
+        )
     rotation_probability = float(input_pipeline.get("rotation_probability", -1.0))
     if not 0.0 <= rotation_probability <= 1.0:
         errors.append(

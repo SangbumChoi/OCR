@@ -343,7 +343,7 @@ def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
         )
 
 
-def test_visual_canvas_sweep_changes_only_the_canvas_policy(tmp_path):
+def test_visual_canvas_sweep_decomposes_bucketing_and_canvas_policy(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_visual_canvas_sweep.yaml").read_text(
             encoding="utf-8"
@@ -360,18 +360,38 @@ def test_visual_canvas_sweep_changes_only_the_canvas_policy(tmp_path):
         compile_root=tmp_path / "compiled",
     )
 
-    assert len(plan.variants) == 6
-    assert plan.baseline == "batch_adaptive"
+    assert len(plan.variants) == 9
+    assert plan.baseline == "batch_adaptive_bucketed"
     policies = {
-        variant.arm_id: variant.plan.resolved_blueprint["training"][
-            "pretraining"
-        ]["input_pipeline"]["visual_canvas_mode"]
+        variant.arm_id: (
+            variant.plan.resolved_blueprint["training"]["pretraining"][
+                "input_pipeline"
+            ]["visual_canvas_mode"],
+            variant.plan.resolved_blueprint["training"]["pretraining"][
+                "input_pipeline"
+            ]["aspect_ratio_bucketing"],
+        )
         for variant in plan.variants
     }
     assert policies == {
-        "batch_adaptive": "batch_adaptive",
-        "fixed_square": "fixed_square",
+        "batch_adaptive_bucketed": ("batch_adaptive", True),
+        "batch_adaptive_unbucketed": ("batch_adaptive", False),
+        "fixed_square": ("fixed_square", False),
     }
+    assert all(
+        variant.plan.resolved_blueprint["training"]["pretraining"]["optimizer"][
+            "micro_batch_size"
+        ]
+        == 2
+        for variant in plan.variants
+    )
+    assert all(
+        variant.plan.resolved_blueprint["training"]["pretraining"]["optimizer"][
+            "grad_accum_steps"
+        ]
+        == 4
+        for variant in plan.variants
+    )
     assert all(
         "visual-canvas-ablation"
         in variant.plan.raw_spec["evaluation"]["wandb_tags"]

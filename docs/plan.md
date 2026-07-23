@@ -170,8 +170,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   resolution-by-latent profiles, paired seeds, and realized-budget overshoot gates.
 - **Remove visual padding waste:**
   [`report/student_visual_canvas_sweep.md`](report/student_visual_canvas_sweep.md) —
-  patch-aligned batch-adaptive canvases, stable two-dimensional visual positions, measured dense
-  token utilization, and a paired fixed-square control.
+  rotation-aware aspect buckets, patch-aligned batch-adaptive canvases, stable two-dimensional
+  visual positions, measured dense token utilization, and paired unbucketed/fixed-square controls.
 - **Measure sample efficiency:** [`report/student_factorial_runner.md`](report/student_factorial_runner.md)
   — fixed-heldout initialization-by-data-scale experiments, actual-row provenance, paired
   difference-in-differences, and capability-axis interactions.

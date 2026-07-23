@@ -43,6 +43,8 @@ def _udd_rows():
                 ]
             ),
             "language": "en",
+            "image_width": 20,
+            "image_height": 10,
         },
         {
             "image": Image.new("RGB", (8, 16), "black"),
@@ -53,6 +55,8 @@ def _udd_rows():
             "answers": [["문서"]],
             "elements_json": "[]",
             "language": "ko",
+            "image_width": 8,
+            "image_height": 16,
         },
     ]
 
@@ -66,6 +70,13 @@ def test_udd_student_dataset_expands_qas_and_grounding_without_losing_groups():
     assert dataset.tasks == ["vqa", "vqa", "localization", "recognition"]
     assert dataset.sources == ["docvqa", "docvqa", "docvqa", "synthdog_ko"]
     assert dataset.languages == ["en", "en", "en", "ko"]
+    assert dataset.aspect_ratios == [2.0, 2.0, 2.0, 0.5]
+    assert dataset.sample_ids == [
+        "doc-1:qa0",
+        "doc-1:qa1",
+        "doc-1:box0",
+        "doc-2:qa0",
+    ]
     assert dataset[0].answer == "42"
     assert dataset[1].answer == "USD"
     assert 'total containing "42"' in dataset[2].prompt
@@ -319,7 +330,108 @@ def test_balanced_sampler_reads_the_blueprint_grouping_policy():
     )
 
     assert sampler.group_names == ["localization", "recognition", "vqa"]
+    assert sampler.aspect_ratio_bucketing is True
     assert len(list(sampler)) == 1
+
+
+def test_aspect_bucket_sampler_keeps_each_global_batch_shape_homogeneous():
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    ratios = [0.25, 0.3, 1.0, 1.1, 3.5, 4.0]
+    sampler = BalancedGroupBatchSampler(
+        ["a", "b", "a", "b", "a", "b"],
+        batch_size=6,
+        num_batches=20,
+        seed=19,
+        aspect_ratios=ratios,
+        sample_ids=[f"sample-{index}" for index in range(len(ratios))],
+        aspect_ratio_bucketing=True,
+        rotation_probability=0.0,
+    )
+
+    for batch in sampler:
+        assert len({sampler._aspect_bucket(index) for index in batch}) == 1
+
+
+def test_aspect_bucket_sampler_preserves_target_group_distribution_in_expectation():
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    groups = ["rare"] * 2 + ["common"] * 8
+    ratios = [0.25, 4.0] + [0.25] * 7 + [4.0]
+    sampler = BalancedGroupBatchSampler(
+        groups,
+        batch_size=1,
+        group_weights={"rare": 3.0, "common": 1.0},
+        num_batches=20_000,
+        seed=29,
+        aspect_ratios=ratios,
+        sample_ids=[f"sample-{index}" for index in range(len(groups))],
+        aspect_ratio_bucketing=True,
+        rotation_probability=0.0,
+    )
+
+    rare_fraction = sum(
+        groups[batch[0]] == "rare" for batch in sampler
+    ) / len(sampler)
+
+    assert rare_fraction == pytest.approx(0.75, abs=0.015)
+
+
+def test_aspect_bucket_sampler_shares_a_bucket_across_distributed_ranks():
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    kwargs = {
+        "groups": ["a", "b", "a", "b"],
+        "batch_size": 2,
+        "num_batches": 12,
+        "seed": 31,
+        "num_replicas": 2,
+        "aspect_ratios": [0.25, 0.3, 3.5, 4.0],
+        "sample_ids": ["p0", "p1", "l0", "l1"],
+        "aspect_ratio_bucketing": True,
+        "rotation_probability": 0.0,
+    }
+    rank_zero = BalancedGroupBatchSampler(rank=0, **kwargs)
+    rank_one = BalancedGroupBatchSampler(rank=1, **kwargs)
+
+    for zero_batch, one_batch in zip(rank_zero, rank_one):
+        global_batch = [*zero_batch, *one_batch]
+        assert len(
+            {rank_zero._aspect_bucket(index) for index in global_batch}
+        ) == 1
+
+
+def test_aspect_buckets_follow_the_same_epoch_rotation_as_the_collator():
+    from docvlm_eval.student.data import (
+        BalancedGroupBatchSampler,
+        StudentCollator,
+        StudentCollatorConfig,
+    )
+
+    collator = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(rotation_probability=1.0, augmentation_seed=37),
+    )
+    sample_id = next(
+        f"sample-{index}"
+        for index in range(100)
+        if collator._quarter_turns(f"sample-{index}") % 2
+    )
+    sampler = BalancedGroupBatchSampler(
+        ["only"],
+        batch_size=1,
+        aspect_ratios=[4.0],
+        sample_ids=[sample_id],
+        aspect_ratio_bucketing=True,
+        rotation_probability=1.0,
+        augmentation_seed=37,
+    )
+
+    assert sampler._aspect_bucket(0) < 0
+    sampler.set_epoch(3)
+    collator.set_epoch(3)
+    expected_sign = -1 if collator._quarter_turns(sample_id) % 2 else 1
+    assert sampler._aspect_bucket(0) * expected_sign > 0
 
 
 def test_balanced_sampler_applies_curriculum_weights_at_step_boundaries():

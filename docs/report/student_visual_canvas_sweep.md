@@ -9,7 +9,8 @@ visual compute without changing image scale, model parameters, visual-position c
 training dose.
 
 This is a bounded step toward NaViT-style inputs, not full sequence packing. Images in one batch
-still share one dense rectangular tensor.
+still share one dense rectangular tensor. The default sampler therefore uses UDD image dimensions
+to form rotation-aware aspect-ratio buckets before the collator constructs that tensor.
 
 ## Spatial contract
 
@@ -20,6 +21,12 @@ and pixel mask:
 | --- | --- |
 | `batch_adaptive` | smallest patch-aligned rectangle containing every resized image in the batch |
 | `fixed_square` | configured maximum square, currently 896 by 896 |
+
+For `batch_adaptive`, one portrait and one landscape page can otherwise recreate a large near-square
+tensor. The bucket sampler quantizes the post-augmentation log2 width/height ratio in 0.5-octave
+steps. It selects a bucket and then samples task/source groups conditionally so the marginal group
+probabilities remain equal to their configured weights. The same global bucket is sliced across
+distributed ranks. Rows without valid geometry remain trainable in an `unknown` bucket.
 
 The ViT indexes every patch against the configured two-dimensional 64-by-64 position grid. For
 example, a two-row canvas of width two uses IDs `0, 1, 64, 65`; extending the batch canvas to three
@@ -42,15 +49,24 @@ deltas, and deterministic 95% intervals under `pretraining_efficiency*`.
 ## Matched experiment
 
 [`configs/sub1b_visual_canvas_sweep.yaml`](../../configs/sub1b_visual_canvas_sweep.yaml) compiles
-two policies by three paired replicates. It fixes:
+three policies by three paired replicates:
+
+| Arm | Canvas | Aspect buckets | Isolated comparison |
+| --- | --- | --- | --- |
+| `batch_adaptive_bucketed` | adaptive | on | deployment candidate |
+| `batch_adaptive_unbucketed` | adaptive | off | bucket contribution |
+| `fixed_square` | fixed | off | dense-canvas control |
+
+The sweep uses pretraining micro-batches of two and four accumulation steps, preserving the
+blueprint's effective batch of eight while making cross-example padding observable. It also fixes:
 
 - student parameters, patch size, 4,096-position grid, and 64 resampler latents;
 - 896-pixel image long side and no-upscale policy;
 - authored train and heldout artifacts, public-data folds, and teacher dose;
-- pretraining and SFT token budgets, RLVR steps, batch size, and all stochastic seeds within each
+- pretraining and SFT token budgets, RLVR steps, effective batch size, and all stochastic seeds within each
   replicate.
 
-Only `training.pretraining.input_pipeline.visual_canvas_mode` changes. Run:
+Only the visual canvas and aspect-bucketing policies change across arms. Run:
 
 ```bash
 python scripts/run_student_sweep.py \
@@ -60,12 +76,14 @@ python scripts/run_student_sweep.py \
   --sweep configs/sub1b_visual_canvas_sweep.yaml
 ```
 
-The adaptive arm is the baseline because it is the deployment candidate. W&B tags include
-`visual-canvas-ablation` and the selected policy.
+The bucketed adaptive arm is the baseline because it is the deployment candidate. W&B tags include
+`visual-canvas-ablation`, the canvas policy, and the bucket policy.
 
 ## Decision rule
 
-Retain `batch_adaptive` only when it lowers dense visual tokens and student FLOPs while preserving
-heldout score, grounding, multilingual controls, robustness slices, and reliability gates. A
-higher valid-token fraction alone is not a quality result. Wall-clock speed and peak memory must
-also be reported from the target GPU before claiming deployment throughput.
+First compare the two adaptive arms to isolate bucketing, then compare unbucketed adaptive with
+fixed square to isolate canvas allocation. Retain the combined default only when it lowers dense
+visual tokens and student FLOPs while preserving heldout score, grounding, multilingual controls,
+robustness slices, and reliability gates. A higher valid-token fraction alone is not a quality
+result. Wall-clock speed and peak memory must also be reported from the target GPU before claiming
+deployment throughput.

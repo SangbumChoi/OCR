@@ -69,7 +69,11 @@ def main() -> None:
     if not rows:
         sys.exit("[udd-synth] nothing trainable found")
     out = Path(args.out)
-    rep = safety_check(rows, str(out / "hf"))   # SAME validation the public sources pass
+    rep = safety_check(
+        rows,
+        str(out / "hf"),
+        enrich=True,
+    )
     n_qas = sum(max(1, len(r.qas)) for r in rows)
     print(f"[ok] synthetic UDD: {rep['rows']} image-rows / {n_qas} QAs  fields={rep['fields']} "
           f"regions={rep['regions']}  (skipped {skipped})")

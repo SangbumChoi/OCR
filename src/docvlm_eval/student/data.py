@@ -68,6 +68,7 @@ class _ExampleRef:
     component: str
     target_source: str
     sample_id: str
+    aspect_ratio: float | None
 
 
 def _parse_elements(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -117,6 +118,8 @@ def _metadata_view(dataset: Any) -> Any:
         "language",
         "metric",
         "mixture_component",
+        "image_width",
+        "image_height",
     }
     columns = [name for name in dataset.column_names if name in wanted]
     return dataset.select_columns(columns)
@@ -195,6 +198,13 @@ class UDDStudentDataset:
             task = str(row.get("task") or "unknown")
             language = str(row.get("language") or "und")
             component = str(row.get("mixture_component") or source)
+            image_width = int(row.get("image_width") or 0)
+            image_height = int(row.get("image_height") or 0)
+            aspect_ratio = (
+                image_width / image_height
+                if image_width > 0 and image_height > 0
+                else None
+            )
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
             teacher_answers = list(row.get("teacher_answers") or [])
@@ -236,6 +246,7 @@ class UDDStudentDataset:
                             component,
                             target_source,
                             qa_sample_id,
+                            aspect_ratio,
                         )
                     )
             elements = _parse_elements(row)
@@ -256,6 +267,7 @@ class UDDStudentDataset:
                             component,
                             "gold",
                             f"{sample_id}:box{element_index}",
+                            aspect_ratio,
                         )
                     )
                     used += 1
@@ -286,6 +298,14 @@ class UDDStudentDataset:
     @property
     def target_sources(self) -> list[str]:
         return [ref.target_source for ref in self._refs]
+
+    @property
+    def sample_ids(self) -> list[str]:
+        return [ref.sample_id for ref in self._refs]
+
+    @property
+    def aspect_ratios(self) -> list[float | None]:
+        return [ref.aspect_ratio for ref in self._refs]
 
     def groups(self, key: str) -> list[str]:
         if key == "task":
@@ -373,6 +393,23 @@ def rotate_normalized_box(
     if turns == 2:
         return 1.0 - x2, 1.0 - y2, 1.0 - x1, 1.0 - y1
     return y1, 1.0 - x2, y2, 1.0 - x1
+
+
+def deterministic_quarter_turns(
+    sample_id: str,
+    *,
+    epoch: int,
+    probability: float,
+    seed: int,
+) -> int:
+    """Choose reproducible right-angle augmentation for one sample and epoch."""
+
+    payload = f"{seed}:{epoch}:{sample_id}".encode("utf-8")
+    digest = hashlib.blake2b(payload, digest_size=16).digest()
+    draw = int.from_bytes(digest[:8], "big") / float(2**64)
+    if draw >= probability:
+        return 0
+    return int.from_bytes(digest[8:], "big") % 4
 
 
 @dataclass(frozen=True)
@@ -477,14 +514,12 @@ class StudentCollator:
         self.epoch = int(epoch)
 
     def _quarter_turns(self, sample_id: str) -> int:
-        payload = (
-            f"{self.config.augmentation_seed}:{self.epoch}:{sample_id}"
-        ).encode("utf-8")
-        digest = hashlib.blake2b(payload, digest_size=16).digest()
-        probability = int.from_bytes(digest[:8], "big") / float(2**64)
-        if probability >= self.config.rotation_probability:
-            return 0
-        return int.from_bytes(digest[8:], "big") % 4
+        return deterministic_quarter_turns(
+            sample_id,
+            epoch=self.epoch,
+            probability=self.config.rotation_probability,
+            seed=self.config.augmentation_seed,
+        )
 
     def _tokenize(self, prompt: str, answer: str) -> tuple[list[int], list[int], int]:
         prompt_text = self.config.prompt_template.format(prompt=prompt)
@@ -715,7 +750,7 @@ class StudentCollator:
 
 
 class BalancedGroupBatchSampler:
-    """Sample tasks, sources, or languages by an explicit target distribution."""
+    """Sample explicit group targets in optional augmentation-aware shape buckets."""
 
     def __init__(
         self,
@@ -731,6 +766,12 @@ class BalancedGroupBatchSampler:
         grad_accum_steps: int = 1,
         epochs: int = 1,
         max_steps: int | None = None,
+        aspect_ratios: Sequence[float | None] | None = None,
+        sample_ids: Sequence[str] | None = None,
+        aspect_ratio_bucketing: bool = False,
+        aspect_ratio_bucket_log2_step: float = 0.5,
+        rotation_probability: float = 0.0,
+        augmentation_seed: int = 7,
     ):
         if not groups:
             raise ValueError("balanced sampler requires at least one example")
@@ -789,6 +830,27 @@ class BalancedGroupBatchSampler:
                 "runtime token/compute curricula cannot drive prefetched sampler "
                 "weights; use loss-weight stages or an optimizer-step curriculum"
             )
+        self.aspect_ratio_bucketing = bool(aspect_ratio_bucketing)
+        self.aspect_ratio_bucket_log2_step = float(aspect_ratio_bucket_log2_step)
+        self.rotation_probability = float(rotation_probability)
+        self.augmentation_seed = int(augmentation_seed)
+        if self.aspect_ratio_bucket_log2_step <= 0:
+            raise ValueError("aspect_ratio_bucket_log2_step must be positive")
+        if not 0.0 <= self.rotation_probability <= 1.0:
+            raise ValueError("rotation_probability must be within [0, 1]")
+        if aspect_ratios is not None and len(aspect_ratios) != len(groups):
+            raise ValueError("aspect_ratios must align with sampler groups")
+        if sample_ids is not None and len(sample_ids) != len(groups):
+            raise ValueError("sample_ids must align with sampler groups")
+        if self.aspect_ratio_bucketing and aspect_ratios is None:
+            raise ValueError("aspect-ratio bucketing requires aspect_ratios")
+        if self.aspect_ratio_bucketing and sample_ids is None:
+            raise ValueError("aspect-ratio bucketing requires sample_ids")
+        self.aspect_ratios = (
+            tuple(aspect_ratios) if aspect_ratios is not None else ()
+        )
+        sample_id_values = sample_ids if sample_ids is not None else ()
+        self.sample_ids = tuple(str(value) for value in sample_id_values)
 
     @classmethod
     def from_blueprint(
@@ -847,6 +909,16 @@ class BalancedGroupBatchSampler:
                 if max_steps is None
                 else int(max_steps)
             ),
+            aspect_ratios=dataset.aspect_ratios,
+            sample_ids=dataset.sample_ids,
+            aspect_ratio_bucketing=bool(
+                pipeline.get("aspect_ratio_bucketing", False)
+            ),
+            aspect_ratio_bucket_log2_step=float(
+                pipeline.get("aspect_ratio_bucket_log2_step", 0.5)
+            ),
+            rotation_probability=float(pipeline["rotation_probability"]),
+            augmentation_seed=int(pipeline.get("augmentation_seed", 7)),
         )
 
     def set_epoch(self, epoch: int) -> None:
@@ -855,8 +927,32 @@ class BalancedGroupBatchSampler:
     def __len__(self) -> int:
         return self.num_batches
 
+    def _aspect_bucket(self, index: int) -> int | str:
+        ratio = self.aspect_ratios[index]
+        if ratio is None or not math.isfinite(ratio) or ratio <= 0:
+            return "unknown"
+        turns = deterministic_quarter_turns(
+            self.sample_ids[index],
+            epoch=self.epoch,
+            probability=self.rotation_probability,
+            seed=self.augmentation_seed,
+        )
+        effective_ratio = 1.0 / ratio if turns % 2 else ratio
+        return round(math.log2(effective_ratio) / self.aspect_ratio_bucket_log2_step)
+
+    def _bucketed_indices(
+        self,
+    ) -> dict[int | str, dict[str, list[int]]]:
+        buckets: dict[int | str, dict[str, list[int]]] = {}
+        for group, indices in self.indices.items():
+            for index in indices:
+                bucket = self._aspect_bucket(index)
+                buckets.setdefault(bucket, {}).setdefault(group, []).append(index)
+        return buckets
+
     def __iter__(self) -> Iterator[list[int]]:
         rng = random.Random(self.seed + self.epoch)
+        bucketed = self._bucketed_indices() if self.aspect_ratio_bucketing else {}
         for batch_index in range(self.num_batches):
             step = (
                 self.epoch * self.steps_per_epoch
@@ -875,14 +971,46 @@ class BalancedGroupBatchSampler:
                 raise ValueError(
                     f"curriculum stage {stage.id!r} disables every sampler group"
                 )
-            selected_groups = rng.choices(
-                self.group_names,
-                weights=selected_weights,
-                k=self.batch_size * self.num_replicas,
-            )
-            selected_indices = [
-                rng.choice(self.indices[group]) for group in selected_groups
-            ]
+            global_batch_size = self.batch_size * self.num_replicas
+            if bucketed:
+                bucket_names = sorted(bucketed, key=str)
+                bucket_masses = []
+                for bucket in bucket_names:
+                    bucket_masses.append(
+                        sum(
+                            weight
+                            * len(bucketed[bucket].get(group, ()))
+                            / len(self.indices[group])
+                            for group, weight in zip(
+                                self.group_names, selected_weights
+                            )
+                        )
+                    )
+                bucket = rng.choices(bucket_names, weights=bucket_masses, k=1)[0]
+                conditional_weights = [
+                    weight
+                    * len(bucketed[bucket].get(group, ()))
+                    / len(self.indices[group])
+                    for group, weight in zip(self.group_names, selected_weights)
+                ]
+                selected_groups = rng.choices(
+                    self.group_names,
+                    weights=conditional_weights,
+                    k=global_batch_size,
+                )
+                selected_indices = [
+                    rng.choice(bucketed[bucket][group])
+                    for group in selected_groups
+                ]
+            else:
+                selected_groups = rng.choices(
+                    self.group_names,
+                    weights=selected_weights,
+                    k=global_batch_size,
+                )
+                selected_indices = [
+                    rng.choice(self.indices[group]) for group in selected_groups
+                ]
             start = self.rank * self.batch_size
             yield selected_indices[start : start + self.batch_size]
 
