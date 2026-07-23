@@ -48,7 +48,13 @@ def _dataset():
                 answers=["42"],
                 answer_type="chart-numeric",
                 metric="exact",
-                meta={"source": "synthetic", "language": "en"},
+                meta={
+                    "source": "synthetic",
+                    "language": "en",
+                    "document_family": "chart",
+                    "evidence_count": 2,
+                    "degradation": "scan",
+                },
             ),
             Sample(
                 sample_id="eval-2",
@@ -57,7 +63,13 @@ def _dataset():
                 answers=["Acme"],
                 answer_type="kie",
                 metric="anls",
-                meta={"source": "public", "language": "ko"},
+                meta={
+                    "source": "public",
+                    "language": "ko",
+                    "document_family": "receipt",
+                    "evidence_count": 1,
+                    "degradation": "clean",
+                },
             ),
         ]
     )
@@ -136,14 +148,22 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     assert result.summary["by_answer_type"]["kie"]["score"] == 0.0
     assert result.summary["by_source"]["synthetic"]["score"] == 1.0
     assert result.summary["by_language"]["ko"]["score"] == 0.0
+    assert (
+        result.summary["by_robustness_axis"]["document_family"]["chart"]["score"]
+        == 1.0
+    )
+    assert result.summary["by_robustness_axis"]["evidence_count"]["1"]["score"] == 0.0
+    assert result.summary["robustness_coverage"]["complete"] is True
     assert result.summary["reward_components"]["answer_correctness"] == {
         "n": 1,
         "score": 1.0,
     }
     assert result.per_sample[1]["structure_error"]
-    assert result.per_sample[0]["meta"] == {
-        "source": "synthetic",
+    assert result.per_sample[0]["robustness_slices"] == {
+        "document_family": "chart",
         "language": "en",
+        "evidence_count": "2",
+        "degradation": "scan",
     }
     assert result.per_sample[0]["confidence"] is None
     assert (tmp_path / "summary.json").exists()
@@ -177,6 +197,16 @@ def test_split_comparison_and_wandb_metrics_pair_matching_axes(tmp_path):
         },
         "by_source": {"synthetic": {"score": 0.8}},
         "by_language": {"en": {"score": 0.8}},
+        "by_robustness_axis": {
+            "document_family": {
+                "invoice/receipt": {
+                    "score": 0.8,
+                    "reward": 0.7,
+                    "valid_structure_fraction": 0.9,
+                    "answer_rate": 1.0,
+                }
+            }
+        },
         "reward_components": {"box_iou": {"score": 0.6}},
     }
     heldout = {
@@ -193,6 +223,16 @@ def test_split_comparison_and_wandb_metrics_pair_matching_axes(tmp_path):
         },
         "by_source": {"public": {"score": 0.5}},
         "by_language": {"en": {"score": 0.5}},
+        "by_robustness_axis": {
+            "document_family": {
+                "invoice/receipt": {
+                    "score": 0.5,
+                    "reward": 0.4,
+                    "valid_structure_fraction": 0.7,
+                    "answer_rate": 0.8,
+                }
+            }
+        },
         "reward_components": {"box_iou": {"score": 0.3}},
     }
 
@@ -202,6 +242,12 @@ def test_split_comparison_and_wandb_metrics_pair_matching_axes(tmp_path):
     assert comparison["train_minus_heldout"]["headline"]["score"] == 0.3
     assert (
         comparison["train_minus_heldout"]["by_answer_type"]["kie"]["reward"]
+        == 0.3
+    )
+    assert (
+        comparison["train_minus_heldout"]["by_robustness_axis"][
+            "document_family"
+        ]["invoice/receipt"]["score"]
         == 0.3
     )
     path = write_split_comparison(
@@ -216,5 +262,17 @@ def test_split_comparison_and_wandb_metrics_pair_matching_axes(tmp_path):
     assert heldout_metrics["eval/heldout_kie"] == 0.6
     assert train_metrics["eval_by_axis/kie/train"] == 0.9
     assert heldout_metrics["eval_by_axis/kie/heldout"] == 0.6
+    assert (
+        train_metrics[
+            "eval_by_slice/document_family/invoice%2Freceipt/train"
+        ]
+        == 0.8
+    )
+    assert (
+        heldout_metrics[
+            "eval_by_slice/document_family/invoice%2Freceipt/heldout"
+        ]
+        == 0.5
+    )
     assert train_metrics["eval_reward/box_iou/train"] == 0.6
     assert heldout_metrics["eval_reward/box_iou/heldout"] == 0.3

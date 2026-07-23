@@ -154,13 +154,16 @@ Each suite root contains:
 - `sweep_run_summary.json`, updated after each completed or failed run;
 - `gates/<variant>--<replicate>.json` and `gates/<variant>.json` with matched baseline decisions;
 - `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
-  deltas, confidence intervals, gate status, and ranking;
+  deltas, document-family/language/evidence-count/degradation deltas, confidence intervals,
+  gate status, and ranking;
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
   generalization gap, evidence conclusion, and deployment-gate status.
 
 Every compiled evaluator receives the same W&B group and a unique arm-replicate run name. Native
 evaluation already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
 `eval_by_axis/H-count/heldout`, allowing train and heldout curves for one suffix to share a panel.
+Canonical robustness panels use `eval_by_slice/<axis>/<value>/train` and
+`eval_by_slice/<axis>/<value>/heldout`.
 Tags include `native-student-sweep`, `variant:<id>`, and `replicate:<id>`.
 
 Ranking sorts mean heldout score descending, then prefers a smaller mean train-minus-heldout score.

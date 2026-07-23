@@ -160,6 +160,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
   train/heldout comparison.
+- **Audit robustness slices:**
+  [`report/student_robustness_slices.md`](report/student_robustness_slices.md) — canonical
+  document-family, language, evidence-count, and degradation metadata, matched train/heldout
+  panels, and paired per-slice ablation intervals.
 - **Match architecture compute:**
   [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) —
   analytical dense student FLOPs, compute-driven schedules and stopping, five

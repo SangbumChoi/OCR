@@ -186,11 +186,12 @@ grounding accuracy.
 
 Each split writes:
 
-- `summary.json`: headline score, reward, structural validity, answer rate, latency, and
-  answer-type/source/language slices;
+- `summary.json`: headline score, reward, structural validity, answer rate, latency,
+  answer-type/source/language slices, and canonical robustness slices with coverage counts;
 - `per_sample.jsonl`: raw structured output, parsed fields, standard score, reward components, and
-  structural error;
-- root `comparison.json`: train-minus-heldout headline and matched answer-type gaps;
+  structural error plus canonical robustness labels;
+- root `comparison.json`: train-minus-heldout headline, matched answer-type gaps, and matched
+  robustness-slice gaps;
 - root `manifest.json`: checkpoint, tokenizer, split, and decoding provenance.
 
 Use `--max-samples N --seed S` for a deterministic smoke subset. The reported latency uses
@@ -222,5 +223,7 @@ eval_by_axis/<axis>/train         eval_by_axis/<axis>/heldout
 
 The actual split name is `heldout`, not `held`. Reward components use
 `eval_reward/<component>/<split>`; source and language slices use `eval_by_source` and
-`eval_by_language`. This makes one W&B panel per suffix possible without duplicating or manually
-aligning run steps.
+`eval_by_language`. Robustness slices use `eval_by_slice/<axis>/<value>/<split>`, for example
+`eval_by_slice/degradation/scan/train` and
+`eval_by_slice/degradation/scan/heldout`. This makes one W&B panel per suffix possible without
+duplicating or manually aligning run steps.

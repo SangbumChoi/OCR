@@ -627,6 +627,26 @@ def _axis_scores(comparison: dict[str, Any], split: str) -> dict[str, float]:
     return {name: float(values["score"]) for name, values in sorted(axes.items())}
 
 
+def _robustness_scores(
+    comparison: dict[str, Any],
+    split: str,
+) -> dict[str, float]:
+    axes = comparison["splits"][split].get("by_robustness_axis", {})
+    return {
+        f"{axis}/{value}": float(summary["score"])
+        for axis, slices in sorted(axes.items())
+        for value, summary in sorted(slices.items())
+    }
+
+
+def _nested_slice_values(values: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    nested: dict[str, dict[str, Any]] = {}
+    for key, value in sorted(values.items()):
+        axis, slice_value = key.split("/", 1)
+        nested.setdefault(axis, {})[slice_value] = value
+    return nested
+
+
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
@@ -812,6 +832,11 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             "metrics": _summary_metrics(comparison),
             "heldout_by_answer_type": _axis_scores(comparison, "heldout"),
             "train_by_answer_type": _axis_scores(comparison, "train"),
+            "heldout_slice_scores": _robustness_scores(
+                comparison,
+                "heldout",
+            ),
+            "train_slice_scores": _robustness_scores(comparison, "train"),
             "comparison": str(comparison_path),
             "evaluation_root": str(evaluation_root),
         }
@@ -843,6 +868,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         baseline = baseline_runs[record["replicate_id"]]
         baseline_metrics = baseline["metrics"]
         baseline_axes = baseline["heldout_by_answer_type"]
+        baseline_slices = baseline["heldout_slice_scores"]
         record["delta_vs_baseline"] = {
             name: round(float(value) - float(baseline_metrics[name]), 8)
             for name, value in record["metrics"].items()
@@ -851,6 +877,11 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             name: round(float(value) - float(baseline_axes[name]), 8)
             for name, value in record["heldout_by_answer_type"].items()
             if name in baseline_axes
+        }
+        record["heldout_slice_delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_slices[name]), 8)
+            for name, value in record["heldout_slice_scores"].items()
+            if name in baseline_slices
         }
         evaluation_root = Path(record["evaluation_root"])
         current_comparison, current_rows = load_evaluation_artifacts(
@@ -955,6 +986,52 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 for record in ordered
             )
         }
+        heldout_slices = sorted(
+            set.intersection(
+                *[
+                    set(record["heldout_slice_scores"])
+                    for record in ordered
+                ]
+            )
+        )
+        train_slices = sorted(
+            set.intersection(
+                *[
+                    set(record["train_slice_scores"])
+                    for record in ordered
+                ]
+            )
+        )
+        heldout_slice_statistics = {
+            slice_name: _distribution(
+                [
+                    float(record["heldout_slice_scores"][slice_name])
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{slice_name}:"
+                    "heldout-robustness-slice"
+                ),
+            )
+            for slice_name in heldout_slices
+        }
+        heldout_slice_delta_statistics = {
+            slice_name: _distribution(
+                [
+                    float(record["heldout_slice_delta_vs_baseline"][slice_name])
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{slice_name}:"
+                    "paired-robustness-slice"
+                ),
+            )
+            for slice_name in heldout_slices
+            if all(
+                slice_name in record["heldout_slice_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
         arm_gate_report = _aggregate_gate_reports(
             {
                 record["replicate_id"]: run_gate_reports[record["run_id"]]
@@ -1002,6 +1079,39 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 for axis, statistics in heldout_axis_delta_statistics.items()
             },
             "heldout_axis_delta_statistics": heldout_axis_delta_statistics,
+            "heldout_by_robustness_axis": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics in heldout_slice_statistics.items()
+                }
+            ),
+            "train_by_robustness_axis": _nested_slice_values(
+                {
+                    name: round(
+                        _mean(
+                            [
+                                float(record["train_slice_scores"][name])
+                                for record in ordered
+                            ]
+                        ),
+                        8,
+                    )
+                    for name in train_slices
+                }
+            ),
+            "heldout_robustness_statistics": _nested_slice_values(
+                heldout_slice_statistics
+            ),
+            "heldout_robustness_delta_vs_baseline": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics
+                    in heldout_slice_delta_statistics.items()
+                }
+            ),
+            "heldout_robustness_delta_statistics": _nested_slice_values(
+                heldout_slice_delta_statistics
+            ),
             "heldout_score_conclusion": (
                 "reference"
                 if arm_id == plan.baseline

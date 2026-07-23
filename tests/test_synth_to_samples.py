@@ -84,6 +84,17 @@ def test_loader_handles_flat_and_variant_layouts(tmp_path):
     assert len(s) == 3
 
 
+def test_loader_labels_the_rendered_fallback_as_clean(tmp_path):
+    case = tmp_path / "invoice"
+    _write_case(case)
+    (case / "clean.png").write_bytes(b"png")
+
+    samples = load_realistic_samples(tmp_path, variant="degraded")
+
+    assert samples[0].meta["render_variant"] == "clean"
+    assert samples[0].meta["degradation"] == "clean"
+
+
 def test_multiple_evidence_boxes_reach_posttraining_metadata():
     gt = {
         "type": "hard table",
@@ -100,9 +111,17 @@ def test_multiple_evidence_boxes_reach_posttraining_metadata():
             }
         ],
     }
-    sample = case_to_samples(gt, "/tmp/hard.png", "hard")[0]
+    sample = case_to_samples(
+        gt,
+        "/tmp/hard.png",
+        "hard",
+        render_variant="degraded",
+    )[0]
     assert sample.meta["boxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]
     assert sample.meta["rationale"] == "10 + 20 = 30."
+    assert sample.meta["document_family"] == "hard table"
+    assert sample.meta["evidence_count"] == 2
+    assert sample.meta["degradation"] == "degraded"
 
 
 def _write_counterfactual_case(

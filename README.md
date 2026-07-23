@@ -389,8 +389,10 @@ python scripts/eval_student.py \
 ```
 
 This writes standard benchmark scores and structured rewards separately, including
-train-minus-heldout gaps and task/source/language slices. W&B receives both
-`eval/<split>_<axis>` and `eval_by_axis/<axis>/<split>` keys for paired panels.
+train-minus-heldout gaps and task/source/language slices. It also evaluates canonical
+document-family, language, evidence-count, and degradation slices. W&B receives
+`eval/<split>_<axis>`, `eval_by_axis/<axis>/<split>`, and
+`eval_by_slice/<axis>/<value>/<split>` keys for paired panels.
 
 To issue executable deployment-gate decisions, compare against prior and monolingual-control
 evaluation roots:

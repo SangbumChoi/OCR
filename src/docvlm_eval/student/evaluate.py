@@ -10,6 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from urllib.parse import quote
 
 import torch
 
@@ -22,6 +23,13 @@ from .rewards import (
     RewardConfig,
     parse_structured_response,
     score_structured_response,
+)
+
+ROBUSTNESS_AXES = (
+    "document_family",
+    "language",
+    "evidence_count",
+    "degradation",
 )
 
 
@@ -90,6 +98,75 @@ def _group_summaries(
     return {
         name: _slice_summary(items)
         for name, items in sorted(grouped.items())
+    }
+
+
+def _canonical_robustness_slices(
+    meta: dict[str, Any],
+    *,
+    source: str,
+    language: str,
+) -> dict[str, str]:
+    boxes = meta.get("boxes")
+    evidence_count = meta.get("evidence_count")
+    if evidence_count is None:
+        evidence_count = len(boxes) if isinstance(boxes, list) else 0
+    degradation = meta.get("degradation")
+    if isinstance(degradation, dict):
+        degradation = degradation.get("preset")
+    return {
+        "document_family": str(
+            meta.get("document_family")
+            or meta.get("template_family")
+            or meta.get("doc_type")
+            or source
+            or "unknown"
+        ),
+        "language": str(language or meta.get("language") or "und"),
+        "evidence_count": str(evidence_count),
+        "degradation": str(
+            degradation
+            or meta.get("degraded_preset")
+            or meta.get("render_variant")
+            or "unknown"
+        ),
+    }
+
+
+def _robustness_summaries(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    result: dict[str, dict[str, dict[str, Any]]] = {}
+    for axis in ROBUSTNESS_AXES:
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            grouped[row["robustness_slices"][axis]].append(row)
+        result[axis] = {
+            value: _slice_summary(items)
+            for value, items in sorted(grouped.items())
+        }
+    return result
+
+
+def _robustness_coverage(
+    slices: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    axes = {}
+    for axis in ROBUSTNESS_AXES:
+        counts = {
+            value: int(summary["n"])
+            for value, summary in slices.get(axis, {}).items()
+        }
+        unknown = counts.get("unknown", 0) + counts.get("und", 0)
+        axes[axis] = {
+            "counts": counts,
+            "known_samples": sum(counts.values()) - unknown,
+            "unknown_samples": unknown,
+        }
+    return {
+        "required_axes": list(ROBUSTNESS_AXES),
+        "complete": all(values["unknown_samples"] == 0 for values in axes.values()),
+        "axes": axes,
     }
 
 
@@ -216,6 +293,11 @@ def evaluate_structured_student(
                 evidence = []
                 rationale = ""
                 standard_score = 0.0
+            robustness_slices = _canonical_robustness_slices(
+                sample.meta,
+                source=dataset.sources[index],
+                language=dataset.languages[index],
+            )
             rows.append(
                 {
                     "sample_id": sample.sample_id,
@@ -225,6 +307,7 @@ def evaluate_structured_student(
                     "answer_type": sample.answer_type,
                     "metric": sample.metric,
                     "meta": sample.meta,
+                    "robustness_slices": robustness_slices,
                     "question": sample.question,
                     "answers": sample.answers,
                     "image_path": sample.image_path,
@@ -257,6 +340,7 @@ def evaluate_structured_student(
         torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start_time
     overall = _slice_summary(rows)
+    robustness_slices = _robustness_summaries(rows)
     summary = {
         "split": split_name,
         "dataset_size": len(dataset),
@@ -272,6 +356,8 @@ def evaluate_structured_student(
         "by_answer_type": _group_summaries(rows, "answer_type"),
         "by_source": _group_summaries(rows, "source"),
         "by_language": _group_summaries(rows, "language"),
+        "by_robustness_axis": robustness_slices,
+        "robustness_coverage": _robustness_coverage(robustness_slices),
         "reward_components": _reward_component_summary(rows),
     }
     _atomic_write_json(output_dir / "summary.json", summary)
@@ -314,9 +400,30 @@ def compare_split_summaries(
                 - float(heldout_axes[name]["valid_structure_fraction"])
             ),
         }
+    robustness_axes = {}
+    train_robustness = train.get("by_robustness_axis", {})
+    heldout_robustness = heldout.get("by_robustness_axis", {})
+    for axis in ROBUSTNESS_AXES:
+        train_values = train_robustness.get(axis, {})
+        heldout_values = heldout_robustness.get(axis, {})
+        robustness_axes[axis] = {}
+        for value in sorted(set(train_values) & set(heldout_values)):
+            robustness_axes[axis][value] = {
+                name: _round(
+                    float(train_values[value][name])
+                    - float(heldout_values[value][name])
+                )
+                for name in (
+                    "score",
+                    "reward",
+                    "valid_structure_fraction",
+                    "answer_rate",
+                )
+            }
     comparison["train_minus_heldout"] = {
         "headline": headline,
         "by_answer_type": axes,
+        "by_robustness_axis": robustness_axes,
     }
     return comparison
 
@@ -354,6 +461,12 @@ def wandb_metrics_for_split(
         metrics[f"eval_by_language/{language}/{split_name}"] = float(
             values["score"]
         )
+    for axis, slices in summary.get("by_robustness_axis", {}).items():
+        for value, values in slices.items():
+            segment = quote(str(value), safe="-_.")
+            metrics[f"eval_by_slice/{axis}/{segment}/{split_name}"] = float(
+                values["score"]
+            )
     for name, values in summary.get("reward_components", {}).items():
         metrics[f"eval_reward/{name}/{split_name}"] = float(values["score"])
     return metrics

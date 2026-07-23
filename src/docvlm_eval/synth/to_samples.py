@@ -45,17 +45,45 @@ def _probe_answers(probe: dict) -> tuple[list[str], str]:
     return [probe.get("expected", "")], "anls"
 
 
-def case_to_samples(gt: dict, image_path: str, prefix: str, *,
-                    include_probes: bool = True) -> list[Sample]:
+def _degradation_label(gt: dict, render_variant: str | None) -> str:
+    if render_variant == "clean":
+        return "clean"
+    if render_variant == "degraded":
+        degradation = gt.get("degradation") or {}
+        return str(
+            degradation.get("preset")
+            or gt.get("degraded_preset")
+            or "degraded"
+        )
+    return "unknown"
+
+
+def case_to_samples(
+    gt: dict,
+    image_path: str,
+    prefix: str,
+    *,
+    include_probes: bool = True,
+    render_variant: str | None = None,
+) -> list[Sample]:
     """Convert one case's GT dict + image into a list of Samples (ids prefixed by `prefix`)."""
     out: list[Sample] = []
     size = gt.get("render", {}).get("size_px") or [None, None]
+    document_family = (
+        (gt.get("semantic_graph") or {}).get("template_family")
+        or gt.get("doc_type")
+        or gt.get("type")
+        or "unknown"
+    )
     base_meta = {
         "case": prefix,
         "doc_type": gt.get("type"),
+        "document_family": str(document_family),
         "stressors": gt.get("stressors"),
         "size": size,
         "language": (gt.get("languages") or ["und"])[0],
+        "degradation": _degradation_label(gt, render_variant),
+        "render_variant": render_variant or "unknown",
         "split": gt.get("split", "synthetic"),
         "difficulty": gt.get("difficulty"),
         "template_family": (gt.get("semantic_graph") or {}).get("template_family"),
@@ -63,7 +91,14 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
     }
 
     for i, qa in enumerate(gt.get("qa", [])):
-        meta = {**base_meta, "qa_key": qa.get("key")}
+        boxes = qa.get("evidence_bboxes") or []
+        evidence_count = len(boxes or qa.get("evidence_keys") or [])
+        meta = {
+            **base_meta,
+            "qa_key": qa.get("key"),
+            "language": (qa.get("languages") or [base_meta["language"]])[0],
+            "evidence_count": evidence_count,
+        }
         graph_query_id = qa.get("graph_query_id")
         if graph_query_id:
             meta["graph_query_id"] = graph_query_id
@@ -86,7 +121,6 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
             meta["rationale"] = qa["rationale"]
         if qa.get("box"):
             meta["box"] = qa["box"]
-        boxes = qa.get("evidence_bboxes") or []
         if boxes:
             meta["boxes"] = boxes
         out.append(Sample(
@@ -101,13 +135,19 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
              f"pixel coordinates. The image is {w}x{h} pixels.")
         ans = f"{box[0]},{box[1]},{box[2]},{box[3]};{w},{h}"
         out.append(Sample(f"{prefix}:spot:{key}", image_path, q, [ans], "grounding", "grounding",
-                          {**base_meta, "box": box, "size": [w, h]}))
+                          {
+                              **base_meta,
+                              "box": box,
+                              "size": [w, h],
+                              "evidence_count": 1,
+                          }))
 
     if gt.get("table_html"):
         out.append(Sample(
             f"{prefix}:table", image_path,
             "Convert the table to HTML (a <table> with <tr>/<td>).",
-            [gt["table_html"]], "table", "teds", dict(base_meta)))
+            [gt["table_html"]], "table", "teds",
+            {**base_meta, "evidence_count": 0}))
 
     if include_probes:
         for i, p in enumerate(gt.get("probes", [])):
@@ -118,6 +158,7 @@ def case_to_samples(gt: dict, image_path: str, prefix: str, *,
                 f"probe:{kind}", metric,
                 {
                     **base_meta,
+                    "evidence_count": 0,
                     "probe": p,
                     "abstain_expected": kind == "abstain",
                 }))
@@ -160,9 +201,17 @@ def load_case_dir(case_dir: str | Path, *, variant: str = "clean",
     case_dir = Path(case_dir)
     gt = json.loads((case_dir / "gt.json").read_text(encoding="utf-8"))
     img = case_dir / f"{variant}.png"
+    actual_variant = variant
     if not img.exists():
         img = case_dir / "clean.png"
-    return case_to_samples(gt, str(img), f"{case_dir.name}", include_probes=include_probes)
+        actual_variant = "clean"
+    return case_to_samples(
+        gt,
+        str(img),
+        f"{case_dir.name}",
+        include_probes=include_probes,
+        render_variant=actual_variant,
+    )
 
 
 def load_realistic_samples(root: str | Path, *, variant: str = "clean",
@@ -180,8 +229,18 @@ def load_realistic_samples(root: str | Path, *, variant: str = "clean",
         prefix = str(case_dir.relative_to(root)).replace("/", "_")
         gt = json.loads(gt_path.read_text(encoding="utf-8"))
         img = case_dir / f"{variant}.png"
+        actual_variant = variant
         if not img.exists():
             img = case_dir / "clean.png"
-        samples.extend(case_to_samples(gt, str(img), prefix, include_probes=include_probes))
+            actual_variant = "clean"
+        samples.extend(
+            case_to_samples(
+                gt,
+                str(img),
+                prefix,
+                include_probes=include_probes,
+                render_variant=actual_variant,
+            )
+        )
     _validate_counterfactual_pairs(samples)
     return samples

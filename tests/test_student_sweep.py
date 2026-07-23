@@ -495,6 +495,17 @@ def _comparison(score: float, milliseconds: float) -> dict:
             },
             "by_source": {},
             "by_language": {},
+            "by_robustness_axis": {
+                "document_family": {
+                    "chart": {
+                        "n": 2,
+                        "score": split_score,
+                        "reward": split_score / 2,
+                        "valid_structure_fraction": 0.75,
+                        "answer_rate": 1.0,
+                    }
+                }
+            },
             "reward_components": {},
         }
 
@@ -510,6 +521,16 @@ def _comparison(score: float, milliseconds: float) -> dict:
                 "answer_rate": 0.0,
             },
             "by_answer_type": {},
+            "by_robustness_axis": {
+                "document_family": {
+                    "chart": {
+                        "score": 0.1,
+                        "reward": 0.05,
+                        "valid_structure_fraction": 0.0,
+                        "answer_rate": 0.0,
+                    }
+                }
+            },
         },
     }
 
@@ -599,6 +620,12 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
         result["variants"]["baseline"]["gate_statuses"]["generalization"]
         == "insufficient_evidence"
     )
+    robustness = candidate["heldout_robustness_delta_statistics"][
+        "document_family"
+    ]["chart"]
+    assert robustness["n"] == 2
+    assert robustness["mean"] == pytest.approx(0.125)
+    assert robustness["ci95"] == pytest.approx([0.1, 0.15])
     assert Path(candidate["gate_report"]).is_file()
     assert all(Path(record["gate_report"]).is_file() for record in result["runs"].values())
     assert (Path(plan.root) / "comparison.json").is_file()
