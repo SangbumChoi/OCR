@@ -305,10 +305,33 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
             )
         path = Path(variant.plan.root) / "artifacts" / "evaluation" / "comparison.json"
         path.parent.mkdir(parents=True, exist_ok=True)
+        heldout_score, milliseconds = scores[
+            (variant.arm_id, variant.replicate_id)
+        ]
         path.write_text(
-            json.dumps(_comparison(*scores[(variant.arm_id, variant.replicate_id)])),
+            json.dumps(_comparison(heldout_score, milliseconds)),
             encoding="utf-8",
         )
+        for split, split_score in (
+            ("train", heldout_score + 0.1),
+            ("heldout", heldout_score),
+        ):
+            split_root = path.parent / split
+            split_root.mkdir()
+            eval_row = {
+                "sample_id": "sample-1",
+                "score": split_score,
+                "answer": "42",
+                "answer_type": "chart",
+                "confidence": 0.8,
+                "meta": {},
+                "reward_components": {},
+                "applicable_rewards": [],
+            }
+            (split_root / "per_sample.jsonl").write_text(
+                json.dumps(eval_row) + "\n",
+                encoding="utf-8",
+            )
 
     result = aggregate_sweep_results(plan)
 
@@ -330,9 +353,20 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
         "seed_1",
     }
     assert result["replicate_count"] == 2
+    candidate = result["variants"]["no_sequence_distillation"]
+    assert candidate["gate_status"] == "insufficient_evidence"
+    assert candidate["gate_statuses"]["parameter_budget"] == "pass"
+    assert candidate["gate_statuses"]["generalization"] == "pass"
+    assert (
+        result["variants"]["baseline"]["gate_statuses"]["generalization"]
+        == "insufficient_evidence"
+    )
+    assert Path(candidate["gate_report"]).is_file()
+    assert all(Path(record["gate_report"]).is_file() for record in result["runs"].values())
     assert (Path(plan.root) / "comparison.json").is_file()
     markdown = (Path(plan.root) / "comparison.md").read_text(encoding="utf-8")
     assert "Paired delta [95% CI]" in markdown
+    assert "Gates" in markdown
     assert "`no_sequence_distillation`" in markdown
 
 

@@ -18,6 +18,11 @@ import yaml
 
 from ..architecture import estimate_parameters, load_blueprint
 from .experiment import ExperimentPlan, ExperimentRunner, build_experiment_plan
+from .gates import (
+    evaluate_deployment_gates,
+    load_evaluation_artifacts,
+    write_gate_report,
+)
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -667,10 +672,108 @@ def _paired_conclusion(statistics: dict[str, Any]) -> str:
     return "inconclusive"
 
 
+def _evaluation_parameter_counts(
+    evaluation_root: Path,
+    fallback: dict[str, int],
+) -> tuple[dict[str, int], str]:
+    gate_path = evaluation_root / "gates.json"
+    if gate_path.is_file():
+        report = json.loads(gate_path.read_text(encoding="utf-8"))
+        for gate in report.get("gates", ()):
+            if gate.get("id") != "parameter_budget":
+                continue
+            evidence = gate.get("evidence", {})
+            if "actual_parameters" not in evidence:
+                break
+            counts = {
+                str(key): int(value)
+                for key, value in evidence.get("components", {}).items()
+            }
+            counts["total"] = int(evidence["actual_parameters"])
+            return counts, "evaluation_actual"
+    return {key: int(value) for key, value in fallback.items()}, "blueprint_estimate"
+
+
+def _monolingual_control_comparison(
+    evaluation_root: Path,
+) -> dict[str, Any] | None:
+    manifest_path = evaluation_root / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    configured = manifest.get("monolingual_control_evaluation")
+    if not configured:
+        return None
+    comparison, _ = load_evaluation_artifacts(configured)
+    return comparison
+
+
+def _aggregate_gate_reports(
+    reports: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    if not reports:
+        raise ValueError("cannot aggregate an empty gate-report block")
+    ordered_replicates = sorted(reports)
+    first = reports[ordered_replicates[0]]
+    gate_ids = [gate["id"] for gate in first["gates"]]
+    gates = []
+    for gate_id in gate_ids:
+        replicate_gates = {
+            replicate: next(
+                gate
+                for gate in reports[replicate]["gates"]
+                if gate["id"] == gate_id
+            )
+            for replicate in ordered_replicates
+        }
+        statuses = {
+            replicate: gate["status"]
+            for replicate, gate in replicate_gates.items()
+        }
+        if "fail" in statuses.values():
+            status = "fail"
+        elif all(value == "pass" for value in statuses.values()):
+            status = "pass"
+        else:
+            status = "insufficient_evidence"
+        gates.append(
+            {
+                "id": gate_id,
+                "requirement": next(iter(replicate_gates.values()))[
+                    "requirement"
+                ],
+                "status": status,
+                "replicate_statuses": statuses,
+            }
+        )
+    statuses = [gate["status"] for gate in gates]
+    overall = (
+        "fail"
+        if "fail" in statuses
+        else "insufficient_evidence"
+        if "insufficient_evidence" in statuses
+        else "pass"
+    )
+    return {
+        "schema_version": 1,
+        "overall_status": overall,
+        "counts": {
+            status: statuses.count(status)
+            for status in ("pass", "fail", "insufficient_evidence")
+        },
+        "replicates": ordered_replicates,
+        "gates": gates,
+    }
+
+
 def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
     """Aggregate run metrics and paired replicate deltas against the baseline arm."""
 
     run_records: dict[str, dict[str, Any]] = {}
+    blueprints_by_run = {
+        variant.id: variant.plan.resolved_blueprint
+        for variant in plan.variants
+    }
     artifact_controls: dict[str, dict[str, str]] = {}
     for variant in plan.variants:
         run_root = Path(variant.plan.root)
@@ -699,6 +802,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 f"variant {variant.id!r} has no evaluation comparison: {comparison_path}"
             )
         comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+        evaluation_root = comparison_path.parent
         run_records[variant.id] = {
             "arm_id": variant.arm_id,
             "replicate_id": variant.replicate_id,
@@ -709,6 +813,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             "heldout_by_answer_type": _axis_scores(comparison, "heldout"),
             "train_by_answer_type": _axis_scores(comparison, "train"),
             "comparison": str(comparison_path),
+            "evaluation_root": str(evaluation_root),
         }
 
     records_by_arm: dict[str, dict[str, dict[str, Any]]] = {}
@@ -733,6 +838,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         raise ValueError(f"baseline arm {plan.baseline!r} has no completed runs")
 
     baseline_runs = records_by_arm[plan.baseline]
+    run_gate_reports: dict[str, dict[str, Any]] = {}
     for record in run_records.values():
         baseline = baseline_runs[record["replicate_id"]]
         baseline_metrics = baseline["metrics"]
@@ -746,6 +852,47 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             for name, value in record["heldout_by_answer_type"].items()
             if name in baseline_axes
         }
+        evaluation_root = Path(record["evaluation_root"])
+        current_comparison, current_rows = load_evaluation_artifacts(
+            evaluation_root
+        )
+        parameter_counts, parameter_count_source = (
+            _evaluation_parameter_counts(
+                evaluation_root,
+                record["parameters"],
+            )
+        )
+        if record["arm_id"] == plan.baseline:
+            baseline_comparison = None
+            baseline_rows = None
+        else:
+            baseline_root = Path(baseline["evaluation_root"])
+            baseline_comparison, baseline_rows = load_evaluation_artifacts(
+                baseline_root
+            )
+        gate_report = evaluate_deployment_gates(
+            blueprints_by_run[record["run_id"]],
+            parameter_counts,
+            current_comparison,
+            current_rows,
+            baseline_comparison=baseline_comparison,
+            baseline_rows=baseline_rows,
+            monolingual_control_comparison=_monolingual_control_comparison(
+                evaluation_root
+            ),
+        )
+        gate_report["parameter_count_source"] = parameter_count_source
+        gate_path = (
+            Path(plan.root) / "gates" / f"{record['run_id']}.json"
+        )
+        write_gate_report(gate_path, gate_report)
+        record["gate_report"] = str(gate_path)
+        record["gate_status"] = gate_report["overall_status"]
+        record["gate_statuses"] = {
+            gate["id"]: gate["status"]
+            for gate in gate_report["gates"]
+        }
+        run_gate_reports[record["run_id"]] = gate_report
 
     arm_records: dict[str, dict[str, Any]] = {}
     for arm_id, arm_runs in records_by_arm.items():
@@ -808,6 +955,14 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 for record in ordered
             )
         }
+        arm_gate_report = _aggregate_gate_reports(
+            {
+                record["replicate_id"]: run_gate_reports[record["run_id"]]
+                for record in ordered
+            }
+        )
+        arm_gate_path = Path(plan.root) / "gates" / f"{arm_id}.json"
+        write_gate_report(arm_gate_path, arm_gate_report)
         arm_records[arm_id] = {
             "hypothesis": ordered[0]["hypothesis"],
             "parameters": parameters[0],
@@ -852,6 +1007,12 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 if arm_id == plan.baseline
                 else _paired_conclusion(paired_statistics["heldout_score"])
             ),
+            "gate_report": str(arm_gate_path),
+            "gate_status": arm_gate_report["overall_status"],
+            "gate_statuses": {
+                gate["id"]: gate["status"]
+                for gate in arm_gate_report["gates"]
+            },
         }
     ranking = sorted(
         arm_records,
@@ -867,7 +1028,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
     else:
         matched_artifacts = artifact_controls
     result = {
-        "schema_version": 2,
+        "schema_version": 3,
         "sweep": plan.name,
         "sweep_fingerprint": plan.fingerprint,
         "baseline": plan.baseline,
@@ -902,8 +1063,8 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
         f"Paired replicates: **{result['replicate_count']}**",
         "",
         "| Rank | Variant | Parameters | Heldout mean ± SD | Paired delta [95% CI] | "
-        "Train-heldout gap | Conclusion |",
-        "| ---: | --- | ---: | ---: | ---: | ---: | --- |",
+        "Train-heldout gap | Conclusion | Gates |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for rank, variant_id in enumerate(result["ranking"], start=1):
         record = result["variants"][variant_id]
@@ -920,7 +1081,8 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
             f"{heldout['mean']:.6f} ± {heldout['standard_deviation']:.6f} | "
             f"{delta['mean']:+.6f} [{ci95}] | "
             f"{metrics['train_minus_heldout_score']:+.6f} | "
-            f"`{record['heldout_score_conclusion']}` |"
+            f"`{record['heldout_score_conclusion']}` | "
+            f"`{record['gate_status']}` |"
         )
     lines.extend(["", "## Matched controls by replicate", ""])
     for replicate_id, controls in sorted(

@@ -131,6 +131,13 @@ strictly above zero, strictly below zero, or crosses zero. With one replicate th
 deliberately unavailable and the conclusion is `insufficient_replicates`.
 The baseline arm is labeled `reference`.
 
+The aggregator also re-evaluates every candidate against the baseline from the same replicate.
+It joins split-level per-sample outputs, uses the actual parameter count recorded by native
+evaluation, and writes one gate report per run plus one replicate-consensus report per arm. An arm
+gate passes only when every replicate passes; any replicate failure fails the arm, while missing
+confidence, control pairs, or monolingual controls remains `insufficient_evidence`. The baseline
+arm remains a reference and therefore does not claim improvement over itself.
+
 Architecture changes also record the validated vision, language, connector, task-head, and total
 parameter estimates per variant. Equal steps are not automatically equal FLOPs when resolution,
 latent-token count, or depth changes; such architecture sweeps must add a measured-compute control
@@ -144,10 +151,11 @@ Each suite root contains:
 - `runs/<variant>--<replicate>/` with complete manifests, states, logs, and artifacts;
 - `sweep_plan.json` and `sweep_spec.json`;
 - `sweep_run_summary.json`, updated after each completed or failed run;
+- `gates/<variant>--<replicate>.json` and `gates/<variant>.json` with matched baseline decisions;
 - `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
-  deltas, confidence intervals, and ranking;
+  deltas, confidence intervals, gate status, and ranking;
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
-  generalization gap, and evidence conclusion.
+  generalization gap, evidence conclusion, and deployment-gate status.
 
 Every compiled evaluator receives the same W&B group and a unique arm-replicate run name. Native
 evaluation already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
