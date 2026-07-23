@@ -323,6 +323,19 @@ currently single-process and requires the full policy, frozen reference, and opt
 device. See
 [`docs/report/student_posttraining_runner.md`](docs/report/student_posttraining_runner.md).
 
+The complete native-student path is available as one validated, resumable experiment DAG:
+
+```bash
+python scripts/run_student_experiment.py --dry-run
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_tiny.yaml
+```
+
+The full configuration is `configs/sub1b_experiment.yaml`. Both configurations connect independent
+hard-document train/heldout generation, leakage validation, weighted UDD mixing, tokenizer and
+student creation, pretraining, SFT, RLVR, and split evaluation. See
+[`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

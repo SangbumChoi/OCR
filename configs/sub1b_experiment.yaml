@@ -1,0 +1,72 @@
+# End-to-end executable experiment for the native sub-1B document VLM.
+# Inspect the complete DAG without changing files:
+#   python scripts/run_student_experiment.py --dry-run
+
+schema_version: 1
+name: docvlm-800m-hard
+blueprint: configs/sub1b_architecture.yaml
+output_root: outputs/docvlm-800m-hard
+
+runtime:
+  device: auto
+
+synthetic:
+  enabled: true
+  config: configs/synth_data.yaml
+  cases: [hard_table, hard_chart, hard_investment, hard_science]
+  count: 100
+  difficulty_level: 5
+  train_seed: 7
+  heldout_seed: 7007
+  no_degrade: false
+  variant: degraded
+
+data:
+  # Add public components as additional NAME/path/weight entries. Weights must sum to 1.
+  # A component can set fold: train when its on-disk UDD dataset contains a fold column.
+  components:
+    - name: synthetic_documents
+      path: "@synthetic"
+      weight: 1.0
+
+tokenizer:
+  vocab_size: null
+  min_frequency: 2
+  no_progress: true
+
+initialization:
+  arm: I0_random
+  device: cpu
+  allow_full_memory: true
+  tiny: false
+  vision_source: null
+  language_source: null
+  token_map: null
+
+pretraining:
+  teacher_checkpoint: null
+  epochs: null
+  max_steps: null
+  batch_size: null
+  num_workers: null
+  eval_group_by: component
+  no_grounding: false
+
+posttraining:
+  sft:
+    max_steps: null
+    num_workers: null
+    target_mode: evidence_linked
+  rlvr:
+    max_steps: null
+
+evaluation:
+  max_new_tokens: 128
+  max_samples: null
+  precision: bfloat16
+  seed: 31
+  wandb_project: null
+  wandb_entity: null
+  wandb_run: null
+  wandb_group: null
+  wandb_tags: [native-student, hard-documents]

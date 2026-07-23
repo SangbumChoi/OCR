@@ -1,0 +1,61 @@
+# CPU smoke test for the complete native-student experiment DAG.
+# This uses the same stage contracts as the full experiment with one tiny model and one step.
+
+schema_version: 1
+name: docvlm-tiny-smoke
+blueprint: configs/sub1b_architecture.yaml
+output_root: outputs/docvlm-tiny-smoke
+
+runtime:
+  device: cpu
+
+synthetic:
+  enabled: true
+  config: configs/synth_data.yaml
+  cases: [hard_table]
+  count: 1
+  difficulty_level: 2
+  train_seed: 17
+  heldout_seed: 17017
+  no_degrade: true
+  variant: clean
+
+data:
+  components:
+    - name: synthetic_documents
+      path: "@synthetic"
+      weight: 1.0
+
+tokenizer:
+  vocab_size: 512
+  min_frequency: 1
+  no_progress: true
+
+initialization:
+  arm: I0_random
+  device: cpu
+  allow_full_memory: false
+  tiny: true
+
+pretraining:
+  max_steps: 1
+  batch_size: 1
+  num_workers: 0
+  eval_group_by: component
+  no_grounding: false
+
+posttraining:
+  sft:
+    max_steps: 1
+    num_workers: 0
+    target_mode: evidence_linked
+  rlvr:
+    max_steps: 1
+
+evaluation:
+  max_new_tokens: 8
+  max_samples: 1
+  precision: float32
+  seed: 31
+  wandb_project: null
+  wandb_tags: [native-student, smoke]

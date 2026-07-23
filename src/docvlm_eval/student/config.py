@@ -73,7 +73,7 @@ class StudentConfig:
         )
 
     @classmethod
-    def tiny(cls) -> "StudentConfig":
+    def tiny(cls, *, vocab_size: int = 256) -> "StudentConfig":
         return cls(
             vision=VisionConfig(
                 image_size=32,
@@ -85,7 +85,7 @@ class StudentConfig:
                 max_position_tokens=64,
             ),
             language=LanguageConfig(
-                vocab_size=256,
+                vocab_size=vocab_size,
                 width=128,
                 layers=2,
                 attention_heads=8,

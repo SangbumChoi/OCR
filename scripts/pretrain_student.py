@@ -118,7 +118,7 @@ def main() -> None:
     parser.add_argument("--device", default="auto")
     parser.add_argument(
         "--eval-group-by",
-        choices=["task", "source", "language"],
+        choices=["task", "source", "language", "component"],
         default="task",
     )
     parser.add_argument("--no-grounding", action="store_true")

@@ -136,6 +136,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, single-update GRPO, exact checkpoint resume, and
   train/heldout generation evaluation.
+- **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
+  one adjustable, validated, resumable DAG from independent hard-document synthesis through
+  weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
@@ -195,6 +198,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
+   [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·

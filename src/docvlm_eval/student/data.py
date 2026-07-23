@@ -62,6 +62,7 @@ class _ExampleRef:
     task: str
     source: str
     language: str
+    component: str
     sample_id: str
 
 
@@ -107,6 +108,7 @@ def _metadata_view(dataset: Any) -> Any:
         "full_text",
         "table_html",
         "language",
+        "mixture_component",
     }
     columns = [name for name in dataset.column_names if name in wanted]
     return dataset.select_columns(columns)
@@ -174,6 +176,7 @@ class UDDStudentDataset:
             source = str(row.get("source") or "unknown")
             task = str(row.get("task") or "unknown")
             language = str(row.get("language") or "und")
+            component = str(row.get("mixture_component") or source)
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
             if len(instructions) != len(answers):
@@ -191,6 +194,7 @@ class UDDStudentDataset:
                             task,
                             source,
                             language,
+                            component,
                             f"{sample_id}:qa{qa_index}",
                         )
                     )
@@ -209,6 +213,7 @@ class UDDStudentDataset:
                             "localization",
                             source,
                             language,
+                            component,
                             f"{sample_id}:box{element_index}",
                         )
                     )
@@ -233,6 +238,10 @@ class UDDStudentDataset:
     def languages(self) -> list[str]:
         return [ref.language for ref in self._refs]
 
+    @property
+    def components(self) -> list[str]:
+        return [ref.component for ref in self._refs]
+
     def groups(self, key: str) -> list[str]:
         if key == "task":
             return self.tasks
@@ -240,7 +249,9 @@ class UDDStudentDataset:
             return self.sources
         if key == "language":
             return self.languages
-        raise ValueError("group key must be one of: task, source, language")
+        if key == "component":
+            return self.components
+        raise ValueError("group key must be one of: task, source, language, component")
 
     def __getitem__(self, index: int) -> StudentExample:
         ref = self._refs[index]

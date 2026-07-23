@@ -24,6 +24,7 @@ from .evaluate import (
     wandb_metrics_for_split,
     write_split_comparison,
 )
+from .mixture import MixtureComponent, build_weighted_mixture
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
 from .posttrain import (
@@ -56,6 +57,7 @@ __all__ = [
     "DistillationLoss",
     "DeterministicDistributedBatchSampler",
     "LanguageConfig",
+    "MixtureComponent",
     "NativeStudentTeacher",
     "PretrainConfig",
     "RLVRConfig",
@@ -79,6 +81,7 @@ __all__ = [
     "VisionConfig",
     "student_model_inputs",
     "build_structured_target",
+    "build_weighted_mixture",
     "compare_split_summaries",
     "completion_log_probs",
     "group_relative_policy_loss",

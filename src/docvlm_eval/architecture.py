@@ -152,9 +152,10 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.input_pipeline.rotation_probability must be between 0 and 1"
         )
-    if input_pipeline.get("balance_by") not in {"task", "source", "language"}:
+    if input_pipeline.get("balance_by") not in {"task", "source", "language", "component"}:
         errors.append(
-            "training.pretraining.input_pipeline.balance_by must be task, source, or language"
+            "training.pretraining.input_pipeline.balance_by must be task, source, language, "
+            "or component"
         )
     distillation = blueprint["training"]["pretraining"].get("distillation", {})
     if float(distillation.get("temperature", 0.0)) <= 0:

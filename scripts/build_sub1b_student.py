@@ -22,6 +22,12 @@ def main() -> None:
         default=ROOT / "configs" / "sub1b_architecture.yaml",
     )
     parser.add_argument("--tiny", action="store_true", help="Build a small contract-test model.")
+    parser.add_argument(
+        "--tiny-vocab-size",
+        type=int,
+        default=256,
+        help="Vocabulary size for --tiny; use at least 260 with a trained byte tokenizer.",
+    )
     parser.add_argument("--device", default="meta", choices=["meta", "cpu", "cuda"])
     parser.add_argument("--allow-full-memory", action="store_true")
     parser.add_argument("--init-arm", default="I0_random")
@@ -47,7 +53,11 @@ def main() -> None:
     estimates, errors = validate_blueprint(blueprint)
     if errors:
         raise SystemExit("\n".join(f"ERROR: {error}" for error in errors))
-    config = StudentConfig.tiny() if args.tiny else StudentConfig.from_blueprint(blueprint)
+    config = (
+        StudentConfig.tiny(vocab_size=args.tiny_vocab_size)
+        if args.tiny
+        else StudentConfig.from_blueprint(blueprint)
+    )
     if not args.tiny and args.device != "meta" and not args.allow_full_memory:
         raise SystemExit("full construction allocates several GB; pass --allow-full-memory")
     with torch.device(args.device):

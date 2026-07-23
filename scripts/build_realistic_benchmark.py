@@ -29,17 +29,25 @@ CASES = ROOT / "data" / "probes" / "realistic_cases"
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--root", type=Path, default=CASES,
+                    help="synthetic case root (default data/probes/realistic_cases)")
     ap.add_argument("--variant", choices=["clean", "degraded"], default="clean",
                     help="which rendered image to point Samples at")
     ap.add_argument("--no-probes", action="store_true", help="exclude abstain/consistency probes")
     ap.add_argument("--out", default=None, help="output JSONL (default realistic_cases[ _degraded].jsonl)")
     args = ap.parse_args()
 
-    samples = load_realistic_samples(CASES, variant=args.variant, include_probes=not args.no_probes)
+    samples = load_realistic_samples(
+        args.root,
+        variant=args.variant,
+        include_probes=not args.no_probes,
+    )
     if not samples:
-        raise SystemExit(f"no cases found under {CASES} — run scripts/make_realistic_cases.py first")
+        raise SystemExit(
+            f"no cases found under {args.root} — run scripts/make_realistic_cases.py first"
+        )
 
-    out = Path(args.out) if args.out else CASES / (
+    out = Path(args.out) if args.out else args.root / (
         "realistic_cases.jsonl" if args.variant == "clean" else "realistic_cases_degraded.jsonl")
     save_jsonl(samples, out)
 
