@@ -164,13 +164,29 @@ def evaluate_structured_student(
             prompt_batch = posttraining_prompt_batch(raw_batch, device)
             prompt_length = int(prompt_batch["input_ids"].shape[1])
             with torch.no_grad(), _autocast_context(device, config.precision):
-                generated = model.generate(
-                    prompt_batch["input_ids"],
-                    pixel_values=prompt_batch.get("pixel_values"),
-                    pixel_mask=prompt_batch.get("pixel_mask"),
-                    max_new_tokens=config.max_new_tokens,
-                    eos_token_id=int(tokenizer.eos_token_id),
+                generate_with_confidence = getattr(
+                    model,
+                    "generate_with_confidence",
+                    None,
                 )
+                if generate_with_confidence is None:
+                    generated = model.generate(
+                        prompt_batch["input_ids"],
+                        pixel_values=prompt_batch.get("pixel_values"),
+                        pixel_mask=prompt_batch.get("pixel_mask"),
+                        max_new_tokens=config.max_new_tokens,
+                        eos_token_id=int(tokenizer.eos_token_id),
+                    )
+                    confidence = None
+                else:
+                    generated, confidence_tensor = generate_with_confidence(
+                        prompt_batch["input_ids"],
+                        pixel_values=prompt_batch.get("pixel_values"),
+                        pixel_mask=prompt_batch.get("pixel_mask"),
+                        max_new_tokens=config.max_new_tokens,
+                        eos_token_id=int(tokenizer.eos_token_id),
+                    )
+                    confidence = float(confidence_tensor[0].item())
             if generated.ndim != 2 or generated.shape[0] != 1:
                 raise ValueError("student.generate must return one rank-two sequence")
             if generated.shape[1] < prompt_length:
@@ -208,10 +224,14 @@ def evaluate_structured_student(
                     "language": dataset.languages[index],
                     "answer_type": sample.answer_type,
                     "metric": sample.metric,
+                    "meta": sample.meta,
                     "question": sample.question,
                     "answers": sample.answers,
                     "image_path": sample.image_path,
                     "prediction": raw_prediction,
+                    "confidence": (
+                        _round(confidence) if confidence is not None else None
+                    ),
                     "answer": answer,
                     "evidence": evidence,
                     "rationale": rationale,

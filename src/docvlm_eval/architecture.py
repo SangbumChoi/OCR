@@ -435,4 +435,91 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         training["posttraining"]["rlvr"]["reward_mix"],
         errors,
     )
+    gates = blueprint.get("evaluation_gates")
+    expected_gate_ids = {
+        "parameter_budget",
+        "generalization",
+        "grounding",
+        "reasoning",
+        "multilingual",
+        "reliability",
+    }
+    if not isinstance(gates, list):
+        errors.append("evaluation_gates must be a list")
+    else:
+        gate_ids = [
+            str(gate.get("id", "")) if isinstance(gate, dict) else ""
+            for gate in gates
+        ]
+        if set(gate_ids) != expected_gate_ids or len(gate_ids) != len(
+            expected_gate_ids
+        ):
+            errors.append(
+                "evaluation_gates must declare each supported gate exactly once"
+            )
+        for index, gate in enumerate(gates):
+            prefix = f"evaluation_gates[{index}]"
+            if not isinstance(gate, dict):
+                errors.append(f"{prefix} must be a mapping")
+                continue
+            if not str(gate.get("requirement", "")).strip():
+                errors.append(f"{prefix}.requirement must be non-empty")
+        by_id = {
+            str(gate.get("id")): gate
+            for gate in gates
+            if isinstance(gate, dict)
+        }
+        if int(by_id.get("parameter_budget", {}).get("max_parameters", 0)) <= 0:
+            errors.append(
+                "evaluation_gates.parameter_budget.max_parameters must be positive"
+            )
+        nonnegative_fields = {
+            "generalization": (
+                "min_heldout_score_delta",
+                "max_gap_increase",
+            ),
+            "grounding": (
+                "min_box_iou_delta",
+                "max_extraction_similarity_drop",
+            ),
+            "reasoning": ("min_score_delta",),
+            "multilingual": ("max_language_drop",),
+            "reliability": (
+                "min_selective_risk_reduction",
+                "max_hallucination_increase",
+            ),
+        }
+        for gate_id, fields in nonnegative_fields.items():
+            gate = by_id.get(gate_id, {})
+            for field in fields:
+                if float(gate.get(field, -1)) < 0:
+                    errors.append(
+                        f"evaluation_gates.{gate_id}.{field} "
+                        "must be non-negative"
+                    )
+        grounding_gate = by_id.get("grounding", {})
+        patterns = grounding_gate.get("extraction_answer_type_patterns")
+        if not isinstance(patterns, list) or not all(
+            str(pattern).strip() for pattern in patterns
+        ):
+            errors.append(
+                "evaluation_gates.grounding.extraction_answer_type_patterns "
+                "must be a non-empty string list"
+            )
+        if int(
+            by_id.get("reasoning", {}).get("min_counterfactual_pairs", 0)
+        ) <= 0:
+            errors.append(
+                "evaluation_gates.reasoning.min_counterfactual_pairs "
+                "must be positive"
+            )
+        if int(by_id.get("multilingual", {}).get("min_languages", 0)) <= 0:
+            errors.append(
+                "evaluation_gates.multilingual.min_languages must be positive"
+            )
+        coverage = float(by_id.get("reliability", {}).get("coverage", 0))
+        if not 0 < coverage <= 1:
+            errors.append(
+                "evaluation_gates.reliability.coverage must be within (0, 1]"
+            )
     return estimates, errors

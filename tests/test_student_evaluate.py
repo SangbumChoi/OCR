@@ -141,6 +141,11 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         "score": 1.0,
     }
     assert result.per_sample[1]["structure_error"]
+    assert result.per_sample[0]["meta"] == {
+        "source": "synthetic",
+        "language": "en",
+    }
+    assert result.per_sample[0]["confidence"] is None
     assert (tmp_path / "summary.json").exists()
     rows = [
         json.loads(line)

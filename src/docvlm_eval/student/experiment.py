@@ -48,6 +48,29 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
     }
 
 
+def _evaluation_fingerprint(path: Path) -> dict[str, Any]:
+    if not path.is_dir():
+        raise ValueError(f"evaluation root does not exist: {path}")
+    files = [
+        candidate
+        for pattern in ("comparison.json", "*/summary.json", "*/per_sample.jsonl")
+        for candidate in path.glob(pattern)
+        if candidate.is_file()
+    ]
+    if not any(candidate.name == "comparison.json" for candidate in files):
+        raise ValueError(f"evaluation root has no comparison.json: {path}")
+    records = []
+    for candidate in sorted(set(files)):
+        record = _file_fingerprint(candidate)
+        record["path"] = str(candidate.relative_to(path))
+        records.append(record)
+    return {
+        "path": str(path),
+        "files": len(records),
+        "sha256": _fingerprint(records),
+    }
+
+
 def _source_fingerprint(
     repo_root: Path,
     stages: Iterable["ExperimentStage"],
@@ -361,6 +384,12 @@ def build_experiment_plan(
         input_fingerprints["rlvr_replay_samples"] = _file_fingerprint(
             _resolve_path(repo_root, configured_replay)
         )
+    evaluation_spec = raw.get("evaluation") or {}
+    for key in ("baseline_evaluation", "monolingual_control_evaluation"):
+        if evaluation_spec.get(key):
+            input_fingerprints[key] = _evaluation_fingerprint(
+                _resolve_path(repo_root, evaluation_spec[key])
+            )
     synthetic_enabled = bool(synthetic.get("enabled", True))
     artifacts = output_root / "artifacts"
     train_cases = artifacts / "synthetic" / "train"
@@ -938,6 +967,17 @@ def build_experiment_plan(
     ]
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
     for key, flag in (
+        ("baseline_evaluation", "--baseline-evaluation"),
+        (
+            "monolingual_control_evaluation",
+            "--monolingual-control-evaluation",
+        ),
+    ):
+        if evaluation.get(key):
+            eval_command.extend(
+                [flag, str(_resolve_path(repo_root, evaluation[key]))]
+            )
+    for key, flag in (
         ("wandb_project", "--wandb-project"),
         ("wandb_entity", "--wandb-entity"),
         ("wandb_run", "--wandb-run"),
@@ -955,6 +995,7 @@ def build_experiment_plan(
             (
                 Artifact(str(eval_dir / "manifest.json")),
                 Artifact(str(eval_dir / "comparison.json")),
+                Artifact(str(eval_dir / "gates.json")),
             ),
         )
     )

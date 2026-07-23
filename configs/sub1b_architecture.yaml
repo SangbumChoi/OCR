@@ -253,13 +253,26 @@ training:
 evaluation_gates:
   - id: parameter_budget
     requirement: "deployment parameters < 1,000,000,000"
+    max_parameters: 1000000000
   - id: generalization
     requirement: "held-out score rises without a widening train-minus-heldout gap"
+    min_heldout_score_delta: 0.001
+    max_gap_increase: 0.0
   - id: grounding
     requirement: "spot IoU improves without reducing extraction NED"
+    min_box_iou_delta: 0.001
+    max_extraction_similarity_drop: 0.0
+    extraction_answer_type_patterns: [ocr, extract, kie, transcription]
   - id: reasoning
     requirement: "relational and numeric gains persist under counterfactual value edits"
+    min_score_delta: 0.001
+    min_counterfactual_pairs: 2
   - id: multilingual
     requirement: "no language loses more than two points versus its monolingual control"
+    max_language_drop: 0.02
+    min_languages: 2
   - id: reliability
     requirement: "selective risk improves at fixed coverage and hallucination does not increase"
+    coverage: 0.8
+    min_selective_risk_reduction: 0.001
+    max_hallucination_increase: 0.0

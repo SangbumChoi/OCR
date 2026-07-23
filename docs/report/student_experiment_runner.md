@@ -21,6 +21,13 @@ RLVR uses periodic supervised replay from its active samples by default. Set
 `posttraining.rlvr.replay_samples` to an external benchmark JSONL to anchor broader multimodal
 capabilities; the compiler content-addresses that file and passes it to the RLVR stage.
 
+The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
+`insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
+actual loaded model count. Generalization, grounding, counterfactual reasoning, and reliability
+require a matched reference-checkpoint evaluation, while multilingual retention requires a
+per-language monolingual-control evaluation. Configured evaluation roots are content-addressed so
+changing a baseline invalidates the evaluation stage.
+
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
 patches, rejects changes to declared fixed controls, reuses this runner for every variant, and
@@ -48,6 +55,12 @@ The experiment YAML controls synthetic families, difficulty, independent split s
 data components and weights, tokenizer size, initialization arm and transfer sources, training
 limits, evaluation settings, and W&B metadata. The runner writes a resolved architecture blueprint
 whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+
+Set `evaluation.baseline_evaluation` to an evaluation root produced by
+`scripts/eval_student.py`, and set `evaluation.monolingual_control_evaluation` to the corresponding
+control root. Both roots must contain `comparison.json` and split-level `per_sample.jsonl` files.
+The native evaluator records each sample's source metadata and geometric-mean generated-token
+confidence, enabling matched counterfactual and fixed-coverage reliability checks.
 
 Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
 configuration acquires the public UDD train fold at an immutable commit, validates its schema,

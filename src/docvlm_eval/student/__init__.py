@@ -25,6 +25,11 @@ from .evaluate import (
     wandb_metrics_for_split,
     write_split_comparison,
 )
+from .gates import (
+    evaluate_deployment_gates,
+    load_evaluation_artifacts,
+    write_gate_report,
+)
 from .mixture import MixtureComponent, build_weighted_mixture
 from .acquisition import HubComponentSpec, acquire_hub_component, materialize_component
 from .teacher_targets import (
@@ -124,7 +129,10 @@ __all__ = [
     "train_sft",
     "train_student",
     "evaluate_structured_student",
+    "evaluate_deployment_gates",
+    "load_evaluation_artifacts",
     "wandb_metrics_for_split",
     "write_split_comparison",
+    "write_gate_report",
     "aggregate_sweep_results",
 ]

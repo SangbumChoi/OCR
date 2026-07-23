@@ -14,11 +14,18 @@ from docvlm_eval.benchmarks import load_jsonl
 from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 from docvlm_eval.student.evaluate import (
     StructuredEvalConfig,
+    compare_split_summaries,
     evaluate_structured_student,
     wandb_metrics_for_split,
     write_split_comparison,
 )
+from docvlm_eval.student.gates import (
+    evaluate_deployment_gates,
+    load_evaluation_artifacts,
+    write_gate_report,
+)
 from docvlm_eval.student.model import DocumentVLMStudent
+from docvlm_eval.student.model import count_unique_parameters
 from docvlm_eval.student.posttrain import StructuredPostTrainingDataset
 from docvlm_eval.student.rewards import RewardConfig
 from docvlm_eval.student.tokenizer import DocumentTokenizer
@@ -100,6 +107,7 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
         "eval_by_source/*",
         "eval_by_language/*",
         "eval_reward/*",
+        "gate/*",
     ):
         wandb.define_metric(
             namespace,
@@ -144,6 +152,16 @@ def main() -> None:
     parser.add_argument("--wandb-run")
     parser.add_argument("--wandb-group")
     parser.add_argument("--wandb-tags", nargs="*")
+    parser.add_argument(
+        "--baseline-evaluation",
+        type=Path,
+        help="Reference-checkpoint evaluation root for improvement gates.",
+    )
+    parser.add_argument(
+        "--monolingual-control-evaluation",
+        type=Path,
+        help="Evaluation root containing per-language monolingual controls.",
+    )
     args = parser.parse_args()
 
     split_paths = _parse_splits(args.split)
@@ -180,6 +198,7 @@ def main() -> None:
     )
     run = _start_wandb(args, metadata, split_paths)
     summaries: dict[str, dict] = {}
+    rows_by_split: dict[str, list[dict]] = {}
     wandb_payload: dict[str, float] = {
         "evaluation/checkpoint_step": float(_checkpoint_step(metadata))
     }
@@ -202,6 +221,7 @@ def main() -> None:
                 split_name=split_name,
             )
             summaries[split_name] = result.summary
+            rows_by_split[split_name] = result.per_sample
             wandb_payload.update(
                 wandb_metrics_for_split(result.summary, split_name)
             )
@@ -212,12 +232,45 @@ def main() -> None:
                 flush=True,
             )
         comparison_path = write_split_comparison(args.output, summaries)
+        comparison = compare_split_summaries(summaries)
+        baseline_comparison = None
+        baseline_rows = None
+        if args.baseline_evaluation is not None:
+            baseline_comparison, baseline_rows = load_evaluation_artifacts(
+                args.baseline_evaluation
+            )
+        monolingual_comparison = None
+        if args.monolingual_control_evaluation is not None:
+            monolingual_comparison, _ = load_evaluation_artifacts(
+                args.monolingual_control_evaluation
+            )
+        gate_report = evaluate_deployment_gates(
+            blueprint,
+            count_unique_parameters(model),
+            comparison,
+            rows_by_split,
+            baseline_comparison=baseline_comparison,
+            baseline_rows=baseline_rows,
+            monolingual_control_comparison=monolingual_comparison,
+        )
+        gate_path = write_gate_report(args.output / "gates.json", gate_report)
         manifest = {
             "checkpoint": str(args.checkpoint),
             "checkpoint_metadata": metadata,
             "tokenizer_fingerprint": tokenizer.fingerprint,
             "evaluation": asdict(base_config),
             "comparison": str(comparison_path),
+            "gates": str(gate_path),
+            "baseline_evaluation": (
+                str(args.baseline_evaluation)
+                if args.baseline_evaluation is not None
+                else None
+            ),
+            "monolingual_control_evaluation": (
+                str(args.monolingual_control_evaluation)
+                if args.monolingual_control_evaluation is not None
+                else None
+            ),
         }
         (args.output / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True)
@@ -225,7 +278,20 @@ def main() -> None:
             encoding="utf-8",
         )
         if run is not None:
+            for gate in gate_report["gates"]:
+                if gate["status"] != "insufficient_evidence":
+                    wandb_payload[f"gate/{gate['id']}"] = float(
+                        gate["status"] == "pass"
+                    )
             run.log(wandb_payload)
+        print(
+            "[student-eval:gates] "
+            f"overall={gate_report['overall_status']} "
+            f"pass={gate_report['counts']['pass']} "
+            f"fail={gate_report['counts']['fail']} "
+            f"insufficient={gate_report['counts']['insufficient_evidence']}",
+            flush=True,
+        )
     finally:
         if run is not None:
             run.finish()

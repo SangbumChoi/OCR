@@ -768,14 +768,14 @@ class DocumentVLMStudent(nn.Module):
         )
 
     @torch.no_grad()
-    def generate(
+    def _generate_with_confidence(
         self,
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         generated = input_ids
         if pixel_values is None and pixel_mask is not None:
             raise ValueError("pixel_mask requires pixel_values")
@@ -784,16 +784,80 @@ class DocumentVLMStudent(nn.Module):
             if pixel_values is not None
             else None
         )
+        log_probability_sum = torch.zeros(
+            input_ids.shape[0],
+            dtype=torch.float32,
+            device=input_ids.device,
+        )
+        token_count = torch.zeros_like(log_probability_sum)
+        active = torch.ones(
+            input_ids.shape[0],
+            dtype=torch.bool,
+            device=input_ids.device,
+        )
         for _ in range(max_new_tokens):
             output = self(
                 generated,
                 visual_prefix=visual_prefix,
             )
-            next_token = output.logits[:, -1].argmax(dim=-1, keepdim=True)
+            next_logits = output.logits[:, -1].float()
+            next_probability, next_token_flat = torch.softmax(
+                next_logits,
+                dim=-1,
+            ).max(dim=-1)
+            next_token = next_token_flat.unsqueeze(-1)
+            log_probability_sum += torch.where(
+                active,
+                next_probability.clamp_min(1e-12).log(),
+                torch.zeros_like(next_probability),
+            )
+            token_count += active.float()
             generated = torch.cat((generated, next_token), dim=1)
-            if eos_token_id is not None and torch.all(next_token == eos_token_id):
-                break
+            if eos_token_id is not None:
+                active &= next_token_flat != eos_token_id
+                if not torch.any(active):
+                    break
+        confidence = torch.exp(
+            log_probability_sum / token_count.clamp_min(1.0)
+        )
+        return generated, confidence
+
+    @torch.no_grad()
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        pixel_values: torch.Tensor | None = None,
+        pixel_mask: torch.Tensor | None = None,
+        max_new_tokens: int = 64,
+        eos_token_id: int | None = None,
+    ) -> torch.Tensor:
+        generated, _ = self._generate_with_confidence(
+            input_ids,
+            pixel_values=pixel_values,
+            pixel_mask=pixel_mask,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=eos_token_id,
+        )
         return generated
+
+    @torch.no_grad()
+    def generate_with_confidence(
+        self,
+        input_ids: torch.Tensor,
+        pixel_values: torch.Tensor | None = None,
+        pixel_mask: torch.Tensor | None = None,
+        max_new_tokens: int = 64,
+        eos_token_id: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return greedy sequences and geometric-mean generated-token probabilities."""
+
+        return self._generate_with_confidence(
+            input_ids,
+            pixel_values=pixel_values,
+            pixel_mask=pixel_mask,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=eos_token_id,
+        )
 
     def save_pretrained(
         self,

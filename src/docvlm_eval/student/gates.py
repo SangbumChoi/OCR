@@ -1,0 +1,551 @@
+"""Executable deployment gates for native-student evaluation artifacts."""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+
+_STATUSES = {"pass", "fail", "insufficient_evidence"}
+_ABSTENTIONS = {"", "none", "n/a", "na", "not available", "unknown", "absent"}
+
+
+def _round(value: float) -> float:
+    return round(float(value), 6)
+
+
+def _mean(values: Sequence[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _result(
+    gate: Mapping[str, Any],
+    status: str,
+    reason: str,
+    evidence: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if status not in _STATUSES:
+        raise ValueError(f"invalid gate status {status!r}")
+    return {
+        "id": str(gate["id"]),
+        "requirement": str(gate["requirement"]),
+        "status": status,
+        "reason": reason,
+        "evidence": dict(evidence or {}),
+    }
+
+
+def _heldout_rows(
+    rows: Mapping[str, Sequence[Mapping[str, Any]]] | None,
+) -> list[Mapping[str, Any]]:
+    return list((rows or {}).get("heldout", ()))
+
+
+def _matched_rows(
+    current_rows: Sequence[Mapping[str, Any]],
+    baseline_rows: Sequence[Mapping[str, Any]],
+) -> tuple[list[tuple[Mapping[str, Any], Mapping[str, Any]]], str | None]:
+    current = {str(row["sample_id"]): row for row in current_rows}
+    baseline = {str(row["sample_id"]): row for row in baseline_rows}
+    if not current or not baseline:
+        return [], "held-out per-sample artifacts are missing"
+    if set(current) != set(baseline):
+        return [], (
+            "current and baseline held-out sample IDs differ "
+            f"({len(current)} current, {len(baseline)} baseline)"
+        )
+    return [(current[key], baseline[key]) for key in sorted(current)], None
+
+
+def _component(row: Mapping[str, Any], name: str) -> float | None:
+    if name not in row.get("applicable_rewards", ()):
+        return None
+    value = row.get("reward_components", {}).get(name)
+    return float(value) if value is not None else None
+
+
+def _parameter_budget(
+    gate: Mapping[str, Any],
+    parameter_counts: Mapping[str, int],
+) -> dict[str, Any]:
+    maximum = int(gate["max_parameters"])
+    total = int(parameter_counts.get("total", -1))
+    if total < 0:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "actual model parameter count is unavailable",
+        )
+    status = "pass" if total < maximum else "fail"
+    return _result(
+        gate,
+        status,
+        f"actual deployment parameter count is {'below' if status == 'pass' else 'not below'} the limit",
+        {
+            "actual_parameters": total,
+            "max_parameters_exclusive": maximum,
+            "components": {
+                key: int(value)
+                for key, value in parameter_counts.items()
+                if key != "total"
+            },
+        },
+    )
+
+
+def _generalization(
+    gate: Mapping[str, Any],
+    current: Mapping[str, Any],
+    baseline: Mapping[str, Any] | None,
+    pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    pair_error: str | None,
+) -> dict[str, Any]:
+    if baseline is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a reference-checkpoint evaluation is required",
+        )
+    if pair_error:
+        return _result(gate, "insufficient_evidence", pair_error)
+    try:
+        current_heldout = float(current["splits"]["heldout"]["score"])
+        baseline_heldout = float(baseline["splits"]["heldout"]["score"])
+        current_gap = float(
+            current["train_minus_heldout"]["headline"]["score"]
+        )
+        baseline_gap = float(
+            baseline["train_minus_heldout"]["headline"]["score"]
+        )
+    except (KeyError, TypeError, ValueError):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "train, held-out, or generalization-gap summaries are missing",
+        )
+    heldout_delta = current_heldout - baseline_heldout
+    gap_increase = current_gap - baseline_gap
+    minimum_delta = float(gate["min_heldout_score_delta"])
+    maximum_gap_increase = float(gate["max_gap_increase"])
+    passed = heldout_delta >= minimum_delta and gap_increase <= maximum_gap_increase
+    return _result(
+        gate,
+        "pass" if passed else "fail",
+        "held-out improvement and gap-growth constraints were evaluated on matched samples",
+        {
+            "matched_samples": len(pairs),
+            "current_heldout_score": _round(current_heldout),
+            "baseline_heldout_score": _round(baseline_heldout),
+            "heldout_score_delta": _round(heldout_delta),
+            "min_heldout_score_delta": minimum_delta,
+            "current_train_minus_heldout_gap": _round(current_gap),
+            "baseline_train_minus_heldout_gap": _round(baseline_gap),
+            "gap_increase": _round(gap_increase),
+            "max_gap_increase": maximum_gap_increase,
+        },
+    )
+
+
+def _grounding(
+    gate: Mapping[str, Any],
+    pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    pair_error: str | None,
+    baseline_available: bool,
+) -> dict[str, Any]:
+    if not baseline_available:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a reference-checkpoint evaluation is required",
+        )
+    if pair_error:
+        return _result(gate, "insufficient_evidence", pair_error)
+    box_pairs = [
+        (current_box, baseline_box)
+        for current, baseline in pairs
+        if (current_box := _component(current, "box_iou")) is not None
+        and (baseline_box := _component(baseline, "box_iou")) is not None
+    ]
+    extraction_patterns = tuple(
+        str(value).lower()
+        for value in gate.get(
+            "extraction_answer_type_patterns",
+            ("ocr", "extract", "kie", "transcription"),
+        )
+    )
+    text_pairs = [
+        (current_text, baseline_text)
+        for current, baseline in pairs
+        if any(
+            pattern in str(current.get("answer_type", "")).lower()
+            for pattern in extraction_patterns
+        )
+        and (current_text := _component(
+            current, "normalized_text_similarity"
+        )) is not None
+        and (baseline_text := _component(
+            baseline, "normalized_text_similarity"
+        )) is not None
+    ]
+    if not box_pairs or not text_pairs:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "matched box-IoU and extraction-text slices are both required",
+            {
+                "box_samples": len(box_pairs),
+                "extraction_samples": len(text_pairs),
+            },
+        )
+    box_delta = _mean([pair[0] for pair in box_pairs]) - _mean(
+        [pair[1] for pair in box_pairs]
+    )
+    text_drop = _mean([pair[1] for pair in text_pairs]) - _mean(
+        [pair[0] for pair in text_pairs]
+    )
+    minimum_box_delta = float(gate["min_box_iou_delta"])
+    maximum_text_drop = float(gate["max_extraction_similarity_drop"])
+    passed = box_delta >= minimum_box_delta and text_drop <= maximum_text_drop
+    return _result(
+        gate,
+        "pass" if passed else "fail",
+        "grounding gain and extraction preservation were evaluated on matched slices",
+        {
+            "box_samples": len(box_pairs),
+            "box_iou_delta": _round(box_delta),
+            "min_box_iou_delta": minimum_box_delta,
+            "extraction_samples": len(text_pairs),
+            "extraction_similarity_drop": _round(text_drop),
+            "max_extraction_similarity_drop": maximum_text_drop,
+        },
+    )
+
+
+def _reasoning(
+    gate: Mapping[str, Any],
+    pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    pair_error: str | None,
+    baseline_available: bool,
+) -> dict[str, Any]:
+    if not baseline_available:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a reference-checkpoint evaluation is required",
+        )
+    if pair_error:
+        return _result(gate, "insufficient_evidence", pair_error)
+    groups: dict[str, dict[bool, list[float]]] = {}
+    for current, baseline in pairs:
+        meta = current.get("meta", {})
+        hypothesis = meta.get("counterfactual_group") or meta.get("hypothesis")
+        if not hypothesis or "control" not in meta:
+            continue
+        control = bool(meta["control"])
+        groups.setdefault(str(hypothesis), {False: [], True: []})[control].append(
+            float(current["score"]) - float(baseline["score"])
+        )
+    complete = {
+        name: values
+        for name, values in groups.items()
+        if values[False] and values[True]
+    }
+    minimum_pairs = int(gate["min_counterfactual_pairs"])
+    if len(complete) < minimum_pairs:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "too few matched reasoning groups contain both factual and counterfactual variants",
+            {
+                "complete_counterfactual_groups": len(complete),
+                "min_counterfactual_pairs": minimum_pairs,
+            },
+        )
+    factual_delta = _mean(
+        [score for values in complete.values() for score in values[False]]
+    )
+    counterfactual_delta = _mean(
+        [score for values in complete.values() for score in values[True]]
+    )
+    minimum_delta = float(gate["min_score_delta"])
+    passed = factual_delta >= minimum_delta and counterfactual_delta >= minimum_delta
+    return _result(
+        gate,
+        "pass" if passed else "fail",
+        "reasoning deltas were measured separately on factual and counterfactual variants",
+        {
+            "complete_counterfactual_groups": len(complete),
+            "factual_score_delta": _round(factual_delta),
+            "counterfactual_score_delta": _round(counterfactual_delta),
+            "min_score_delta": minimum_delta,
+        },
+    )
+
+
+def _multilingual(
+    gate: Mapping[str, Any],
+    current: Mapping[str, Any],
+    control: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if control is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a monolingual-control evaluation is required",
+        )
+    try:
+        current_languages = current["splits"]["heldout"]["by_language"]
+        control_languages = control["splits"]["heldout"]["by_language"]
+    except (KeyError, TypeError):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "held-out language summaries are missing",
+        )
+    languages = sorted(set(current_languages) & set(control_languages))
+    missing = sorted(set(current_languages) - set(control_languages))
+    minimum_languages = int(gate["min_languages"])
+    if missing or len(languages) < minimum_languages:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "monolingual controls do not cover every required language",
+            {
+                "matched_languages": languages,
+                "missing_control_languages": missing,
+                "min_languages": minimum_languages,
+            },
+        )
+    drops = {
+        language: float(control_languages[language]["score"])
+        - float(current_languages[language]["score"])
+        for language in languages
+    }
+    maximum_drop = float(gate["max_language_drop"])
+    passed = all(drop <= maximum_drop for drop in drops.values())
+    return _result(
+        gate,
+        "pass" if passed else "fail",
+        "each multilingual score was compared with its monolingual control",
+        {
+            "language_drops": {
+                language: _round(drop) for language, drop in drops.items()
+            },
+            "max_language_drop": maximum_drop,
+        },
+    )
+
+
+def _selective_risk(
+    rows: Sequence[Mapping[str, Any]],
+    coverage: float,
+) -> float | None:
+    if not rows or any(row.get("confidence") is None for row in rows):
+        return None
+    selected = sorted(
+        rows,
+        key=lambda row: float(row["confidence"]),
+        reverse=True,
+    )[: max(1, math.ceil(len(rows) * coverage))]
+    return 1.0 - _mean([float(row["score"]) for row in selected])
+
+
+def _hallucination_rate(rows: Sequence[Mapping[str, Any]]) -> float | None:
+    abstention_rows = [
+        row
+        for row in rows
+        if bool(row.get("meta", {}).get("abstain_expected"))
+        or "absence" in str(row.get("answer_type", "")).lower()
+    ]
+    if not abstention_rows:
+        return None
+    hallucinations = []
+    for row in abstention_rows:
+        answer = str(row.get("answer", "")).strip().lower()
+        hallucinations.append(
+            float(answer not in _ABSTENTIONS and float(row["score"]) < 1.0)
+        )
+    return _mean(hallucinations)
+
+
+def _reliability(
+    gate: Mapping[str, Any],
+    pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    pair_error: str | None,
+    baseline_available: bool,
+) -> dict[str, Any]:
+    if not baseline_available:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a reference-checkpoint evaluation is required",
+        )
+    if pair_error:
+        return _result(gate, "insufficient_evidence", pair_error)
+    current_rows = [pair[0] for pair in pairs]
+    baseline_rows = [pair[1] for pair in pairs]
+    coverage = float(gate["coverage"])
+    current_risk = _selective_risk(current_rows, coverage)
+    baseline_risk = _selective_risk(baseline_rows, coverage)
+    current_hallucination = _hallucination_rate(current_rows)
+    baseline_hallucination = _hallucination_rate(baseline_rows)
+    if (
+        current_risk is None
+        or baseline_risk is None
+        or current_hallucination is None
+        or baseline_hallucination is None
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "per-sample confidence and an explicit abstention slice are required",
+            {
+                "matched_samples": len(pairs),
+                "confidence_available": current_risk is not None
+                and baseline_risk is not None,
+                "abstention_slice_available": current_hallucination is not None
+                and baseline_hallucination is not None,
+            },
+        )
+    risk_reduction = baseline_risk - current_risk
+    hallucination_increase = current_hallucination - baseline_hallucination
+    minimum_reduction = float(gate["min_selective_risk_reduction"])
+    maximum_hallucination = float(gate["max_hallucination_increase"])
+    passed = (
+        risk_reduction >= minimum_reduction
+        and hallucination_increase <= maximum_hallucination
+    )
+    return _result(
+        gate,
+        "pass" if passed else "fail",
+        "selective risk and hallucination were compared at fixed coverage",
+        {
+            "coverage": coverage,
+            "current_selective_risk": _round(current_risk),
+            "baseline_selective_risk": _round(baseline_risk),
+            "selective_risk_reduction": _round(risk_reduction),
+            "min_selective_risk_reduction": minimum_reduction,
+            "current_hallucination_rate": _round(current_hallucination),
+            "baseline_hallucination_rate": _round(baseline_hallucination),
+            "hallucination_increase": _round(hallucination_increase),
+            "max_hallucination_increase": maximum_hallucination,
+        },
+    )
+
+
+def evaluate_deployment_gates(
+    blueprint: Mapping[str, Any],
+    parameter_counts: Mapping[str, int],
+    current_comparison: Mapping[str, Any],
+    current_rows: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    baseline_comparison: Mapping[str, Any] | None = None,
+    baseline_rows: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    monolingual_control_comparison: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Evaluate every declared gate without treating missing evidence as success."""
+
+    current_heldout = _heldout_rows(current_rows)
+    baseline_heldout = _heldout_rows(baseline_rows)
+    pairs, pair_error = _matched_rows(current_heldout, baseline_heldout)
+    results = []
+    for gate in blueprint.get("evaluation_gates", ()):
+        gate_id = gate.get("id")
+        if gate_id == "parameter_budget":
+            result = _parameter_budget(gate, parameter_counts)
+        elif gate_id == "generalization":
+            result = _generalization(
+                gate,
+                current_comparison,
+                baseline_comparison,
+                pairs,
+                pair_error,
+            )
+        elif gate_id == "grounding":
+            result = _grounding(
+                gate,
+                pairs,
+                pair_error,
+                baseline_comparison is not None,
+            )
+        elif gate_id == "reasoning":
+            result = _reasoning(
+                gate,
+                pairs,
+                pair_error,
+                baseline_comparison is not None,
+            )
+        elif gate_id == "multilingual":
+            result = _multilingual(
+                gate,
+                current_comparison,
+                monolingual_control_comparison,
+            )
+        elif gate_id == "reliability":
+            result = _reliability(
+                gate,
+                pairs,
+                pair_error,
+                baseline_comparison is not None,
+            )
+        else:
+            result = _result(
+                gate,
+                "insufficient_evidence",
+                f"no evaluator is registered for gate {gate_id!r}",
+            )
+        results.append(result)
+    statuses = [result["status"] for result in results]
+    overall = (
+        "fail"
+        if "fail" in statuses
+        else "insufficient_evidence"
+        if "insufficient_evidence" in statuses
+        else "pass"
+    )
+    return {
+        "schema_version": 1,
+        "overall_status": overall,
+        "counts": {
+            status: statuses.count(status)
+            for status in ("pass", "fail", "insufficient_evidence")
+        },
+        "gates": results,
+    }
+
+
+def load_evaluation_artifacts(
+    root: str | Path,
+) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
+    """Load a comparison and per-sample split files from an evaluation root."""
+
+    root = Path(root)
+    comparison_path = root / "comparison.json"
+    if not comparison_path.is_file():
+        raise ValueError(f"missing evaluation comparison: {comparison_path}")
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    rows: dict[str, list[dict[str, Any]]] = {}
+    for path in sorted(root.glob("*/per_sample.jsonl")):
+        rows[path.parent.name] = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    return comparison, rows
+
+
+def write_gate_report(path: str | Path, report: Mapping[str, Any]) -> Path:
+    """Atomically write a machine-readable gate report."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+    return path

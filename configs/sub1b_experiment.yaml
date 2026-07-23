@@ -101,3 +101,5 @@ evaluation:
   wandb_run: null
   wandb_group: null
   wandb_tags: [native-student, hard-documents]
+  baseline_evaluation: null
+  monolingual_control_evaluation: null

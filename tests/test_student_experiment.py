@@ -88,6 +88,8 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert initialize.command[initialize.command.index("--tiny-vocab-size") + 1] == "512"
     assert initialize.command[initialize.command.index("--seed") + 1] == "5"
     assert "export_teacher_requests" in plan.stage_names
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    assert any(artifact.path.endswith("gates.json") for artifact in evaluate.artifacts)
     generate = next(
         stage for stage in plan.stages if stage.name == "generate_teacher_predictions"
     )

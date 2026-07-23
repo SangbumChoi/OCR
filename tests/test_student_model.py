@@ -123,6 +123,26 @@ def test_generation_rejects_a_mask_without_an_image():
         )
 
 
+def test_generation_returns_bounded_sequence_confidence():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    input_ids = torch.randint(0, 256, (2, 4))
+
+    generated, confidence = model.generate_with_confidence(
+        input_ids,
+        max_new_tokens=3,
+    )
+
+    assert generated.shape == (2, 7)
+    assert confidence.shape == (2,)
+    assert torch.all(confidence > 0)
+    assert torch.all(confidence <= 1)
+
+
 def test_random_init_first_step_reaches_the_vision_tower():
     import torch
 
