@@ -163,6 +163,71 @@ def test_table_formula_and_abstention_rewards_use_task_specific_masks():
     assert abstain_result.components["calibrated_abstention"] == 1.0
 
 
+@pytest.mark.parametrize(
+    ("predicted", "gold"),
+    [
+        ("x+x", "2x"),
+        ("(a+b)^2", "a^2+2ab+b^2"),
+        (r"\sin^2(x)+\cos^2(x)", "1"),
+        ("x^2=1", "(x-1)(x+1)=0"),
+        (r"$\dfrac{a}{b}$", r"\frac{a}{b}"),
+    ],
+)
+def test_formula_equivalence_accepts_bounded_symbolic_rewrites(predicted, gold):
+    pytest.importorskip("sympy")
+    pytest.importorskip("antlr4")
+    from docvlm_eval.student.rewards import formula_equivalent
+
+    assert formula_equivalent(predicted, gold)
+
+
+@pytest.mark.parametrize(
+    ("predicted", "gold"),
+    [
+        ("x^2+y^2", "(x+y)^2"),
+        ("x=1", "x=2"),
+        (r"\input{foo}", "foo"),
+        (r"\int_0^1 x dx", r"\frac{1}{2}"),
+        (r"\frac{", "x"),
+        ("x" * 513, "x"),
+    ],
+)
+def test_formula_equivalence_rejects_wrong_or_unbounded_expressions(
+    predicted,
+    gold,
+):
+    pytest.importorskip("sympy")
+    pytest.importorskip("antlr4")
+    from docvlm_eval.student.rewards import formula_equivalent
+
+    assert not formula_equivalent(predicted, gold)
+
+
+def test_symbolic_formula_equivalence_contributes_to_reward():
+    pytest.importorskip("sympy")
+    pytest.importorskip("antlr4")
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+
+    result = score_structured_response(
+        build_structured_target("(a+b)^2"),
+        RewardContext(
+            sample_id="formula-symbolic",
+            answers=("a^2+2ab+b^2",),
+            answer_type="formula",
+            formula_expected=True,
+        ),
+        _config(),
+    )
+
+    assert result.components["answer_correctness"] == 0.0
+    assert result.components["formula_equivalence"] == 1.0
+    assert "formula_equivalence" in result.applicable
+
+
 def test_reward_context_normalizes_authored_sample_evidence():
     from docvlm_eval.schema import Sample
     from docvlm_eval.student.rewards import RewardContext

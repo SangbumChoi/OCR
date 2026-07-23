@@ -126,14 +126,19 @@ become zeros:
 | `box_iou` | authored evidence exists | bidirectional best-IoU F1 with box-count agreement |
 | `table_tree_similarity` | table/TEDS sample | TEDS |
 | `chart_numeric_tolerance` | numeric/chart sample | tolerance-aware numeric accuracy |
-| `formula_equivalence` | formula/LaTeX sample | deterministic LaTeX normalization equality |
+| `formula_equivalence` | formula/LaTeX sample | bounded symbolic equivalence with exact-normalized fast path |
 | `grounded_rationale_consistency` | evidence and authored rationale exist | non-empty rationale gated by evidence IoU |
 | `calibrated_abstention` | all samples | abstain iff the sample requires abstention |
 
-The formula verifier is currently a normalization proxy, not symbolic algebra. The rationale
-verifier proves cited-region overlap and rationale presence, not semantic entailment. Keep their
-metrics separate and add stronger offline verifiers before making symbolic-equivalence or
-faithful-reasoning claims.
+Formula verification first applies deterministic LaTeX normalization, then parses elementary
+algebra, trigonometry, and equations with
+[SymPy's strict ANTLR LaTeX parser](https://docs.sympy.org/latest/modules/parsing.html#sympy.parsing.latex.parse_latex).
+It accepts expansions, factorizations, constant-scaled equations, and standard identities. Inputs
+are capped by character, command, symbol, operation, and expression-tree limits. Unknown commands,
+malformed LaTeX, integrals, sums, products, derivatives, limits, and parser failures receive zero
+equivalence reward. This is intentionally narrower than a theorem prover. The rationale verifier
+proves cited-region overlap and rationale presence, not semantic entailment; keep that metric
+separate before making faithful-reasoning claims.
 
 `metrics.jsonl` reports total reward, reward variance, policy loss, reference KL, total loss,
 gradient norm, structural-validity fraction, replay application/loss/token count, the replay sample
@@ -149,7 +154,7 @@ Resume rejects a changed tokenizer or reference checkpoint.
 Native RLVR currently runs in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not
 large enough. Distributed rollout, optimizer sharding, KV caching, multi-epoch off-policy replay,
-and a symbolic formula engine remain future measured extensions. The implemented collapse
+and semantic rationale entailment remain future measured extensions. The implemented collapse
 constraints are frozen-reference KL and periodic supervised replay.
 
 ## Held-out generation evaluation

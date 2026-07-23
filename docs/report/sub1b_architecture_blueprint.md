@@ -221,8 +221,9 @@ replicates, then publish held-out capability and efficiency curves with confiden
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations
-rather than claimed capabilities. Native RLVR is currently single-process, and its formula reward
-is deterministic normalization rather than symbolic algebra.
+rather than claimed capabilities. Native RLVR is currently single-process. Formula reward supports
+bounded elementary symbolic equivalence, but deliberately rejects unbounded calculus and does not
+replace a full theorem prover.
 
 ## Evidence basis
 

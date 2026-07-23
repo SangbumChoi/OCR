@@ -12,6 +12,8 @@ einops>=0.8.0
 sentencepiece>=0.2.0          # tokenizers for several VLMs
 timm>=1.0.0                   # InternViT / DaViT vision backbones
 pyyaml>=6.0
+sympy>=1.13,<2
+antlr4-python3-runtime==4.11.*  # strict SymPy LaTeX parser for formula rewards
 
 # ---- Part-2 fine-tuning PoC (LoRA scaffold in src/ocr_ft) ----
 peft>=0.12.0

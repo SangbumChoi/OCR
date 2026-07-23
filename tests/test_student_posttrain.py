@@ -47,6 +47,25 @@ def _dataset(target_mode="evidence_linked"):
     )
 
 
+def _formula_dataset():
+    from docvlm_eval.schema import Sample
+    from docvlm_eval.student.posttrain import StructuredPostTrainingDataset
+
+    return StructuredPostTrainingDataset(
+        [
+            Sample(
+                sample_id="formula-1",
+                image_path="",
+                question="Transcribe an equivalent formula.",
+                answers=["a^2+2ab+b^2"],
+                answer_type="formula",
+                metric="ned",
+            )
+        ],
+        target_mode="evidence_linked",
+    )
+
+
 def _collator():
     from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 
@@ -236,6 +255,56 @@ def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):
         (tmp_path / "replay" / "metrics.jsonl").read_text(encoding="utf-8")
     )
     assert metric["supervised_replay_sample_id"] == "post-1"
+
+
+def test_symbolic_formula_reward_drives_group_advantage(tmp_path, monkeypatch):
+    import torch
+
+    pytest.importorskip("sympy")
+    pytest.importorskip("antlr4")
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import RewardConfig, build_structured_target
+
+    equivalent = build_structured_target("(a+b)^2")
+    wrong = build_structured_target("a^2+b^2")
+
+    def formula_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [equivalent, wrong],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        formula_group,
+    )
+    torch.manual_seed(43)
+    policy = DocumentVLMStudent(StudentConfig.tiny())
+    reference = copy.deepcopy(policy)
+    result = train_grpo(
+        policy,
+        reference,
+        _formula_dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(tmp_path / "formula", 1),
+        RewardConfig(
+            weights={
+                "answer_correctness": 0.25,
+                "normalized_text_similarity": 0.25,
+                "formula_equivalence": 0.50,
+            }
+        ),
+    )
+
+    assert result.final_metrics["reward/formula_equivalence"] == 0.5
+    assert result.final_metrics["rlvr/reward_std"] > 0
+    assert result.final_metrics["rlvr/advantage_abs_mean"] > 0
 
 
 def test_structured_sft_runs_and_marks_the_checkpoint_stage(tmp_path):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 from ..metrics.bank import semantic_match
@@ -269,6 +270,202 @@ def _formula_normalize(value: str) -> str:
     return normalized
 
 
+_FORMULA_STYLE_COMMAND = re.compile(
+    r"\\(?:mathrm|mathbf|mathit|mathsf|mathtt|mathcal|text|operatorname)"
+    r"\s*\{([^{}]*)\}"
+)
+_FORMULA_COMMAND = re.compile(r"\\([A-Za-z]+)")
+_FORMULA_COMMANDS = {
+    "abs",
+    "alpha",
+    "arccos",
+    "arcsin",
+    "arctan",
+    "beta",
+    "cdot",
+    "chi",
+    "cos",
+    "cosh",
+    "cot",
+    "csc",
+    "delta",
+    "dfrac",
+    "epsilon",
+    "eta",
+    "exp",
+    "frac",
+    "gamma",
+    "infty",
+    "kappa",
+    "lambda",
+    "left",
+    "ln",
+    "log",
+    "max",
+    "min",
+    "mu",
+    "nu",
+    "omega",
+    "phi",
+    "pi",
+    "psi",
+    "rho",
+    "right",
+    "sec",
+    "sigma",
+    "sin",
+    "sinh",
+    "sqrt",
+    "tan",
+    "tanh",
+    "tau",
+    "tfrac",
+    "theta",
+    "times",
+    "upsilon",
+    "varepsilon",
+    "varphi",
+    "varrho",
+    "varsigma",
+    "vartheta",
+    "xi",
+    "zeta",
+}
+_FORMULA_MAX_CHARACTERS = 512
+_FORMULA_MAX_COMMANDS = 64
+_FORMULA_MAX_NODES = 192
+_FORMULA_MAX_OPERATIONS = 96
+
+
+def _formula_source(value: str) -> str | None:
+    source = value.strip()
+    source = re.sub(r"^\$+|\$+$", "", source)
+    source = re.sub(r"^\\\[|\\\]$", "", source)
+    source = source.replace(r"\left", "").replace(r"\right", "")
+    source = source.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
+    source = re.sub(r"\\(?:,|;|!|quad|qquad)\s*", "", source)
+    for _ in range(8):
+        stripped = _FORMULA_STYLE_COMMAND.sub(r"\1", source)
+        if stripped == source:
+            break
+        source = stripped
+    commands = _FORMULA_COMMAND.findall(source)
+    if (
+        not source
+        or len(source) > _FORMULA_MAX_CHARACTERS
+        or len(commands) > _FORMULA_MAX_COMMANDS
+        or any(command not in _FORMULA_COMMANDS for command in commands)
+    ):
+        return None
+    return source
+
+
+@lru_cache(maxsize=1024)
+def _parse_bounded_formula(value: str) -> Any | None:
+    source = _formula_source(value)
+    if source is None:
+        return None
+    try:
+        from sympy import (
+            Derivative,
+            Integral,
+            Limit,
+            Product,
+            Sum,
+            count_ops,
+            preorder_traversal,
+        )
+        from sympy.core.basic import Basic
+        from sympy.core.function import AppliedUndef
+        from sympy.parsing.latex import parse_latex
+
+        expression = parse_latex(source, strict=True, backend="antlr")
+    except Exception:
+        return None
+    if not isinstance(expression, Basic):
+        return None
+    if expression.has(Derivative, Integral, Limit, Product, Sum, AppliedUndef):
+        return None
+    if sum(1 for _ in preorder_traversal(expression)) > _FORMULA_MAX_NODES:
+        return None
+    if int(count_ops(expression, visual=False)) > _FORMULA_MAX_OPERATIONS:
+        return None
+    if len(expression.free_symbols) > 32:
+        return None
+    return expression
+
+
+def _symbolic_expression_equivalent(predicted: Any, gold: Any) -> bool:
+    try:
+        from sympy import cancel, together, trigsimp
+
+        delta = predicted - gold
+    except Exception:
+        return False
+    if delta == 0 or delta.is_zero is True:
+        return True
+    for transform in (
+        together,
+        lambda value: cancel(together(value)),
+        trigsimp,
+    ):
+        try:
+            candidate = transform(delta)
+        except Exception:
+            continue
+        if candidate == 0 or candidate.is_zero is True:
+            return True
+    return False
+
+
+def _symbolic_equation_equivalent(predicted: Any, gold: Any) -> bool:
+    try:
+        from sympy import cancel
+        from sympy.core.relational import Equality
+
+        if not isinstance(predicted, Equality) or not isinstance(gold, Equality):
+            return False
+        predicted_residual = predicted.lhs - predicted.rhs
+        gold_residual = gold.lhs - gold.rhs
+        if _symbolic_expression_equivalent(predicted_residual, gold_residual):
+            return True
+        ratio = cancel(predicted_residual / gold_residual)
+    except Exception:
+        return False
+    return (
+        not ratio.free_symbols
+        and ratio.is_zero is False
+        and ratio.is_finite is not False
+    )
+
+
+def formula_equivalent(predicted: str, gold: str) -> bool:
+    """Conservatively verify bounded elementary expression or equation equivalence."""
+
+    if _formula_normalize(predicted) == _formula_normalize(gold):
+        return True
+    predicted_expression = _parse_bounded_formula(predicted)
+    gold_expression = _parse_bounded_formula(gold)
+    if predicted_expression is None or gold_expression is None:
+        return False
+    try:
+        from sympy.core.relational import Equality
+    except ImportError:
+        return False
+    if isinstance(predicted_expression, Equality) or isinstance(
+        gold_expression,
+        Equality,
+    ):
+        return _symbolic_equation_equivalent(
+            predicted_expression,
+            gold_expression,
+        )
+    return _symbolic_expression_equivalent(
+        predicted_expression,
+        gold_expression,
+    )
+
+
 def _is_abstention(value: str) -> bool:
     normalized = re.sub(r"\s+", " ", value.lower()).strip(" .[]")
     return normalized in _ABSTAIN_NORMALIZED
@@ -330,7 +527,7 @@ def score_structured_response(
     if context.formula_expected:
         components["formula_equivalence"] = float(
             any(
-                _formula_normalize(response.answer) == _formula_normalize(gold)
+                formula_equivalent(response.answer, gold)
                 for gold in context.answers
             )
         )
