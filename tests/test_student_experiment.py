@@ -27,6 +27,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         python=sys.executable,
     )
     assert plan.stage_names == [
+        "visual_backend_benchmark",
         "synthetic_train",
         "synthetic_heldout",
         "validate_synthetic_splits",
@@ -90,6 +91,24 @@ def test_default_experiment_compiles_complete_stage_dag():
         stage for stage in plan.stages if stage.name == "train_tokenizer"
     )
     assert "--exclude-teacher-targets" in tokenizer.command
+    visual_benchmark = next(
+        stage for stage in plan.stages if stage.name == "visual_backend_benchmark"
+    )
+    assert visual_benchmark.command[
+        visual_benchmark.command.index("--sequence-lengths") + 1
+    ] == "2520,2520"
+    assert visual_benchmark.command[
+        visual_benchmark.command.index("--backends") + 1 :
+        visual_benchmark.command.index("--warmup-iterations")
+    ] == ("loop", "auto", "flex")
+    assert "--require-flex" not in visual_benchmark.command
+    assert visual_benchmark.artifacts[0].path.endswith(
+        "artifacts/benchmarks/visual_backend.json"
+    )
+    initialize = next(
+        stage for stage in plan.stages if stage.name == "initialize_student"
+    )
+    assert "visual_backend_benchmark" in initialize.dependencies
 
 
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
@@ -147,8 +166,10 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
         python=sys.executable,
     )
     tiny = StudentConfig.tiny(vocab_size=512)
+    assert len(plan.stages) == 16
     assert plan.resolved_blueprint["student"]["vision"]["image_size"] == tiny.vision.image_size
     assert plan.resolved_blueprint["tokenizer"]["vocab_size"] == tiny.language.vocab_size
+    assert "visual_backend_benchmark" not in plan.stage_names
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["max_image_long_side"] == tiny.vision.image_size
     initialize = next(stage for stage in plan.stages if stage.name == "initialize_student")
@@ -167,6 +188,47 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
         rlvr.command[rlvr.command.index("--replay-loss-coefficient") + 1]
         == "0.1"
     )
+
+
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        ({"sequence_lengths": [0]}, "positive sequence_lengths"),
+        ({"backends": ["auto", "flex"]}, "must include loop"),
+        (
+            {"backends": ["loop"], "require_flex": True},
+            "require_flex needs auto or flex",
+        ),
+        ({"iterations": 0}, "iterations must be positive"),
+        (
+            {"sequence_lengths": [65]},
+            "sequence_lengths exceed the resolved visual position grid",
+        ),
+        ({"require_flex": "yes"}, "require_flex must be a boolean"),
+    ],
+)
+def test_experiment_rejects_invalid_visual_backend_benchmark(
+    tmp_path,
+    patch,
+    message,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["runtime"]["visual_backend_benchmark"] = {
+        "enabled": True,
+        "sequence_lengths": [3, 5],
+        "backends": ["loop", "auto"],
+        **patch,
+    }
+    config = tmp_path / "invalid-visual-benchmark.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
 def test_experiment_supports_independent_train_and_heldout_synthetic_counts(

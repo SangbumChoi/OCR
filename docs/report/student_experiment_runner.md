@@ -4,7 +4,9 @@
 YAML experiment into a resumable stage DAG. It connects hard-document synthesis, semantic split
 validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer distillation,
 tokenizer training, student initialization, pretraining, grounded SFT, RLVR, and train/heldout
-generation evaluation.
+generation evaluation. The full configuration first benchmarks packed visual attention on the
+active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
+and peak memory as a checked run artifact.
 
 Random initialization is reproducible: `initialization.seed` is validated, passed to model
 construction before parameter allocation, included in the stage signature, and written into the
@@ -48,8 +50,10 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The CPU contract test uses the same 17 stages with a dummy cross-tokenizer teacher, one
-587k-parameter student, and one optimizer step per training phase:
+The full plan has 18 stages, including the target-device visual backend preflight. The CPU contract
+test disables that performance preflight and omits the full plan's public-Hub acquisition, leaving
+16 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, and one optimizer step
+per training phase:
 
 ```bash
 python scripts/run_student_experiment.py \
@@ -67,6 +71,15 @@ training limits, evaluation settings, and W&B metadata. `synthetic.train_count` 
 `synthetic.heldout_count` may override the legacy shared `synthetic.count`, allowing training-scale
 experiments to retain one fixed benchmark. The runner writes a resolved architecture blueprint whose
 `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+
+`runtime.visual_backend_benchmark` compiles
+[`benchmark_student_visual_backend.py`](../../scripts/benchmark_student_visual_backend.py) as the
+first artifact-checked stage. Its sequence lengths, backends, warmup, measured iterations, mode,
+precision, seed, parity tolerance, Flex requirement, and W&B destination are all explicit in the
+experiment fingerprint. `initialize_student` depends on the resulting JSON. Set `require_flex:
+true` on the target CUDA image to stop before model initialization when `auto` or explicit `flex`
+falls back or fails. Keep it false when the portable loop backend is an accepted treatment; the
+resolved fallback remains visible in the artifact and W&B.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication

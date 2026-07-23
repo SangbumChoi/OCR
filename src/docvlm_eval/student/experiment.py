@@ -321,6 +321,102 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     )
     if not blueprint.is_file():
         raise ValueError(f"experiment blueprint does not exist: {blueprint}")
+    runtime = raw.get("runtime") or {}
+    if not isinstance(runtime, dict):
+        raise ValueError("experiment.runtime must be a mapping")
+    visual_benchmark = runtime.get("visual_backend_benchmark") or {}
+    if not isinstance(visual_benchmark, dict):
+        raise ValueError("runtime.visual_backend_benchmark must be a mapping")
+    for option in ("enabled", "require_flex"):
+        if option in visual_benchmark and not isinstance(
+            visual_benchmark[option], bool
+        ):
+            raise ValueError(
+                f"runtime.visual_backend_benchmark.{option} must be a boolean"
+            )
+    if "wandb_tags" in visual_benchmark and not isinstance(
+        visual_benchmark["wandb_tags"], list
+    ):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.wandb_tags must be a list"
+        )
+    if bool(visual_benchmark.get("enabled", False)):
+        lengths = visual_benchmark.get("sequence_lengths")
+        if (
+            not isinstance(lengths, list)
+            or not lengths
+            or any(
+                not isinstance(length, int)
+                or isinstance(length, bool)
+                or length <= 0
+                for length in lengths
+            )
+        ):
+            raise ValueError(
+                "enabled runtime.visual_backend_benchmark requires positive "
+                "sequence_lengths"
+            )
+        backends = visual_benchmark.get("backends")
+        if (
+            not isinstance(backends, list)
+            or not backends
+            or any(not isinstance(backend, str) for backend in backends)
+            or len(set(backends)) != len(backends)
+            or any(
+                backend not in {"loop", "auto", "flex"}
+                for backend in backends
+            )
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark.backends must be a unique "
+                "list of loop, auto, or flex"
+            )
+        if "loop" not in backends:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.backends must include loop "
+                "for relative measurements"
+            )
+        if (
+            bool(visual_benchmark.get("require_flex", False))
+            and not {"auto", "flex"}.intersection(backends)
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark.require_flex needs auto or flex"
+            )
+        if visual_benchmark.get("mode", "training") not in {
+            "forward",
+            "training",
+        }:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.mode must be forward or training"
+            )
+        if visual_benchmark.get("precision", "auto") not in {
+            "auto",
+            "float32",
+            "float16",
+            "bfloat16",
+        }:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.precision is unsupported"
+            )
+        if int(visual_benchmark.get("warmup_iterations", 3)) < 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.warmup_iterations must be "
+                "non-negative"
+            )
+        if int(visual_benchmark.get("iterations", 10)) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.iterations must be positive"
+            )
+        if int(visual_benchmark.get("seed", 7)) < 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.seed must be non-negative"
+            )
+        parity_atol = visual_benchmark.get("parity_atol")
+        if parity_atol is not None and float(parity_atol) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.parity_atol must be positive"
+            )
     synthetic = _require_mapping(raw, "synthetic")
     if not bool(synthetic.get("enabled", True)):
         raise ValueError("synthetic.enabled=false is not supported by the end-to-end schema")
@@ -562,6 +658,10 @@ def build_experiment_plan(
     if not isinstance(raw, dict):
         raise ValueError("experiment root must be a mapping")
     name, output_root, blueprint_path = _validate_spec(raw, repo_root)
+    runtime = raw.get("runtime") or {}
+    device = str(runtime.get("device") or "auto")
+    visual_benchmark = runtime.get("visual_backend_benchmark") or {}
+    visual_benchmark_enabled = bool(visual_benchmark.get("enabled", False))
     synthetic = raw["synthetic"]
     synth_config_path = _resolve_path(
         repo_root,
@@ -675,6 +775,13 @@ def build_experiment_plan(
         sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
         sequence_target_seed=int(sequence_teacher.get("seed", 7)),
     )
+    if visual_benchmark_enabled and max(
+        visual_benchmark["sequence_lengths"]
+    ) > int(blueprint["student"]["vision"]["max_position_tokens"]):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.sequence_lengths exceed the "
+            "resolved visual position grid"
+        )
     pretraining_supervision_contract(
         PretrainConfig.from_blueprint(
             blueprint,
@@ -719,12 +826,67 @@ def build_experiment_plan(
             f"initialization arm {arm_id!r} requires sources for "
             f"{required_sources}"
         )
-    runtime = raw.get("runtime") or {}
-    device = str(runtime.get("device") or "auto")
     stages: list[ExperimentStage] = []
 
     def script(name: str) -> str:
         return str((repo_root / "scripts" / name).resolve())
+
+    visual_benchmark_stage_names: list[str] = []
+    if visual_benchmark_enabled:
+        output = artifacts / "benchmarks" / "visual_backend.json"
+        command = [
+            python,
+            script("benchmark_student_visual_backend.py"),
+            "--config",
+            str(resolved_blueprint_path),
+            "--sequence-lengths",
+            ",".join(
+                str(value)
+                for value in visual_benchmark["sequence_lengths"]
+            ),
+            "--backends",
+            *[str(value) for value in visual_benchmark["backends"]],
+            "--warmup-iterations",
+            str(int(visual_benchmark.get("warmup_iterations", 3))),
+            "--iterations",
+            str(int(visual_benchmark.get("iterations", 10))),
+            "--mode",
+            str(visual_benchmark.get("mode") or "training"),
+            "--precision",
+            str(visual_benchmark.get("precision") or "auto"),
+            "--device",
+            device,
+            "--seed",
+            str(int(visual_benchmark.get("seed", 7))),
+            "--output",
+            str(output),
+        ]
+        _add_optional(
+            command,
+            "--parity-atol",
+            visual_benchmark.get("parity_atol"),
+        )
+        if bool(visual_benchmark.get("require_flex", False)):
+            command.append("--require-flex")
+        for key, flag in (
+            ("wandb_project", "--wandb-project"),
+            ("wandb_entity", "--wandb-entity"),
+            ("wandb_run", "--wandb-run"),
+            ("wandb_group", "--wandb-group"),
+        ):
+            _add_optional(command, flag, visual_benchmark.get(key))
+        tags = visual_benchmark.get("wandb_tags") or []
+        if tags:
+            command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+        stages.append(
+            ExperimentStage(
+                "visual_backend_benchmark",
+                tuple(command),
+                (),
+                (Artifact(str(output)),),
+            )
+        )
+        visual_benchmark_stage_names.append("visual_backend_benchmark")
 
     checkpoint_stage_names: list[str] = []
     for component, spec in checkpoint_specs.items():
@@ -1129,7 +1291,11 @@ def build_experiment_plan(
         ExperimentStage(
             "initialize_student",
             tuple(init_command),
-            ("train_tokenizer", *checkpoint_stage_names),
+            (
+                "train_tokenizer",
+                *checkpoint_stage_names,
+                *visual_benchmark_stage_names,
+            ),
             (
                 Artifact(str(initial_dir / "student_config.json")),
                 Artifact(str(initial_dir / "model.pt")),

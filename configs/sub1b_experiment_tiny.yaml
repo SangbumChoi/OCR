@@ -8,6 +8,8 @@ output_root: outputs/docvlm-tiny-smoke
 
 runtime:
   device: cpu
+  visual_backend_benchmark:
+    enabled: false
 
 synthetic:
   enabled: true

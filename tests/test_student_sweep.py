@@ -130,7 +130,8 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         if variant.arm_id == "selective" and variant.replicate_id == "seed_0"
     )
     assert selective.plan.raw_spec["initialization"]["arm"] == "I4_selective"
-    assert selective.plan.stage_names[:2] == [
+    assert selective.plan.stage_names[:3] == [
+        "visual_backend_benchmark",
         "acquire_vision_checkpoint",
         "acquire_language_checkpoint",
     ]
@@ -143,6 +144,7 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         "train_tokenizer",
         "acquire_vision_checkpoint",
         "acquire_language_checkpoint",
+        "visual_backend_benchmark",
     )
 
 

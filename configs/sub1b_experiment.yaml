@@ -9,6 +9,23 @@ output_root: outputs/docvlm-800m-hard
 
 runtime:
   device: auto
+  visual_backend_benchmark:
+    enabled: true
+    sequence_lengths: [2520, 2520]
+    backends: [loop, auto, flex]
+    warmup_iterations: 3
+    iterations: 10
+    mode: training
+    precision: auto
+    seed: 7
+    parity_atol: null
+    # Set true on the target CUDA runtime to block training on silent fallback.
+    require_flex: false
+    wandb_project: null
+    wandb_entity: null
+    wandb_run: null
+    wandb_group: visual-backend-gate
+    wandb_tags: [native-student, visual-backend]
 
 synthetic:
   enabled: true
