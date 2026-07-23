@@ -214,8 +214,8 @@ and tested. The contracts are detailed in
 [`student_pretraining_runner.md`](student_pretraining_runner.md), and
 [`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
 step is to execute the compiled matched suites in
-[`student_sweep_runner.md`](student_sweep_runner.md) at fixed token budgets, then publish held-out
-capability and efficiency curves.
+[`student_sweep_runner.md`](student_sweep_runner.md) at fixed token budgets and paired stochastic
+replicates, then publish held-out capability and efficiency curves with confidence intervals.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations

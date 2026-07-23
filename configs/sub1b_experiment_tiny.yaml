@@ -47,6 +47,7 @@ tokenizer:
 
 initialization:
   arm: I0_random
+  seed: 5
   device: cpu
   allow_full_memory: false
   tiny: true

@@ -23,6 +23,7 @@ def main() -> None:
         default=ROOT / "configs" / "sub1b_sweep.yaml",
     )
     parser.add_argument("--variant", action="append", dest="variants")
+    parser.add_argument("--replicate", action="append", dest="replicates")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--from-stage")
@@ -41,6 +42,7 @@ def main() -> None:
                 dry_run=True,
                 resume=not args.no_resume,
                 variant_ids=set(args.variants) if args.variants else None,
+                replicate_ids=set(args.replicates) if args.replicates else None,
                 start=args.from_stage,
                 stop=args.to_stage,
             )
@@ -53,6 +55,7 @@ def main() -> None:
         result = SweepRunner(plan, repo_root=ROOT).run(
             resume=not args.no_resume,
             variant_ids=set(args.variants) if args.variants else None,
+            replicate_ids=set(args.replicates) if args.replicates else None,
             start=args.from_stage,
             stop=args.to_stage,
         )

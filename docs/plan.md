@@ -144,8 +144,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
 - **Run matched ablations:** [`report/student_sweep_runner.md`](report/student_sweep_runner.md) —
-  RFC 6902 experiment/blueprint variants, explicit fixed-control gates, independent resumable runs,
-  W&B grouping, and baseline-delta train/heldout comparison.
+  RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
+  deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
+  train/heldout comparison.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the

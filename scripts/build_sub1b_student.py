@@ -30,6 +30,7 @@ def main() -> None:
     )
     parser.add_argument("--device", default="meta", choices=["meta", "cpu", "cuda"])
     parser.add_argument("--allow-full-memory", action="store_true")
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--init-arm", default="I0_random")
     parser.add_argument("--vision-source", type=Path)
     parser.add_argument("--vision-family", default="student", choices=["student", "siglip"])
@@ -49,6 +50,9 @@ def main() -> None:
     from docvlm_eval.student.checkpoint import load_checkpoint_state
     from docvlm_eval.student.transfer import selective_transfer
 
+    if args.seed < 0:
+        raise SystemExit("--seed must be non-negative")
+    torch.manual_seed(args.seed)
     blueprint = load_blueprint(args.config)
     estimates, errors = validate_blueprint(blueprint)
     if errors:
@@ -115,6 +119,7 @@ def main() -> None:
         metadata = {
             "blueprint": str(args.config),
             "initialization_arm": args.init_arm,
+            "initialization_seed": args.seed,
             "transfer_reports": reports,
             "parameter_counts": counts,
         }

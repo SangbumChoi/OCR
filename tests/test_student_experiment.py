@@ -85,6 +85,7 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert pipeline["max_image_long_side"] == tiny.vision.image_size
     initialize = next(stage for stage in plan.stages if stage.name == "initialize_student")
     assert initialize.command[initialize.command.index("--tiny-vocab-size") + 1] == "512"
+    assert initialize.command[initialize.command.index("--seed") + 1] == "5"
     assert "export_teacher_requests" in plan.stage_names
     generate = next(
         stage for stage in plan.stages if stage.name == "generate_teacher_predictions"
@@ -97,6 +98,14 @@ def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):
     config = tmp_path / "invalid.yaml"
     config.write_text(raw.replace("heldout_seed: 7007", "heldout_seed: 7"), encoding="utf-8")
     with pytest.raises(ValueError, match="must differ"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
+def test_invalid_experiment_rejects_negative_initialization_seed(tmp_path):
+    raw = (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(encoding="utf-8")
+    config = tmp_path / "invalid.yaml"
+    config.write_text(raw.replace("seed: 5", "seed: -1", 1), encoding="utf-8")
+    with pytest.raises(ValueError, match="initialization.seed must be non-negative"):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

@@ -6,6 +6,10 @@ validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer 
 tokenizer training, student initialization, pretraining, grounded SFT, RLVR, and train/heldout
 generation evaluation.
 
+Random initialization is reproducible: `initialization.seed` is validated, passed to model
+construction before parameter allocation, included in the stage signature, and written into the
+initial checkpoint metadata.
+
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
 patches, rejects changes to declared fixed controls, reuses this runner for every variant, and

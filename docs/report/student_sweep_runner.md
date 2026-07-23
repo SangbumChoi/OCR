@@ -5,8 +5,8 @@
 [`scripts/run_student_sweep.py`](../../scripts/run_student_sweep.py) turns adjustable model and
 training controls into fair, reproducible comparisons. It compiles every variant into an independent
 [`student_experiment_runner.md`](student_experiment_runner.md) DAG, verifies declared controls are
-identical, runs each DAG with its existing exact-resume behavior, and aggregates train/heldout
-generation metrics against one baseline.
+identical within each paired replicate, runs each DAG with its existing exact-resume behavior, and
+aggregates train/heldout generation metrics and paired confidence intervals against one baseline.
 
 This is an experiment execution contract, not evidence that the full GPU sweep has completed. The
 comparison files become evidence only after every selected variant has finished on the declared data
@@ -14,7 +14,7 @@ and token budgets.
 
 ## Configurations
 
-Inspect the five-arm full suite without creating an output root:
+Inspect the five-arm by three-replicate full suite without creating an output root:
 
 ```bash
 python scripts/run_student_sweep.py \
@@ -30,16 +30,17 @@ The full suite compares:
 - answer-only instead of evidence-linked SFT;
 - answer-correctness-only instead of decomposed grounded RLVR rewards.
 
-Run the two-arm CPU contract:
+Run the two-arm by two-replicate CPU contract:
 
 ```bash
 python scripts/run_student_sweep.py \
   --sweep configs/sub1b_sweep_tiny.yaml
 ```
 
-Use repeated `--variant ID` flags to run a subset. `--from-stage`, `--to-stage`, and `--no-resume`
-are forwarded to every selected experiment. A later full invocation resumes completed variants and
-produces the suite comparison once all evaluation artifacts exist.
+Use repeated `--variant ID` or `--replicate ID` flags to run a subset. `--from-stage`, `--to-stage`,
+and `--no-resume` are forwarded to every selected experiment. A later full invocation resumes
+completed runs and produces the suite comparison once the complete arm-by-replicate rectangle has
+evaluation artifacts.
 
 ## Variant contract
 
@@ -93,10 +94,41 @@ sampling and seed, and pretraining/SFT/RLVR budgets. A patch that changes any ma
 rejected with the variant ID and offending control paths. The resolved values are copied into the
 suite plan and final comparison, so “matched budget” is inspectable rather than implied.
 
+## Paired replicates
+
+`replicate_controls` declares the only experiment or blueprint pointers that replicate blocks may
+change. Every replicate must set every declared pointer; undeclared changes fail compilation. Each
+replicate patch is applied before the arm patch, and every replicate control must also be a matched
+control. This gives each arm the same stochastic conditions inside one block while allowing
+independent conditions between blocks.
+
+The shipped suites vary all material stochastic sources:
+
+- random model initialization;
+- synthetic train and heldout generation;
+- public-data deterministic subsampling in the full suite;
+- sequence-target selection;
+- image augmentation;
+- pretraining, SFT, and RLVR optimization;
+- evaluation subsampling.
+
+`initialization.seed` is passed into model construction before any parameter is allocated and is
+stored as `initialization_seed` in the initial checkpoint metadata. The resolved blueprint records
+the remaining stage seeds. W&B run names are
+`<sweep>--<variant>--<replicate>`, with separate `variant:<id>` and `replicate:<id>` tags.
+
 After every run finishes, the aggregator independently normalizes each train/heldout evaluation
-JSONL, replaces its variant-specific image path with the SHA-256 of the referenced image bytes, and
-fingerprints the sorted samples. Any cross-variant evaluation-content mismatch stops aggregation.
-The two resulting artifact fingerprints are recorded beside the declared matched controls.
+JSONL, replaces its run-specific image path with the SHA-256 of the referenced image bytes, and
+fingerprints the sorted samples. Artifact equality is required across arms inside each replicate,
+not across independent replicates. A mismatch stops aggregation before any delta is reported.
+
+For every metric, the report contains the replicate mean, sample standard deviation, range, and a
+deterministic 95% percentile-bootstrap interval. Arm effects use paired deltas
+`arm(replicate) - baseline(replicate)` before bootstrapping, which removes shared block variation.
+The heldout conclusion is `improved`, `degraded`, or `inconclusive` when the paired interval is
+strictly above zero, strictly below zero, or crosses zero. With one replicate the interval is
+deliberately unavailable and the conclusion is `insufficient_replicates`.
+The baseline arm is labeled `reference`.
 
 Architecture changes also record the validated vision, language, connector, task-head, and total
 parameter estimates per variant. Equal steps are not automatically equal FLOPs when resolution,
@@ -107,18 +139,20 @@ before making fixed-compute claims.
 
 Each suite root contains:
 
-- `compiled/<variant>/{experiment,blueprint}.yaml`;
-- `runs/<variant>/` with the complete experiment manifests, states, logs, and artifacts;
+- `compiled/<variant>--<replicate>/{experiment,blueprint}.yaml`;
+- `runs/<variant>--<replicate>/` with complete manifests, states, logs, and artifacts;
 - `sweep_plan.json` and `sweep_spec.json`;
-- `sweep_run_summary.json`, updated after each completed or failed variant;
-- `comparison.json` with raw metrics, baseline deltas, answer-type deltas, and ranking;
-- `comparison.md` with heldout score, parameter count, generalization gap, and latency.
+- `sweep_run_summary.json`, updated after each completed or failed run;
+- `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
+  deltas, confidence intervals, and ranking;
+- `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
+  generalization gap, and evidence conclusion.
 
-Every compiled evaluator receives the same W&B group and a unique run name. Native evaluation
-already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
+Every compiled evaluator receives the same W&B group and a unique arm-replicate run name. Native
+evaluation already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
 `eval_by_axis/H-count/heldout`, allowing train and heldout curves for one suffix to share a panel.
-Variant tags are `native-student-sweep` and `variant:<id>`.
+Tags include `native-student-sweep`, `variant:<id>`, and `replicate:<id>`.
 
-Ranking sorts heldout score descending, then prefers a smaller train-minus-heldout score. Ranking is
-a navigation aid, not a statistical claim: repeated seeds, confidence intervals, capability slices,
-and failure inspection remain required before selecting the deployment recipe.
+Ranking sorts mean heldout score descending, then prefers a smaller mean train-minus-heldout score.
+Ranking remains a navigation aid: paired intervals, capability slices, multiple-comparison
+discipline, and failure inspection are required before selecting the deployment recipe.

@@ -183,6 +183,11 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 raise ValueError(f"sequence_teacher.{field} must be within [0, 1]")
         if sequence_teacher.get("target_format", "answer") not in {"answer", "response"}:
             raise ValueError("sequence_teacher.target_format must be answer or response")
+    initialization = raw.get("initialization") or {}
+    if not isinstance(initialization, dict):
+        raise ValueError("experiment.initialization must be a mapping")
+    if int(initialization.get("seed", 0)) < 0:
+        raise ValueError("initialization.seed must be non-negative")
     return name, output_root, blueprint
 
 
@@ -679,6 +684,8 @@ def build_experiment_plan(
         str(resolved_blueprint_path),
         "--device",
         str(initialization.get("device") or ("cpu" if initialization.get("tiny") else device)),
+        "--seed",
+        str(int(initialization.get("seed", 0))),
         "--init-arm",
         str(initialization.get("arm") or "I0_random"),
         "--save",

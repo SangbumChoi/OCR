@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
+import random
 import re
 import tempfile
 from dataclasses import asdict, dataclass, replace
@@ -188,7 +190,11 @@ class MatchedControl:
 @dataclass(frozen=True)
 class CompiledVariant:
     id: str
+    arm_id: str
+    replicate_id: str
     hypothesis: str
+    replicate_experiment_patches: tuple[dict[str, Any], ...]
+    replicate_blueprint_patches: tuple[dict[str, Any], ...]
     experiment_patches: tuple[dict[str, Any], ...]
     blueprint_patches: tuple[dict[str, Any], ...]
     experiment_path: str
@@ -200,7 +206,11 @@ class CompiledVariant:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "arm_id": self.arm_id,
+            "replicate_id": self.replicate_id,
             "hypothesis": self.hypothesis,
+            "replicate_experiment_patches": list(self.replicate_experiment_patches),
+            "replicate_blueprint_patches": list(self.replicate_blueprint_patches),
             "experiment_patches": list(self.experiment_patches),
             "blueprint_patches": list(self.blueprint_patches),
             "experiment_path": self.experiment_path,
@@ -219,10 +229,18 @@ class SweepPlan:
     baseline: str
     base_experiment: str
     controls: tuple[MatchedControl, ...]
-    control_values: dict[str, Any]
+    replicate_controls: tuple[MatchedControl, ...]
+    control_values_by_replicate: dict[str, dict[str, Any]]
+    replicates: tuple[str, ...]
     variants: tuple[CompiledVariant, ...]
     fingerprint: str
     raw_spec: dict[str, Any]
+
+    @property
+    def control_values(self) -> dict[str, Any]:
+        if len(self.control_values_by_replicate) == 1:
+            return next(iter(self.control_values_by_replicate.values()))
+        return self.control_values_by_replicate
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -232,7 +250,11 @@ class SweepPlan:
             "baseline": self.baseline,
             "base_experiment": self.base_experiment,
             "matched_controls": [asdict(control) for control in self.controls],
-            "control_values": self.control_values,
+            "replicate_controls": [
+                asdict(control) for control in self.replicate_controls
+            ],
+            "control_values_by_replicate": self.control_values_by_replicate,
+            "replicates": list(self.replicates),
             "variants": [variant.to_dict() for variant in self.variants],
             "fingerprint": self.fingerprint,
         }
@@ -246,10 +268,13 @@ def _load_sweep(path: Path) -> dict[str, Any]:
     return raw
 
 
-def _parse_controls(raw: dict[str, Any]) -> tuple[MatchedControl, ...]:
-    controls_raw = raw.get("matched_controls")
+def _parse_controls(
+    raw: dict[str, Any],
+    key: str = "matched_controls",
+) -> tuple[MatchedControl, ...]:
+    controls_raw = raw.get(key)
     if not isinstance(controls_raw, list) or not controls_raw:
-        raise ValueError("sweep.matched_controls must be a non-empty list")
+        raise ValueError(f"sweep.{key} must be a non-empty list")
     controls = []
     seen = set()
     for item in controls_raw:
@@ -260,13 +285,70 @@ def _parse_controls(raw: dict[str, Any]) -> tuple[MatchedControl, ...]:
             path=str(item.get("path") or ""),
         )
         if control.document not in _DOCUMENTS:
-            raise ValueError("matched control document must be experiment or blueprint")
+            raise ValueError(f"{key} document must be experiment or blueprint")
         _pointer_parts(control.path)
         if control.key in seen:
-            raise ValueError(f"duplicate matched control {control.key}")
+            raise ValueError(f"duplicate {key} entry {control.key}")
         seen.add(control.key)
         controls.append(control)
     return tuple(controls)
+
+
+def _parse_replicates(
+    raw: dict[str, Any],
+    replicate_controls: tuple[MatchedControl, ...],
+) -> tuple[dict[str, Any], ...]:
+    replicates_raw = raw.get("replicates")
+    if replicates_raw is None:
+        return ({"id": "default", "explicit": False},)
+    if not isinstance(replicates_raw, list) or not replicates_raw:
+        raise ValueError("sweep.replicates must be a non-empty list when set")
+    replicates = []
+    seen = set()
+    allowed = {
+        (control.document, control.path)
+        for control in replicate_controls
+    }
+    for item in replicates_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every sweep replicate must be a mapping")
+        replicate_id = str(item.get("id") or "")
+        if not _NAME.fullmatch(replicate_id) or replicate_id in seen:
+            raise ValueError("replicate ids must be unique safe names")
+        seen.add(replicate_id)
+        experiment_patches = _patch_list(item, "experiment_patches")
+        blueprint_patches = _patch_list(item, "blueprint_patches")
+        _validate_reserved_patches(experiment_patches)
+        if not experiment_patches and not blueprint_patches:
+            raise ValueError(f"replicate {replicate_id!r} has no seed or control patches")
+        patched = {
+            ("experiment", str(operation.get("path") or ""))
+            for operation in experiment_patches
+        } | {
+            ("blueprint", str(operation.get("path") or ""))
+            for operation in blueprint_patches
+        }
+        undeclared = sorted(patched - allowed)
+        if undeclared:
+            raise ValueError(
+                f"replicate {replicate_id!r} patches undeclared replicate controls: "
+                f"{undeclared}"
+            )
+        missing = sorted(allowed - patched)
+        if missing:
+            raise ValueError(
+                f"replicate {replicate_id!r} does not set every replicate control: "
+                f"{missing}"
+            )
+        replicates.append(
+            {
+                "id": replicate_id,
+                "explicit": True,
+                "experiment_patches": experiment_patches,
+                "blueprint_patches": blueprint_patches,
+            }
+        )
+    return tuple(replicates)
 
 
 def compile_sweep_plan(
@@ -276,7 +358,7 @@ def compile_sweep_plan(
     python: str,
     compile_root: str | Path | None = None,
 ) -> SweepPlan:
-    """Compile a matched sweep into validated, independently resumable experiments."""
+    """Compile matched arms and replicate blocks into resumable experiments."""
 
     repo = Path(repo_root).resolve()
     source = _resolve_path(repo, sweep_path)
@@ -304,14 +386,27 @@ def compile_sweep_plan(
     shared_blueprint = _patch_list(raw, "shared_blueprint_patches")
     _validate_reserved_patches(shared_experiment)
     controls = _parse_controls(raw)
+    if raw.get("replicates") is None:
+        replicate_controls: tuple[MatchedControl, ...] = ()
+    else:
+        replicate_controls = _parse_controls(raw, "replicate_controls")
+        matched_keys = {control.key for control in controls}
+        unpaired = [
+            control.key
+            for control in replicate_controls
+            if control.key not in matched_keys
+        ]
+        if unpaired:
+            raise ValueError(
+                f"replicate controls must also be matched controls: {sorted(unpaired)}"
+            )
+    replicates = _parse_replicates(raw, replicate_controls)
     variants_raw = raw.get("variants")
     if not isinstance(variants_raw, list) or len(variants_raw) < 2:
         raise ValueError("sweep.variants must contain at least two variants")
     baseline = str(raw.get("baseline") or "")
     ids: set[str] = set()
-    compiled: list[CompiledVariant] = []
-    control_values: dict[str, Any] | None = None
-
+    arm_specs = []
     for item in variants_raw:
         if not isinstance(item, dict):
             raise ValueError("every sweep variant must be a mapping")
@@ -321,80 +416,137 @@ def compile_sweep_plan(
         ids.add(variant_id)
         variant_experiment_patches = _patch_list(item, "experiment_patches")
         variant_blueprint_patches = _patch_list(item, "blueprint_patches")
-        experiment_patches = [*shared_experiment, *variant_experiment_patches]
-        blueprint_patches = [*shared_blueprint, *variant_blueprint_patches]
-        _validate_reserved_patches(experiment_patches)
+        _validate_reserved_patches(variant_experiment_patches)
         if (
             variant_id != baseline
             and not variant_experiment_patches
             and not variant_blueprint_patches
         ):
             raise ValueError(f"non-baseline variant {variant_id!r} has no patches")
-
-        experiment = apply_json_patch(base_experiment, experiment_patches)
-        blueprint = apply_json_patch(base_blueprint, blueprint_patches)
-        variant_dir = compiled_root / variant_id
-        blueprint_path = variant_dir / "blueprint.yaml"
-        experiment_path = variant_dir / "experiment.yaml"
-        stable_blueprint_path = root / "compiled" / variant_id / "blueprint.yaml"
-        experiment["name"] = f"{name}--{variant_id}"
-        experiment["output_root"] = str(root / "runs" / variant_id)
-        experiment["blueprint"] = str(blueprint_path)
-        evaluation = experiment.setdefault("evaluation", {})
-        evaluation["wandb_group"] = name
-        evaluation["wandb_run"] = f"{name}--{variant_id}"
-        tags = [str(tag) for tag in evaluation.get("wandb_tags") or []]
-        evaluation["wandb_tags"] = list(
-            dict.fromkeys([*tags, "native-student-sweep", f"variant:{variant_id}"])
-        )
-        _atomic_write_yaml(blueprint_path, blueprint)
-        _atomic_write_yaml(experiment_path, experiment)
-
-        plan = build_experiment_plan(experiment_path, repo_root=repo, python=python)
-        canonical_experiment = copy.deepcopy(experiment)
-        canonical_experiment["blueprint"] = str(stable_blueprint_path)
-        variant_fingerprint = _fingerprint(
-            {
-                "sweep": name,
-                "variant": variant_id,
-                "experiment": canonical_experiment,
-                "blueprint": blueprint,
-            }
-        )
-        plan = replace(
-            plan,
-            raw_spec=canonical_experiment,
-            fingerprint=variant_fingerprint,
-        )
-        documents = {"experiment": canonical_experiment, "blueprint": blueprint}
-        values = {
-            control.key: copy.deepcopy(_pointer_get(documents[control.document], control.path))
-            for control in controls
-        }
-        if control_values is None:
-            control_values = values
-        elif values != control_values:
-            mismatches = [
-                key for key in sorted(values) if values[key] != control_values.get(key)
-            ]
-            raise ValueError(
-                f"variant {variant_id!r} violates matched controls: {mismatches}"
-            )
-        compiled.append(
-            CompiledVariant(
-                id=variant_id,
-                hypothesis=str(item.get("hypothesis") or ""),
-                experiment_patches=tuple(copy.deepcopy(experiment_patches)),
-                blueprint_patches=tuple(copy.deepcopy(blueprint_patches)),
-                experiment_path=str(experiment_path),
-                blueprint_path=str(blueprint_path),
-                plan=plan,
-                parameters=estimate_parameters(plan.resolved_blueprint),
-                fingerprint=variant_fingerprint,
+        arm_specs.append(
+            (
+                item,
+                variant_id,
+                variant_experiment_patches,
+                variant_blueprint_patches,
             )
         )
     if baseline not in ids:
         raise ValueError("sweep baseline must name one compiled variant")
+
+    compiled: list[CompiledVariant] = []
+    control_values_by_replicate: dict[str, dict[str, Any]] = {}
+    for replicate in replicates:
+        replicate_id = str(replicate["id"])
+        replicate_experiment_patches = list(replicate.get("experiment_patches") or [])
+        replicate_blueprint_patches = list(replicate.get("blueprint_patches") or [])
+        replicate_control_values: dict[str, Any] | None = None
+        for (
+            item,
+            variant_id,
+            variant_experiment_patches,
+            variant_blueprint_patches,
+        ) in arm_specs:
+            experiment_patches = [
+                *shared_experiment,
+                *replicate_experiment_patches,
+                *variant_experiment_patches,
+            ]
+            blueprint_patches = [
+                *shared_blueprint,
+                *replicate_blueprint_patches,
+                *variant_blueprint_patches,
+            ]
+            _validate_reserved_patches(experiment_patches)
+            experiment = apply_json_patch(base_experiment, experiment_patches)
+            blueprint = apply_json_patch(base_blueprint, blueprint_patches)
+            run_id = (
+                f"{variant_id}--{replicate_id}"
+                if bool(replicate["explicit"])
+                else variant_id
+            )
+            variant_dir = compiled_root / run_id
+            blueprint_path = variant_dir / "blueprint.yaml"
+            experiment_path = variant_dir / "experiment.yaml"
+            stable_blueprint_path = root / "compiled" / run_id / "blueprint.yaml"
+            experiment["name"] = f"{name}--{run_id}"
+            experiment["output_root"] = str(root / "runs" / run_id)
+            experiment["blueprint"] = str(blueprint_path)
+            evaluation = experiment.setdefault("evaluation", {})
+            evaluation["wandb_group"] = name
+            evaluation["wandb_run"] = f"{name}--{run_id}"
+            tags = [str(tag) for tag in evaluation.get("wandb_tags") or []]
+            evaluation["wandb_tags"] = list(
+                dict.fromkeys(
+                    [
+                        *tags,
+                        "native-student-sweep",
+                        f"variant:{variant_id}",
+                        f"replicate:{replicate_id}",
+                    ]
+                )
+            )
+            _atomic_write_yaml(blueprint_path, blueprint)
+            _atomic_write_yaml(experiment_path, experiment)
+
+            plan = build_experiment_plan(experiment_path, repo_root=repo, python=python)
+            canonical_experiment = copy.deepcopy(experiment)
+            canonical_experiment["blueprint"] = str(stable_blueprint_path)
+            variant_fingerprint = _fingerprint(
+                {
+                    "sweep": name,
+                    "variant": variant_id,
+                    "replicate": replicate_id,
+                    "experiment": canonical_experiment,
+                    "blueprint": blueprint,
+                }
+            )
+            plan = replace(
+                plan,
+                raw_spec=canonical_experiment,
+                fingerprint=variant_fingerprint,
+            )
+            documents = {"experiment": canonical_experiment, "blueprint": blueprint}
+            values = {
+                control.key: copy.deepcopy(
+                    _pointer_get(documents[control.document], control.path)
+                )
+                for control in controls
+            }
+            if replicate_control_values is None:
+                replicate_control_values = values
+            elif values != replicate_control_values:
+                mismatches = [
+                    key
+                    for key in sorted(values)
+                    if values[key] != replicate_control_values.get(key)
+                ]
+                raise ValueError(
+                    f"variant {variant_id!r} violates matched controls in "
+                    f"replicate {replicate_id!r}: {mismatches}"
+                )
+            compiled.append(
+                CompiledVariant(
+                    id=run_id,
+                    arm_id=variant_id,
+                    replicate_id=replicate_id,
+                    hypothesis=str(item.get("hypothesis") or ""),
+                    replicate_experiment_patches=tuple(
+                        copy.deepcopy(replicate_experiment_patches)
+                    ),
+                    replicate_blueprint_patches=tuple(
+                        copy.deepcopy(replicate_blueprint_patches)
+                    ),
+                    experiment_patches=tuple(copy.deepcopy(experiment_patches)),
+                    blueprint_patches=tuple(copy.deepcopy(blueprint_patches)),
+                    experiment_path=str(experiment_path),
+                    blueprint_path=str(blueprint_path),
+                    plan=plan,
+                    parameters=estimate_parameters(plan.resolved_blueprint),
+                    fingerprint=variant_fingerprint,
+                )
+            )
+        control_values_by_replicate[replicate_id] = replicate_control_values or {}
     sweep_fingerprint = _fingerprint(
         {
             "spec": raw,
@@ -409,7 +561,9 @@ def compile_sweep_plan(
         baseline=baseline,
         base_experiment=str(base_experiment_path),
         controls=controls,
-        control_values=control_values or {},
+        replicate_controls=replicate_controls,
+        control_values_by_replicate=control_values_by_replicate,
+        replicates=tuple(str(replicate["id"]) for replicate in replicates),
         variants=tuple(compiled),
         fingerprint=sweep_fingerprint,
         raw_spec=raw,
@@ -467,27 +621,74 @@ def _axis_scores(comparison: dict[str, Any], split: str) -> dict[str, float]:
     return {name: float(values["score"]) for name, values in sorted(axes.items())}
 
 
-def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
-    """Aggregate completed train/heldout comparisons and deltas against the baseline."""
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values)
 
-    records: dict[str, dict[str, Any]] = {}
-    artifact_controls: dict[str, str] | None = None
+
+def _distribution(values: list[float], *, key: str) -> dict[str, Any]:
+    if not values:
+        raise ValueError("cannot summarize an empty distribution")
+    mean = _mean(values)
+    if len(values) == 1:
+        standard_deviation = 0.0
+        ci95 = None
+    else:
+        standard_deviation = math.sqrt(
+            sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+        )
+        seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
+        rng = random.Random(seed)
+        bootstrap_means = sorted(
+            _mean([values[rng.randrange(len(values))] for _ in values])
+            for _ in range(10_000)
+        )
+        lower = bootstrap_means[math.floor(0.025 * (len(bootstrap_means) - 1))]
+        upper = bootstrap_means[math.ceil(0.975 * (len(bootstrap_means) - 1))]
+        ci95 = [round(lower, 8), round(upper, 8)]
+    return {
+        "n": len(values),
+        "mean": round(mean, 8),
+        "standard_deviation": round(standard_deviation, 8),
+        "minimum": round(min(values), 8),
+        "maximum": round(max(values), 8),
+        "ci95": ci95,
+    }
+
+
+def _paired_conclusion(statistics: dict[str, Any]) -> str:
+    ci95 = statistics["ci95"]
+    if ci95 is None:
+        return "insufficient_replicates"
+    if ci95[0] > 0.0:
+        return "improved"
+    if ci95[1] < 0.0:
+        return "degraded"
+    return "inconclusive"
+
+
+def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
+    """Aggregate run metrics and paired replicate deltas against the baseline arm."""
+
+    run_records: dict[str, dict[str, Any]] = {}
+    artifact_controls: dict[str, dict[str, str]] = {}
     for variant in plan.variants:
         run_root = Path(variant.plan.root)
         fingerprints = {
             split: _evaluation_set_fingerprint(run_root, split)
             for split in ("train", "heldout")
         }
-        if artifact_controls is None:
-            artifact_controls = fingerprints
-        elif fingerprints != artifact_controls:
+        expected_artifacts = artifact_controls.get(variant.replicate_id)
+        if expected_artifacts is None:
+            artifact_controls[variant.replicate_id] = fingerprints
+        elif fingerprints != expected_artifacts:
             mismatches = [
                 split
                 for split in sorted(fingerprints)
-                if fingerprints[split] != artifact_controls.get(split)
+                if fingerprints[split] != expected_artifacts.get(split)
             ]
             raise ValueError(
-                f"variant {variant.id!r} has mismatched evaluation artifacts: {mismatches}"
+                f"variant {variant.arm_id!r} has mismatched evaluation artifacts "
+                f"in replicate {variant.replicate_id!r}: {mismatches}"
             )
         comparison_path = (
             run_root / "artifacts" / "evaluation" / "comparison.json"
@@ -497,7 +698,9 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
                 f"variant {variant.id!r} has no evaluation comparison: {comparison_path}"
             )
         comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
-        records[variant.id] = {
+        run_records[variant.id] = {
+            "arm_id": variant.arm_id,
+            "replicate_id": variant.replicate_id,
             "hypothesis": variant.hypothesis,
             "fingerprint": variant.fingerprint,
             "parameters": variant.parameters,
@@ -506,10 +709,33 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             "train_by_answer_type": _axis_scores(comparison, "train"),
             "comparison": str(comparison_path),
         }
-    baseline = records[plan.baseline]
-    baseline_metrics = baseline["metrics"]
-    baseline_axes = baseline["heldout_by_answer_type"]
-    for record in records.values():
+
+    records_by_arm: dict[str, dict[str, dict[str, Any]]] = {}
+    for run_id, record in run_records.items():
+        arm_runs = records_by_arm.setdefault(record["arm_id"], {})
+        replicate_id = record["replicate_id"]
+        if replicate_id in arm_runs:
+            raise ValueError(
+                f"arm {record['arm_id']!r} has duplicate replicate {replicate_id!r}"
+            )
+        record["run_id"] = run_id
+        arm_runs[replicate_id] = record
+    expected_replicates = set(plan.replicates)
+    for arm_id, arm_runs in records_by_arm.items():
+        observed = set(arm_runs)
+        if observed != expected_replicates:
+            raise ValueError(
+                f"arm {arm_id!r} has incomplete replicate block: "
+                f"expected {sorted(expected_replicates)}, observed {sorted(observed)}"
+            )
+    if plan.baseline not in records_by_arm:
+        raise ValueError(f"baseline arm {plan.baseline!r} has no completed runs")
+
+    baseline_runs = records_by_arm[plan.baseline]
+    for record in run_records.values():
+        baseline = baseline_runs[record["replicate_id"]]
+        baseline_metrics = baseline["metrics"]
+        baseline_axes = baseline["heldout_by_answer_type"]
         record["delta_vs_baseline"] = {
             name: round(float(value) - float(baseline_metrics[name]), 8)
             for name, value in record["metrics"].items()
@@ -519,23 +745,146 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             for name, value in record["heldout_by_answer_type"].items()
             if name in baseline_axes
         }
+
+    arm_records: dict[str, dict[str, Any]] = {}
+    for arm_id, arm_runs in records_by_arm.items():
+        ordered = [arm_runs[replicate_id] for replicate_id in plan.replicates]
+        parameters = [record["parameters"] for record in ordered]
+        if any(value != parameters[0] for value in parameters[1:]):
+            raise ValueError(f"arm {arm_id!r} changes architecture across replicates")
+        metric_names = sorted(ordered[0]["metrics"])
+        metric_statistics = {
+            name: _distribution(
+                [float(record["metrics"][name]) for record in ordered],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:metric",
+            )
+            for name in metric_names
+        }
+        paired_statistics = {
+            name: _distribution(
+                [float(record["delta_vs_baseline"][name]) for record in ordered],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:paired",
+            )
+            for name in metric_names
+        }
+        heldout_axes = sorted(
+            set.intersection(
+                *[
+                    set(record["heldout_by_answer_type"])
+                    for record in ordered
+                ]
+            )
+        )
+        train_axes = sorted(
+            set.intersection(
+                *[
+                    set(record["train_by_answer_type"])
+                    for record in ordered
+                ]
+            )
+        )
+        heldout_axis_statistics = {
+            axis: _distribution(
+                [
+                    float(record["heldout_by_answer_type"][axis])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:heldout-axis",
+            )
+            for axis in heldout_axes
+        }
+        heldout_axis_delta_statistics = {
+            axis: _distribution(
+                [
+                    float(record["heldout_axis_delta_vs_baseline"][axis])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:paired-axis",
+            )
+            for axis in heldout_axes
+            if all(
+                axis in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
+        arm_records[arm_id] = {
+            "hypothesis": ordered[0]["hypothesis"],
+            "parameters": parameters[0],
+            "replicate_count": len(ordered),
+            "runs": {
+                record["replicate_id"]: record["run_id"]
+                for record in ordered
+            },
+            "metrics": {
+                name: statistics["mean"]
+                for name, statistics in metric_statistics.items()
+            },
+            "metric_statistics": metric_statistics,
+            "delta_vs_baseline": {
+                name: statistics["mean"]
+                for name, statistics in paired_statistics.items()
+            },
+            "paired_delta_statistics": paired_statistics,
+            "heldout_by_answer_type": {
+                axis: statistics["mean"]
+                for axis, statistics in heldout_axis_statistics.items()
+            },
+            "train_by_answer_type": {
+                axis: round(
+                    _mean(
+                        [
+                            float(record["train_by_answer_type"][axis])
+                            for record in ordered
+                        ]
+                    ),
+                    8,
+                )
+                for axis in train_axes
+            },
+            "heldout_axis_delta_vs_baseline": {
+                axis: statistics["mean"]
+                for axis, statistics in heldout_axis_delta_statistics.items()
+            },
+            "heldout_axis_delta_statistics": heldout_axis_delta_statistics,
+            "heldout_score_conclusion": (
+                "reference"
+                if arm_id == plan.baseline
+                else _paired_conclusion(paired_statistics["heldout_score"])
+            ),
+        }
     ranking = sorted(
-        records,
+        arm_records,
         key=lambda variant_id: (
-            -records[variant_id]["metrics"]["heldout_score"],
-            records[variant_id]["metrics"]["train_minus_heldout_score"],
+            -arm_records[variant_id]["metrics"]["heldout_score"],
+            arm_records[variant_id]["metrics"]["train_minus_heldout_score"],
             variant_id,
         ),
     )
+    matched_artifacts: dict[str, Any]
+    if len(artifact_controls) == 1:
+        matched_artifacts = next(iter(artifact_controls.values()))
+    else:
+        matched_artifacts = artifact_controls
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "sweep": plan.name,
         "sweep_fingerprint": plan.fingerprint,
         "baseline": plan.baseline,
+        "replicates": list(plan.replicates),
+        "replicate_count": len(plan.replicates),
+        "confidence_interval": {
+            "method": "paired_percentile_bootstrap",
+            "level": 0.95,
+            "resamples": 10_000,
+            "deterministic_seed_source": "sweep_fingerprint_arm_metric",
+        },
         "matched_controls": plan.control_values,
-        "matched_evaluation_artifacts": artifact_controls or {},
+        "matched_controls_by_replicate": plan.control_values_by_replicate,
+        "matched_evaluation_artifacts": matched_artifacts,
+        "matched_evaluation_artifacts_by_replicate": artifact_controls,
         "ranking": ranking,
-        "variants": records,
+        "variants": arm_records,
+        "runs": run_records,
     }
     root = Path(plan.root)
     _atomic_write_json(root / "comparison.json", result)
@@ -549,22 +898,38 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
         "",
         f"Baseline: `{result['baseline']}`",
         "",
-        "| Rank | Variant | Parameters | Heldout score | Delta | Train-heldout gap | ms/sample |",
-        "| ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+        f"Paired replicates: **{result['replicate_count']}**",
+        "",
+        "| Rank | Variant | Parameters | Heldout mean ± SD | Paired delta [95% CI] | "
+        "Train-heldout gap | Conclusion |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for rank, variant_id in enumerate(result["ranking"], start=1):
         record = result["variants"][variant_id]
         metrics = record["metrics"]
-        delta = record["delta_vs_baseline"]["heldout_score"]
+        heldout = record["metric_statistics"]["heldout_score"]
+        delta = record["paired_delta_statistics"]["heldout_score"]
+        ci95 = (
+            "unavailable"
+            if delta["ci95"] is None
+            else f"{delta['ci95'][0]:+.6f}, {delta['ci95'][1]:+.6f}"
+        )
         lines.append(
             f"| {rank} | `{variant_id}` | {record['parameters']['total']:,} | "
-            f"{metrics['heldout_score']:.6f} | {delta:+.6f} | "
+            f"{heldout['mean']:.6f} ± {heldout['standard_deviation']:.6f} | "
+            f"{delta['mean']:+.6f} [{ci95}] | "
             f"{metrics['train_minus_heldout_score']:+.6f} | "
-            f"{metrics['heldout_milliseconds_per_sample']:.3f} |"
+            f"`{record['heldout_score_conclusion']}` |"
         )
-    lines.extend(["", "## Matched controls", ""])
-    for key, value in sorted(result["matched_controls"].items()):
-        lines.append(f"- `{key}`: `{_stable_json(value)}`")
+    lines.extend(["", "## Matched controls by replicate", ""])
+    for replicate_id, controls in sorted(
+        result["matched_controls_by_replicate"].items()
+    ):
+        lines.append(f"### {replicate_id}")
+        lines.append("")
+        for key, value in sorted(controls.items()):
+            lines.append(f"- `{key}`: `{_stable_json(value)}`")
+        lines.append("")
     _atomic_write_text(path, "\n".join(lines) + "\n")
 
 
@@ -587,14 +952,31 @@ class SweepRunner:
         dry_run: bool = False,
         resume: bool = True,
         variant_ids: set[str] | None = None,
+        replicate_ids: set[str] | None = None,
         start: str | None = None,
         stop: str | None = None,
     ) -> dict[str, Any]:
         known = {variant.id for variant in self.plan.variants}
-        selected = known if variant_ids is None else set(variant_ids)
-        unknown = selected - known
-        if unknown:
-            raise ValueError(f"unknown sweep variants: {sorted(unknown)}")
+        known_arms = {variant.arm_id for variant in self.plan.variants}
+        selected_arms = known_arms if variant_ids is None else set(variant_ids)
+        unknown_arms = selected_arms - known_arms
+        if unknown_arms:
+            raise ValueError(f"unknown sweep variants: {sorted(unknown_arms)}")
+        known_replicates = set(self.plan.replicates)
+        selected_replicates = (
+            known_replicates if replicate_ids is None else set(replicate_ids)
+        )
+        unknown_replicates = selected_replicates - known_replicates
+        if unknown_replicates:
+            raise ValueError(
+                f"unknown sweep replicates: {sorted(unknown_replicates)}"
+            )
+        selected = {
+            variant.id
+            for variant in self.plan.variants
+            if variant.arm_id in selected_arms
+            and variant.replicate_id in selected_replicates
+        }
         outcomes = []
         if dry_run:
             for variant in self.plan.variants:
@@ -609,7 +991,14 @@ class SweepRunner:
                     start=start,
                     stop=stop,
                 )
-                outcomes.append({"variant": variant.id, "result": result})
+                outcomes.append(
+                    {
+                        "run": variant.id,
+                        "variant": variant.arm_id,
+                        "replicate": variant.replicate_id,
+                        "result": result,
+                    }
+                )
         response: dict[str, Any] = {
             "dry_run": dry_run,
             "sweep": self.plan.name,
@@ -637,7 +1026,9 @@ class SweepRunner:
             except Exception as error:
                 outcomes.append(
                     {
-                        "variant": variant.id,
+                        "run": variant.id,
+                        "variant": variant.arm_id,
+                        "replicate": variant.replicate_id,
                         "status": "failed",
                         "error": f"{type(error).__name__}: {error}",
                     }
@@ -648,7 +1039,9 @@ class SweepRunner:
                 raise
             outcomes.append(
                 {
-                    "variant": variant.id,
+                    "run": variant.id,
+                    "variant": variant.arm_id,
+                    "replicate": variant.replicate_id,
                     "status": "completed",
                     "result": result,
                 }
