@@ -1,0 +1,148 @@
+# Five initialization arms by three paired replicates on one fixed full-data recipe.
+
+schema_version: 1
+name: docvlm-initialization-ablation
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-initialization-ablation
+baseline: random
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+  - {document: blueprint, path: /training/pretraining/optimizer/epochs}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_steps}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /sequence_teacher/seed, value: 7}
+      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /sequence_teacher/seed, value: 107}
+      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /sequence_teacher/seed, value: 207}
+      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: random
+    hypothesis: "Measures the full recipe with no inherited parameters."
+
+  - id: vision
+    hypothesis: "Tests full SigLIP vision-block transfer with a random language tower and connector."
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I1_vision}
+      - {op: add, path: /initialization/vision_family, value: siglip}
+      - op: replace
+        path: /initialization/vision_source
+        value:
+          hub:
+            repo_id: google/siglip-base-patch16-224
+            revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
+
+  - id: language
+    hypothesis: "Tests width-compatible Qwen language transfer with random vision and connector."
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I2_language}
+      - {op: add, path: /initialization/language_family, value: llama}
+      - op: replace
+        path: /initialization/language_source
+        value:
+          hub:
+            repo_id: Qwen/Qwen2.5-1.5B
+            revision: 8faed761d45a263340a0528343f099c05c9a4323
+
+  - id: dual
+    hypothesis: "Tests full compatible transfer from both towers with a random connector."
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I3_dual}
+      - {op: add, path: /initialization/vision_family, value: siglip}
+      - {op: add, path: /initialization/language_family, value: llama}
+      - op: replace
+        path: /initialization/vision_source
+        value:
+          hub:
+            repo_id: google/siglip-base-patch16-224
+            revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
+      - op: replace
+        path: /initialization/language_source
+        value:
+          hub:
+            repo_id: Qwen/Qwen2.5-1.5B
+            revision: 8faed761d45a263340a0528343f099c05c9a4323
+
+  - id: selective
+    hypothesis: "Tests alternating half-depth tower transfer while leaving most student weights random."
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I4_selective}
+      - {op: add, path: /initialization/vision_family, value: siglip}
+      - {op: add, path: /initialization/language_family, value: llama}
+      - op: replace
+        path: /initialization/vision_source
+        value:
+          hub:
+            repo_id: google/siglip-base-patch16-224
+            revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
+      - op: replace
+        path: /initialization/language_source
+        value:
+          hub:
+            repo_id: Qwen/Qwen2.5-1.5B
+            revision: 8faed761d45a263340a0528343f099c05c9a4323

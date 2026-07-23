@@ -92,6 +92,10 @@ The key comparison is not only final score. Report convergence tokens, held-out 
 held-out gap, and robustness under counterfactual pixel edits. A transferred model that converges
 quickly but relies more on priors is not automatically better.
 
+Pinned source acquisition, zero-download shape analysis, fail-closed transfer validation, and the
+five-arm matched suite are executable in
+[`student_initialization_runner.md`](student_initialization_runner.md).
+
 ## Step 1: multimodal pretraining
 
 Pretraining establishes perception and alignment before instruction behavior:

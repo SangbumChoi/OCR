@@ -136,6 +136,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   same-tokenizer online distillation, token-based learning-rate scheduling, deterministic
   sampler/loss curricula, mixed precision, `torchrun`, sample-weighted held-out evaluation, and
   exact checkpoint resume.
+- **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
+  — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
+  transfer, and the matched random/vision/language/dual/selective suite.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, single-update GRPO, periodic supervised multimodal replay,
@@ -207,6 +210,7 @@ added factor lifting the score a step, ending well above the baseline.
 5. [`report/research_novelty.md`](report/research_novelty.md) ·
    [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
    [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
+   [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·

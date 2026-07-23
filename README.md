@@ -343,6 +343,11 @@ with 45% authored hard documents. Hub revision, selection, schema, duplicate ide
 image dimensions, and source distributions are recorded before mixing. See
 [`docs/report/student_data_acquisition.md`](docs/report/student_data_acquisition.md).
 
+Pinned SigLIP and Qwen checkpoints can now enter the same DAG as selective initialization sources.
+Their revisions and cached files are validated before transfer, and the five-arm matched suite is
+`configs/sub1b_initialization_sweep.yaml`. See
+[`docs/report/student_initialization_runner.md`](docs/report/student_initialization_runner.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

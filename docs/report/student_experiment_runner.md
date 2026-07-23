@@ -12,8 +12,10 @@ initial checkpoint metadata.
 
 External generation inputs are content-addressed. The plan records the byte count and SHA-256 of
 `synthetic.config`; changing that YAML invalidates the experiment fingerprint and every dependent
-stage instead of incorrectly resuming old documents. Configured sequence-teacher prediction files
-and initialization token maps receive the same treatment. A combined SHA-256 over the
+stage instead of incorrectly resuming old documents. Configured sequence-teacher prediction files,
+local initialization checkpoints, and initialization token maps receive the same treatment. Pinned
+Hub initialization sources receive dedicated acquisition stages whose manifests validate the
+resolved revision and cached weight files. A combined SHA-256 over the
 `docvlm_eval` Python source tree and every compiled script entrypoint also invalidates resume after
 generator, model, loss, reward, or runner implementation changes.
 
@@ -60,6 +62,12 @@ The experiment YAML controls synthetic families, difficulty, independent split s
 data components and weights, tokenizer size, initialization arm and transfer sources, training
 limits, evaluation settings, and W&B metadata. The runner writes a resolved architecture blueprint
 whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+
+Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
+shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
+across paired sweeps. See
+[`student_initialization_runner.md`](student_initialization_runner.md) for the source schema,
+compatibility analyzer, and five-arm initialization suite.
 
 Set `evaluation.baseline_evaluation` to an evaluation root produced by
 `scripts/eval_student.py`, and set `evaluation.monolingual_control_evaluation` to the corresponding

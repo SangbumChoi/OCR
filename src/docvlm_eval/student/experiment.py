@@ -19,6 +19,11 @@ import yaml
 
 from ..architecture import estimate_parameters, load_blueprint, validate_blueprint
 from .acquisition import HubComponentSpec
+from .checkpoint_acquisition import (
+    HubCheckpointSpec,
+    checkpoint_manifest_valid,
+    checkpoint_path_from_manifest,
+)
 from .config import StudentConfig
 from .mixture import MixtureComponent, validate_components
 
@@ -121,6 +126,8 @@ class Artifact:
             return path.is_file() and path.stat().st_size > 0
         if self.kind == "directory":
             return path.is_dir() and any(path.iterdir())
+        if self.kind == "checkpoint_manifest":
+            return checkpoint_manifest_valid(path)
         raise ValueError(f"unknown artifact kind {self.kind!r}")
 
 
@@ -189,6 +196,102 @@ class ExperimentPlan:
 def _resolve_path(root: Path, value: str | Path) -> Path:
     path = Path(value).expanduser()
     return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _checkpoint_path_fingerprint(path: Path) -> dict[str, Any]:
+    if path.is_file():
+        return _file_fingerprint(path)
+    if not path.is_dir():
+        raise ValueError(f"initialization checkpoint does not exist: {path}")
+    names = {
+        "config.json",
+        "student_config.json",
+        "model.pt",
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "pytorch_model.bin",
+        "pytorch_model.bin.index.json",
+    }
+    files = [
+        candidate
+        for candidate in path.rglob("*")
+        if candidate.is_file()
+        and (
+            candidate.name in names
+            or candidate.name.startswith("model-")
+            or candidate.name.startswith("pytorch_model-")
+        )
+    ]
+    if not files:
+        raise ValueError(
+            f"initialization checkpoint has no supported files: {path}"
+        )
+    records = []
+    for candidate in sorted(files):
+        record = _file_fingerprint(candidate)
+        record["path"] = str(candidate.relative_to(path))
+        records.append(record)
+    return {
+        "path": str(path),
+        "files": len(records),
+        "sha256": _fingerprint(records),
+    }
+
+
+def _checkpoint_sources(
+    initialization: dict[str, Any],
+    repo_root: Path,
+    artifacts: Path,
+) -> tuple[
+    dict[str, str],
+    dict[str, HubCheckpointSpec],
+    dict[str, Path],
+    dict[str, Any],
+]:
+    resolved: dict[str, str] = {}
+    hub_specs: dict[str, HubCheckpointSpec] = {}
+    manifests: dict[str, Path] = {}
+    fingerprints: dict[str, Any] = {}
+    for component in ("vision", "language"):
+        source = initialization.get(f"{component}_source")
+        if source is None:
+            continue
+        family = str(
+            initialization.get(f"{component}_family")
+            or ("siglip" if component == "vision" else "llama")
+        )
+        if isinstance(source, (str, Path)):
+            path = _resolve_path(repo_root, source)
+            resolved[component] = str(path)
+            fingerprints[f"initialization_{component}_source"] = (
+                _checkpoint_path_fingerprint(path)
+            )
+            continue
+        if not isinstance(source, dict) or not isinstance(source.get("hub"), dict):
+            raise ValueError(
+                f"initialization.{component}_source must be a path or a hub mapping"
+            )
+        hub = source["hub"]
+        checkpoint_kwargs: dict[str, Any] = {}
+        if hub.get("allow_patterns") is not None:
+            checkpoint_kwargs["allow_patterns"] = tuple(
+                str(pattern) for pattern in hub["allow_patterns"]
+            )
+        spec = HubCheckpointSpec(
+            repo_id=str(hub.get("repo_id") or ""),
+            revision=str(hub.get("revision") or ""),
+            family=family,
+            **checkpoint_kwargs,
+        )
+        manifest = (
+            artifacts
+            / "initialization_sources"
+            / f"{component}_checkpoint.json"
+        )
+        resolved[component] = f"@checkpoint:{component}"
+        hub_specs[component] = spec
+        manifests[component] = manifest
+    return resolved, hub_specs, manifests, fingerprints
 
 
 def _require_mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
@@ -443,6 +546,17 @@ def build_experiment_plan(
         acquired_paths=acquired_paths,
     )
     initialization = raw.get("initialization") or {}
+    (
+        initialization_sources,
+        checkpoint_specs,
+        checkpoint_manifests,
+        checkpoint_fingerprints,
+    ) = _checkpoint_sources(
+        initialization,
+        repo_root,
+        artifacts,
+    )
+    input_fingerprints.update(checkpoint_fingerprints)
     tokenizer = raw.get("tokenizer") or {}
     sequence_teacher = raw.get("sequence_teacher") or {}
     sequence_teacher_enabled = bool(sequence_teacher.get("enabled", False))
@@ -469,12 +583,72 @@ def build_experiment_plan(
         sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
         sequence_target_seed=int(sequence_teacher.get("seed", 7)),
     )
+    for component, allowed in (
+        ("vision", {"student", "siglip"}),
+        ("language", {"student", "llama"}),
+    ):
+        family = str(
+            initialization.get(f"{component}_family")
+            or (
+                checkpoint_specs[component].family
+                if component in checkpoint_specs
+                else "student" if component in initialization_sources else ""
+            )
+        )
+        if family and family not in allowed:
+            raise ValueError(
+                f"initialization.{component}_family must be one of "
+                f"{sorted(allowed)}"
+            )
+    arms = {
+        str(arm["id"]): arm
+        for arm in blueprint["initialization_arms"]
+    }
+    arm_id = str(initialization.get("arm") or "I0_random")
+    if arm_id not in arms:
+        raise ValueError(f"unknown initialization arm {arm_id!r}")
+    required_sources = [
+        component
+        for component in ("vision", "language")
+        if float(arms[arm_id].get(f"{component}_transfer", 0.0)) > 0
+        and component not in initialization_sources
+    ]
+    if required_sources:
+        raise ValueError(
+            f"initialization arm {arm_id!r} requires sources for "
+            f"{required_sources}"
+        )
     runtime = raw.get("runtime") or {}
     device = str(runtime.get("device") or "auto")
     stages: list[ExperimentStage] = []
 
     def script(name: str) -> str:
         return str((repo_root / "scripts" / name).resolve())
+
+    checkpoint_stage_names: list[str] = []
+    for component, spec in checkpoint_specs.items():
+        stage_name = f"acquire_{component}_checkpoint"
+        manifest = checkpoint_manifests[component]
+        stages.append(
+            ExperimentStage(
+                stage_name,
+                (
+                    python,
+                    script("acquire_student_checkpoint.py"),
+                    "--repo-id",
+                    spec.repo_id,
+                    "--revision",
+                    spec.revision,
+                    "--family",
+                    spec.family,
+                    "--output",
+                    str(manifest),
+                ),
+                (),
+                (Artifact(str(manifest), "checkpoint_manifest"),),
+            )
+        )
+        checkpoint_stage_names.append(stage_name)
 
     if synthetic_enabled:
         common = [
@@ -796,26 +970,33 @@ def build_experiment_plan(
         )
     if bool(initialization.get("allow_full_memory", False)):
         init_command.append("--allow-full-memory")
-    for key, flag in (
-        ("vision_source", "--vision-source"),
-        ("vision_family", "--vision-family"),
-        ("language_source", "--language-source"),
-        ("language_family", "--language-family"),
-        ("token_map", "--token-map"),
-    ):
-        value = initialization.get(key)
-        if value is not None:
-            init_command.extend(
-                [flag, str(_resolve_path(repo_root, value) if key.endswith(("source", "map")) else value)]
+    for component in ("vision", "language"):
+        source = initialization_sources.get(component)
+        if source is not None:
+            init_command.extend([f"--{component}-source", source])
+        family = (
+            initialization.get(f"{component}_family")
+            or (
+                checkpoint_specs[component].family
+                if component in checkpoint_specs
+                else None
             )
+        )
+        if family is not None:
+            init_command.extend([f"--{component}-family", str(family)])
+    if token_map is not None:
+        init_command.extend(
+            ["--token-map", str(_resolve_path(repo_root, token_map))]
+        )
     stages.append(
         ExperimentStage(
             "initialize_student",
             tuple(init_command),
-            ("train_tokenizer",),
+            ("train_tokenizer", *checkpoint_stage_names),
             (
                 Artifact(str(initial_dir / "student_config.json")),
                 Artifact(str(initial_dir / "model.pt")),
+                Artifact(str(initial_dir / "metadata.json")),
             ),
         )
     )
@@ -1049,6 +1230,17 @@ def _resolve_command(command: tuple[str, ...], root: Path) -> list[str]:
             if stage not in stage_outputs:
                 raise ValueError(f"unknown checkpoint placeholder {argument!r}")
             resolved.append(str(_checkpoint_student(stage_outputs[stage])))
+        elif argument.startswith("@checkpoint:"):
+            component = argument.split(":", 1)[1]
+            if component not in {"vision", "language"}:
+                raise ValueError(f"unknown checkpoint placeholder {argument!r}")
+            manifest = (
+                root
+                / "artifacts"
+                / "initialization_sources"
+                / f"{component}_checkpoint.json"
+            )
+            resolved.append(str(checkpoint_path_from_manifest(manifest)))
         else:
             resolved.append(argument)
     return resolved

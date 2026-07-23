@@ -105,6 +105,47 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
     ]
 
 
+def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_initialization_sweep.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "initialization-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 15
+    assert plan.baseline == "random"
+    selective = next(
+        variant
+        for variant in plan.variants
+        if variant.arm_id == "selective" and variant.replicate_id == "seed_0"
+    )
+    assert selective.plan.raw_spec["initialization"]["arm"] == "I4_selective"
+    assert selective.plan.stage_names[:2] == [
+        "acquire_vision_checkpoint",
+        "acquire_language_checkpoint",
+    ]
+    initialize = next(
+        stage
+        for stage in selective.plan.stages
+        if stage.name == "initialize_student"
+    )
+    assert initialize.dependencies == (
+        "train_tokenizer",
+        "acquire_vision_checkpoint",
+        "acquire_language_checkpoint",
+    )
+
+
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):
     config = _tiny_sweep(tmp_path)
     first = compile_sweep_plan(

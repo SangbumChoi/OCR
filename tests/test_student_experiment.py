@@ -118,6 +118,105 @@ def test_invalid_experiment_rejects_negative_initialization_seed(tmp_path):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
+def _write_initialization_experiment(tmp_path, initialization):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["initialization"].update(initialization)
+    raw["blueprint"] = str(ROOT / "configs" / "sub1b_architecture.yaml")
+    raw["synthetic"]["config"] = str(ROOT / "configs" / "synth_data.yaml")
+    raw["output_root"] = str(tmp_path / "output")
+    path = tmp_path / "experiment.yaml"
+    path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def test_experiment_compiles_pinned_hub_initialization_sources(tmp_path):
+    revision = "a" * 40
+    config = _write_initialization_experiment(
+        tmp_path,
+        {
+            "arm": "I4_selective",
+            "vision_family": "siglip",
+            "vision_source": {
+                "hub": {
+                    "repo_id": "google/siglip-base-patch16-224",
+                    "revision": revision,
+                }
+            },
+            "language_family": "llama",
+            "language_source": {
+                "hub": {
+                    "repo_id": "Qwen/Qwen2.5-1.5B",
+                    "revision": revision,
+                }
+            },
+        },
+    )
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    initialize = next(
+        stage for stage in plan.stages if stage.name == "initialize_student"
+    )
+
+    assert plan.stage_names[:2] == [
+        "acquire_vision_checkpoint",
+        "acquire_language_checkpoint",
+    ]
+    assert initialize.dependencies == (
+        "train_tokenizer",
+        "acquire_vision_checkpoint",
+        "acquire_language_checkpoint",
+    )
+    assert "@checkpoint:vision" in initialize.command
+    assert "@checkpoint:language" in initialize.command
+    assert "--vision-family" in initialize.command
+    assert "--language-family" in initialize.command
+    assert next(
+        stage
+        for stage in plan.stages
+        if stage.name == "acquire_vision_checkpoint"
+    ).artifacts[0].kind == "checkpoint_manifest"
+
+
+def test_experiment_fingerprints_local_initialization_sources(tmp_path):
+    checkpoint = tmp_path / "source"
+    checkpoint.mkdir()
+    (checkpoint / "model.pt").write_bytes(b"first")
+    config = _write_initialization_experiment(
+        tmp_path,
+        {
+            "arm": "I4_selective",
+            "vision_family": "student",
+            "vision_source": str(checkpoint),
+            "language_family": "student",
+            "language_source": str(checkpoint),
+        },
+    )
+
+    first = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    (checkpoint / "model.pt").write_bytes(b"second")
+    second = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+    assert first.fingerprint != second.fingerprint
+    assert (
+        first.input_fingerprints["initialization_vision_source"]["sha256"]
+        != second.input_fingerprints["initialization_vision_source"]["sha256"]
+    )
+
+
+def test_experiment_rejects_transfer_arm_without_required_source(tmp_path):
+    config = _write_initialization_experiment(
+        tmp_path,
+        {"arm": "I1_vision"},
+    )
+
+    with pytest.raises(ValueError, match="requires sources"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
 def test_experiment_fingerprint_tracks_synthetic_config_content(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
@@ -323,6 +422,29 @@ def test_checkpoint_placeholder_and_training_resume(tmp_path):
 
     command = _resolve_command(("tool", "@student:pretrain"), root)
     assert command == ["tool", str(student)]
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "config.json").write_text("{}", encoding="utf-8")
+    (source / "model.safetensors").write_bytes(b"weights")
+    manifest = root / "artifacts" / "initialization_sources" / "vision_checkpoint.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "kind": "huggingface_model_checkpoint",
+                "snapshot_path": str(source),
+                "files": [
+                    {"path": "config.json", "bytes": 2},
+                    {"path": "model.safetensors", "bytes": 7},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _resolve_command(("tool", "@checkpoint:vision"), root) == [
+        "tool",
+        str(source),
+    ]
     assert _with_training_resume(command, "pretrain", root, eligible=True) == [
         "tool",
         str(student),

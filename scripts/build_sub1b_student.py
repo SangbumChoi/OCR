@@ -112,6 +112,25 @@ def main() -> None:
             required.append("--language-source")
         if required:
             raise SystemExit(f"{args.init_arm} requires {' and '.join(required)}")
+        empty_components = []
+        for component in ("vision", "language"):
+            if not arm[f"{component}_transfer"]:
+                continue
+            report = next(
+                (
+                    report
+                    for report in reports
+                    if report["fractions"].get(component, 0.0) > 0
+                ),
+                None,
+            )
+            if report is None or int(report["copied_parameters"]) <= 0:
+                empty_components.append(component)
+        if empty_components:
+            raise SystemExit(
+                "selective transfer copied zero parameters for required "
+                f"components: {empty_components}"
+            )
 
     if args.save:
         if args.device == "meta":

@@ -1,5 +1,8 @@
 import importlib.util
+import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +11,7 @@ pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("torch") is None,
     reason="native student tests require torch",
 )
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_tiny_student_multimodal_forward_and_auxiliary_losses():
@@ -250,6 +254,67 @@ def test_selective_transfer_reports_shape_mismatch_without_cropping():
 
     assert torch.equal(student.state_dict()[key], original)
     assert any(item["target"] == key for item in report.skipped_shape)
+
+
+def test_meta_selective_transfer_counts_copied_target_shapes_exactly():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    with torch.device("meta"):
+        student = DocumentVLMStudent(StudentConfig.tiny())
+        source = {
+            key: torch.empty_like(value)
+            for key, value in student.state_dict().items()
+        }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"vision": 1.0},
+        family="student",
+    )
+    target = student.state_dict()
+
+    assert report.copied_parameters == sum(
+        target[key].numel() for key in report.copied_keys
+    )
+
+
+def test_student_builder_rejects_a_required_zero_parameter_transfer(tmp_path):
+    import torch
+
+    checkpoint = tmp_path / "incompatible.pt"
+    torch.save({"unrelated.weight": torch.ones(1)}, checkpoint)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_sub1b_student.py"),
+            "--tiny",
+            "--tiny-vocab-size",
+            "260",
+            "--device",
+            "cpu",
+            "--init-arm",
+            "I1_vision",
+            "--vision-source",
+            str(checkpoint),
+            "--vision-family",
+            "student",
+            "--save",
+            str(tmp_path / "student"),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "copied zero parameters" in result.stderr
 
 
 def test_generalized_box_iou_is_zero_for_an_exact_match():

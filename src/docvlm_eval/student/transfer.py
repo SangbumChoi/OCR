@@ -163,7 +163,7 @@ def selective_transfer(
         component: _selected_blocks(target_counts[component], normalized_fractions[component])
         for component in ("vision", "language")
     }
-    copied_storages: set[tuple[int, int, int]] = set()
+    copied_storages: set[Any] = set()
 
     for target_key, target_tensor in target.items():
         component = target_key.split(".", 1)[0]
@@ -259,9 +259,13 @@ def selective_transfer(
         )
         report.copied_tensors += 1
         storage_key = (
-            target_tensor.untyped_storage().data_ptr(),
-            target_tensor.storage_offset(),
-            target_tensor.numel(),
+            ("meta", target_key)
+            if target_tensor.device.type == "meta"
+            else (
+                target_tensor.untyped_storage().data_ptr(),
+                target_tensor.storage_offset(),
+                target_tensor.numel(),
+            )
         )
         if storage_key not in copied_storages:
             report.copied_parameters += target_tensor.numel()
