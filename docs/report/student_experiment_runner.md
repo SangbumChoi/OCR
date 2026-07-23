@@ -86,11 +86,13 @@ payload, duplicate identities, and image dimensions, then mixes it at 55% with 4
 documents. See
 [`student_data_acquisition.md`](student_data_acquisition.md).
 
-The full configuration uses `lfm2_5-vl-1.6b` as an offline sequence teacher. It exports
-fingerprinted image-question requests, resumes deterministic teacher generation, applies each
-sample's native metric as a quality gate, and preserves rejected targets only as aggregate
-provenance. The tiny configuration uses `dummy-echo`; its deliberately incorrect outputs prove
-that all teacher responses can be rejected while the pipeline safely trains on gold.
+The full configuration uses `lfm2_5-vl-1.6b` as an offline sequence teacher. It exports 4,096
+deterministic fingerprinted image-question requests, resumes generation from one pinned Hub
+revision, applies each sample's native metric as a quality gate, and retains exactly 400 accepted
+targets. Model/revision mismatches fail during apply. The student tokenizer is fit without teacher
+answers, preventing teacher-specific vocabulary drift. The tiny configuration uses `dummy-echo`;
+its deliberately incorrect outputs prove that all teacher responses can be rejected while the
+pipeline safely trains on gold.
 
 ## Data mixture
 

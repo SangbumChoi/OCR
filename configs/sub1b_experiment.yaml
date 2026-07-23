@@ -47,6 +47,7 @@ data:
 sequence_teacher:
   enabled: true
   model: lfm2_5-vl-1.6b
+  revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
   predictions: null
   device: cuda
   dtype: bfloat16
@@ -54,6 +55,9 @@ sequence_teacher:
   temperature: 0.0
   min_score: 0.8
   min_acceptance_rate: 0.1
+  max_requests: 4096
+  accepted_target_count: 400
+  selection_seed: 7
   target_probability: 0.5
   target_format: answer
   seed: 7
@@ -61,6 +65,7 @@ sequence_teacher:
 tokenizer:
   vocab_size: null
   min_frequency: 2
+  include_teacher_targets: false
   no_progress: true
 
 initialization:

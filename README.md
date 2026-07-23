@@ -370,6 +370,12 @@ answer-only, free-rationale, and evidence-linked checkpoints before RLVR. The RL
 evidence-linked SFT and compares SFT-only, correctness-only RLVR, and the full decomposed reward.
 See [`docs/report/student_posttraining_sweeps.md`](docs/report/student_posttraining_sweeps.md).
 
+The nine-run `configs/sub1b_sequence_teacher_sweep.yaml` compares gold-only, pinned LFM, and pinned
+Qwen sequence supervision. It fixes a 4,096-request budget, an exact 400-target dose, and a
+gold-only tokenizer corpus so teacher coverage and vocabulary drift cannot masquerade as teacher
+quality. See
+[`docs/report/student_sequence_teacher_sweep.md`](docs/report/student_sequence_teacher_sweep.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

@@ -94,6 +94,7 @@ class _InternVL(ModelAdapter):
         self.model = (
             AutoModel.from_pretrained(
                 self.hf_id,
+                revision=self.revision,
                 torch_dtype=dtype,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True,
@@ -103,7 +104,10 @@ class _InternVL(ModelAdapter):
             .to(self.device)
         )
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.hf_id, trust_remote_code=True, use_fast=False
+            self.hf_id,
+            revision=self.revision,
+            trust_remote_code=True,
+            use_fast=False,
         )
         self.transform = _build_transform(self.input_size)
         self._loaded = True
@@ -123,13 +127,6 @@ class _InternVL(ModelAdapter):
         import torch
 
         pixel_values = self._pixels(image_path)
-        gen_kwargs = dict(
-            max_new_tokens=self.gen.max_new_tokens,
-            do_sample=self.gen.do_sample,
-            num_beams=self.gen.num_beams,
-            output_scores=True,
-            return_dict_in_generate=True,
-        )
         prompt = f"<image>\n{question}"
         with torch.no_grad():
             # InternVL's chat() returns text; to also get confidence we call the

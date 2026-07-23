@@ -115,6 +115,7 @@ def _metadata_view(dataset: Any) -> Any:
         "full_text",
         "table_html",
         "language",
+        "metric",
         "mixture_component",
     }
     columns = [name for name in dataset.column_names if name in wanted]

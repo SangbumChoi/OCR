@@ -37,6 +37,7 @@ class ModelAdapter(abc.ABC):
     device: str = "cuda"
     dtype: str = "bfloat16"
     gen: GenConfig = field(default_factory=GenConfig)
+    revision: str | None = None
     # attention backend. Default "auto" -> **eager** (the only backend every model here supports;
     # see resolve_attn). flash_attention_2 is NOT used by default — it needs an Ampere+ GPU and
     # gives no measurable win on a T4 (see notebooks/flash_attention_benchmark.ipynb, reference
@@ -110,6 +111,7 @@ class ModelAdapter(abc.ABC):
         return {
             "key": self.key,
             "hf_id": self.hf_id,
+            "revision": self.revision,
             "param_count_m": self.param_count_m,
             "family": self.family,
             "attn": self.resolve_attn(),

@@ -31,6 +31,7 @@ data:
 sequence_teacher:
   enabled: true
   model: dummy-echo
+  revision: null
   predictions: null
   device: cpu
   dtype: float32
@@ -38,6 +39,9 @@ sequence_teacher:
   temperature: 0.0
   min_score: 0.8
   min_acceptance_rate: 0.0
+  max_requests: 4
+  accepted_target_count: null
+  selection_seed: 7
   target_probability: 0.5
   target_format: answer
   seed: 7
@@ -45,6 +49,7 @@ sequence_teacher:
 tokenizer:
   vocab_size: 512
   min_frequency: 1
+  include_teacher_targets: false
   no_progress: true
 
 initialization:

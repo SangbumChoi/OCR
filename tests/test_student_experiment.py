@@ -67,6 +67,29 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert sft.command[0] == sys.executable
     assert sft.command.count(sys.executable) == 1
     assert "@student:pretrain" in sft.command
+    export = next(
+        stage for stage in plan.stages if stage.name == "export_teacher_requests"
+    )
+    assert export.command[export.command.index("--max-requests") + 1] == "4096"
+    generate = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "generate_teacher_predictions"
+    )
+    assert generate.command[generate.command.index("--model-revision") + 1] == (
+        "919fde3d022e3f90a4716006f993938ee8c2eb97"
+    )
+    apply = next(
+        stage for stage in plan.stages if stage.name == "apply_teacher_targets"
+    )
+    assert (
+        apply.command[apply.command.index("--accepted-target-count") + 1]
+        == "400"
+    )
+    tokenizer = next(
+        stage for stage in plan.stages if stage.name == "train_tokenizer"
+    )
+    assert "--exclude-teacher-targets" in tokenizer.command
 
 
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
@@ -183,6 +206,21 @@ def test_invalid_experiment_rejects_negative_initialization_seed(tmp_path):
     config = tmp_path / "invalid.yaml"
     config.write_text(raw.replace("seed: 5", "seed: -1", 1), encoding="utf-8")
     with pytest.raises(ValueError, match="initialization.seed must be non-negative"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
+def test_experiment_rejects_unpinned_sequence_teacher(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["sequence_teacher"]["revision"] = None
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "unpinned-teacher.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="pinned 40-character"):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

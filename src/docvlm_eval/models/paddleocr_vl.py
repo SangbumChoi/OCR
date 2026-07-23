@@ -63,11 +63,14 @@ class _PaddleOCRVL(ModelAdapter):
         _patch_create_causal_mask_kwarg()  # remote code uses inputs_embeds=; tf renamed it
 
         self.processor = AutoProcessor.from_pretrained(
-            self.hf_id, trust_remote_code=True
+            self.hf_id,
+            revision=self.revision,
+            trust_remote_code=True,
         )
         self.model = (
             AutoModelForCausalLM.from_pretrained(
                 self.hf_id,
+                revision=self.revision,
                 torch_dtype=getattr(torch, self.dtype),
                 trust_remote_code=True,
                 low_cpu_mem_usage=True,

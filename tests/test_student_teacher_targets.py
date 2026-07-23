@@ -26,6 +26,12 @@ class _FakeTeacher:
         return "wrong", 0.2
 
 
+class _PerfectTeacher(_FakeTeacher):
+    def generate(self, image_path: str, question: str):
+        assert Path(image_path).is_file()
+        return ("alpha" if "first field" in question else "beta"), 0.9
+
+
 def _dataset(tmp_path: Path):
     from datasets import Dataset
     from PIL import Image
@@ -68,10 +74,12 @@ def test_cross_tokenizer_teacher_targets_are_quality_gated_and_consumed(tmp_path
     assert export_manifest["rows_with_requests"] == 1
 
     predictions = tmp_path / "predictions.jsonl"
+    revision = "a" * 40
     generation = generate_teacher_predictions(
         requests / "requests.jsonl",
         predictions,
         model_key="fake-teacher",
+        model_revision=revision,
         device="cpu",
         dtype="float32",
         max_new_tokens=16,
@@ -82,6 +90,7 @@ def test_cross_tokenizer_teacher_targets_are_quality_gated_and_consumed(tmp_path
         requests / "requests.jsonl",
         predictions,
         model_key="fake-teacher",
+        model_revision=revision,
         device="cpu",
         dtype="float32",
         max_new_tokens=16,
@@ -94,6 +103,7 @@ def test_cross_tokenizer_teacher_targets_are_quality_gated_and_consumed(tmp_path
             requests / "requests.jsonl",
             predictions,
             model_key="different-teacher",
+            model_revision=revision,
             device="cpu",
             dtype="float32",
             max_new_tokens=16,
@@ -117,7 +127,11 @@ def test_cross_tokenizer_teacher_targets_are_quality_gated_and_consumed(tmp_path
         predictions,
         output,
         min_score=0.8,
+        accepted_target_count=1,
+        expected_model="fake-teacher",
+        expected_revision=revision,
     )
+    assert manifest["eligible"] == 1
     assert manifest["accepted"] == 1
     assert manifest["rejections"] == {"below_score_threshold": 1}
     assert manifest["teachers"] == {"fake-teacher": 1}
@@ -146,7 +160,84 @@ def test_cross_tokenizer_teacher_targets_are_quality_gated_and_consumed(tmp_path
         teacher_target_probability=0.0,
     )
     assert gold_only[0].target_source == "gold"
-    assert "alpha" in list(iter_udd_text(enriched))
+    all_text = list(iter_udd_text(enriched))
+    gold_text = list(
+        iter_udd_text(enriched, include_teacher_targets=False)
+    )
+    assert all_text.count("alpha") == gold_text.count("alpha") + 1
+
+
+def test_teacher_request_and_target_budgets_are_deterministic(tmp_path):
+    from datasets import load_from_disk
+
+    source = _dataset(tmp_path)
+    first = tmp_path / "requests-first"
+    second = tmp_path / "requests-second"
+    first_manifest = export_teacher_requests(
+        source,
+        first,
+        max_requests=1,
+        selection_seed=19,
+    )
+    export_teacher_requests(
+        source,
+        second,
+        max_requests=1,
+        selection_seed=19,
+    )
+    assert first_manifest["eligible_requests"] == 2
+    assert first_manifest["requests"] == 1
+    assert first_manifest["selection_seed"] == 19
+    first_request = json.loads(
+        (first / "requests.jsonl").read_text(encoding="utf-8")
+    )
+    second_request = json.loads(
+        (second / "requests.jsonl").read_text(encoding="utf-8")
+    )
+    assert first_request["request_id"] == second_request["request_id"]
+
+    all_requests = tmp_path / "requests-all"
+    export_teacher_requests(source, all_requests)
+    predictions = tmp_path / "perfect.jsonl"
+    revision = "b" * 40
+    generate_teacher_predictions(
+        all_requests / "requests.jsonl",
+        predictions,
+        model_key="perfect-teacher",
+        model_revision=revision,
+        device="cpu",
+        dtype="float32",
+        max_new_tokens=16,
+        adapter=_PerfectTeacher(),
+    )
+    output = tmp_path / "fixed-dose"
+    manifest = apply_teacher_predictions(
+        source,
+        all_requests / "requests.jsonl",
+        predictions,
+        output,
+        min_score=0.8,
+        accepted_target_count=1,
+        selection_seed=23,
+        expected_model="perfect-teacher",
+        expected_revision=revision,
+    )
+    assert manifest["eligible"] == 2
+    assert manifest["accepted"] == 1
+    assert manifest["accepted_target_count"] == 1
+    enriched = load_from_disk(str(output))
+    assert sum(bool(answer) for answer in enriched[0]["teacher_answers"]) == 1
+
+    with pytest.raises(ValueError, match="revision does not match"):
+        apply_teacher_predictions(
+            source,
+            all_requests / "requests.jsonl",
+            predictions,
+            tmp_path / "wrong-revision",
+            min_score=0.8,
+            expected_model="perfect-teacher",
+            expected_revision="c" * 40,
+        )
 
 
 def test_teacher_apply_rejects_predictions_for_another_request(tmp_path):

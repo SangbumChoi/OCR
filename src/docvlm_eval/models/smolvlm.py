@@ -31,10 +31,17 @@ class _SmolVLM(ModelAdapter):
         except ImportError:  # older transformers
             from transformers import AutoModelForVision2Seq as _AutoVLM
 
-        self.processor = AutoProcessor.from_pretrained(self.hf_id)
+        self.processor = AutoProcessor.from_pretrained(
+            self.hf_id,
+            revision=self.revision,
+        )
         self.model = (
-            _AutoVLM.from_pretrained(self.hf_id, torch_dtype=getattr(torch, self.dtype),
-                                     attn_implementation=self.resolve_attn())
+            _AutoVLM.from_pretrained(
+                self.hf_id,
+                revision=self.revision,
+                torch_dtype=getattr(torch, self.dtype),
+                attn_implementation=self.resolve_attn(),
+            )
             .eval()
             .to(self.device)
         )

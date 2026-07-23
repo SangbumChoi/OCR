@@ -22,11 +22,12 @@ python scripts/train_student_tokenizer.py \
 ```
 
 Training text includes every instruction and answer variant, full-page text, table HTML, and
-localized element key/value. It also includes accepted offline teacher sequence targets before
-student tokenization. The saved `tokenizer_config.json` records special-token IDs, requested and
-actual vocabulary sizes, normalization, minimum frequency, and a SHA-256 fingerprint of the
-complete token-to-ID contract. The collator rejects any token ID outside the model vocabulary
-before the forward pass.
+localized element key/value. The full experiment excludes offline teacher targets from tokenizer
+fitting so teacher-family ablations retain one gold-defined token-to-ID contract; byte fallback
+still encodes every teacher response. The saved `tokenizer_config.json` records this corpus policy,
+special-token IDs, requested and actual vocabulary sizes, normalization, minimum frequency, and a
+SHA-256 fingerprint of the complete token-to-ID contract. The collator rejects any token ID outside
+the model vocabulary before the forward pass.
 
 ## UDD expansion
 

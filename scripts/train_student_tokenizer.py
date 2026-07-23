@@ -37,6 +37,7 @@ def main() -> None:
         default=ROOT / "artifacts" / "student_tokenizer",
     )
     parser.add_argument("--no-progress", action="store_true")
+    parser.add_argument("--exclude-teacher-targets", action="store_true")
     args = parser.parse_args()
 
     from datasets import load_dataset, load_from_disk
@@ -53,11 +54,17 @@ def main() -> None:
             f"tokenizer vocab_size={vocab_size} exceeds model vocab_size={model_vocab_size}"
         )
     tokenizer = DocumentTokenizer.train(
-        iter_udd_text(dataset),
+        iter_udd_text(
+            dataset,
+            include_teacher_targets=not args.exclude_teacher_targets,
+        ),
         vocab_size=vocab_size,
         min_frequency=args.min_frequency,
         show_progress=not args.no_progress,
     )
+    tokenizer.metadata["corpus"] = {
+        "include_teacher_targets": not args.exclude_teacher_targets,
+    }
     tokenizer.save_pretrained(args.output)
     print(
         f"Saved byte-level tokenizer with {tokenizer.vocab_size:,} tokens "

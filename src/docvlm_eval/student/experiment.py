@@ -30,6 +30,7 @@ from .pretrain import PretrainConfig, pretraining_supervision_contract
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_HUB_REVISION = re.compile(r"^[0-9a-f]{40}$")
 _CHECKPOINT_STAGES = {"pretrain", "sft", "rlvr"}
 _OUTPUT_FLAGS = {"--out", "--output", "--save"}
 
@@ -351,14 +352,60 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     if not isinstance(sequence_teacher, dict):
         raise ValueError("experiment.sequence_teacher must be a mapping")
     if bool(sequence_teacher.get("enabled", False)):
-        if not str(sequence_teacher.get("model") or "").strip():
+        model = str(sequence_teacher.get("model") or "").strip()
+        if not model:
             raise ValueError("enabled sequence_teacher requires a model")
+        from ..models import list_models
+
+        if model not in list_models():
+            raise ValueError(
+                f"sequence_teacher.model is not registered: {model!r}"
+            )
+        revision = sequence_teacher.get("revision")
+        if model != "dummy-echo" and not _HUB_REVISION.fullmatch(
+            str(revision or "")
+        ):
+            raise ValueError(
+                "non-dummy sequence_teacher requires a pinned 40-character "
+                "Hub revision"
+            )
         for field in ("min_score", "min_acceptance_rate", "target_probability"):
             value = float(sequence_teacher.get(field, -1.0))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"sequence_teacher.{field} must be within [0, 1]")
         if sequence_teacher.get("target_format", "answer") not in {"answer", "response"}:
             raise ValueError("sequence_teacher.target_format must be answer or response")
+        max_requests = int(sequence_teacher.get("max_requests", 0))
+        accepted_target_count = sequence_teacher.get("accepted_target_count")
+        selection_seed = int(sequence_teacher.get("selection_seed", -1))
+        if max_requests <= 0:
+            raise ValueError("sequence_teacher.max_requests must be positive")
+        if selection_seed < 0:
+            raise ValueError(
+                "sequence_teacher.selection_seed must be non-negative"
+            )
+        if accepted_target_count is not None:
+            accepted_target_count = int(accepted_target_count)
+            guaranteed_eligible = int(
+                max_requests
+                * float(sequence_teacher.get("min_acceptance_rate", 0.0))
+            )
+            if (
+                accepted_target_count <= 0
+                or accepted_target_count > guaranteed_eligible
+            ):
+                raise ValueError(
+                    "sequence_teacher.accepted_target_count must be positive "
+                    "and no larger than the acceptance-rate floor"
+                )
+        if int(sequence_teacher.get("max_new_tokens", 0)) <= 0:
+            raise ValueError(
+                "sequence_teacher.max_new_tokens must be positive"
+            )
+        if float(sequence_teacher.get("temperature", 0.0)) < 0:
+            raise ValueError(
+                "sequence_teacher.temperature must be non-negative"
+            )
     initialization = raw.get("initialization") or {}
     if not isinstance(initialization, dict):
         raise ValueError("experiment.initialization must be a mapping")
@@ -899,6 +946,10 @@ def build_experiment_plan(
                     str(mixed_data),
                     "--output",
                     str(teacher_requests),
+                    "--max-requests",
+                    str(int(sequence_teacher["max_requests"])),
+                    "--selection-seed",
+                    str(int(sequence_teacher.get("selection_seed", 0))),
                 ),
                 ("mix_pretraining_data",),
                 (
@@ -927,6 +978,8 @@ def build_experiment_plan(
                 str(predictions_path),
                 "--model",
                 str(sequence_teacher["model"]),
+                "--model-revision",
+                str(sequence_teacher.get("revision") or ""),
                 "--device",
                 str(sequence_teacher.get("device") or device),
                 "--dtype",
@@ -936,6 +989,9 @@ def build_experiment_plan(
                 "--temperature",
                 str(float(sequence_teacher.get("temperature", 0.0))),
             ]
+            if not sequence_teacher.get("revision"):
+                revision_index = generate_command.index("--model-revision")
+                del generate_command[revision_index : revision_index + 2]
             stages.append(
                 ExperimentStage(
                     "generate_teacher_predictions",
@@ -951,28 +1007,43 @@ def build_experiment_plan(
                 "export_teacher_requests",
                 "generate_teacher_predictions",
             )
+        apply_command = [
+            python,
+            script("build_teacher_targets.py"),
+            "apply",
+            "--src",
+            str(mixed_data),
+            "--requests",
+            str(teacher_requests / "requests.jsonl"),
+            "--predictions",
+            str(predictions_path),
+            "--output",
+            str(distilled_data),
+            "--min-score",
+            str(float(sequence_teacher.get("min_score", 0.8))),
+            "--min-acceptance-rate",
+            str(float(sequence_teacher.get("min_acceptance_rate", 0.0))),
+            "--target-format",
+            str(sequence_teacher.get("target_format") or "answer"),
+            "--selection-seed",
+            str(int(sequence_teacher.get("selection_seed", 0))),
+            "--expected-model",
+            str(sequence_teacher["model"]),
+        ]
+        _add_optional(
+            apply_command,
+            "--accepted-target-count",
+            sequence_teacher.get("accepted_target_count"),
+        )
+        _add_optional(
+            apply_command,
+            "--expected-revision",
+            sequence_teacher.get("revision"),
+        )
         stages.append(
             ExperimentStage(
                 "apply_teacher_targets",
-                (
-                    python,
-                    script("build_teacher_targets.py"),
-                    "apply",
-                    "--src",
-                    str(mixed_data),
-                    "--requests",
-                    str(teacher_requests / "requests.jsonl"),
-                    "--predictions",
-                    str(predictions_path),
-                    "--output",
-                    str(distilled_data),
-                    "--min-score",
-                    str(float(sequence_teacher.get("min_score", 0.8))),
-                    "--min-acceptance-rate",
-                    str(float(sequence_teacher.get("min_acceptance_rate", 0.0))),
-                    "--target-format",
-                    str(sequence_teacher.get("target_format") or "answer"),
-                ),
+                tuple(apply_command),
                 apply_dependencies,
                 (
                     Artifact(str(distilled_data), "directory"),
@@ -996,6 +1067,8 @@ def build_experiment_plan(
         str(int(tokenizer.get("min_frequency", 2))),
     ]
     _add_optional(tokenizer_command, "--vocab-size", tokenizer.get("vocab_size"))
+    if not bool(tokenizer.get("include_teacher_targets", False)):
+        tokenizer_command.append("--exclude-teacher-targets")
     if bool(tokenizer.get("no_progress", True)):
         tokenizer_command.append("--no-progress")
     stages.append(

@@ -16,7 +16,11 @@ SPECIAL_TOKENS = {
 }
 
 
-def iter_udd_text(dataset: Any) -> Iterator[str]:
+def iter_udd_text(
+    dataset: Any,
+    *,
+    include_teacher_targets: bool = True,
+) -> Iterator[str]:
     """Yield all textual supervision without decoding the UDD image column."""
 
     from .data import _metadata_view, _parse_elements
@@ -36,10 +40,11 @@ def iter_udd_text(dataset: Any) -> Iterator[str]:
                 text = str(answer).strip()
                 if text:
                     yield text
-        for answer in row.get("teacher_answers") or []:
-            text = str(answer).strip()
-            if text:
-                yield text
+        if include_teacher_targets:
+            for answer in row.get("teacher_answers") or []:
+                text = str(answer).strip()
+                if text:
+                    yield text
         for key in ("full_text", "table_html"):
             text = str(row.get(key) or "").strip()
             if text:

@@ -131,10 +131,13 @@ The offline path is executable and fail-closed:
 ```bash
 python scripts/build_teacher_targets.py export \
   --src artifacts/data/mixture \
+  --max-requests 4096 \
+  --selection-seed 7 \
   --output artifacts/data/teacher_requests
 python scripts/build_teacher_targets.py generate \
   --requests artifacts/data/teacher_requests/requests.jsonl \
   --model lfm2_5-vl-1.6b \
+  --model-revision 919fde3d022e3f90a4716006f993938ee8c2eb97 \
   --device cuda \
   --output artifacts/data/teacher_predictions.jsonl
 python scripts/build_teacher_targets.py apply \
@@ -142,6 +145,11 @@ python scripts/build_teacher_targets.py apply \
   --requests artifacts/data/teacher_requests/requests.jsonl \
   --predictions artifacts/data/teacher_predictions.jsonl \
   --min-score 0.8 \
+  --min-acceptance-rate 0.1 \
+  --accepted-target-count 400 \
+  --selection-seed 7 \
+  --expected-model lfm2_5-vl-1.6b \
+  --expected-revision 919fde3d022e3f90a4716006f993938ee8c2eb97 \
   --output artifacts/data/distilled_mixture
 ```
 
@@ -153,7 +161,10 @@ in aligned `teacher_answers`, `teacher_scores`, and `teacher_provenance_json` co
 teacher text or gold for each QA; missing or rejected teacher output always falls back to gold.
 Generation fingerprints prevent a resumed file from mixing teachers or decoding settings. The full
 experiment also requires a minimum acceptance rate, so a broken teacher run cannot silently become
-a gold-only run.
+a gold-only run. It bounds generation to 4,096 deterministic requests and retains exactly 400
+eligible targets. Model and processor use one pinned Hub revision, which is checked again when
+targets are applied. The paired LFM/Qwen design is
+[`student_sequence_teacher_sweep.md`](student_sequence_teacher_sweep.md).
 
 ## Distributed training
 

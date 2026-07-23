@@ -221,7 +221,10 @@ still be executed before their effects can be claimed. The active native losses 
 [`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); online native-teacher
 losses remain a separate checkpoint-dependent experiment. SFT target and RLVR reward effects are
 isolated by [`student_posttraining_sweeps.md`](student_posttraining_sweeps.md), including a true
-SFT-only evaluation path. The current LoRA ablations answer where
+SFT-only evaluation path. Pinned LFM and non-LFM Qwen sequence targets are compared against
+gold-only training at a fixed accepted-target dose by
+[`student_sequence_teacher_sweep.md`](student_sequence_teacher_sweep.md). The current LoRA
+ablations answer where
 existing LFM capabilities are easiest to adapt. This blueprint answers the next question: which
 capabilities can be built into a deployment-size student, what must be inherited, and what can be
 learned from the controlled document curriculum.

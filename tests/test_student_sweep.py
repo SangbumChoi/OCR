@@ -281,6 +281,68 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
         ]
 
 
+def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_sequence_teacher_sweep.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "sequence-teacher-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "gold_only"
+    expected = {
+        "lfm": (
+            "lfm2_5-vl-1.6b",
+            "919fde3d022e3f90a4716006f993938ee8c2eb97",
+        ),
+        "qwen": (
+            "qwen3_5-0.8b",
+            "2fc06364715b967f1860aea9cf38778875588b17",
+        ),
+    }
+    for variant in plan.variants:
+        teacher = variant.plan.raw_spec["sequence_teacher"]
+        assert teacher["max_requests"] == 4096
+        assert teacher["accepted_target_count"] == 400
+        assert (
+            variant.plan.raw_spec["tokenizer"]["include_teacher_targets"]
+            is False
+        )
+        if variant.arm_id == "gold_only":
+            assert "generate_teacher_predictions" not in variant.plan.stage_names
+            continue
+        assert (teacher["model"], teacher["revision"]) == expected[
+            variant.arm_id
+        ]
+        generate = next(
+            stage
+            for stage in variant.plan.stages
+            if stage.name == "generate_teacher_predictions"
+        )
+        assert generate.command[generate.command.index("--model-revision") + 1] == (
+            teacher["revision"]
+        )
+        apply = next(
+            stage
+            for stage in variant.plan.stages
+            if stage.name == "apply_teacher_targets"
+        )
+        assert (
+            apply.command[apply.command.index("--accepted-target-count") + 1]
+            == "400"
+        )
+
+
 def test_sweep_fingerprint_ignores_only_the_temporary_compile_location(tmp_path):
     config = _tiny_sweep(tmp_path)
     first = compile_sweep_plan(

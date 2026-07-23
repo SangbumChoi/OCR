@@ -34,10 +34,16 @@ class GotOCR2(ModelAdapter):
         import torch
         from transformers import AutoProcessor, AutoModelForImageTextToText
 
-        self.processor = AutoProcessor.from_pretrained(self.hf_id)
+        self.processor = AutoProcessor.from_pretrained(
+            self.hf_id,
+            revision=self.revision,
+        )
         self.model = (
             AutoModelForImageTextToText.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype), low_cpu_mem_usage=True
+                self.hf_id,
+                revision=self.revision,
+                torch_dtype=getattr(torch, self.dtype),
+                low_cpu_mem_usage=True,
             )
             .eval()
             .to(self.device)

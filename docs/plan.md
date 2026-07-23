@@ -139,6 +139,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Isolate pretraining losses:**
   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
   fail-closed supervision provenance and paired leave-one-active-loss-out experiments.
+- **Test teacher dependence:**
+  [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) — pinned
+  LFM/Qwen versus gold-only supervision at a fixed request and accepted-target dose.
 - **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
   — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
   transfer, and the matched random/vision/language/dual/selective suite.
@@ -226,6 +229,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
+   [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·

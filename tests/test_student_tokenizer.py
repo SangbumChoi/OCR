@@ -50,6 +50,7 @@ def test_udd_text_iterator_includes_native_qa_and_structured_payload():
         {
             "instructions": ["What is the total?"],
             "answers": [["42", "forty two"]],
+            "teacher_answers": ["teacher-only-token"],
             "full_text": "TOTAL 42",
             "table_html": "<table><td>42</td></table>",
             "elements_json": json.dumps(
@@ -72,6 +73,10 @@ def test_udd_text_iterator_includes_native_qa_and_structured_payload():
     assert "TOTAL 42" in texts
     assert "<table><td>42</td></table>" in texts
     assert "total" in texts
+    assert "teacher-only-token" in texts
+    assert "teacher-only-token" not in list(
+        iter_udd_text(rows, include_teacher_targets=False)
+    )
 
 
 def test_collator_rejects_token_ids_outside_the_student_vocabulary():

@@ -42,6 +42,17 @@ def test_unknown_model_raises():
         build_model("does-not-exist")
 
 
+def test_adapter_profile_records_pinned_revision():
+    revision = "a" * 40
+    model = build_model(
+        "lfm2_5-vl-1.6b",
+        revision=revision,
+        device="cpu",
+    )
+
+    assert model.profile()["revision"] == revision
+
+
 def test_dummy_model_generates(tiny_image):
     import docvlm_eval.models.dummy  # noqa: F401
     m = build_model("dummy-echo", device="cpu")

@@ -120,67 +120,111 @@ def _materialize_image(image: Any, output: Path) -> None:
 def export_teacher_requests(
     dataset: Any,
     output_dir: str | Path,
+    *,
+    max_requests: int | None = None,
+    selection_seed: int = 0,
 ) -> dict[str, Any]:
     """Export immutable image-question requests from an on-disk UDD dataset."""
 
+    if max_requests is not None and max_requests <= 0:
+        raise ValueError("teacher max_requests must be positive or null")
+    if selection_seed < 0:
+        raise ValueError("teacher request selection_seed must be non-negative")
     output_dir = Path(output_dir)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"refusing to overwrite non-empty request output {output_dir}")
     image_dir = output_dir / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
     request_path = output_dir / "requests.jsonl"
-    request_count = 0
-    row_count = 0
+    from .data import _metadata_view
+
+    metadata = _metadata_view(dataset)
+    candidates: list[dict[str, Any]] = []
     metrics: Counter[str] = Counter()
-    with request_path.open("w", encoding="utf-8") as handle:
-        for row_index in range(len(dataset)):
-            row = dataset[row_index]
-            instructions = list(row.get("instructions") or [])
-            answers = list(row.get("answers") or [])
-            if len(instructions) != len(answers):
-                raise ValueError(
-                    f"row {row_index} has {len(instructions)} instructions and "
-                    f"{len(answers)} answer lists"
-                )
-            selected = [
-                (qa_index, str(question).strip(), _valid_answers(golds))
-                for qa_index, (question, golds) in enumerate(zip(instructions, answers))
-                if str(question).strip() and _valid_answers(golds)
-            ]
-            if not selected:
+    for row_index in range(len(metadata)):
+        row = metadata[row_index]
+        instructions = list(row.get("instructions") or [])
+        answers = list(row.get("answers") or [])
+        if len(instructions) != len(answers):
+            raise ValueError(
+                f"row {row_index} has {len(instructions)} instructions and "
+                f"{len(answers)} answer lists"
+            )
+        sample_id = str(row.get("sample_id") or f"row-{row_index}")
+        metric = str(row.get("metric") or "anls")
+        for qa_index, (question, golds) in enumerate(
+            zip(instructions, answers)
+        ):
+            question = str(question).strip()
+            valid_answers = _valid_answers(golds)
+            if not question or not valid_answers:
                 continue
-            sample_id = str(row.get("sample_id") or f"row-{row_index}")
-            image_path = image_dir / f"row-{row_index:08d}.png"
-            _materialize_image(row.get("image") or row.get("image_path"), image_path)
-            image_sha256 = _file_sha256(image_path)
-            metric = str(row.get("metric") or "anls")
-            for qa_index, question, golds in selected:
-                core = {
-                    "row_index": row_index,
-                    "qa_index": qa_index,
-                    "sample_id": sample_id,
-                    "image_sha256": image_sha256,
-                    "question": question,
-                    "gold_answers": golds,
-                    "metric": metric,
+            selection_core = {
+                "row_index": row_index,
+                "qa_index": qa_index,
+                "sample_id": sample_id,
+                "question": question,
+                "gold_answers": valid_answers,
+                "metric": metric,
+            }
+            candidates.append(
+                {
+                    **selection_core,
+                    "selection_priority": _fingerprint(
+                        {
+                            "seed": selection_seed,
+                            "request": selection_core,
+                        }
+                    ),
                 }
-                request = {
-                    "schema_version": 1,
-                    "request_id": _fingerprint(core),
-                    "image_path": str(image_path.resolve()),
-                    **core,
-                }
-                handle.write(_stable_json(request) + "\n")
-                request_count += 1
-                metrics[metric] += 1
-            row_count += 1
-    if request_count == 0:
+            )
+    if not candidates:
         raise ValueError("UDD dataset produced no teacher requests")
+    eligible_requests = len(candidates)
+    if max_requests is not None:
+        candidates = sorted(
+            candidates,
+            key=lambda item: (
+                item["selection_priority"],
+                item["row_index"],
+                item["qa_index"],
+            ),
+        )[:max_requests]
+    candidates.sort(key=lambda item: (item["row_index"], item["qa_index"]))
+    selected_rows = sorted({int(item["row_index"]) for item in candidates})
+    image_metadata: dict[int, tuple[Path, str]] = {}
+    for row_index in selected_rows:
+        row = dataset[row_index]
+        image_path = image_dir / f"row-{row_index:08d}.png"
+        _materialize_image(row.get("image") or row.get("image_path"), image_path)
+        image_metadata[row_index] = (image_path, _file_sha256(image_path))
+    with request_path.open("w", encoding="utf-8") as handle:
+        for candidate in candidates:
+            image_path, image_sha256 = image_metadata[
+                int(candidate["row_index"])
+            ]
+            core = {
+                key: value
+                for key, value in candidate.items()
+                if key != "selection_priority"
+            }
+            core["image_sha256"] = image_sha256
+            request = {
+                "schema_version": 1,
+                "request_id": _fingerprint(core),
+                "image_path": str(image_path.resolve()),
+                **core,
+            }
+            handle.write(_stable_json(request) + "\n")
+            metrics[str(candidate["metric"])] += 1
     manifest = {
         "schema_version": 1,
         "source_fingerprint": getattr(dataset, "_fingerprint", None),
-        "rows_with_requests": row_count,
-        "requests": request_count,
+        "eligible_requests": eligible_requests,
+        "max_requests": max_requests,
+        "selection_seed": selection_seed,
+        "rows_with_requests": len(selected_rows),
+        "requests": len(candidates),
         "metrics": dict(sorted(metrics.items())),
         "requests_path": str(request_path.resolve()),
         "requests_sha256": _file_sha256(request_path),
@@ -197,6 +241,7 @@ def generate_teacher_predictions(
     device: str,
     dtype: str,
     max_new_tokens: int,
+    model_revision: str | None = None,
     temperature: float = 0.0,
     resume: bool = True,
     adapter: Any | None = None,
@@ -208,8 +253,23 @@ def generate_teacher_predictions(
     requests_path = Path(requests_path)
     output_path = Path(output_path)
     requests = list(_iter_jsonl(requests_path))
+    if adapter is None:
+        adapter = build_model(
+            model_key,
+            revision=model_revision,
+            device=device,
+            dtype=dtype,
+            gen=GenConfig(
+                max_new_tokens=max_new_tokens,
+                do_sample=temperature > 0,
+                temperature=temperature,
+            ),
+        )
+    teacher_hf_id = str(getattr(adapter, "hf_id", "") or "")
     generation_config = {
         "teacher_model": model_key,
+        "teacher_hf_id": teacher_hf_id,
+        "teacher_revision": model_revision,
         "device": device,
         "dtype": dtype,
         "max_new_tokens": max_new_tokens,
@@ -236,17 +296,6 @@ def generate_teacher_predictions(
         request for request in requests if str(request["request_id"]) not in existing
     ]
     if pending:
-        if adapter is None:
-            adapter = build_model(
-                model_key,
-                device=device,
-                dtype=dtype,
-                gen=GenConfig(
-                    max_new_tokens=max_new_tokens,
-                    do_sample=temperature > 0,
-                    temperature=temperature,
-                ),
-            )
         if not getattr(adapter, "_loaded", False):
             adapter.load()
 
@@ -266,6 +315,8 @@ def generate_teacher_predictions(
                 "request_id": request_id,
                 "request_sha256": _fingerprint(request),
                 "teacher_model": model_key,
+                "teacher_hf_id": teacher_hf_id,
+                "teacher_revision": model_revision,
                 "generation_fingerprint": generation_fingerprint,
                 "response": str(response),
                 "confidence": (
@@ -289,6 +340,8 @@ def generate_teacher_predictions(
     manifest = {
         "schema_version": 1,
         "teacher_model": model_key,
+        "teacher_hf_id": teacher_hf_id,
+        "teacher_revision": model_revision,
         "device": device,
         "dtype": dtype,
         "max_new_tokens": max_new_tokens,
@@ -311,6 +364,10 @@ def apply_teacher_predictions(
     min_score: float,
     min_acceptance_rate: float = 0.0,
     target_format: str = "answer",
+    accepted_target_count: int | None = None,
+    selection_seed: int = 0,
+    expected_model: str | None = None,
+    expected_revision: str | None = None,
 ) -> dict[str, Any]:
     """Quality-gate teacher outputs and add aligned sequence targets without changing gold."""
 
@@ -320,6 +377,10 @@ def apply_teacher_predictions(
         raise ValueError("teacher target min_acceptance_rate must be within [0, 1]")
     if target_format not in {"answer", "response"}:
         raise ValueError("target_format must be answer or response")
+    if accepted_target_count is not None and accepted_target_count <= 0:
+        raise ValueError("accepted_target_count must be positive or null")
+    if selection_seed < 0:
+        raise ValueError("teacher target selection_seed must be non-negative")
     output_dir = Path(output_dir)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"refusing to overwrite non-empty target output {output_dir}")
@@ -349,6 +410,18 @@ def apply_teacher_predictions(
     if unknown_predictions:
         raise ValueError(
             f"teacher predictions contain {len(unknown_predictions)} unknown request IDs"
+        )
+    if expected_model is not None and any(
+        prediction.get("teacher_model") != expected_model
+        for prediction in predictions.values()
+    ):
+        raise ValueError("teacher prediction model does not match the experiment")
+    if expected_revision is not None and any(
+        prediction.get("teacher_revision") != expected_revision
+        for prediction in predictions.values()
+    ):
+        raise ValueError(
+            "teacher prediction revision does not match the experiment"
         )
 
     accepted: dict[tuple[int, int], dict[str, Any]] = {}
@@ -402,12 +475,34 @@ def apply_teacher_predictions(
             "metric": metric,
         }
 
-    acceptance_rate = len(accepted) / max(1, len(requests))
-    if acceptance_rate < min_acceptance_rate:
+    eligible_targets = len(accepted)
+    eligible_acceptance_rate = eligible_targets / max(1, len(requests))
+    if eligible_acceptance_rate < min_acceptance_rate:
         raise RuntimeError(
-            f"teacher target acceptance rate {acceptance_rate:.3f} is below required "
+            "teacher target acceptance rate "
+            f"{eligible_acceptance_rate:.3f} is below required "
             f"{min_acceptance_rate:.3f}"
         )
+    if accepted_target_count is not None:
+        if eligible_targets < accepted_target_count:
+            raise RuntimeError(
+                f"teacher produced {eligible_targets} eligible targets, fewer "
+                f"than required fixed dose {accepted_target_count}"
+            )
+        selected_keys = sorted(
+            accepted,
+            key=lambda key: _fingerprint(
+                {
+                    "seed": selection_seed,
+                    "request_id": accepted[key]["request_id"],
+                }
+            ),
+        )[:accepted_target_count]
+        accepted = {key: accepted[key] for key in selected_keys}
+    acceptance_rate = len(accepted) / max(1, len(requests))
+    selected_teachers = Counter(
+        str(target["teacher_model"]) for target in accepted.values()
+    )
 
     def add_targets(row: dict[str, Any], row_index: int) -> dict[str, Any]:
         instructions = list(row.get("instructions") or [])
@@ -445,14 +540,21 @@ def apply_teacher_predictions(
         "dataset_fingerprint": getattr(enriched, "_fingerprint", None),
         "requests": len(requests),
         "predictions": len(predictions),
+        "eligible": eligible_targets,
+        "eligible_acceptance_rate": eligible_acceptance_rate,
         "accepted": len(accepted),
         "acceptance_rate": acceptance_rate,
+        "accepted_target_count": accepted_target_count,
+        "selection_seed": selection_seed,
+        "expected_model": expected_model,
+        "expected_revision": expected_revision,
         "min_score": min_score,
         "min_acceptance_rate": min_acceptance_rate,
         "target_format": target_format,
         "mean_candidate_score": sum(scores) / max(1, len(scores)),
         "rejections": dict(sorted(reasons.items())),
-        "teachers": dict(sorted(teachers.items())),
+        "eligible_teachers": dict(sorted(teachers.items())),
+        "teachers": dict(sorted(selected_teachers.items())),
         "requests_sha256": _file_sha256(Path(requests_path)),
         "predictions_sha256": _file_sha256(Path(predictions_path)),
     }
