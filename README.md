@@ -353,6 +353,12 @@ three unique-data scales at fixed token budgets and fixed heldout documents. It 
 difference-in-differences and actual mixed rows. See
 [`docs/report/student_factorial_runner.md`](docs/report/student_factorial_runner.md).
 
+The 15-run `configs/sub1b_architecture_compute_sweep.yaml` compares five input-resolution and
+visual-latent profiles under identical analytical student FLOP budgets across pretraining, SFT,
+and RLVR. Runtime counters, compute-progress schedules, and a realized-budget overshoot gate make
+the fixed-compute claim executable. See
+[`docs/report/student_architecture_compute_sweep.md`](docs/report/student_architecture_compute_sweep.md).
+
 Compare train and heldout generation from any native checkpoint:
 
 ```bash

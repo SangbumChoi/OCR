@@ -138,6 +138,10 @@ training:
       warmup_tokens: 100000000
       total_tokens: 20000000000
       stop_at_total_tokens: true
+      warmup_student_flops: 0
+      total_student_flops: null
+      stop_at_student_flops: false
+      schedule_unit: tokens
       # Effective tokens = non-padding text tokens + 64 resampled visual-prefix tokens per image.
       token_unit: effective
       precision: bfloat16
@@ -202,6 +206,11 @@ training:
         max_grad_norm: 1.0
         warmup_tokens: 10000000
         total_tokens: 1000000000
+        stop_at_total_tokens: false
+        warmup_student_flops: 0
+        total_student_flops: null
+        stop_at_student_flops: false
+        schedule_unit: tokens
         precision: bfloat16
         checkpoint_every_steps: 500
         eval_every_steps: 0
@@ -232,6 +241,8 @@ training:
         top_p: 0.95
       optimizer:
         max_steps: 1000
+        total_student_flops: null
+        stop_at_student_flops: false
         learning_rate: 0.000005
         weight_decay: 0.1
         betas: [0.9, 0.95]

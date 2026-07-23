@@ -53,6 +53,23 @@ from .sweep import (
     apply_json_patch,
     compile_sweep_plan,
 )
+from .architecture_sweep import (
+    ArchitectureComputeBudgets,
+    ArchitectureProfile,
+    ArchitectureSweepPlan,
+    ArchitectureSweepRunner,
+    compile_architecture_sweep,
+    compute_budget_report,
+)
+from .compute import (
+    ForwardFlops,
+    compute_profile,
+    estimate_batch_training_flops,
+    estimate_forward_flops,
+    estimate_rlvr_step_flops,
+    estimate_training_flops,
+    visual_tokens_for_canvas,
+)
 from .tokenizer import DocumentTokenizer
 from .pretrain import PretrainConfig, TrainingResult, train_student
 from .posttrain import (
@@ -79,6 +96,10 @@ from .rewards import (
 
 __all__ = [
     "BalancedGroupBatchSampler",
+    "ArchitectureComputeBudgets",
+    "ArchitectureProfile",
+    "ArchitectureSweepPlan",
+    "ArchitectureSweepRunner",
     "ConnectorConfig",
     "CompiledVariant",
     "CurriculumSchedule",
@@ -90,6 +111,7 @@ __all__ = [
     "FactorialPlan",
     "FactorialRunner",
     "FactorialScale",
+    "ForwardFlops",
     "LanguageConfig",
     "HubComponentSpec",
     "MixtureComponent",
@@ -124,7 +146,10 @@ __all__ = [
     "apply_json_patch",
     "acquire_hub_component",
     "compare_split_summaries",
+    "compile_architecture_sweep",
     "compile_sweep_plan",
+    "compute_budget_report",
+    "compute_profile",
     "export_teacher_requests",
     "completion_log_probs",
     "group_relative_policy_loss",
@@ -139,7 +164,11 @@ __all__ = [
     "train_sft",
     "train_student",
     "evaluate_structured_student",
+    "estimate_batch_training_flops",
     "evaluate_deployment_gates",
+    "estimate_forward_flops",
+    "estimate_rlvr_step_flops",
+    "estimate_training_flops",
     "load_evaluation_artifacts",
     "wandb_metrics_for_split",
     "write_split_comparison",
@@ -147,4 +176,5 @@ __all__ = [
     "aggregate_sweep_results",
     "aggregate_factorial_results",
     "compile_factorial_plan",
+    "visual_tokens_for_canvas",
 ]

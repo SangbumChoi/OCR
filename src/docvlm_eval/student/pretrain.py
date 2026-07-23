@@ -17,6 +17,7 @@ import torch.nn as nn
 
 from .data import student_model_inputs
 from .curriculum import CurriculumSchedule, planned_optimizer_steps
+from .compute import estimate_batch_training_flops
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .model import DocumentVLMStudent
 
@@ -34,6 +35,10 @@ class PretrainConfig:
     warmup_tokens: int = 100_000_000
     total_tokens: int = 20_000_000_000
     stop_at_total_tokens: bool = False
+    warmup_student_flops: int = 0
+    total_student_flops: int | None = None
+    stop_at_student_flops: bool = False
+    schedule_unit: str = "tokens"
     token_unit: str = "supervised"
     visual_tokens_per_image: int = 0
     grad_accum_steps: int = 8
@@ -53,8 +58,12 @@ class PretrainConfig:
     def __post_init__(self) -> None:
         if self.epochs is not None and self.epochs <= 0:
             raise ValueError("epochs must be positive when set")
-        if self.epochs is None and not self.stop_at_total_tokens:
-            raise ValueError("epochs can be null only when stop_at_total_tokens is true")
+        if self.epochs is None and not (
+            self.stop_at_total_tokens or self.stop_at_student_flops
+        ):
+            raise ValueError(
+                "epochs can be null only when a token or student-FLOP stop is active"
+            )
         if self.grad_accum_steps <= 0:
             raise ValueError("grad_accum_steps must be positive")
         if self.max_steps is not None and self.max_steps <= 0:
@@ -67,6 +76,30 @@ class PretrainConfig:
             raise ValueError("optimizer betas must be within [0, 1)")
         if self.total_tokens <= 0 or not 0 <= self.warmup_tokens < self.total_tokens:
             raise ValueError("token schedule requires 0 <= warmup_tokens < total_tokens")
+        if self.total_student_flops is not None and self.total_student_flops <= 0:
+            raise ValueError("total_student_flops must be positive when set")
+        if self.warmup_student_flops < 0:
+            raise ValueError("warmup_student_flops must be non-negative")
+        if self.stop_at_student_flops and self.total_student_flops is None:
+            raise ValueError(
+                "stop_at_student_flops requires total_student_flops"
+            )
+        if self.schedule_unit not in {"tokens", "student_flops"}:
+            raise ValueError("schedule_unit must be tokens or student_flops")
+        if self.schedule_unit == "student_flops":
+            if self.total_student_flops is None:
+                raise ValueError(
+                    "student-FLOP scheduling requires total_student_flops"
+                )
+            if not (
+                0
+                <= self.warmup_student_flops
+                < self.total_student_flops
+            ):
+                raise ValueError(
+                    "student-FLOP schedule requires "
+                    "0 <= warmup_student_flops < total_student_flops"
+                )
         if self.token_unit not in {"supervised", "text", "effective"}:
             raise ValueError("token_unit must be supervised, text, or effective")
         if self.visual_tokens_per_image < 0:
@@ -87,14 +120,22 @@ class PretrainConfig:
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
         if (
-            self.stop_at_total_tokens
+            (self.stop_at_total_tokens or self.stop_at_student_flops)
             and self.curriculum.stages
-            and self.curriculum.unit != "training_token_fraction"
+            and self.curriculum.unit
+            not in {"training_token_fraction", "training_compute_fraction"}
             and self.epochs is None
         ):
             raise ValueError(
-                "an unbounded token-budget run requires a "
-                "training_token_fraction curriculum"
+                "an unbounded budget run requires a token- or "
+                "compute-fraction curriculum"
+            )
+        if (
+            self.curriculum.unit == "training_compute_fraction"
+            and self.total_student_flops is None
+        ):
+            raise ValueError(
+                "training_compute_fraction requires total_student_flops"
             )
 
     @classmethod
@@ -121,6 +162,18 @@ class PretrainConfig:
             "warmup_tokens": int(raw["warmup_tokens"]),
             "total_tokens": int(raw["total_tokens"]),
             "stop_at_total_tokens": bool(raw.get("stop_at_total_tokens", False)),
+            "warmup_student_flops": int(
+                raw.get("warmup_student_flops", 0)
+            ),
+            "total_student_flops": (
+                None
+                if raw.get("total_student_flops") is None
+                else int(raw["total_student_flops"])
+            ),
+            "stop_at_student_flops": bool(
+                raw.get("stop_at_student_flops", False)
+            ),
+            "schedule_unit": str(raw.get("schedule_unit", "tokens")),
             "token_unit": str(raw.get("token_unit", "supervised")),
             "visual_tokens_per_image": int(
                 blueprint["student"]["connector"]["latent_tokens"]
@@ -150,6 +203,7 @@ class TrainerState:
     tokens_seen: int = 0
     text_tokens_seen: int = 0
     effective_tokens_seen: int = 0
+    student_flops_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -159,8 +213,10 @@ class TrainingResult:
     tokens_seen: int
     text_tokens_seen: int
     effective_tokens_seen: int
+    student_flops_seen: int
     budget_tokens_seen: int
     token_unit: str
+    schedule_unit: str
     last_checkpoint: str
     final_metrics: dict[str, float]
 
@@ -324,6 +380,43 @@ def _state_token_count(state: TrainerState, unit: str) -> int:
     }[unit]
 
 
+def _state_schedule_count(state: TrainerState, config: PretrainConfig) -> int:
+    if config.schedule_unit == "student_flops":
+        return state.student_flops_seen
+    return _state_token_count(state, config.token_unit)
+
+
+def _schedule_budget(config: PretrainConfig) -> tuple[int, int]:
+    if config.schedule_unit == "student_flops":
+        if config.total_student_flops is None:
+            raise ValueError("student-FLOP schedule has no total budget")
+        return config.warmup_student_flops, config.total_student_flops
+    return config.warmup_tokens, config.total_tokens
+
+
+def _budget_contract(config: PretrainConfig) -> dict[str, Any]:
+    return {
+        "stop_at_total_tokens": config.stop_at_total_tokens,
+        "total_tokens": config.total_tokens,
+        "token_unit": config.token_unit,
+        "visual_tokens_per_image": config.visual_tokens_per_image,
+        "stop_at_student_flops": config.stop_at_student_flops,
+        "warmup_student_flops": config.warmup_student_flops,
+        "total_student_flops": config.total_student_flops,
+        "schedule_unit": config.schedule_unit,
+    }
+
+
+def _all_reduce_int(value: int, context: _DistributedContext) -> int:
+    if context.world_size == 1:
+        return int(value)
+    import torch.distributed as dist
+
+    tensor = torch.tensor(value, dtype=torch.long, device=context.device)
+    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    return int(tensor.item())
+
+
 def _all_reduce_sums(
     sums: dict[str, float],
     count: int,
@@ -460,10 +553,7 @@ def _save_checkpoint(
                 curriculum_total_steps if config.curriculum.stages else None
             ),
             "token_budget": {
-                "stop_at_total_tokens": config.stop_at_total_tokens,
-                "total_tokens": config.total_tokens,
-                "token_unit": config.token_unit,
-                "visual_tokens_per_image": config.visual_tokens_per_image,
+                **_budget_contract(config),
             },
         },
     )
@@ -664,15 +754,20 @@ def train_student(
         "cuda",
         enabled=_uses_fp16(context.device, config.precision),
     )
+    schedule_warmup, schedule_total = _schedule_budget(config)
     scheduler = TokenCosineScheduler(
         optimizer,
         config.learning_rate,
-        config.warmup_tokens,
-        config.total_tokens,
+        schedule_warmup,
+        schedule_total,
         config.min_lr_ratio,
     )
     if config.curriculum.unit == "training_token_fraction":
         curriculum_horizon = config.total_tokens
+    elif config.curriculum.unit == "training_compute_fraction":
+        if config.total_student_flops is None:
+            raise ValueError("compute curriculum has no total FLOP budget")
+        curriculum_horizon = config.total_student_flops
     else:
         if config.epochs is None:
             curriculum_horizon = 1
@@ -696,14 +791,9 @@ def train_student(
             config.run_stage,
             config.curriculum.fingerprint,
             curriculum_horizon,
-            {
-                "stop_at_total_tokens": config.stop_at_total_tokens,
-                "total_tokens": config.total_tokens,
-                "token_unit": config.token_unit,
-                "visual_tokens_per_image": config.visual_tokens_per_image,
-            },
+            _budget_contract(config),
         )
-        scheduler.step(_state_token_count(state, config.token_unit))
+        scheduler.step(_state_schedule_count(state, config))
 
     wrapped: nn.Module = module
     if context.world_size > 1:
@@ -724,6 +814,10 @@ def train_student(
         config.stop_at_total_tokens
         and _state_token_count(state, config.token_unit) >= config.total_tokens
     ) or (
+        config.stop_at_student_flops
+        and config.total_student_flops is not None
+        and state.student_flops_seen >= config.total_student_flops
+    ) or (
         config.max_steps is not None
         and state.global_step >= config.max_steps
     )
@@ -734,6 +828,7 @@ def train_student(
     }
     accumulated_losses: dict[str, float] = {}
     accumulated_microbatches = 0
+    accumulated_student_flops = 0
     epoch = state.epoch
     while not stop and (config.epochs is None or epoch < config.epochs):
         _set_loader_epoch(train_loader, epoch, config.seed, context.rank)
@@ -743,10 +838,17 @@ def train_student(
             if epoch == state.epoch and batch_index < state.batch_in_epoch:
                 continue
             batch = _move_batch(raw_batch, context.device)
-            if config.curriculum.unit == "training_token_fraction":
+            if config.curriculum.unit in {
+                "training_token_fraction",
+                "training_compute_fraction",
+            }:
+                progress_count = (
+                    state.student_flops_seen
+                    if config.curriculum.unit == "training_compute_fraction"
+                    else _state_token_count(state, config.token_unit)
+                )
                 curriculum_progress = min(
-                    _state_token_count(state, config.token_unit)
-                    / config.total_tokens,
+                    progress_count / curriculum_horizon,
                     1.0,
                 )
                 curriculum_stage = config.curriculum.stage_for_fraction(
@@ -797,6 +899,10 @@ def train_student(
                 batch,
                 config.visual_tokens_per_image,
             )
+            accumulated_student_flops += estimate_batch_training_flops(
+                module.student.config,
+                batch,
+            )
             for name, count in batch_token_counts.items():
                 accumulated_token_counts[name] += count
             for name, value in losses.items():
@@ -815,7 +921,13 @@ def train_student(
             state.text_tokens_seen += global_token_counts["text"]
             state.effective_tokens_seen += global_token_counts["effective"]
             budget_tokens_seen = _state_token_count(state, config.token_unit)
-            learning_rate = scheduler.step(budget_tokens_seen)
+            global_student_flops = _all_reduce_int(
+                accumulated_student_flops,
+                context,
+            )
+            state.student_flops_seen += global_student_flops
+            schedule_count = _state_schedule_count(state, config)
+            learning_rate = scheduler.step(schedule_count)
             scaler.unscale_(optimizer)
             if accumulated_microbatches < config.grad_accum_steps:
                 correction = config.grad_accum_steps / accumulated_microbatches
@@ -849,6 +961,10 @@ def train_student(
                         state.effective_tokens_seen
                     ),
                     "train/budget_tokens_seen": float(budget_tokens_seen),
+                    "train/student_flops_seen": float(
+                        state.student_flops_seen
+                    ),
+                    "train/schedule_count": float(schedule_count),
                     "train/global_step": float(state.global_step),
                     "train/curriculum_stage": (
                         curriculum_stage.id if curriculum_stage is not None else "base"
@@ -867,6 +983,7 @@ def train_student(
             }
             accumulated_losses = {}
             accumulated_microbatches = 0
+            accumulated_student_flops = 0
 
             if context.is_main and (
                 state.global_step == 1
@@ -876,6 +993,7 @@ def train_student(
                 print(
                     f"[student] step={state.global_step} "
                     f"{config.token_unit}_tokens={budget_tokens_seen:,} "
+                    f"student_flops={state.student_flops_seen:,} "
                     f"loss={sum(means.get(name, 0.0) * active_loss_weights.get(name, 1.0) for name in losses):.4f} "
                     f"curriculum={means['train/curriculum_stage']} "
                     f"lr={learning_rate:.3e}",
@@ -927,7 +1045,16 @@ def train_student(
                 config.stop_at_total_tokens
                 and budget_tokens_seen >= config.total_tokens
             )
-            if reached_step_limit or reached_token_limit:
+            reached_compute_limit = (
+                config.stop_at_student_flops
+                and config.total_student_flops is not None
+                and state.student_flops_seen >= config.total_student_flops
+            )
+            if (
+                reached_step_limit
+                or reached_token_limit
+                or reached_compute_limit
+            ):
                 stop = True
                 break
         if stop:
@@ -960,6 +1087,17 @@ def train_student(
             f"{config.token_unit} tokens before total_tokens="
             f"{config.total_tokens:,}"
         )
+    if (
+        config.stop_at_student_flops
+        and config.max_steps is None
+        and config.total_student_flops is not None
+        and state.student_flops_seen < config.total_student_flops
+    ):
+        raise RuntimeError(
+            f"training exhausted epochs at {state.student_flops_seen:,} "
+            "student FLOPs before total_student_flops="
+            f"{config.total_student_flops:,}"
+        )
     if context.world_size > 1:
         import torch.distributed as dist
 
@@ -974,8 +1112,10 @@ def train_student(
         tokens_seen=state.tokens_seen,
         text_tokens_seen=state.text_tokens_seen,
         effective_tokens_seen=state.effective_tokens_seen,
+        student_flops_seen=state.student_flops_seen,
         budget_tokens_seen=budget_tokens_seen,
         token_unit=config.token_unit,
+        schedule_unit=config.schedule_unit,
         last_checkpoint=str(last_checkpoint),
         final_metrics=final_metrics,
     )

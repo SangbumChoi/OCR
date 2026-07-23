@@ -503,3 +503,72 @@ def test_rlvr_resume_rejects_changed_supervised_replay_contract(
             ),
             reward,
         )
+
+
+def test_rlvr_student_flop_budget_stops_after_crossing_target(
+    tmp_path,
+    monkeypatch,
+):
+    from dataclasses import replace
+    from pathlib import Path
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import (
+        RewardConfig,
+        build_structured_target,
+    )
+
+    target = build_structured_target("42")
+
+    def fixed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [target, target],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        fixed_group,
+    )
+    rewards = RewardConfig(weights={"answer_correctness": 1.0})
+    torch.manual_seed(43)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    probe = train_grpo(
+        copy.deepcopy(initial),
+        copy.deepcopy(initial),
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(tmp_path / "probe", 1),
+        rewards,
+    )
+    result = train_grpo(
+        copy.deepcopy(initial),
+        copy.deepcopy(initial),
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        replace(
+            _rl_config(tmp_path / "budget", 3),
+            max_steps=None,
+            total_student_flops=probe.student_flops_seen + 1,
+            stop_at_student_flops=True,
+        ),
+        rewards,
+    )
+
+    assert result.rollout_step == 2
+    assert result.student_flops_seen >= probe.student_flops_seen + 1
+    state = json.loads(
+        (
+            Path(result.last_checkpoint) / "trainer_state.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert state["student_flops_seen"] == result.student_flops_seen

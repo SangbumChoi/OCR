@@ -76,10 +76,11 @@ class CurriculumSchedule:
         if self.unit not in {
             "optimizer_step_fraction",
             "training_token_fraction",
+            "training_compute_fraction",
         }:
             raise ValueError(
-                "curriculum unit must be optimizer_step_fraction or "
-                "training_token_fraction"
+                "curriculum unit must be optimizer_step_fraction, "
+                "training_token_fraction, or training_compute_fraction"
             )
         if not self.stages:
             return
@@ -135,7 +136,7 @@ class CurriculumSchedule:
     ) -> CurriculumStage | None:
         if self.unit != "optimizer_step_fraction":
             raise ValueError(
-                "training_token_fraction curriculum requires stage_for_fraction"
+                "token/compute curricula require stage_for_fraction"
             )
         if total_steps <= 0:
             raise ValueError("total curriculum steps must be positive")

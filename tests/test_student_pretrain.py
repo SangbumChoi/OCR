@@ -204,6 +204,59 @@ def test_token_budget_repeats_epochs_until_the_declared_total(tmp_path):
         assert torch.equal(expected, resumed.state_dict()[name]), name
 
 
+def test_compute_budget_repeats_epochs_and_resumes_exactly(tmp_path):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.compute import estimate_batch_training_flops
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    model_config = StudentConfig.tiny()
+    first_batch_flops = estimate_batch_training_flops(
+        model_config,
+        next(iter(_loader())),
+    )
+    torch.manual_seed(41)
+    initial = DocumentVLMStudent(model_config)
+    uninterrupted = copy.deepcopy(initial)
+    resumed = copy.deepcopy(initial)
+    config = replace(
+        _config(tmp_path / "compute-full", max_steps=None),
+        epochs=None,
+        stop_at_student_flops=True,
+        total_student_flops=first_batch_flops + 1,
+        schedule_unit="student_flops",
+    )
+    resumed_config = replace(
+        config,
+        output_dir=str(tmp_path / "compute-resume"),
+    )
+
+    result = train_student(uninterrupted, _loader(), config)
+    first = train_student(
+        resumed,
+        _loader(),
+        replace(resumed_config, max_steps=1),
+    )
+    resumed_result = train_student(
+        resumed,
+        _loader(),
+        replace(resumed_config, resume_from="latest"),
+    )
+
+    assert result.global_step == 2
+    assert first.global_step == 1
+    assert resumed_result.global_step == 2
+    assert result.student_flops_seen >= config.total_student_flops
+    assert result.student_flops_seen == resumed_result.student_flops_seen
+    assert result.schedule_unit == "student_flops"
+    for name, expected in uninterrupted.state_dict().items():
+        assert torch.equal(expected, resumed.state_dict()[name]), name
+
+
 def test_effective_token_count_includes_resampled_visual_prefix():
     from docvlm_eval.student.pretrain import _batch_token_counts
 

@@ -4,7 +4,7 @@
 
 [`scripts/pretrain_student.py`](../../scripts/pretrain_student.py) trains the native sub-1B
 student directly from UDD. It supports random or selectively initialized students, an optional
-native online teacher, token-count learning-rate scheduling, deterministic curriculum scheduling,
+native online teacher, token- or student-FLOP learning-rate scheduling, deterministic curriculum scheduling,
 mixed precision, `torchrun` data parallelism, held-out evaluation, and exact checkpoint resume.
 
 This is training infrastructure, not evidence that the default 20B-effective-token run has been
@@ -66,6 +66,8 @@ Every optimizer update records three cumulative counters:
 - `train/tokens_seen`: supervised answer tokens;
 - `train/text_tokens_seen`: all non-padding prompt and answer tokens;
 - `train/effective_tokens_seen`: text plus resampled visual-prefix tokens.
+- `train/student_flops_seen`: analytical dense student training FLOPs for the actual padded
+  microbatch shapes.
 
 `train/budget_tokens_seen` selects one of those counters through `token_unit` and drives both the
 cosine schedule and the hard stopping condition. Since an optimizer update is atomic, the final
@@ -73,6 +75,13 @@ count may exceed `total_tokens` by at most one global update. `--max-steps` rema
 smoke/debug ceiling and may stop before the token target. A finite `epochs` value is also supported,
 but a production token-budget run fails rather than silently succeeding if that epoch ceiling is
 exhausted first.
+
+For architecture comparisons, `schedule_unit: student_flops`,
+`stop_at_student_flops: true`, and `total_student_flops` move the cosine schedule and hard stop to
+the compute counter. `training_compute_fraction` does the same for curriculum boundaries. These
+fields are part of the checkpoint resume contract, so a resumed run cannot silently change its
+compute estimand or budget. The complete fixed-compute design is documented in
+[`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 
 ## Teacher contract
 

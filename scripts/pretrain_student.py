@@ -275,6 +275,7 @@ def main() -> None:
             f"Finished step={result.global_step} "
             f"{result.token_unit}_tokens={result.budget_tokens_seen:,} "
             f"supervised_tokens={result.tokens_seen:,} "
+            f"student_flops={result.student_flops_seen:,} "
             f"checkpoint={result.last_checkpoint}"
         )
 

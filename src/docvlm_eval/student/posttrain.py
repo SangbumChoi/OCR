@@ -19,6 +19,7 @@ from .data import (
     StudentExample,
     student_model_inputs,
 )
+from .compute import estimate_rlvr_step_flops
 from .model import DocumentVLMStudent
 from .pretrain import (
     PretrainConfig,
@@ -50,7 +51,7 @@ STRUCTURED_RESPONSE_INSTRUCTION = (
 class SFTConfig:
     output_dir: str
     target_mode: str = "evidence_linked"
-    epochs: int = 2
+    epochs: int | None = 2
     max_steps: int | None = None
     batch_size: int = 1
     grad_accum_steps: int = 8
@@ -61,6 +62,11 @@ class SFTConfig:
     beta2: float = 0.95
     warmup_tokens: int = 10_000_000
     total_tokens: int = 1_000_000_000
+    stop_at_total_tokens: bool = False
+    warmup_student_flops: int = 0
+    total_student_flops: int | None = None
+    stop_at_student_flops: bool = False
+    schedule_unit: str = "tokens"
     max_grad_norm: float = 1.0
     precision: str = "bfloat16"
     checkpoint_every_steps: int = 500
@@ -83,6 +89,35 @@ class SFTConfig:
             raise ValueError("SFT batch_size must be positive and num_workers non-negative")
         if not 0 <= self.beta1 < 1 or not 0 <= self.beta2 < 1:
             raise ValueError("SFT optimizer betas must be within [0, 1)")
+        if self.epochs is not None and self.epochs <= 0:
+            raise ValueError("SFT epochs must be positive when set")
+        if self.epochs is None and not (
+            self.stop_at_total_tokens or self.stop_at_student_flops
+        ):
+            raise ValueError(
+                "SFT epochs can be null only when a budget stop is active"
+            )
+        if self.max_steps is not None and self.max_steps <= 0:
+            raise ValueError("SFT max_steps must be positive when set")
+        if self.total_student_flops is not None and self.total_student_flops <= 0:
+            raise ValueError("SFT total_student_flops must be positive")
+        if self.warmup_student_flops < 0:
+            raise ValueError("SFT warmup_student_flops must be non-negative")
+        if self.stop_at_student_flops and self.total_student_flops is None:
+            raise ValueError(
+                "SFT student-FLOP stop requires total_student_flops"
+            )
+        if self.schedule_unit not in {"tokens", "student_flops"}:
+            raise ValueError("SFT schedule_unit must be tokens or student_flops")
+        if self.schedule_unit == "student_flops" and (
+            self.total_student_flops is None
+            or not (
+                0
+                <= self.warmup_student_flops
+                < self.total_student_flops
+            )
+        ):
+            raise ValueError("SFT student-FLOP schedule is invalid")
 
     @classmethod
     def from_blueprint(
@@ -96,7 +131,11 @@ class SFTConfig:
         values = {
             "output_dir": str(output_dir),
             "target_mode": str(raw["target_mode"]),
-            "epochs": int(optimizer["epochs"]),
+            "epochs": (
+                None
+                if optimizer.get("epochs") is None
+                else int(optimizer["epochs"])
+            ),
             "max_steps": (
                 None
                 if optimizer.get("max_steps") is None
@@ -111,6 +150,23 @@ class SFTConfig:
             "beta2": float(optimizer["betas"][1]),
             "warmup_tokens": int(optimizer["warmup_tokens"]),
             "total_tokens": int(optimizer["total_tokens"]),
+            "stop_at_total_tokens": bool(
+                optimizer.get("stop_at_total_tokens", False)
+            ),
+            "warmup_student_flops": int(
+                optimizer.get("warmup_student_flops", 0)
+            ),
+            "total_student_flops": (
+                None
+                if optimizer.get("total_student_flops") is None
+                else int(optimizer["total_student_flops"])
+            ),
+            "stop_at_student_flops": bool(
+                optimizer.get("stop_at_student_flops", False)
+            ),
+            "schedule_unit": str(
+                optimizer.get("schedule_unit", "tokens")
+            ),
             "max_grad_norm": float(optimizer["max_grad_norm"]),
             "precision": str(optimizer["precision"]),
             "checkpoint_every_steps": int(optimizer["checkpoint_every_steps"]),
@@ -134,6 +190,11 @@ class SFTConfig:
             beta2=self.beta2,
             warmup_tokens=self.warmup_tokens,
             total_tokens=self.total_tokens,
+            stop_at_total_tokens=self.stop_at_total_tokens,
+            warmup_student_flops=self.warmup_student_flops,
+            total_student_flops=self.total_student_flops,
+            stop_at_student_flops=self.stop_at_student_flops,
+            schedule_unit=self.schedule_unit,
             grad_accum_steps=self.grad_accum_steps,
             max_grad_norm=self.max_grad_norm,
             precision=self.precision,
@@ -264,7 +325,9 @@ def train_sft(
 @dataclass(frozen=True)
 class RLVRConfig:
     output_dir: str
-    max_steps: int = 1000
+    max_steps: int | None = 1000
+    total_student_flops: int | None = None
+    stop_at_student_flops: bool = False
     group_size: int = 8
     max_new_tokens: int = 128
     temperature: float = 0.8
@@ -288,7 +351,19 @@ class RLVRConfig:
     reference_id: str = ""
 
     def __post_init__(self) -> None:
-        if self.max_steps <= 0 or self.group_size < 2 or self.max_new_tokens <= 0:
+        if self.max_steps is not None and self.max_steps <= 0:
+            raise ValueError("RLVR max_steps must be positive when set")
+        if self.max_steps is None and not self.stop_at_student_flops:
+            raise ValueError(
+                "RLVR max_steps can be null only with a student-FLOP stop"
+            )
+        if self.total_student_flops is not None and self.total_student_flops <= 0:
+            raise ValueError("RLVR total_student_flops must be positive")
+        if self.stop_at_student_flops and self.total_student_flops is None:
+            raise ValueError(
+                "RLVR student-FLOP stop requires total_student_flops"
+            )
+        if self.group_size < 2 or self.max_new_tokens <= 0:
             raise ValueError("RLVR steps/tokens must be positive and group_size at least two")
         if self.temperature <= 0 or not 0 < self.top_p <= 1:
             raise ValueError("RLVR sampling controls are invalid")
@@ -333,7 +408,19 @@ class RLVRConfig:
         supervised_replay = raw.get("supervised_replay") or {}
         values = {
             "output_dir": str(output_dir),
-            "max_steps": int(optimizer["max_steps"]),
+            "max_steps": (
+                None
+                if optimizer.get("max_steps") is None
+                else int(optimizer["max_steps"])
+            ),
+            "total_student_flops": (
+                None
+                if optimizer.get("total_student_flops") is None
+                else int(optimizer["total_student_flops"])
+            ),
+            "stop_at_student_flops": bool(
+                optimizer.get("stop_at_student_flops", False)
+            ),
             "group_size": int(raw["group_size"]),
             "max_new_tokens": int(rollout["max_new_tokens"]),
             "temperature": float(rollout["temperature"]),
@@ -365,6 +452,7 @@ class RLVRConfig:
 class RLVRState:
     rollout_step: int = 0
     optimizer_step: int = 0
+    student_flops_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -372,6 +460,7 @@ class RLVRResult:
     output_dir: str
     rollout_step: int
     optimizer_step: int
+    student_flops_seen: int
     last_checkpoint: str
     final_metrics: dict[str, float]
 
@@ -574,7 +663,7 @@ def supervised_replay_loss(
     collator: StudentCollator,
     sample_index: int,
     device: torch.device,
-) -> tuple[torch.Tensor, int]:
+) -> tuple[torch.Tensor, int, int]:
     """Compute one answer-target cross-entropy anchor without auxiliary heads."""
 
     raw_batch = collator([dataset[sample_index]])
@@ -602,13 +691,20 @@ def supervised_replay_loss(
     supervised_tokens = int((batch["labels"] != policy.config.ignore_index).sum().item())
     if supervised_tokens <= 0:
         raise RuntimeError("supervised replay batch contains no answer tokens")
-    return loss, supervised_tokens
+    return loss, supervised_tokens, int(batch["input_ids"].shape[1])
 
 
 def _supervised_replay_contract(config: RLVRConfig) -> dict[str, float | int]:
     return {
         "every_steps": config.supervised_replay_every_steps,
         "loss_coefficient": config.supervised_replay_loss_coefficient,
+    }
+
+
+def _rlvr_budget_contract(config: RLVRConfig) -> dict[str, int | bool | None]:
+    return {
+        "total_student_flops": config.total_student_flops,
+        "stop_at_student_flops": config.stop_at_student_flops,
     }
 
 
@@ -634,6 +730,7 @@ def _save_rlvr_checkpoint(
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "reference_id": config.reference_id,
             "supervised_replay": _supervised_replay_contract(config),
+            "compute_budget": _rlvr_budget_contract(config),
         },
     )
     torch.save(
@@ -691,6 +788,8 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR frozen reference mismatch")
     if metadata.get("supervised_replay") != _supervised_replay_contract(config):
         raise ValueError("RLVR supervised replay contract mismatch")
+    if metadata.get("compute_budget") != _rlvr_budget_contract(config):
+        raise ValueError("RLVR compute-budget contract mismatch")
     model.load_state_dict(
         torch.load(
             path / "student" / "model.pt",
@@ -759,7 +858,20 @@ def train_grpo(
     last_checkpoint = resume_path
     final_metrics: dict[str, float] = {}
     active_replay_dataset = replay_dataset or dataset
-    while state.rollout_step < config.max_steps:
+
+    def budget_remaining() -> bool:
+        within_steps = (
+            config.max_steps is None
+            or state.rollout_step < config.max_steps
+        )
+        within_compute = (
+            not config.stop_at_student_flops
+            or config.total_student_flops is None
+            or state.student_flops_seen < config.total_student_flops
+        )
+        return within_steps and within_compute
+
+    while budget_remaining():
         sample_index = random.randrange(len(dataset))
         raw_batch = collator([dataset[sample_index]])
         prompt_batch = posttraining_prompt_batch(raw_batch, device)
@@ -813,13 +925,18 @@ def train_grpo(
         )
         replay_loss = torch.zeros((), dtype=loss.dtype, device=device)
         replay_tokens = 0
+        replay_text_tokens: int | None = None
         replay_sample_id = ""
         optimizer.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         if replay_applied:
             replay_index = random.randrange(len(active_replay_dataset))
             with _autocast_context(device, config.precision):
-                replay_loss, replay_tokens = supervised_replay_loss(
+                (
+                    replay_loss,
+                    replay_tokens,
+                    replay_text_tokens,
+                ) = supervised_replay_loss(
                     policy,
                     active_replay_dataset,
                     collator,
@@ -843,6 +960,26 @@ def train_grpo(
         )
         scaler.step(optimizer)
         scaler.update()
+        pixel_values = prompt_batch.get("pixel_values")
+        if pixel_values is None:
+            vision_tokens = 0
+        else:
+            patch_size = policy.config.vision.patch_size
+            height, width = pixel_values.shape[-2:]
+            vision_tokens = (
+                (int(height) + patch_size - 1)
+                // patch_size
+                * ((int(width) + patch_size - 1) // patch_size)
+            )
+        step_flops = estimate_rlvr_step_flops(
+            policy.config,
+            vision_tokens=vision_tokens,
+            prompt_tokens=int(prompt_batch["input_ids"].shape[1]),
+            completion_tokens=int(completion_ids.shape[1]),
+            group_size=config.group_size,
+            replay_text_tokens=replay_text_tokens,
+        )
+        state.student_flops_seen += step_flops["total"]
         state.rollout_step += 1
         state.optimizer_step += 1
         valid_fraction = sum(
@@ -858,6 +995,10 @@ def train_grpo(
                 "rlvr/valid_structure_fraction": valid_fraction,
                 "rlvr/rollout_step": float(state.rollout_step),
                 "rlvr/optimizer_step": float(state.optimizer_step),
+                "rlvr/student_flops_seen": float(
+                    state.student_flops_seen
+                ),
+                "rlvr/step_student_flops": float(step_flops["total"]),
                 "rlvr/total_loss": float(total_loss),
                 "rlvr/supervised_replay_applied": float(replay_applied),
                 "rlvr/supervised_replay_loss": float(replay_loss.detach()),
@@ -887,6 +1028,7 @@ def train_grpo(
             )
             print(
                 f"[rlvr] step={state.rollout_step} "
+                f"student_flops={state.student_flops_seen:,} "
                 f"reward={float(tensors['reward_mean'].detach()):.4f} "
                 f"valid={valid_fraction:.2f} "
                 f"kl={float(tensors['reference_kl'].detach()):.5f} "
@@ -919,6 +1061,7 @@ def train_grpo(
         output_dir=str(output_dir),
         rollout_step=state.rollout_step,
         optimizer_step=state.optimizer_step,
+        student_flops_seen=state.student_flops_seen,
         last_checkpoint=str(last_checkpoint),
         final_metrics=final_metrics,
     )

@@ -142,14 +142,18 @@ separate before making faithful-reasoning claims.
 
 `metrics.jsonl` reports total reward, reward variance, policy loss, reference KL, total loss,
 gradient norm, structural-validity fraction, replay application/loss/token count, the replay sample
-ID, and every applicable reward component independently. A group with no reward variance receives
-zero policy advantage; a scheduled replay anchor can still provide a supervised update.
+ID, cumulative and per-step analytical student FLOPs, and every applicable reward component
+independently. A group with no reward variance receives zero policy advantage; a scheduled replay
+anchor can still provide a supervised update.
 
 ## Resume and operational boundary
 
 RLVR checkpoints contain policy weights, optimizer and AMP scaler state, Python/Torch/CUDA RNG
-state, rollout and optimizer cursors, tokenizer fingerprint, and a frozen-reference identifier.
-Resume rejects a changed tokenizer or reference checkpoint.
+state, rollout and optimizer cursors, student FLOPs consumed, tokenizer fingerprint, and a
+frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, replay
+contract, or compute-budget contract. Setting `max_steps: null`, `stop_at_student_flops: true`, and
+`total_student_flops` makes the compute budget the production stop; this is used by
+[`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 
 Native RLVR currently runs in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not

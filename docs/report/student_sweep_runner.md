@@ -141,7 +141,8 @@ arm remains a reference and therefore does not claim improvement over itself.
 Architecture changes also record the validated vision, language, connector, task-head, and total
 parameter estimates per variant. Equal steps are not automatically equal FLOPs when resolution,
 latent-token count, or depth changes; such architecture sweeps must add a measured-compute control
-before making fixed-compute claims.
+before making fixed-compute claims. The executable resolution/latent specialization is
+[`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 
 ## Outputs and W&B
 

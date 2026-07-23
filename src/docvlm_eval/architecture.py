@@ -205,11 +205,15 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(f"training.pretraining.optimizer.{field} must be positive")
     epochs = optimizer.get("epochs")
     stop_at_total_tokens = bool(optimizer.get("stop_at_total_tokens", False))
+    stop_at_student_flops = bool(
+        optimizer.get("stop_at_student_flops", False)
+    )
+    total_student_flops = optimizer.get("total_student_flops")
     if epochs is None:
-        if not stop_at_total_tokens:
+        if not (stop_at_total_tokens or stop_at_student_flops):
             errors.append(
                 "training.pretraining.optimizer.epochs can be null only when "
-                "stop_at_total_tokens is true"
+                "a token or student-FLOP stop is active"
             )
     elif int(epochs) <= 0:
         errors.append("training.pretraining.optimizer.epochs must be positive when set")
@@ -234,6 +238,40 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.optimizer requires 0 <= warmup_tokens < total_tokens"
         )
+    schedule_unit = str(optimizer.get("schedule_unit", "tokens"))
+    if schedule_unit not in {"tokens", "student_flops"}:
+        errors.append(
+            "training.pretraining.optimizer.schedule_unit must be "
+            "tokens or student_flops"
+        )
+    if total_student_flops is not None and int(total_student_flops) <= 0:
+        errors.append(
+            "training.pretraining.optimizer.total_student_flops must be positive"
+        )
+    if int(optimizer.get("warmup_student_flops", 0)) < 0:
+        errors.append(
+            "training.pretraining.optimizer.warmup_student_flops "
+            "must be non-negative"
+        )
+    if stop_at_student_flops and total_student_flops is None:
+        errors.append(
+            "training.pretraining.optimizer.stop_at_student_flops requires "
+            "total_student_flops"
+        )
+    if schedule_unit == "student_flops":
+        if total_student_flops is None:
+            errors.append(
+                "student-FLOP scheduling requires total_student_flops"
+            )
+        elif not (
+            0
+            <= int(optimizer.get("warmup_student_flops", -1))
+            < int(total_student_flops)
+        ):
+            errors.append(
+                "student-FLOP scheduling requires "
+                "0 <= warmup_student_flops < total_student_flops"
+            )
     if optimizer.get("precision") not in {"auto", "float32", "bfloat16", "float16"}:
         errors.append("training.pretraining.optimizer.precision is invalid")
     curriculum = blueprint["training"]["pretraining"].get("curriculum") or {}
@@ -241,11 +279,12 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     if (
         epochs is None
         and curriculum.get("stages")
-        and curriculum_unit != "training_token_fraction"
+        and curriculum_unit
+        not in {"training_token_fraction", "training_compute_fraction"}
     ):
         errors.append(
-            "unbounded token-budget pretraining requires a "
-            "training_token_fraction curriculum"
+            "unbounded pretraining requires a token- or "
+            "compute-fraction curriculum"
         )
     if curriculum_unit == "training_token_fraction":
         if not stop_at_total_tokens:
@@ -258,6 +297,20 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         ):
             errors.append(
                 "training_token_fraction curriculum cannot override sampler group weights"
+            )
+    if curriculum_unit == "training_compute_fraction":
+        if not stop_at_student_flops:
+            errors.append(
+                "training_compute_fraction curriculum requires "
+                "stop_at_student_flops"
+            )
+        if any(
+            isinstance(stage, dict) and stage.get("group_weights")
+            for stage in curriculum.get("stages", [])
+        ):
+            errors.append(
+                "training_compute_fraction curriculum cannot override "
+                "sampler group weights"
             )
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
@@ -307,10 +360,12 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         if curriculum.get("unit") not in {
             "optimizer_step_fraction",
             "training_token_fraction",
+            "training_compute_fraction",
         }:
             errors.append(
                 "training.pretraining.curriculum.unit must be "
-                "optimizer_step_fraction or training_token_fraction"
+                "optimizer_step_fraction, training_token_fraction, or "
+                "training_compute_fraction"
             )
         stages = curriculum.get("stages")
         if not isinstance(stages, list) or not stages:
@@ -364,7 +419,6 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("training.posttraining.sft.target_mode is invalid")
     sft_optimizer = sft.get("optimizer", {})
     for field in (
-        "epochs",
         "micro_batch_size",
         "grad_accum_steps",
         "learning_rate",
@@ -374,6 +428,57 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     ):
         if float(sft_optimizer.get(field, 0)) <= 0:
             errors.append(f"training.posttraining.sft.optimizer.{field} must be positive")
+    sft_epochs = sft_optimizer.get("epochs")
+    sft_stop_tokens = bool(sft_optimizer.get("stop_at_total_tokens", False))
+    sft_stop_flops = bool(
+        sft_optimizer.get("stop_at_student_flops", False)
+    )
+    if sft_epochs is None:
+        if not (sft_stop_tokens or sft_stop_flops):
+            errors.append(
+                "training.posttraining.sft.optimizer.epochs can be null only "
+                "when a token or student-FLOP stop is active"
+            )
+    elif int(sft_epochs) <= 0:
+        errors.append(
+            "training.posttraining.sft.optimizer.epochs must be positive"
+        )
+    sft_total_flops = sft_optimizer.get("total_student_flops")
+    if sft_total_flops is not None and int(sft_total_flops) <= 0:
+        errors.append(
+            "training.posttraining.sft.optimizer.total_student_flops "
+            "must be positive"
+        )
+    if int(sft_optimizer.get("warmup_student_flops", 0)) < 0:
+        errors.append(
+            "training.posttraining.sft.optimizer.warmup_student_flops "
+            "must be non-negative"
+        )
+    if sft_stop_flops and sft_total_flops is None:
+        errors.append(
+            "training.posttraining.sft.optimizer.stop_at_student_flops "
+            "requires total_student_flops"
+        )
+    sft_schedule_unit = str(sft_optimizer.get("schedule_unit", "tokens"))
+    if sft_schedule_unit not in {"tokens", "student_flops"}:
+        errors.append(
+            "training.posttraining.sft.optimizer.schedule_unit must be "
+            "tokens or student_flops"
+        )
+    if sft_schedule_unit == "student_flops":
+        if sft_total_flops is None:
+            errors.append(
+                "SFT student-FLOP scheduling requires total_student_flops"
+            )
+        elif not (
+            0
+            <= int(sft_optimizer.get("warmup_student_flops", -1))
+            < int(sft_total_flops)
+        ):
+            errors.append(
+                "SFT student-FLOP scheduling requires "
+                "0 <= warmup_student_flops < total_student_flops"
+            )
     sft_warmup = int(sft_optimizer.get("warmup_tokens", -1))
     sft_total = int(sft_optimizer.get("total_tokens", 0))
     if not 0 <= sft_warmup < sft_total:
@@ -450,13 +555,37 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         )
     rl_optimizer = rlvr.get("optimizer", {})
     for field in (
-        "max_steps",
         "learning_rate",
         "max_grad_norm",
         "log_every_steps",
     ):
         if float(rl_optimizer.get(field, 0)) <= 0:
             errors.append(f"training.posttraining.rlvr.optimizer.{field} must be positive")
+    rl_max_steps = rl_optimizer.get("max_steps")
+    rl_stop_flops = bool(
+        rl_optimizer.get("stop_at_student_flops", False)
+    )
+    rl_total_flops = rl_optimizer.get("total_student_flops")
+    if rl_max_steps is None:
+        if not rl_stop_flops:
+            errors.append(
+                "training.posttraining.rlvr.optimizer.max_steps can be null "
+                "only with a student-FLOP stop"
+            )
+    elif int(rl_max_steps) <= 0:
+        errors.append(
+            "training.posttraining.rlvr.optimizer.max_steps must be positive"
+        )
+    if rl_total_flops is not None and int(rl_total_flops) <= 0:
+        errors.append(
+            "training.posttraining.rlvr.optimizer.total_student_flops "
+            "must be positive"
+        )
+    if rl_stop_flops and rl_total_flops is None:
+        errors.append(
+            "training.posttraining.rlvr.optimizer.stop_at_student_flops "
+            "requires total_student_flops"
+        )
     rl_betas = rl_optimizer.get("betas", ())
     if len(rl_betas) != 2 or any(
         not 0 <= float(beta) < 1 for beta in rl_betas

@@ -211,8 +211,10 @@ must separate templates, fonts, value distributions, and document graphs, not me
 7. Repeat the best recipe with LFM and at least one non-LFM teacher to detect teacher-specific gains.
 
 The initialization-by-data-scale cross is compiled by
-[`student_factorial_runner.md`](student_factorial_runner.md). The remaining ablations in this list
-must still be executed before their effects can be claimed. The current LoRA ablations answer where
+[`student_factorial_runner.md`](student_factorial_runner.md). The resolution-by-latent cross is
+compiled with analytical runtime accounting and an overshoot gate by
+[`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md). These suites must
+still be executed before their effects can be claimed. The current LoRA ablations answer where
 existing LFM capabilities are easiest to adapt. This blueprint answers the next question: which
 capabilities can be built into a deployment-size student, what must be inherited, and what can be
 learned from the controlled document curriculum.
@@ -229,8 +231,9 @@ generation evaluator are executable and tested. The contracts are detailed in
 step is to execute the compiled matched suites in
 [`student_sweep_runner.md`](student_sweep_runner.md) at fixed token budgets and paired stochastic
 replicates, including the data-scale cross in
-[`student_factorial_runner.md`](student_factorial_runner.md), then publish held-out capability and
-efficiency curves with confidence intervals.
+[`student_factorial_runner.md`](student_factorial_runner.md) and the fixed-FLOP visual cross in
+[`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md), then publish
+held-out capability and efficiency curves with confidence intervals.
 
 The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
 packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations

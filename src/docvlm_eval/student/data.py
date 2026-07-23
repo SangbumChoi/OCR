@@ -748,12 +748,13 @@ class BalancedGroupBatchSampler:
                 f"{sorted(unknown_curriculum)}"
             )
         if (
-            self.curriculum.unit == "training_token_fraction"
+            self.curriculum.unit
+            in {"training_token_fraction", "training_compute_fraction"}
             and curriculum_groups
         ):
             raise ValueError(
-                "training-token curriculum cannot drive prefetched sampler weights; "
-                "use loss-weight stages or an optimizer-step curriculum"
+                "runtime token/compute curricula cannot drive prefetched sampler "
+                "weights; use loss-weight stages or an optimizer-step curriculum"
             )
 
     @classmethod

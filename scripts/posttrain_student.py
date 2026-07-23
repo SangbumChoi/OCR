@@ -210,6 +210,7 @@ def main() -> None:
     )
     print(
         f"Finished RLVR step={result.rollout_step} "
+        f"student_flops={result.student_flops_seen:,} "
         f"checkpoint={result.last_checkpoint}"
     )
 

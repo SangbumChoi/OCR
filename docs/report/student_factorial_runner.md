@@ -25,7 +25,8 @@ Only unique training-data diversity changes across scales. The resolved model, i
 sources, mixture weights, teacher, 20B effective-token pretraining budget, SFT and RLVR budgets,
 evaluation samples, and all non-data-scale controls remain fixed. A smaller corpus is replayed until
 the same token budget is reached. The experiment therefore estimates a data-diversity effect at
-fixed optimization compute; it is not a joint data-and-compute scaling law.
+fixed effective-token exposure. It is not a fixed-FLOP claim or a joint data-and-compute scaling
+law; use the architecture compute sweep when model execution cost changes.
 
 The experiment schema supports independent `synthetic.train_count` and
 `synthetic.heldout_count`. This prevents a training-scale patch from silently shrinking the

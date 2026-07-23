@@ -1,0 +1,41 @@
+# Five visual architectures by three paired replicates at matched student FLOPs.
+
+schema_version: 1
+name: docvlm-visual-architecture-compute
+base_sweep: configs/sub1b_sweep.yaml
+output_root: outputs/sweeps/docvlm-visual-architecture-compute
+baseline: r896_l64
+overshoot_tolerance_fraction: 0.02
+
+reference_budget:
+  text_tokens: 1024
+  pretraining_effective_tokens: 20000000000
+  sft_effective_tokens: 1000000000
+  rlvr_steps: 1000
+  rlvr_prompt_tokens: 256
+  rlvr_completion_tokens: 128
+  rlvr_group_size: 8
+  rlvr_replay_every_steps: 20
+  pretraining_warmup_fraction: 0.005
+  sft_warmup_fraction: 0.01
+
+profiles:
+  - id: r896_l64
+    image_long_side: 896
+    latent_tokens: 64
+
+  - id: r896_l32
+    image_long_side: 896
+    latent_tokens: 32
+
+  - id: r672_l48
+    image_long_side: 672
+    latent_tokens: 48
+
+  - id: r448_l64
+    image_long_side: 448
+    latent_tokens: 64
+
+  - id: r448_l32
+    image_long_side: 448
+    latent_tokens: 32
