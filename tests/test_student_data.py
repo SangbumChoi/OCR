@@ -312,6 +312,29 @@ def test_balanced_sampler_rejects_unknown_curriculum_groups():
         )
 
 
+def test_balanced_sampler_rejects_token_fraction_group_weights():
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    schedule = CurriculumSchedule(
+        unit="training_token_fraction",
+        stages=(
+            CurriculumStage(
+                id="not-prefetch-safe",
+                until_fraction=1.0,
+                group_weights={"available": 1.0},
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="prefetched sampler"):
+        BalancedGroupBatchSampler(
+            ["available"],
+            batch_size=1,
+            curriculum=schedule,
+        )
+
+
 def test_exhaustive_sampler_covers_every_example_once_on_one_rank():
     from docvlm_eval.student.data import DeterministicDistributedBatchSampler
 

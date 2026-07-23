@@ -24,7 +24,7 @@ from .model import DocumentVLMStudent
 @dataclass(frozen=True)
 class PretrainConfig:
     output_dir: str
-    epochs: int = 1
+    epochs: int | None = 1
     max_steps: int | None = None
     learning_rate: float = 3e-4
     min_lr_ratio: float = 0.1
@@ -33,6 +33,9 @@ class PretrainConfig:
     beta2: float = 0.95
     warmup_tokens: int = 100_000_000
     total_tokens: int = 20_000_000_000
+    stop_at_total_tokens: bool = False
+    token_unit: str = "supervised"
+    visual_tokens_per_image: int = 0
     grad_accum_steps: int = 8
     max_grad_norm: float = 1.0
     precision: str = "auto"
@@ -48,8 +51,12 @@ class PretrainConfig:
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
 
     def __post_init__(self) -> None:
-        if self.epochs <= 0 or self.grad_accum_steps <= 0:
-            raise ValueError("epochs and grad_accum_steps must be positive")
+        if self.epochs is not None and self.epochs <= 0:
+            raise ValueError("epochs must be positive when set")
+        if self.epochs is None and not self.stop_at_total_tokens:
+            raise ValueError("epochs can be null only when stop_at_total_tokens is true")
+        if self.grad_accum_steps <= 0:
+            raise ValueError("grad_accum_steps must be positive")
         if self.max_steps is not None and self.max_steps <= 0:
             raise ValueError("max_steps must be positive when set")
         if self.learning_rate <= 0 or not 0 <= self.min_lr_ratio <= 1:
@@ -60,6 +67,14 @@ class PretrainConfig:
             raise ValueError("optimizer betas must be within [0, 1)")
         if self.total_tokens <= 0 or not 0 <= self.warmup_tokens < self.total_tokens:
             raise ValueError("token schedule requires 0 <= warmup_tokens < total_tokens")
+        if self.token_unit not in {"supervised", "text", "effective"}:
+            raise ValueError("token_unit must be supervised, text, or effective")
+        if self.visual_tokens_per_image < 0:
+            raise ValueError("visual_tokens_per_image must be non-negative")
+        if self.token_unit == "effective" and self.visual_tokens_per_image <= 0:
+            raise ValueError(
+                "effective token accounting requires visual_tokens_per_image"
+            )
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
             raise ValueError("precision must be auto, float32, bfloat16, or float16")
         if self.checkpoint_every_steps < 0 or self.eval_every_steps < 0:
@@ -71,6 +86,16 @@ class PretrainConfig:
         if not self.run_stage.strip():
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
+        if (
+            self.stop_at_total_tokens
+            and self.curriculum.stages
+            and self.curriculum.unit != "training_token_fraction"
+            and self.epochs is None
+        ):
+            raise ValueError(
+                "an unbounded token-budget run requires a "
+                "training_token_fraction curriculum"
+            )
 
     @classmethod
     def from_blueprint(
@@ -82,7 +107,9 @@ class PretrainConfig:
         raw = blueprint["training"]["pretraining"]["optimizer"]
         values = {
             "output_dir": str(output_dir),
-            "epochs": int(raw["epochs"]),
+            "epochs": (
+                None if raw.get("epochs") is None else int(raw["epochs"])
+            ),
             "max_steps": (
                 None if raw.get("max_steps") is None else int(raw["max_steps"])
             ),
@@ -93,6 +120,11 @@ class PretrainConfig:
             "beta2": float(raw["betas"][1]),
             "warmup_tokens": int(raw["warmup_tokens"]),
             "total_tokens": int(raw["total_tokens"]),
+            "stop_at_total_tokens": bool(raw.get("stop_at_total_tokens", False)),
+            "token_unit": str(raw.get("token_unit", "supervised")),
+            "visual_tokens_per_image": int(
+                blueprint["student"]["connector"]["latent_tokens"]
+            ),
             "grad_accum_steps": int(raw["grad_accum_steps"]),
             "max_grad_norm": float(raw["max_grad_norm"]),
             "precision": str(raw["precision"]),
@@ -116,6 +148,8 @@ class TrainerState:
     batch_in_epoch: int = 0
     global_step: int = 0
     tokens_seen: int = 0
+    text_tokens_seen: int = 0
+    effective_tokens_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -123,6 +157,10 @@ class TrainingResult:
     output_dir: str
     global_step: int
     tokens_seen: int
+    text_tokens_seen: int
+    effective_tokens_seen: int
+    budget_tokens_seen: int
+    token_unit: str
     last_checkpoint: str
     final_metrics: dict[str, float]
 
@@ -239,14 +277,51 @@ def _distributed_context(device_name: str) -> _DistributedContext:
     return _DistributedContext(rank, world_size, local_rank, device)
 
 
-def _all_reduce_int(value: int, context: _DistributedContext) -> int:
+def _batch_token_counts(
+    batch: dict[str, Any],
+    visual_tokens_per_image: int,
+) -> dict[str, int]:
+    supervised = int((batch["labels"] != -100).sum().item())
+    text = int(batch["attention_mask"].sum().item())
+    images = (
+        int(batch["pixel_values"].shape[0])
+        if batch.get("pixel_values") is not None
+        else 0
+    )
+    return {
+        "supervised": supervised,
+        "text": text,
+        "effective": text + images * visual_tokens_per_image,
+    }
+
+
+def _all_reduce_token_counts(
+    counts: dict[str, int],
+    context: _DistributedContext,
+) -> dict[str, int]:
+    names = ("supervised", "text", "effective")
     if context.world_size == 1:
-        return value
+        return {name: int(counts[name]) for name in names}
     import torch.distributed as dist
 
-    tensor = torch.tensor(value, dtype=torch.long, device=context.device)
-    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-    return int(tensor.item())
+    values = torch.tensor(
+        [counts[name] for name in names],
+        dtype=torch.long,
+        device=context.device,
+    )
+    dist.all_reduce(values, op=dist.ReduceOp.SUM)
+    return {
+        name: int(values[index].item())
+        for index, name in enumerate(names)
+    }
+
+
+def _state_token_count(state: TrainerState, unit: str) -> int:
+    return {
+        "supervised": state.tokens_seen,
+        "text": state.text_tokens_seen,
+        "effective": state.effective_tokens_seen,
+    }[unit]
 
 
 def _all_reduce_sums(
@@ -384,6 +459,12 @@ def _save_checkpoint(
             "curriculum_total_steps": (
                 curriculum_total_steps if config.curriculum.stages else None
             ),
+            "token_budget": {
+                "stop_at_total_tokens": config.stop_at_total_tokens,
+                "total_tokens": config.total_tokens,
+                "token_unit": config.token_unit,
+                "visual_tokens_per_image": config.visual_tokens_per_image,
+            },
         },
     )
     payload = {
@@ -429,6 +510,7 @@ def _load_checkpoint(
     expected_run_stage: str,
     expected_curriculum_fingerprint: str | None,
     expected_curriculum_total_steps: int,
+    expected_token_budget: dict[str, Any],
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
     metadata = (
@@ -464,6 +546,11 @@ def _load_checkpoint(
     if saved_curriculum_steps != expected_steps:
         raise ValueError(
             "resume checkpoint curriculum horizon does not match the active training plan"
+        )
+    saved_token_budget = metadata.get("token_budget")
+    if saved_token_budget != expected_token_budget:
+        raise ValueError(
+            "resume checkpoint token-budget contract does not match the active training plan"
         )
     saved_world_size = int(metadata.get("world_size", 1))
     if saved_world_size != context.world_size:
@@ -584,12 +671,18 @@ def train_student(
         config.total_tokens,
         config.min_lr_ratio,
     )
-    total_curriculum_steps = planned_optimizer_steps(
-        num_batches=len(train_loader),
-        grad_accum_steps=config.grad_accum_steps,
-        epochs=config.epochs,
-        max_steps=config.max_steps,
-    )
+    if config.curriculum.unit == "training_token_fraction":
+        curriculum_horizon = config.total_tokens
+    else:
+        if config.epochs is None:
+            curriculum_horizon = 1
+        else:
+            curriculum_horizon = planned_optimizer_steps(
+                num_batches=len(train_loader),
+                grad_accum_steps=config.grad_accum_steps,
+                epochs=config.epochs,
+                max_steps=config.max_steps,
+            )
     state = TrainerState()
     resume_path = _resolve_resume(config)
     if resume_path is not None:
@@ -602,9 +695,15 @@ def train_student(
             config.tokenizer_fingerprint,
             config.run_stage,
             config.curriculum.fingerprint,
-            total_curriculum_steps,
+            curriculum_horizon,
+            {
+                "stop_at_total_tokens": config.stop_at_total_tokens,
+                "total_tokens": config.total_tokens,
+                "token_unit": config.token_unit,
+                "visual_tokens_per_image": config.visual_tokens_per_image,
+            },
         )
-        scheduler.step(state.tokens_seen)
+        scheduler.step(_state_token_count(state, config.token_unit))
 
     wrapped: nn.Module = module
     if context.world_size > 1:
@@ -621,11 +720,22 @@ def train_student(
     optimizer.zero_grad(set_to_none=True)
     last_checkpoint = resume_path
     final_metrics: dict[str, float] = {}
-    stop = False
-    accumulated_tokens = 0
+    stop = (
+        config.stop_at_total_tokens
+        and _state_token_count(state, config.token_unit) >= config.total_tokens
+    ) or (
+        config.max_steps is not None
+        and state.global_step >= config.max_steps
+    )
+    accumulated_token_counts = {
+        "supervised": 0,
+        "text": 0,
+        "effective": 0,
+    }
     accumulated_losses: dict[str, float] = {}
     accumulated_microbatches = 0
-    for epoch in range(state.epoch, config.epochs):
+    epoch = state.epoch
+    while not stop and (config.epochs is None or epoch < config.epochs):
         _set_loader_epoch(train_loader, epoch, config.seed, context.rank)
         module.train()
         loader_length = len(train_loader)
@@ -633,15 +743,35 @@ def train_student(
             if epoch == state.epoch and batch_index < state.batch_in_epoch:
                 continue
             batch = _move_batch(raw_batch, context.device)
-            curriculum_stage = config.curriculum.stage_for_step(
-                state.global_step,
-                total_curriculum_steps,
-            )
-            active_loss_weights = config.curriculum.loss_weights_for_step(
-                config.loss_weights,
-                state.global_step,
-                total_curriculum_steps,
-            )
+            if config.curriculum.unit == "training_token_fraction":
+                curriculum_progress = min(
+                    _state_token_count(state, config.token_unit)
+                    / config.total_tokens,
+                    1.0,
+                )
+                curriculum_stage = config.curriculum.stage_for_fraction(
+                    curriculum_progress
+                )
+                active_loss_weights = (
+                    config.curriculum.loss_weights_for_fraction(
+                        config.loss_weights,
+                        curriculum_progress,
+                    )
+                )
+            else:
+                curriculum_stage = config.curriculum.stage_for_step(
+                    state.global_step,
+                    curriculum_horizon,
+                )
+                active_loss_weights = config.curriculum.loss_weights_for_step(
+                    config.loss_weights,
+                    state.global_step,
+                    curriculum_horizon,
+                )
+                curriculum_progress = (
+                    min(state.global_step, curriculum_horizon - 1)
+                    / curriculum_horizon
+                )
             is_last_batch = batch_index + 1 == loader_length
             microbatch_number = accumulated_microbatches + 1
             should_step = (
@@ -663,7 +793,12 @@ def train_student(
                     scaled_loss = total / config.grad_accum_steps
                 scaler.scale(scaled_loss).backward()
             accumulated_microbatches = microbatch_number
-            accumulated_tokens += int((batch["labels"] != -100).sum().item())
+            batch_token_counts = _batch_token_counts(
+                batch,
+                config.visual_tokens_per_image,
+            )
+            for name, count in batch_token_counts.items():
+                accumulated_token_counts[name] += count
             for name, value in losses.items():
                 accumulated_losses[name] = (
                     accumulated_losses.get(name, 0.0) + float(value.detach())
@@ -672,9 +807,15 @@ def train_student(
             if not should_step:
                 continue
 
-            global_tokens = _all_reduce_int(accumulated_tokens, context)
-            next_tokens = state.tokens_seen + global_tokens
-            learning_rate = scheduler.step(next_tokens)
+            global_token_counts = _all_reduce_token_counts(
+                accumulated_token_counts,
+                context,
+            )
+            state.tokens_seen += global_token_counts["supervised"]
+            state.text_tokens_seen += global_token_counts["text"]
+            state.effective_tokens_seen += global_token_counts["effective"]
+            budget_tokens_seen = _state_token_count(state, config.token_unit)
+            learning_rate = scheduler.step(budget_tokens_seen)
             scaler.unscale_(optimizer)
             if accumulated_microbatches < config.grad_accum_steps:
                 correction = config.grad_accum_steps / accumulated_microbatches
@@ -689,7 +830,6 @@ def train_student(
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
             state.global_step += 1
-            state.tokens_seen = next_tokens
             global_loss_sums, global_microbatches = _all_reduce_sums(
                 accumulated_losses,
                 accumulated_microbatches,
@@ -704,22 +844,27 @@ def train_student(
                     "train/learning_rate": learning_rate,
                     "train/gradient_norm": float(gradient_norm),
                     "train/tokens_seen": float(state.tokens_seen),
+                    "train/text_tokens_seen": float(state.text_tokens_seen),
+                    "train/effective_tokens_seen": float(
+                        state.effective_tokens_seen
+                    ),
+                    "train/budget_tokens_seen": float(budget_tokens_seen),
                     "train/global_step": float(state.global_step),
                     "train/curriculum_stage": (
                         curriculum_stage.id if curriculum_stage is not None else "base"
                     ),
-                    "train/curriculum_progress": min(
-                        state.global_step - 1,
-                        total_curriculum_steps - 1,
-                    )
-                    / total_curriculum_steps,
+                    "train/curriculum_progress": curriculum_progress,
                     **{
                         f"train/loss_weight/{name}": weight
                         for name, weight in sorted(active_loss_weights.items())
                     },
                 }
             )
-            accumulated_tokens = 0
+            accumulated_token_counts = {
+                "supervised": 0,
+                "text": 0,
+                "effective": 0,
+            }
             accumulated_losses = {}
             accumulated_microbatches = 0
 
@@ -729,7 +874,8 @@ def train_student(
             ):
                 _append_metric(output_dir, {"kind": "train", **means})
                 print(
-                    f"[student] step={state.global_step} tokens={state.tokens_seen:,} "
+                    f"[student] step={state.global_step} "
+                    f"{config.token_unit}_tokens={budget_tokens_seen:,} "
                     f"loss={sum(means.get(name, 0.0) * active_loss_weights.get(name, 1.0) for name in losses):.4f} "
                     f"curriculum={means['train/curriculum_stage']} "
                     f"lr={learning_rate:.3e}",
@@ -771,14 +917,23 @@ def train_student(
                     state,
                     config,
                     context,
-                    total_curriculum_steps,
+                    curriculum_horizon,
                 )
-            if config.max_steps is not None and state.global_step >= config.max_steps:
+            reached_step_limit = (
+                config.max_steps is not None
+                and state.global_step >= config.max_steps
+            )
+            reached_token_limit = (
+                config.stop_at_total_tokens
+                and budget_tokens_seen >= config.total_tokens
+            )
+            if reached_step_limit or reached_token_limit:
                 stop = True
                 break
         if stop:
             break
-        state.epoch = epoch + 1
+        epoch += 1
+        state.epoch = epoch
         state.batch_in_epoch = 0
 
     if (
@@ -792,7 +947,18 @@ def train_student(
             state,
             config,
             context,
-            total_curriculum_steps,
+            curriculum_horizon,
+        )
+    budget_tokens_seen = _state_token_count(state, config.token_unit)
+    if (
+        config.stop_at_total_tokens
+        and config.max_steps is None
+        and budget_tokens_seen < config.total_tokens
+    ):
+        raise RuntimeError(
+            f"training exhausted epochs at {budget_tokens_seen:,} "
+            f"{config.token_unit} tokens before total_tokens="
+            f"{config.total_tokens:,}"
         )
     if context.world_size > 1:
         import torch.distributed as dist
@@ -806,6 +972,10 @@ def train_student(
         output_dir=str(output_dir),
         global_step=state.global_step,
         tokens_seen=state.tokens_seen,
+        text_tokens_seen=state.text_tokens_seen,
+        effective_tokens_seen=state.effective_tokens_seen,
+        budget_tokens_seen=budget_tokens_seen,
+        token_unit=config.token_unit,
         last_checkpoint=str(last_checkpoint),
         final_metrics=final_metrics,
     )

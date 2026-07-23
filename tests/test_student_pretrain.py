@@ -125,6 +125,8 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
     assert first_result.global_step == 2
     assert resumed_result.global_step == 4
     assert full_result.tokens_seen == resumed_result.tokens_seen
+    assert full_result.text_tokens_seen == resumed_result.text_tokens_seen
+    assert full_result.effective_tokens_seen == resumed_result.effective_tokens_seen
     assert (tmp_path / "resume" / "latest_checkpoint.txt").exists()
     assert (
         tmp_path
@@ -146,6 +148,71 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
     assert state["batch_in_epoch"] == 0
     for name, expected in uninterrupted.state_dict().items():
         assert torch.equal(expected, resumed.state_dict()[name]), name
+
+
+def test_token_budget_repeats_epochs_until_the_declared_total(tmp_path):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    first_batch = next(iter(_loader()))
+    tokens_per_batch = int((first_batch["labels"] != -100).sum().item())
+    torch.manual_seed(37)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    uninterrupted = copy.deepcopy(initial)
+    resumed = copy.deepcopy(initial)
+    full_config = replace(
+        _config(tmp_path / "budget-full", max_steps=None),
+        epochs=None,
+        stop_at_total_tokens=True,
+        total_tokens=tokens_per_batch + 1,
+    )
+    resumed_config = replace(
+        full_config,
+        output_dir=str(tmp_path / "budget-resume"),
+    )
+    result = train_student(
+        uninterrupted,
+        _loader(),
+        full_config,
+    )
+    first = train_student(
+        resumed,
+        _loader(),
+        replace(resumed_config, max_steps=1),
+    )
+    resumed_result = train_student(
+        resumed,
+        _loader(),
+        replace(resumed_config, resume_from="latest"),
+    )
+
+    assert result.global_step == 2
+    assert first.global_step == 1
+    assert resumed_result.global_step == 2
+    assert result.tokens_seen >= full_config.total_tokens
+    assert result.budget_tokens_seen == result.tokens_seen
+    assert result.tokens_seen == resumed_result.tokens_seen
+    assert result.text_tokens_seen == resumed_result.text_tokens_seen
+    assert result.effective_tokens_seen == resumed_result.effective_tokens_seen
+    assert result.token_unit == "supervised"
+    for name, expected in uninterrupted.state_dict().items():
+        assert torch.equal(expected, resumed.state_dict()[name]), name
+
+
+def test_effective_token_count_includes_resampled_visual_prefix():
+    from docvlm_eval.student.pretrain import _batch_token_counts
+
+    batch = next(iter(_loader()))
+    counts = _batch_token_counts(batch, visual_tokens_per_image=16)
+
+    assert counts["supervised"] == int((batch["labels"] != -100).sum())
+    assert counts["text"] == int(batch["attention_mask"].sum())
+    assert counts["effective"] == counts["text"] + 16
 
 
 def test_distilled_pretraining_saves_projection_state(tmp_path):
@@ -330,6 +397,28 @@ def test_planned_optimizer_steps_accounts_for_partial_epoch_windows():
     ) == 4
 
 
+def test_training_token_curriculum_uses_budget_fraction():
+    from docvlm_eval.student.curriculum import CurriculumSchedule, CurriculumStage
+
+    schedule = CurriculumSchedule(
+        unit="training_token_fraction",
+        stages=(
+            CurriculumStage("bootstrap", 0.25, loss_weights={"autoregressive": 0.5}),
+            CurriculumStage("refine", 1.0, loss_weights={"autoregressive": 1.0}),
+        ),
+    )
+
+    schedule.validate()
+    assert schedule.stage_for_fraction(0.24).id == "bootstrap"
+    assert schedule.stage_for_fraction(0.25).id == "refine"
+    assert schedule.loss_weights_for_fraction(
+        {"autoregressive": 2.0},
+        0.5,
+    )["autoregressive"] == 1.0
+    with pytest.raises(ValueError, match="stage_for_fraction"):
+        schedule.stage_for_step(1, 4)
+
+
 def test_evaluation_weights_losses_by_sample_count():
     import torch
 
@@ -385,6 +474,10 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.grad_accum_steps == 8
     assert config.warmup_tokens == 100_000_000
     assert config.total_tokens == 20_000_000_000
+    assert config.epochs is None
+    assert config.stop_at_total_tokens is True
+    assert config.token_unit == "effective"
+    assert config.visual_tokens_per_image == 64
     assert config.loss_weights["teacher_kl"] == 0.35
     assert [stage.id for stage in config.curriculum.stages] == [
         "perception_bootstrap",
@@ -392,6 +485,7 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
         "hard_reasoning_refinement",
     ]
     assert config.curriculum.fingerprint.startswith("sha256:")
+    assert config.curriculum.unit == "training_token_fraction"
 
 
 def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
@@ -410,6 +504,13 @@ def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
             warmup_tokens=0,
             total_tokens=10,
             loss_weights={"autoregressive": -1.0},
+        )
+    with pytest.raises(ValueError, match="epochs can be null"):
+        PretrainConfig(
+            output_dir=str(tmp_path),
+            epochs=None,
+            warmup_tokens=0,
+            total_tokens=10,
         )
 
 
@@ -507,6 +608,32 @@ def test_resume_rejects_a_changed_curriculum(tmp_path):
             replace(
                 _config(output, max_steps=2, resume="latest"),
                 curriculum=changed_schedule,
+            ),
+        )
+
+
+def test_resume_rejects_a_changed_token_budget_contract(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    output = tmp_path / "token-budget-resume"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(),
+        _config(output, max_steps=1),
+    )
+
+    with pytest.raises(ValueError, match="token-budget contract"):
+        train_student(
+            model,
+            _loader(),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                token_unit="text",
             ),
         )
 

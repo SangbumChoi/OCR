@@ -33,7 +33,7 @@ class CurriculumStage:
 
 @dataclass(frozen=True)
 class CurriculumSchedule:
-    """Step-fraction schedule shared by the sampler and loss composition."""
+    """Progress-fraction schedule shared by the sampler and loss composition."""
 
     stages: tuple[CurriculumStage, ...] = ()
     unit: str = "optimizer_step_fraction"
@@ -73,8 +73,14 @@ class CurriculumSchedule:
         return schedule
 
     def validate(self) -> None:
-        if self.unit != "optimizer_step_fraction":
-            raise ValueError("curriculum unit must be optimizer_step_fraction")
+        if self.unit not in {
+            "optimizer_step_fraction",
+            "training_token_fraction",
+        }:
+            raise ValueError(
+                "curriculum unit must be optimizer_step_fraction or "
+                "training_token_fraction"
+            )
         if not self.stages:
             return
         previous = 0.0
@@ -127,11 +133,19 @@ class CurriculumSchedule:
         step: int,
         total_steps: int,
     ) -> CurriculumStage | None:
-        if not self.stages:
-            return None
+        if self.unit != "optimizer_step_fraction":
+            raise ValueError(
+                "training_token_fraction curriculum requires stage_for_fraction"
+            )
         if total_steps <= 0:
             raise ValueError("total curriculum steps must be positive")
         progress = min(max(int(step), 0), total_steps - 1) / total_steps
+        return self.stage_for_fraction(progress)
+
+    def stage_for_fraction(self, progress: float) -> CurriculumStage | None:
+        if not self.stages:
+            return None
+        progress = min(max(float(progress), 0.0), 1.0)
         for stage in self.stages:
             if progress < stage.until_fraction:
                 return stage
@@ -145,6 +159,17 @@ class CurriculumSchedule:
     ) -> dict[str, float]:
         weights = dict(base_weights)
         stage = self.stage_for_step(step, total_steps)
+        if stage is not None:
+            weights.update(stage.loss_weights)
+        return weights
+
+    def loss_weights_for_fraction(
+        self,
+        base_weights: dict[str, float],
+        progress: float,
+    ) -> dict[str, float]:
+        weights = dict(base_weights)
+        stage = self.stage_for_fraction(progress)
         if stage is not None:
             weights.update(stage.loss_weights)
         return weights

@@ -747,6 +747,14 @@ class BalancedGroupBatchSampler:
                 "curriculum weights reference unknown groups: "
                 f"{sorted(unknown_curriculum)}"
             )
+        if (
+            self.curriculum.unit == "training_token_fraction"
+            and curriculum_groups
+        ):
+            raise ValueError(
+                "training-token curriculum cannot drive prefetched sampler weights; "
+                "use loss-weight stages or an optimizer-step curriculum"
+            )
 
     @classmethod
     def from_blueprint(
@@ -791,7 +799,11 @@ class BalancedGroupBatchSampler:
                 if grad_accum_steps is None
                 else int(grad_accum_steps)
             ),
-            epochs=int(optimizer["epochs"]) if epochs is None else int(epochs),
+            epochs=(
+                int(optimizer["epochs"] or 1)
+                if epochs is None
+                else int(epochs)
+            ),
             max_steps=(
                 (
                     None
@@ -816,7 +828,11 @@ class BalancedGroupBatchSampler:
                 self.epoch * self.steps_per_epoch
                 + batch_index // self.grad_accum_steps
             )
-            stage = self.curriculum.stage_for_step(step, self.total_steps)
+            stage = (
+                self.curriculum.stage_for_step(step, self.total_steps)
+                if self.curriculum.unit == "optimizer_step_fraction"
+                else None
+            )
             weights = dict(self.base_weights)
             if stage is not None:
                 weights.update(stage.group_weights)

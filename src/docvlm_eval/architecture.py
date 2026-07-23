@@ -194,7 +194,6 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 )
     optimizer = blueprint["training"]["pretraining"].get("optimizer", {})
     positive_optimizer_fields = (
-        "epochs",
         "micro_batch_size",
         "grad_accum_steps",
         "learning_rate",
@@ -204,6 +203,21 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     for field in positive_optimizer_fields:
         if float(optimizer.get(field, 0)) <= 0:
             errors.append(f"training.pretraining.optimizer.{field} must be positive")
+    epochs = optimizer.get("epochs")
+    stop_at_total_tokens = bool(optimizer.get("stop_at_total_tokens", False))
+    if epochs is None:
+        if not stop_at_total_tokens:
+            errors.append(
+                "training.pretraining.optimizer.epochs can be null only when "
+                "stop_at_total_tokens is true"
+            )
+    elif int(epochs) <= 0:
+        errors.append("training.pretraining.optimizer.epochs must be positive when set")
+    token_unit = str(optimizer.get("token_unit", "supervised"))
+    if token_unit not in {"supervised", "text", "effective"}:
+        errors.append(
+            "training.pretraining.optimizer.token_unit must be supervised, text, or effective"
+        )
     if int(optimizer.get("log_every_steps", 0)) <= 0:
         errors.append("training.pretraining.optimizer.log_every_steps must be positive")
     for field in ("checkpoint_every_steps", "eval_every_steps", "warmup_tokens"):
@@ -222,6 +236,29 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         )
     if optimizer.get("precision") not in {"auto", "float32", "bfloat16", "float16"}:
         errors.append("training.pretraining.optimizer.precision is invalid")
+    curriculum = blueprint["training"]["pretraining"].get("curriculum") or {}
+    curriculum_unit = str(curriculum.get("unit", "optimizer_step_fraction"))
+    if (
+        epochs is None
+        and curriculum.get("stages")
+        and curriculum_unit != "training_token_fraction"
+    ):
+        errors.append(
+            "unbounded token-budget pretraining requires a "
+            "training_token_fraction curriculum"
+        )
+    if curriculum_unit == "training_token_fraction":
+        if not stop_at_total_tokens:
+            errors.append(
+                "training_token_fraction curriculum requires stop_at_total_tokens"
+            )
+        if any(
+            isinstance(stage, dict) and stage.get("group_weights")
+            for stage in curriculum.get("stages", [])
+        ):
+            errors.append(
+                "training_token_fraction curriculum cannot override sampler group weights"
+            )
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
     if estimates["total"] >= maximum:
@@ -267,10 +304,13 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     if not isinstance(curriculum, dict):
         errors.append("training.pretraining.curriculum must be a mapping")
     else:
-        if curriculum.get("unit") != "optimizer_step_fraction":
+        if curriculum.get("unit") not in {
+            "optimizer_step_fraction",
+            "training_token_fraction",
+        }:
             errors.append(
                 "training.pretraining.curriculum.unit must be "
-                "optimizer_step_fraction"
+                "optimizer_step_fraction or training_token_fraction"
             )
         stages = curriculum.get("stages")
         if not isinstance(stages, list) or not stages:

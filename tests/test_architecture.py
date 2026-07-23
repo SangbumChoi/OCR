@@ -76,6 +76,25 @@ def test_blueprint_rejects_invalid_curriculum_contracts():
     assert any("final stage must end at 1.0" in error for error in errors)
 
 
+def test_blueprint_rejects_inconsistent_token_budget_contract():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    optimizer = blueprint["training"]["pretraining"]["optimizer"]
+    optimizer["stop_at_total_tokens"] = False
+    optimizer["token_unit"] = "pixels"
+    blueprint["training"]["pretraining"]["curriculum"]["stages"][0][
+        "group_weights"
+    ] = {"vqa": 1.0}
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("token_unit must be supervised, text, or effective" in error for error in errors)
+    assert any(
+        "training_token_fraction curriculum requires stop_at_total_tokens" in error
+        for error in errors
+    )
+    assert any("cannot override sampler group weights" in error for error in errors)
+
+
 def test_blueprint_rejects_invalid_posttraining_contracts():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["posttraining"]["sft"]["target_mode"] = "hidden_reasoning"

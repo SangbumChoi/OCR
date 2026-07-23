@@ -100,11 +100,15 @@ Pretraining establishes perception and alignment before instruction behavior:
 2. Add dense pages, multilingual scripts, tables, charts, formulas, and long visual sequences.
 3. Add acquisition degradation, distractors, relocated evidence, and cross-region questions.
 
-These are executable stages rather than narrative labels. The machine-readable curriculum assigns
-each stage an optimizer-step-fraction boundary and partial sampler/loss overrides. The balanced
-sampler and loss composer resolve the same stage deterministically, including after exact resume;
-the stage ID and every active loss weight are logged. A curriculum fingerprint in each checkpoint
-prevents continuation under silently changed boundaries or weights. See
+These are executable stages rather than narrative labels. The full recipe advances loss stages by
+the fraction of its effective-token budget consumed. Effective tokens are non-padding text tokens
+plus the fixed resampled visual-prefix tokens for each image; raw image patches are reported
+separately by architecture and are not mislabeled as language-sequence tokens. Step-fraction
+curricula remain available for bounded ablations. Token-fraction sampler-weight changes are
+rejected because worker prefetch could move their exact boundary; the full recipe uses
+token-fraction loss changes and a fixed balanced sampler. The stage ID, progress, and every active
+loss weight are logged. A curriculum and token-budget fingerprint in each checkpoint prevents
+continuation under silently changed boundaries, units, or horizons. See
 [`student_pretraining_runner.md`](student_pretraining_runner.md) for the schema and failure gates.
 
 The default data mixture is 45% authored synthetic documents, 25% public document data, 15%

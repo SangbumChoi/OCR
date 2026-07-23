@@ -218,7 +218,7 @@ def main() -> None:
         blueprint,
         batch_size,
         grad_accum_steps=config.grad_accum_steps,
-        epochs=config.epochs,
+        epochs=config.epochs or 1,
         max_steps=config.max_steps,
     )
     train_loader = DataLoader(
@@ -272,7 +272,9 @@ def main() -> None:
     )
     if int(os.environ.get("RANK", "0")) == 0:
         print(
-            f"Finished step={result.global_step} tokens={result.tokens_seen:,} "
+            f"Finished step={result.global_step} "
+            f"{result.token_unit}_tokens={result.budget_tokens_seen:,} "
+            f"supervised_tokens={result.tokens_seen:,} "
             f"checkpoint={result.last_checkpoint}"
         )
 

@@ -124,7 +124,9 @@ training:
         - [22, 22]
       cross_tokenizer_policy: sequence_targets_only
     optimizer:
-      epochs: 3
+      # The full run cycles deterministic sampler epochs until the effective-token budget is met.
+      # --max-steps remains an explicit smoke/debug override.
+      epochs: null
       max_steps: null
       micro_batch_size: 1
       grad_accum_steps: 8
@@ -135,6 +137,9 @@ training:
       max_grad_norm: 1.0
       warmup_tokens: 100000000
       total_tokens: 20000000000
+      stop_at_total_tokens: true
+      # Effective tokens = non-padding text tokens + 64 resampled visual-prefix tokens per image.
+      token_unit: effective
       precision: bfloat16
       checkpoint_every_steps: 1000
       eval_every_steps: 1000
@@ -155,7 +160,7 @@ training:
       box_regression: 0.20
       orientation: 0.05
     curriculum:
-      unit: optimizer_step_fraction
+      unit: training_token_fraction
       stages:
         - id: perception_bootstrap
           until_fraction: 0.15

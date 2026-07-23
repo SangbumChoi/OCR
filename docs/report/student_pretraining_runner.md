@@ -7,7 +7,8 @@ student directly from UDD. It supports random or selectively initialized student
 native online teacher, token-count learning-rate scheduling, deterministic curriculum scheduling,
 mixed precision, `torchrun` data parallelism, held-out evaluation, and exact checkpoint resume.
 
-This is training infrastructure, not evidence that the default 20B-token run has been completed.
+This is training infrastructure, not evidence that the default 20B-effective-token run has been
+completed.
 Published model claims still require the controlled initialization, teacher, data-scale, and
 held-out ablations in the architecture blueprint.
 
@@ -51,6 +52,27 @@ python scripts/pretrain_student.py \
 ```
 
 Use `--max-steps` for a smoke run before allocating the full token budget.
+
+## Executable token budget
+
+The full blueprint sets `epochs: null`, `stop_at_total_tokens: true`, and
+`token_unit: effective`. The runner therefore repeats deterministic sampler epochs until it reaches
+20B effective tokens instead of stopping after an arbitrary number of corpus passes. One effective
+token is either a non-padding text token or one of the connector's 64 resampled visual-prefix
+tokens. The accounting deliberately does not call every raw image patch a decoder token.
+
+Every optimizer update records three cumulative counters:
+
+- `train/tokens_seen`: supervised answer tokens;
+- `train/text_tokens_seen`: all non-padding prompt and answer tokens;
+- `train/effective_tokens_seen`: text plus resampled visual-prefix tokens.
+
+`train/budget_tokens_seen` selects one of those counters through `token_unit` and drives both the
+cosine schedule and the hard stopping condition. Since an optimizer update is atomic, the final
+count may exceed `total_tokens` by at most one global update. `--max-steps` remains an explicit
+smoke/debug ceiling and may stop before the token target. A finite `epochs` value is also supported,
+but a production token-budget run fails rather than silently succeeding if that epoch ceiling is
+exhausted first.
 
 ## Teacher contract
 
@@ -129,13 +151,13 @@ optimizer-step count.
 
 ## Executable curriculum
 
-`training.pretraining.curriculum` is an optimizer-step-fraction schedule shared by data sampling
-and loss composition. Every stage has a unique ID, an increasing `until_fraction`, and optional
-partial overrides:
+`training.pretraining.curriculum` supports `optimizer_step_fraction` for bounded runs and
+`training_token_fraction` for the production token-budget run. Every stage has a unique ID, an
+increasing `until_fraction`, and optional partial overrides:
 
 ```yaml
 curriculum:
-  unit: optimizer_step_fraction
+  unit: training_token_fraction
   stages:
     - id: recognition_bootstrap
       until_fraction: 0.2
@@ -156,12 +178,12 @@ override. Sampler group names must exist under the active `balance_by` dimension
 negative weights, a stage that disables every available group, duplicate IDs, non-increasing
 boundaries, and a final boundary other than `1.0` fail closed.
 
-Stage selection uses the zero-based optimizer update and the exact planned number of updates,
-including gradient accumulation, epoch-end partial windows, and `max_steps`. The sampler derives the
-same update index from epoch and batch position, so worker prefetch cannot move a sample across a
-curriculum boundary. This also makes the sequence reproducible after resume. Each training record
-includes `train/curriculum_stage`, `train/curriculum_progress`, and
-`train/loss_weight/<name>` values for audit and W&B ingestion.
+In token mode, loss-stage selection uses the exact global budget counter before each update.
+Sampler group weights stay fixed because prefetched batches cannot observe an exact token boundary;
+a token-fraction curriculum that tries to override them is rejected. Step mode retains the
+zero-based optimizer update contract, including gradient accumulation, epoch-end partial windows,
+and `max_steps`. Each training record includes `train/curriculum_stage`,
+`train/curriculum_progress`, and `train/loss_weight/<name>` values for audit and W&B ingestion.
 
 ## Exact resume
 
@@ -181,14 +203,15 @@ Each checkpoint contains:
 - trainable distillation projections;
 - optimizer and AMP scaler state;
 - Python, CPU Torch, and CUDA RNG state;
-- epoch, batch cursor, optimizer step, and supervised-token count;
-- tokenizer and curriculum fingerprints and a `latest_checkpoint.txt` pointer.
+- epoch, batch cursor, optimizer step, and supervised/text/effective token counts;
+- tokenizer, curriculum, and token-budget contracts plus a `latest_checkpoint.txt` pointer.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
 Combined with the deterministic balanced sampler and `persistent_workers=False`, an interrupted run
 reconstructs the same next batch and augmentation. A tokenizer mismatch is rejected before state
-loading, as is a changed curriculum or training horizon. Exact continuation also requires the
-original `torchrun` world size because every rank has its own saved RNG stream and sampler slice.
+loading, as is a changed curriculum, token unit, visual-prefix count, or training horizon. Exact
+continuation also requires the original `torchrun` world size because every rank has its own saved
+RNG stream and sampler slice.
 
 ## Loss and metric boundary
 
