@@ -15,7 +15,7 @@ from urllib.parse import quote
 import torch
 
 from ..metrics.text import score_sample
-from .data import StudentCollator
+from .data import StudentCollator, visual_model_inputs
 from .model import DocumentVLMStudent
 from .posttrain import StructuredPostTrainingDataset, posttraining_prompt_batch
 from .pretrain import _autocast_context
@@ -249,8 +249,7 @@ def evaluate_structured_student(
                 if generate_with_confidence is None:
                     generated = model.generate(
                         prompt_batch["input_ids"],
-                        pixel_values=prompt_batch.get("pixel_values"),
-                        pixel_mask=prompt_batch.get("pixel_mask"),
+                        **visual_model_inputs(prompt_batch),
                         max_new_tokens=config.max_new_tokens,
                         eos_token_id=int(tokenizer.eos_token_id),
                     )
@@ -258,8 +257,7 @@ def evaluate_structured_student(
                 else:
                     generated, confidence_tensor = generate_with_confidence(
                         prompt_batch["input_ids"],
-                        pixel_values=prompt_batch.get("pixel_values"),
-                        pixel_mask=prompt_batch.get("pixel_mask"),
+                        **visual_model_inputs(prompt_batch),
                         max_new_tokens=config.max_new_tokens,
                         eos_token_id=int(tokenizer.eos_token_id),
                     )

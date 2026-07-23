@@ -227,6 +227,37 @@ def estimate_batch_training_flops(
     if input_ids is None or getattr(input_ids, "ndim", 0) != 2:
         raise ValueError("compute accounting requires rank-2 input_ids")
     pixel_values = batch.get("pixel_values")
+    packed_pixels = batch.get("packed_pixel_values")
+    packed_cu_seqlens = batch.get("packed_cu_seqlens")
+    if pixel_values is not None and packed_pixels is not None:
+        raise ValueError("compute accounting received dense and packed visual inputs")
+    if packed_pixels is not None:
+        if packed_cu_seqlens is None:
+            raise ValueError("packed compute accounting requires cu_seqlens")
+        if getattr(packed_pixels, "ndim", 0) != 4:
+            raise ValueError("packed_pixel_values must have rank four")
+        boundaries = [int(value) for value in packed_cu_seqlens.tolist()]
+        if len(boundaries) != int(input_ids.shape[0]) + 1:
+            raise ValueError("packed visual batch dimension must match input_ids")
+        if boundaries[0] != 0 or boundaries[-1] != int(packed_pixels.shape[0]):
+            raise ValueError("packed cu_seqlens do not cover every visual token")
+        lengths = [
+            end - start for start, end in zip(boundaries, boundaries[1:])
+        ]
+        if any(
+            length <= 0 or length > config.vision.max_position_tokens
+            for length in lengths
+        ):
+            raise ValueError("packed sample exceeds the visual position budget")
+        return sum(
+            estimate_training_flops(
+                config,
+                text_tokens=int(input_ids.shape[1]),
+                vision_tokens=length,
+                batch_size=1,
+            )
+            for length in lengths
+        )
     if pixel_values is None:
         vision_tokens = 0
     else:

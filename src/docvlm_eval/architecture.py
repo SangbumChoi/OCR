@@ -162,9 +162,29 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "training.pretraining.input_pipeline.visual_canvas_mode must be "
             "fixed_square or batch_adaptive"
         )
-    if not isinstance(input_pipeline.get("aspect_ratio_bucketing", False), bool):
+    if input_pipeline.get("visual_sequence_mode", "dense") not in {
+        "dense",
+        "packed",
+    }:
+        errors.append(
+            "training.pretraining.input_pipeline.visual_sequence_mode must be "
+            "dense or packed"
+        )
+    aspect_ratio_bucketing = input_pipeline.get(
+        "aspect_ratio_bucketing",
+        False,
+    )
+    if not isinstance(aspect_ratio_bucketing, bool):
         errors.append(
             "training.pretraining.input_pipeline.aspect_ratio_bucketing must be boolean"
+        )
+    if (
+        input_pipeline.get("visual_sequence_mode", "dense") == "packed"
+        and aspect_ratio_bucketing is True
+    ):
+        errors.append(
+            "training.pretraining.input_pipeline.aspect_ratio_bucketing must be "
+            "false for packed visual sequences"
         )
     if float(input_pipeline.get("aspect_ratio_bucket_log2_step", 0.5)) <= 0:
         errors.append(

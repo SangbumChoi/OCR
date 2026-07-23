@@ -245,13 +245,14 @@ replicates, including the data-scale cross in
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md), then publish
 held-out capability and efficiency curves with confidence intervals.
 
-The current input path uses patch-aligned batch-adaptive rectangular canvases with stable
-two-dimensional visual positions. The paired fixed-square control and actual-shape FLOP accounting
-are executable through [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md). This is
-not true NaViT multi-example sequence packing; aspect-ratio bucketing and packed visual sequences
-remain measured efficiency ablations rather than claimed capabilities. Native RLVR is currently
-single-process. Formula reward supports bounded elementary symbolic equivalence, but deliberately
-rejects unbounded calculus and does not replace a full theorem prover.
+The current input path uses per-image packed patch sequences with stable two-dimensional visual
+positions. Dense adaptive, aspect-bucketed, and fixed-square controls plus sequence-aware FLOP
+accounting are executable through
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md). Packed numerical equivalence is
+tested locally, while target-GPU throughput and quality remain measured efficiency ablations rather
+than claimed capabilities. Native RLVR is currently single-process. Formula reward supports bounded
+elementary symbolic equivalence, but deliberately rejects unbounded calculus and does not replace a
+full theorem prover.
 
 ## Evidence basis
 

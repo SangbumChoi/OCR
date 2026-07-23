@@ -36,6 +36,7 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     pipeline["rotation_probability"] = 2.0
     pipeline["balance_by"] = "anything"
     pipeline["visual_canvas_mode"] = "implicit-crop"
+    pipeline["visual_sequence_mode"] = "flat"
     pipeline["aspect_ratio_bucketing"] = "yes"
     pipeline["aspect_ratio_bucket_log2_step"] = 0.0
     blueprint["student"]["vision"]["max_position_tokens"] = 4095
@@ -50,6 +51,7 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("rotation_probability must be between" in error for error in errors)
     assert any("balance_by must be task, source, language, or component" in error for error in errors)
     assert any("visual_canvas_mode" in error for error in errors)
+    assert any("visual_sequence_mode" in error for error in errors)
     assert any("aspect_ratio_bucketing must be boolean" in error for error in errors)
     assert any("aspect_ratio_bucket_log2_step" in error for error in errors)
     assert any("max_position_tokens" in error for error in errors)
@@ -57,6 +59,19 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("sequence_targets.min_score" in error for error in errors)
     assert any("sequence_targets.seed" in error for error in errors)
     assert any("tokenizer.vocab_size must match" in error for error in errors)
+
+
+def test_packed_visual_sequences_reject_redundant_aspect_bucketing():
+    from docvlm_eval.architecture import load_blueprint, validate_blueprint
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    blueprint["training"]["pretraining"]["input_pipeline"][
+        "aspect_ratio_bucketing"
+    ] = True
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("false for packed visual sequences" in error for error in errors)
 
 
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():

@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import StudentConfig
+from .data import visual_model_inputs
 from .model import DocumentVLMStudent, StudentOutput
 
 
@@ -113,9 +114,9 @@ class NativeStudentTeacher:
     @torch.no_grad()
     def __call__(self, batch: dict[str, Any]) -> TeacherSignals:
         inputs = {
-            key: batch[key]
-            for key in ("input_ids", "pixel_values", "pixel_mask", "attention_mask")
-            if key in batch
+            "input_ids": batch["input_ids"],
+            "attention_mask": batch.get("attention_mask"),
+            **visual_model_inputs(batch),
         }
         output = self.model(
             **inputs,

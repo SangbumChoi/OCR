@@ -210,6 +210,65 @@ class VisionTower(nn.Module):
             return x, patch_mask, features
         return (x, patch_mask) if return_mask else x
 
+    def forward_packed(
+        self,
+        packed_pixel_values: torch.Tensor,
+        position_ids: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        *,
+        capture_layers: set[int] | None = None,
+    ) -> tuple[torch.Tensor, dict[int, torch.Tensor]]:
+        """Encode concatenated per-image patch sequences without batch padding."""
+
+        patch = self.config.patch_size
+        if packed_pixel_values.ndim != 4 or packed_pixel_values.shape[1:] != (
+            3,
+            patch,
+            patch,
+        ):
+            raise ValueError(
+                "packed_pixel_values must have shape [tokens, 3, patch, patch]"
+            )
+        token_count = int(packed_pixel_values.shape[0])
+        if position_ids.shape != (token_count,):
+            raise ValueError("packed_position_ids must have shape [tokens]")
+        if cu_seqlens.ndim != 1 or cu_seqlens.numel() < 2:
+            raise ValueError("packed_cu_seqlens must have shape [batch + 1]")
+        boundaries = [int(value) for value in cu_seqlens.tolist()]
+        if (
+            boundaries[0] != 0
+            or boundaries[-1] != token_count
+            or any(left >= right for left, right in zip(boundaries, boundaries[1:]))
+        ):
+            raise ValueError(
+                "packed_cu_seqlens must be strictly increasing from zero to tokens"
+            )
+        if token_count > 0:
+            minimum = int(position_ids.min().item())
+            maximum = int(position_ids.max().item())
+            if minimum < 0 or maximum >= self.position_embedding.shape[0]:
+                raise ValueError("packed_position_ids exceed the visual position grid")
+        x = self.patch_embed(packed_pixel_values).flatten(1)
+        x = x + self.position_embedding[position_ids].to(x.dtype)
+        features: dict[int, torch.Tensor] = {}
+        for index, block in enumerate(self.blocks):
+            x = torch.cat(
+                [
+                    block(x[start:end].unsqueeze(0)).squeeze(0)
+                    for start, end in zip(boundaries, boundaries[1:])
+                ]
+            )
+            if capture_layers is not None and index in capture_layers:
+                features[index] = x
+        x = self.norm(x)
+        if capture_layers is not None and -1 in capture_layers:
+            features[-1] = x
+        if capture_layers is not None:
+            missing = capture_layers - features.keys()
+            if missing:
+                raise ValueError(f"unknown vision feature layers: {sorted(missing)}")
+        return x, features
+
 
 class CrossAttention(nn.Module):
     def __init__(self, query_width: int, source_width: int, heads: int):
@@ -303,6 +362,30 @@ class GatedResampler(nn.Module):
         latents = self.latents.unsqueeze(0).expand(vision_tokens.shape[0], -1, -1)
         for layer in self.layers:
             latents = layer(latents, vision_tokens, vision_mask)
+        return latents
+
+    def forward_packed(
+        self,
+        vision_tokens: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+    ) -> torch.Tensor:
+        """Resample packed image sequences without materializing padded sources."""
+
+        boundaries = [int(value) for value in cu_seqlens.tolist()]
+        batch_size = len(boundaries) - 1
+        latents = self.latents.unsqueeze(0).expand(batch_size, -1, -1)
+        for layer in self.layers:
+            latents = torch.cat(
+                [
+                    layer(
+                        latents[index : index + 1],
+                        vision_tokens[start:end].unsqueeze(0),
+                    )
+                    for index, (start, end) in enumerate(
+                        zip(boundaries, boundaries[1:])
+                    )
+                ]
+            )
         return latents
 
 
@@ -565,11 +648,36 @@ class DocumentVLMStudent(nn.Module):
 
     def encode_images(
         self,
-        pixel_values: torch.Tensor,
+        pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
+        *,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Encode an image batch once into the fixed visual prefix."""
 
+        packed_inputs = (
+            packed_pixel_values,
+            packed_position_ids,
+            packed_cu_seqlens,
+        )
+        if any(value is not None for value in packed_inputs):
+            if pixel_values is not None or pixel_mask is not None:
+                raise ValueError("dense and packed visual inputs are mutually exclusive")
+            if not all(value is not None for value in packed_inputs):
+                raise ValueError("all packed visual inputs must be provided together")
+            vision_tokens, _ = self.vision.forward_packed(
+                packed_pixel_values,
+                packed_position_ids,
+                packed_cu_seqlens,
+            )
+            return self.connector.forward_packed(
+                vision_tokens,
+                packed_cu_seqlens,
+            )
+        if pixel_values is None:
+            raise ValueError("encode_images requires dense or packed visual inputs")
         vision_tokens, vision_mask = self.vision(
             pixel_values,
             pixel_mask,
@@ -582,6 +690,9 @@ class DocumentVLMStudent(nn.Module):
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         box_targets: torch.Tensor | None = None,
@@ -607,10 +718,22 @@ class DocumentVLMStudent(nn.Module):
         language_features: dict[int, torch.Tensor] = {}
         requested_vision = set((feature_layers or {}).get("vision", ()))
         requested_language = set((feature_layers or {}).get("language", ()))
+        packed_inputs = (
+            packed_pixel_values,
+            packed_position_ids,
+            packed_cu_seqlens,
+        )
+        has_packed = any(value is not None for value in packed_inputs)
+        if has_packed and not all(value is not None for value in packed_inputs):
+            raise ValueError("all packed visual inputs must be provided together")
+        if has_packed and (pixel_values is not None or pixel_mask is not None):
+            raise ValueError("dense and packed visual inputs are mutually exclusive")
+        if has_packed and packed_cu_seqlens.numel() != input_ids.shape[0] + 1:
+            raise ValueError("packed visual batch dimension must match input_ids")
         if visual_prefix is not None:
-            if pixel_values is not None or pixel_mask is not None:
+            if pixel_values is not None or pixel_mask is not None or has_packed:
                 raise ValueError(
-                    "visual_prefix cannot be combined with pixel_values or pixel_mask"
+                    "visual_prefix cannot be combined with dense or packed visual inputs"
                 )
             if visual_prefix.ndim != 3:
                 raise ValueError("visual_prefix must have shape [batch, tokens, width]")
@@ -635,6 +758,22 @@ class DocumentVLMStudent(nn.Module):
             else:
                 vision_tokens, vision_mask = vision_result
             prefix = self.connector(vision_tokens, vision_mask)
+        elif has_packed:
+            vision_tokens, vision_features = self.vision.forward_packed(
+                packed_pixel_values,
+                packed_position_ids,
+                packed_cu_seqlens,
+                capture_layers=requested_vision if requested_vision else None,
+            )
+            vision_mask = torch.ones(
+                vision_tokens.shape[0],
+                dtype=torch.bool,
+                device=vision_tokens.device,
+            )
+            prefix = self.connector.forward_packed(
+                vision_tokens,
+                packed_cu_seqlens,
+            )
         elif pixel_mask is not None:
             raise ValueError("pixel_mask requires pixel_values")
         else:
@@ -721,7 +860,17 @@ class DocumentVLMStudent(nn.Module):
         vision_embeddings = None
         text_projected = None
         if vision_tokens is not None:
-            if vision_mask is None:
+            if has_packed:
+                boundaries = [
+                    int(value) for value in packed_cu_seqlens.tolist()
+                ]
+                pooled_vision = torch.stack(
+                    [
+                        vision_tokens[start:end].mean(dim=0)
+                        for start, end in zip(boundaries, boundaries[1:])
+                    ]
+                )
+            elif vision_mask is None:
                 pooled_vision = vision_tokens.mean(dim=1)
             else:
                 denominator = vision_mask.sum(dim=1, keepdim=True).clamp_min(1)
@@ -801,15 +950,32 @@ class DocumentVLMStudent(nn.Module):
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         generated = input_ids
-        if pixel_values is None and pixel_mask is not None:
+        has_packed = any(
+            value is not None
+            for value in (
+                packed_pixel_values,
+                packed_position_ids,
+                packed_cu_seqlens,
+            )
+        )
+        if pixel_values is None and pixel_mask is not None and not has_packed:
             raise ValueError("pixel_mask requires pixel_values")
         visual_prefix = (
-            self.encode_images(pixel_values, pixel_mask)
-            if pixel_values is not None
+            self.encode_images(
+                pixel_values,
+                pixel_mask,
+                packed_pixel_values=packed_pixel_values,
+                packed_position_ids=packed_position_ids,
+                packed_cu_seqlens=packed_cu_seqlens,
+            )
+            if pixel_values is not None or has_packed
             else None
         )
         log_probability_sum = torch.zeros(
@@ -856,6 +1022,9 @@ class DocumentVLMStudent(nn.Module):
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> torch.Tensor:
@@ -863,6 +1032,9 @@ class DocumentVLMStudent(nn.Module):
             input_ids,
             pixel_values=pixel_values,
             pixel_mask=pixel_mask,
+            packed_pixel_values=packed_pixel_values,
+            packed_position_ids=packed_position_ids,
+            packed_cu_seqlens=packed_cu_seqlens,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
         )
@@ -874,6 +1046,9 @@ class DocumentVLMStudent(nn.Module):
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
         pixel_mask: torch.Tensor | None = None,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -883,6 +1058,9 @@ class DocumentVLMStudent(nn.Module):
             input_ids,
             pixel_values=pixel_values,
             pixel_mask=pixel_mask,
+            packed_pixel_values=packed_pixel_values,
+            packed_position_ids=packed_position_ids,
+            packed_cu_seqlens=packed_cu_seqlens,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
         )

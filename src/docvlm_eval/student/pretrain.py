@@ -269,6 +269,7 @@ class TrainerState:
     effective_tokens_seen: int = 0
     student_flops_seen: int = 0
     dense_visual_tokens_seen: int = 0
+    executed_visual_tokens_seen: int = 0
     valid_visual_tokens_seen: int = 0
     visual_samples_seen: int = 0
 
@@ -282,6 +283,7 @@ class TrainingResult:
     effective_tokens_seen: int
     student_flops_seen: int
     dense_visual_tokens_seen: int
+    executed_visual_tokens_seen: int
     valid_visual_tokens_seen: int
     visual_samples_seen: int
     budget_tokens_seen: int
@@ -412,7 +414,11 @@ def _batch_token_counts(
     images = (
         int(batch["pixel_values"].shape[0])
         if batch.get("pixel_values") is not None
-        else 0
+        else (
+            int(batch["packed_cu_seqlens"].numel() - 1)
+            if batch.get("packed_cu_seqlens") is not None
+            else 0
+        )
     )
     return {
         "supervised": supervised,
@@ -585,6 +591,20 @@ def _batch_visual_counts(
 ) -> tuple[int, int, int]:
     pixel_values = batch.get("pixel_values")
     batch_size = int(batch["input_ids"].shape[0])
+    packed_pixels = batch.get("packed_pixel_values")
+    packed_cu_seqlens = batch.get("packed_cu_seqlens")
+    if packed_pixels is not None:
+        if pixel_values is not None:
+            raise ValueError(
+                "visual efficiency accounting received dense and packed inputs"
+            )
+        if packed_cu_seqlens is None:
+            raise ValueError("packed visual accounting requires cu_seqlens")
+        samples = int(packed_cu_seqlens.numel() - 1)
+        if samples != batch_size:
+            raise ValueError("packed visual batch dimension must match input_ids")
+        executed = int(packed_pixels.shape[0])
+        return executed, executed, samples
     if pixel_values is None:
         return 0, 0, 0
     pixel_mask = batch.get("pixel_mask")
@@ -780,9 +800,14 @@ def _load_checkpoint(
     random.setstate(rank_rng["python"])
     if torch.cuda.is_available() and rank_rng.get("cuda") is not None:
         torch.cuda.set_rng_state_all(rank_rng["cuda"])
-    return TrainerState(
-        **json.loads((path / "trainer_state.json").read_text(encoding="utf-8"))
+    trainer_state = json.loads(
+        (path / "trainer_state.json").read_text(encoding="utf-8")
     )
+    trainer_state.setdefault(
+        "executed_visual_tokens_seen",
+        trainer_state.get("dense_visual_tokens_seen", 0),
+    )
+    return TrainerState(**trainer_state)
 
 
 @torch.no_grad()
@@ -1063,6 +1088,7 @@ def train_student(
             )
             global_samples = _all_reduce_int(accumulated_samples, context)
             state.dense_visual_tokens_seen += global_dense_visual_tokens
+            state.executed_visual_tokens_seen += global_dense_visual_tokens
             state.valid_visual_tokens_seen += global_valid_visual_tokens
             state.visual_samples_seen += global_samples
             schedule_count = _state_schedule_count(state, config)
@@ -1105,6 +1131,12 @@ def train_student(
                     ),
                     "train/dense_visual_tokens_per_sample": (
                         state.dense_visual_tokens_seen
+                        / state.visual_samples_seen
+                        if state.visual_samples_seen
+                        else 0.0
+                    ),
+                    "train/executed_visual_tokens_per_sample": (
+                        state.executed_visual_tokens_seen
                         / state.visual_samples_seen
                         if state.visual_samples_seen
                         else 0.0
@@ -1270,6 +1302,7 @@ def train_student(
         effective_tokens_seen=state.effective_tokens_seen,
         student_flops_seen=state.student_flops_seen,
         dense_visual_tokens_seen=state.dense_visual_tokens_seen,
+        executed_visual_tokens_seen=state.executed_visual_tokens_seen,
         valid_visual_tokens_seen=state.valid_visual_tokens_seen,
         visual_samples_seen=state.visual_samples_seen,
         budget_tokens_seen=budget_tokens_seen,

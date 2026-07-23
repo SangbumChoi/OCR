@@ -632,16 +632,28 @@ def _pretraining_efficiency(run_root: Path) -> dict[str, float]:
         return {}
     state = json.loads(state_path.read_text(encoding="utf-8"))
     dense = int(state.get("dense_visual_tokens_seen", 0))
+    executed = int(state.get("executed_visual_tokens_seen", dense))
     valid = int(state.get("valid_visual_tokens_seen", 0))
     samples = int(state.get("visual_samples_seen", 0))
-    if dense < 0 or valid < 0 or samples < 0 or valid > dense:
+    if (
+        dense < 0
+        or executed < 0
+        or valid < 0
+        or samples < 0
+        or valid > executed
+    ):
         raise ValueError(f"invalid visual efficiency counters in {state_path}")
     return {
         "student_flops": float(state.get("student_flops_seen", 0)),
         "dense_visual_tokens_per_sample": (
             dense / samples if samples else 0.0
         ),
-        "valid_visual_token_fraction": valid / dense if dense else 0.0,
+        "executed_visual_tokens_per_sample": (
+            executed / samples if samples else 0.0
+        ),
+        "valid_visual_token_fraction": (
+            valid / executed if executed else 0.0
+        ),
     }
 
 

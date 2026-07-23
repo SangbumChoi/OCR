@@ -1,10 +1,10 @@
-# Three visual batching policies by three paired replicates at matched data and token dose.
+# Four visual execution policies by three paired replicates at matched data and token dose.
 
 schema_version: 1
 name: docvlm-visual-canvas-ablation
 base_experiment: configs/sub1b_experiment.yaml
 output_root: outputs/sweeps/docvlm-visual-canvas-ablation
-baseline: batch_adaptive_bucketed
+baseline: packed
 
 shared_blueprint_patches:
   - {op: replace, path: /training/pretraining/optimizer/micro_batch_size, value: 2}
@@ -96,31 +96,54 @@ replicates:
       - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
 
 variants:
-  - id: batch_adaptive_bucketed
+  - id: packed
+    hypothesis: "Per-image packed patch sequences remove cross-example visual padding while preserving exact dense outputs."
+    experiment_patches:
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:packed}
+      - {op: add, path: /evaluation/wandb_tags/-, value: aspect-buckets:off}
+
+  - id: dense_adaptive_bucketed
     hypothesis: "Rotation-aware aspect buckets preserve task weights while minimizing dense visual padding in multi-sample batches."
     experiment_patches:
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
       - {op: add, path: /evaluation/wandb_tags/-, value: aspect-buckets:on}
+    blueprint_patches:
+      - op: replace
+        path: /training/pretraining/input_pipeline/visual_sequence_mode
+        value: dense
+      - op: replace
+        path: /training/pretraining/input_pipeline/aspect_ratio_bucketing
+        value: true
 
-  - id: batch_adaptive_unbucketed
+  - id: dense_adaptive_unbucketed
     hypothesis: "Adaptive canvases without shape buckets isolate the sampler's incremental efficiency effect."
     experiment_patches:
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
       - {op: add, path: /evaluation/wandb_tags/-, value: aspect-buckets:off}
     blueprint_patches:
       - op: replace
+        path: /training/pretraining/input_pipeline/visual_sequence_mode
+        value: dense
+      - op: replace
         path: /training/pretraining/input_pipeline/aspect_ratio_bucketing
         value: false
 
-  - id: fixed_square
+  - id: dense_fixed_square
     hypothesis: "A fixed square canvas controls for stable shape at the cost of dense padding."
     experiment_patches:
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
+      - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:fixed-square}
       - {op: add, path: /evaluation/wandb_tags/-, value: aspect-buckets:off}
     blueprint_patches:
+      - op: replace
+        path: /training/pretraining/input_pipeline/visual_sequence_mode
+        value: dense
       - op: replace
         path: /training/pretraining/input_pipeline/visual_canvas_mode
         value: fixed_square

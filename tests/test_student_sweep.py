@@ -343,7 +343,7 @@ def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
         )
 
 
-def test_visual_canvas_sweep_decomposes_bucketing_and_canvas_policy(tmp_path):
+def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_visual_canvas_sweep.yaml").read_text(
             encoding="utf-8"
@@ -360,10 +360,13 @@ def test_visual_canvas_sweep_decomposes_bucketing_and_canvas_policy(tmp_path):
         compile_root=tmp_path / "compiled",
     )
 
-    assert len(plan.variants) == 9
-    assert plan.baseline == "batch_adaptive_bucketed"
+    assert len(plan.variants) == 12
+    assert plan.baseline == "packed"
     policies = {
         variant.arm_id: (
+            variant.plan.resolved_blueprint["training"]["pretraining"][
+                "input_pipeline"
+            ]["visual_sequence_mode"],
             variant.plan.resolved_blueprint["training"]["pretraining"][
                 "input_pipeline"
             ]["visual_canvas_mode"],
@@ -374,9 +377,10 @@ def test_visual_canvas_sweep_decomposes_bucketing_and_canvas_policy(tmp_path):
         for variant in plan.variants
     }
     assert policies == {
-        "batch_adaptive_bucketed": ("batch_adaptive", True),
-        "batch_adaptive_unbucketed": ("batch_adaptive", False),
-        "fixed_square": ("fixed_square", False),
+        "packed": ("packed", "batch_adaptive", False),
+        "dense_adaptive_bucketed": ("dense", "batch_adaptive", True),
+        "dense_adaptive_unbucketed": ("dense", "batch_adaptive", False),
+        "dense_fixed_square": ("dense", "fixed_square", False),
     }
     assert all(
         variant.plan.resolved_blueprint["training"]["pretraining"]["optimizer"][

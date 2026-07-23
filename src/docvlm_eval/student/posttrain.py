@@ -18,6 +18,7 @@ from .data import (
     StudentCollator,
     StudentExample,
     student_model_inputs,
+    visual_model_inputs,
 )
 from .compute import estimate_rlvr_step_flops
 from .model import DocumentVLMStudent
@@ -494,7 +495,13 @@ def posttraining_prompt_batch(
         "input_ids": moved["input_ids"][:, :prompt_length],
         "attention_mask": moved["attention_mask"][:, :prompt_length],
     }
-    for key in ("pixel_values", "pixel_mask"):
+    for key in (
+        "pixel_values",
+        "pixel_mask",
+        "packed_pixel_values",
+        "packed_position_ids",
+        "packed_cu_seqlens",
+    ):
         if key in moved:
             out[key] = moved[key]
     return out
@@ -542,13 +549,10 @@ def sample_completion_group(
     eos = int(tokenizer.eos_token_id)
     was_training = model.training
     model.eval()
-    pixel_values = prompt_batch.get("pixel_values")
+    visual_inputs = visual_model_inputs(prompt_batch)
     visual_prefix = (
-        _repeat_batch(
-            model.encode_images(pixel_values, prompt_batch.get("pixel_mask")),
-            group_size,
-        )
-        if pixel_values is not None
+        _repeat_batch(model.encode_images(**visual_inputs), group_size)
+        if visual_inputs
         else None
     )
     for _ in range(config.max_new_tokens):
@@ -593,8 +597,12 @@ def completion_log_probs(
     group_size, completion_length = completion_ids.shape
     prompt_ids = _repeat_batch(prompt_batch["input_ids"], group_size)
     prompt_mask = _repeat_batch(prompt_batch["attention_mask"], group_size)
-    pixel_values = _repeat_batch(prompt_batch.get("pixel_values"), group_size)
-    pixel_mask = _repeat_batch(prompt_batch.get("pixel_mask"), group_size)
+    visual_inputs = visual_model_inputs(prompt_batch)
+    visual_prefix = (
+        _repeat_batch(model.encode_images(**visual_inputs), group_size)
+        if visual_inputs
+        else None
+    )
     sequence = torch.cat((prompt_ids, completion_ids), dim=1)
     attention_mask = torch.cat(
         (prompt_mask, completion_mask.to(prompt_mask.dtype)),
@@ -602,9 +610,8 @@ def completion_log_probs(
     )
     output = model(
         sequence,
-        pixel_values=pixel_values,
-        pixel_mask=pixel_mask,
         attention_mask=attention_mask,
+        visual_prefix=visual_prefix,
     )
     text_logits = output.logits[:, -sequence.shape[1] :]
     start = prompt_ids.shape[1] - 1
@@ -680,6 +687,9 @@ def supervised_replay_loss(
             "input_ids",
             "pixel_values",
             "pixel_mask",
+            "packed_pixel_values",
+            "packed_position_ids",
+            "packed_cu_seqlens",
             "attention_mask",
             "labels",
         }
@@ -960,8 +970,14 @@ def train_grpo(
         )
         scaler.step(optimizer)
         scaler.update()
+        packed_cu_seqlens = prompt_batch.get("packed_cu_seqlens")
         pixel_values = prompt_batch.get("pixel_values")
-        if pixel_values is None:
+        if packed_cu_seqlens is not None:
+            vision_tokens = int(
+                packed_cu_seqlens[-1].item()
+                - packed_cu_seqlens[-2].item()
+            )
+        elif pixel_values is None:
             vision_tokens = 0
         else:
             patch_size = policy.config.vision.patch_size

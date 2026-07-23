@@ -266,9 +266,10 @@ are written under `outputs/.../checkpoints/step-NNNNNNNN`. Downstream capability
 generation metrics on template-, source-, and image-identity-held-out data rather than treating
 training loss as document-understanding accuracy.
 
-Input-efficiency records additionally include `train/dense_visual_tokens_per_sample` and
-`train/valid_visual_token_fraction`. These are cumulative utilization diagnostics, not quality
-metrics. [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) pairs them with heldout
+Input-efficiency records additionally include `train/dense_visual_tokens_per_sample`,
+`train/executed_visual_tokens_per_sample`, and `train/valid_visual_token_fraction`. These are
+cumulative utilization diagnostics, not quality metrics.
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) pairs them with heldout
 generation scores and deployment gates.
 
 Continue with structured SFT and optional verifiable-reward GRPO using

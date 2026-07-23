@@ -268,8 +268,8 @@ python scripts/build_sub1b_student.py --device meta
 Exact-shape SigLIP/Llama-style blocks can be depth-mapped and copied; incompatible dimensions stay
 random and are reserved for feature/logit distillation. See
 [`docs/report/sub1b_architecture_blueprint.md`](docs/report/sub1b_architecture_blueprint.md).
-The default input path uses rotation-aware aspect buckets and patch-aligned batch-adaptive
-canvases. Its paired unbucketed and fixed-square controls and visual-padding efficiency
+The default input path uses per-image packed patch sequences with stable 2D positions. Its paired
+dense adaptive, aspect-bucketed, and fixed-square controls and visual-padding efficiency
 measurements are documented in
 [`docs/report/student_visual_canvas_sweep.md`](docs/report/student_visual_canvas_sweep.md).
 

@@ -46,10 +46,11 @@ duplicating stored pixels. `BalancedGroupBatchSampler` can balance by task, sour
 mixture component with explicit weights and deterministic epoch seeds. Under `torchrun`, it draws
 one global batch and gives each rank a disjoint local slice.
 
-By default, the sampler also groups the global batch into log2 aspect-ratio buckets. It applies the
+The dense control can also group the global batch into log2 aspect-ratio buckets. It applies the
 same sample/epoch rotation hash as the collator before assigning a bucket, so a 90-degree augmented
 page changes orientation in both places. The bucket width is configurable and defaults to 0.5
-octaves. Missing or invalid UDD dimensions enter a separate `unknown` bucket.
+octaves. Missing or invalid UDD dimensions enter a separate `unknown` bucket. Bucketing is disabled
+for the packed default because batch peers do not determine its visual allocation.
 
 Bucketing does not replace group balancing. For group weight \(w_g\), group size \(n_g\), and the
 number \(n_{gb}\) of its examples in bucket \(b\), the sampler chooses a bucket with mass
@@ -72,18 +73,26 @@ the exact same transform:
 | 270 clockwise | `[y1, 1-x2, y2, 1-x1]` |
 
 Images retain aspect ratio and are resized only when their long side exceeds 896 pixels. The
-default `batch_adaptive` mode pads the batch at the bottom and right only to its patch-aligned
-maximum height and width. Neither dimension can exceed 896, or 64 patches at patch size 14, so the
-4,096 visual-position limit remains hard. The `fixed_square` control pads every image to 896 by
-896. Targets are converted from original-image coordinates to the normalized canonical 896-square
-coordinate canvas after rotation and resize, regardless of the smaller dense batch tensor. The
-same document therefore keeps identical box targets across batch compositions. The transformed
-numbers supervise both the generated box string and the box head.
+default `packed` sequence mode pads each image only to its own final patch boundary, unfolds
+`[total_patches, 3, 14, 14]`, and carries canonical position IDs plus cumulative sequence offsets.
+The ViT and resampler execute each offset range independently, so no image attends to another image
+and no batch-level visual padding enters their projections, attention, or MLPs. This portable exact
+path reuses the same Conv2d patch weights and does not require a fused accelerator-specific kernel.
 
-`pixel_mask` is pooled into a patch mask. Invalid patches are excluded from ViT self-attention,
-resampler cross-attention, and vision pooling. Visual positions use a fixed two-dimensional
-64-by-64 index grid rather than the flattened batch tensor width. A sample's valid patch position
-IDs therefore remain independent of which other examples share its batch.
+Dense controls remain available. `batch_adaptive` pads to the batch's patch-aligned maximum height
+and width; `fixed_square` pads every image to 896 by 896. Neither dimension can exceed 896, or 64
+patches at patch size 14, so the 4,096 visual-position limit remains hard. Targets are converted
+from original-image coordinates to the normalized canonical 896-square coordinate canvas after
+rotation and resize, regardless of visual execution mode. The same document therefore keeps
+identical box targets across batch compositions. The transformed numbers supervise both the
+generated box string and the box head.
+
+Dense `pixel_mask` is pooled into a patch mask. Invalid patches are excluded from ViT
+self-attention, resampler cross-attention, and vision pooling. Packed inputs carry only valid patch
+slots. Both modes use a fixed two-dimensional 64-by-64 position grid rather than the flattened
+batch tensor width. A sample's valid patch position IDs therefore remain independent of which
+other examples share its batch. Dense and packed parity tests cover logits, total loss,
+orientation output, greedy generation, and selected vision features.
 
 ## Text and loss contract
 
@@ -109,6 +118,7 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 
 - maximum text tokens;
 - image long side and visual-token budget;
+- visual sequence mode (`packed` or `dense`);
 - visual canvas mode (`batch_adaptive` or `fixed_square`);
 - rotation-aware aspect-ratio bucketing and its log2 bucket width;
 - quarter-turn augmentation probability;
@@ -125,5 +135,7 @@ position count, and language vocabulary.
 The input path is consumed by the mixed-precision, token-scheduled, exactly resumable runner
 documented in [`student_pretraining_runner.md`](student_pretraining_runner.md). Batch provenance is
 retained for auditing but stripped before model calls. The runner records cumulative dense visual
-tokens per sample, valid-token fraction, and actual-shape student FLOPs. True NaViT multi-example
-sequence packing remains a separate step beyond batch-adaptive rectangular tensors.
+tokens per sample, executed-token utilization, valid-token fraction, and sequence-aware student
+FLOPs. The packed path removes visual padding FLOPs, but its portable per-image attention calls are
+not evidence of higher wall-clock throughput; fused-kernel latency and peak-memory measurements
+remain deployment gates.

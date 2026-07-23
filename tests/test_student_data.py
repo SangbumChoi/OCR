@@ -100,6 +100,7 @@ def test_collator_config_is_owned_by_the_machine_readable_blueprint():
     assert config.vocab_size == 64000
     assert config.rotation_probability == 1.0
     assert config.visual_canvas_mode == "batch_adaptive"
+    assert config.visual_sequence_mode == "packed"
 
 
 def test_rotate_normalized_box_covers_all_quarter_turns():
@@ -211,6 +212,98 @@ def test_batch_adaptive_canvas_reduces_dense_visual_tokens_without_resizing():
     ) < estimate_batch_training_flops(
         StudentConfig.tiny(),
         fixed_batch,
+    )
+
+
+def test_packed_visual_sequences_match_dense_outputs_without_padding_compute():
+    import torch
+
+    from docvlm_eval.student.compute import estimate_batch_training_flops
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.data import (
+        StudentCollator,
+        StudentCollatorConfig,
+        UDDStudentDataset,
+        student_model_inputs,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    dataset = UDDStudentDataset(_udd_rows())
+    common = {
+        "max_length": 128,
+        "max_image_long_side": 32,
+        "patch_size": 8,
+        "max_visual_tokens": 16,
+        "rotation_probability": 0.0,
+    }
+    dense = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(
+            **common,
+            visual_canvas_mode="batch_adaptive",
+            visual_sequence_mode="dense",
+        ),
+    )([dataset[0], dataset[3]])
+    packed = StudentCollator(
+        _CharacterTokenizer(),
+        StudentCollatorConfig(
+            **common,
+            visual_sequence_mode="packed",
+        ),
+    )([dataset[0], dataset[3]])
+
+    assert packed["packed_pixel_values"].shape == (8, 3, 8, 8)
+    assert packed["packed_position_ids"].tolist() == [0, 1, 2, 4, 5, 6, 0, 4]
+    assert packed["packed_cu_seqlens"].tolist() == [0, 6, 8]
+    assert "pixel_values" not in packed
+    assert packed["metadata"]["visual_batch"]["executed_patch_tokens"] == 8
+
+    torch.manual_seed(83)
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    with torch.no_grad():
+        dense_output = model(
+            **student_model_inputs(dense),
+            feature_layers={"vision": [0, -1]},
+        )
+        packed_output = model(
+            **student_model_inputs(packed),
+            feature_layers={"vision": [0, -1]},
+        )
+
+    assert torch.allclose(packed_output.logits, dense_output.logits, atol=2e-5)
+    assert torch.allclose(packed_output.loss, dense_output.loss, atol=2e-5)
+    assert torch.allclose(
+        packed_output.orientation_logits,
+        dense_output.orientation_logits,
+        atol=2e-5,
+    )
+    assert packed_output.vision_mask.shape == (8,)
+    for layer in (0, -1):
+        assert torch.allclose(
+            packed_output.vision_features[layer],
+            dense_output.vision_features[layer][dense_output.vision_mask],
+            atol=2e-5,
+        )
+    dense_generated = model.generate(
+        dense["input_ids"],
+        pixel_values=dense["pixel_values"],
+        pixel_mask=dense["pixel_mask"],
+        max_new_tokens=2,
+    )
+    packed_generated = model.generate(
+        packed["input_ids"],
+        packed_pixel_values=packed["packed_pixel_values"],
+        packed_position_ids=packed["packed_position_ids"],
+        packed_cu_seqlens=packed["packed_cu_seqlens"],
+        max_new_tokens=2,
+    )
+    assert torch.equal(packed_generated, dense_generated)
+    assert estimate_batch_training_flops(
+        StudentConfig.tiny(),
+        packed,
+    ) < estimate_batch_training_flops(
+        StudentConfig.tiny(),
+        dense,
     )
 
 
@@ -330,7 +423,7 @@ def test_balanced_sampler_reads_the_blueprint_grouping_policy():
     )
 
     assert sampler.group_names == ["localization", "recognition", "vqa"]
-    assert sampler.aspect_ratio_bucketing is True
+    assert sampler.aspect_ratio_bucketing is False
     assert len(list(sampler)) == 1
 
 

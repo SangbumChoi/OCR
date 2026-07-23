@@ -94,7 +94,8 @@ uses more optimizer updates is not disadvantaged: that is the intended consequen
 total student compute. Report both quality and realized steps because one reveals the architecture
 trade and the other explains how the fixed budget was spent.
 
-This sweep does not isolate adaptive canvas padding, true sequence packing, tiling, wall-clock
+This sweep does not isolate adaptive canvas padding, packed sequence execution, tiling, wall-clock
 training latency, peak memory, or teacher-generation cost. Adaptive padding is isolated by
-[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md); the remaining systems questions
-require separate controlled experiments.
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md), while this architecture sweep
+pins dense fixed-square execution to preserve its original analytical estimand. The remaining
+systems questions require separate controlled experiments.

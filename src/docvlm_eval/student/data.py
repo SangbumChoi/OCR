@@ -20,6 +20,9 @@ STUDENT_MODEL_INPUTS = frozenset(
         "input_ids",
         "pixel_values",
         "pixel_mask",
+        "packed_pixel_values",
+        "packed_position_ids",
+        "packed_cu_seqlens",
         "attention_mask",
         "labels",
         "box_targets",
@@ -33,11 +36,25 @@ STUDENT_MODEL_INPUTS = frozenset(
     }
 )
 
+VISUAL_MODEL_INPUTS = (
+    "pixel_values",
+    "pixel_mask",
+    "packed_pixel_values",
+    "packed_position_ids",
+    "packed_cu_seqlens",
+)
+
 
 def student_model_inputs(batch: dict[str, Any]) -> dict[str, Any]:
     """Remove provenance and runner-only fields before calling the model."""
 
     return {key: value for key, value in batch.items() if key in STUDENT_MODEL_INPUTS}
+
+
+def visual_model_inputs(batch: dict[str, Any]) -> dict[str, Any]:
+    """Return only dense or packed visual tensors accepted by the student."""
+
+    return {key: batch[key] for key in VISUAL_MODEL_INPUTS if key in batch}
 
 
 @dataclass(frozen=True)
@@ -423,6 +440,7 @@ class StudentCollatorConfig:
     augmentation_seed: int = 7
     allow_upscale: bool = False
     visual_canvas_mode: str = "fixed_square"
+    visual_sequence_mode: str = "dense"
     prompt_template: str = "User: {prompt}\nAssistant:"
     image_mean: tuple[float, float, float] = (0.5, 0.5, 0.5)
     image_std: tuple[float, float, float] = (0.5, 0.5, 0.5)
@@ -448,6 +466,9 @@ class StudentCollatorConfig:
             "visual_canvas_mode": str(
                 pipeline.get("visual_canvas_mode", "fixed_square")
             ),
+            "visual_sequence_mode": str(
+                pipeline.get("visual_sequence_mode", "dense")
+            ),
             "contrastive": bool(pipeline.get("contrastive", True)),
         }
         values.update(overrides)
@@ -468,6 +489,8 @@ class StudentCollatorConfig:
             raise ValueError(
                 "visual_canvas_mode must be fixed_square or batch_adaptive"
             )
+        if self.visual_sequence_mode not in {"dense", "packed"}:
+            raise ValueError("visual_sequence_mode must be dense or packed")
 
 
 def _open_image(value: Any):
@@ -617,12 +640,87 @@ class StudentCollator:
 
         batch_height = batch_width = 0
         pixel_values = pixel_mask = None
+        packed_pixel_values = packed_position_ids = packed_cu_seqlens = None
         canvas_boxes: list[tuple[float, float, float, float] | None] = transformed_boxes
         if image_tensors:
-            if self.config.visual_canvas_mode == "fixed_square":
+            if self.config.visual_sequence_mode == "packed":
+                mean = torch.tensor(self.config.image_mean)[:, None, None]
+                std = torch.tensor(self.config.image_std)[:, None, None]
+                patch_rows: list[torch.Tensor] = []
+                position_rows: list[torch.Tensor] = []
+                sequence_lengths: list[int] = []
+                canvas_boxes = []
+                grid_side = math.isqrt(self.config.max_visual_tokens)
+                for pixels, size, box in zip(
+                    image_tensors,
+                    resized_sizes,
+                    transformed_boxes,
+                ):
+                    height, width = size
+                    patch_height = math.ceil(height / self.config.patch_size)
+                    patch_width = math.ceil(width / self.config.patch_size)
+                    padded_height = patch_height * self.config.patch_size
+                    padded_width = patch_width * self.config.patch_size
+                    normalized = (pixels - mean) / std
+                    normalized = torch.nn.functional.pad(
+                        normalized,
+                        (0, padded_width - width, 0, padded_height - height),
+                    )
+                    patches = (
+                        normalized.unfold(
+                            1,
+                            self.config.patch_size,
+                            self.config.patch_size,
+                        )
+                        .unfold(
+                            2,
+                            self.config.patch_size,
+                            self.config.patch_size,
+                        )
+                        .permute(1, 2, 0, 3, 4)
+                        .reshape(
+                            patch_height * patch_width,
+                            3,
+                            self.config.patch_size,
+                            self.config.patch_size,
+                        )
+                    )
+                    rows = torch.arange(patch_height)[:, None]
+                    columns = torch.arange(patch_width)[None, :]
+                    positions = (rows * grid_side + columns).flatten()
+                    patch_rows.append(patches)
+                    position_rows.append(positions)
+                    sequence_lengths.append(int(patches.shape[0]))
+                    canvas_boxes.append(
+                        None
+                        if box is None
+                        else (
+                            box[0] * width / canvas_side,
+                            box[1] * height / canvas_side,
+                            box[2] * width / canvas_side,
+                            box[3] * height / canvas_side,
+                        )
+                    )
+                packed_pixel_values = torch.cat(patch_rows)
+                packed_position_ids = torch.cat(position_rows).to(torch.long)
+                packed_cu_seqlens = torch.tensor(
+                    [0, *sequence_lengths],
+                    dtype=torch.long,
+                ).cumsum(0)
+                batch_height = max(
+                    math.ceil(height / self.config.patch_size)
+                    * self.config.patch_size
+                    for height, _ in resized_sizes
+                )
+                batch_width = max(
+                    math.ceil(width / self.config.patch_size)
+                    * self.config.patch_size
+                    for _, width in resized_sizes
+                )
+            elif self.config.visual_canvas_mode == "fixed_square":
                 batch_height = canvas_side
                 batch_width = canvas_side
-            else:
+            elif self.config.visual_sequence_mode == "dense":
                 batch_height = (
                     math.ceil(max(height for height, _ in resized_sizes)
                               / self.config.patch_size)
@@ -633,38 +731,39 @@ class StudentCollator:
                               / self.config.patch_size)
                     * self.config.patch_size
                 )
-            pixel_values = torch.zeros(
-                len(examples),
-                3,
-                batch_height,
-                batch_width,
-                dtype=torch.float32,
-            )
-            pixel_mask = torch.zeros(
-                len(examples),
-                batch_height,
-                batch_width,
-                dtype=torch.bool,
-            )
-            mean = torch.tensor(self.config.image_mean)[:, None, None]
-            std = torch.tensor(self.config.image_std)[:, None, None]
-            canvas_boxes = []
-            for index, (pixels, size, box) in enumerate(
-                zip(image_tensors, resized_sizes, transformed_boxes)
-            ):
-                height, width = size
-                pixel_values[index, :, :height, :width] = (pixels - mean) / std
-                pixel_mask[index, :height, :width] = True
-                canvas_boxes.append(
-                    None
-                    if box is None
-                    else (
-                        box[0] * width / canvas_side,
-                        box[1] * height / canvas_side,
-                        box[2] * width / canvas_side,
-                        box[3] * height / canvas_side,
-                    )
+            if self.config.visual_sequence_mode == "dense":
+                pixel_values = torch.zeros(
+                    len(examples),
+                    3,
+                    batch_height,
+                    batch_width,
+                    dtype=torch.float32,
                 )
+                pixel_mask = torch.zeros(
+                    len(examples),
+                    batch_height,
+                    batch_width,
+                    dtype=torch.bool,
+                )
+                mean = torch.tensor(self.config.image_mean)[:, None, None]
+                std = torch.tensor(self.config.image_std)[:, None, None]
+                canvas_boxes = []
+                for index, (pixels, size, box) in enumerate(
+                    zip(image_tensors, resized_sizes, transformed_boxes)
+                ):
+                    height, width = size
+                    pixel_values[index, :, :height, :width] = (pixels - mean) / std
+                    pixel_mask[index, :height, :width] = True
+                    canvas_boxes.append(
+                        None
+                        if box is None
+                        else (
+                            box[0] * width / canvas_side,
+                            box[1] * height / canvas_side,
+                            box[2] * width / canvas_side,
+                            box[3] * height / canvas_side,
+                        )
+                    )
 
         sequences: list[list[int]] = []
         label_rows: list[list[int]] = []
@@ -699,7 +798,7 @@ class StudentCollator:
             "box_query_positions": torch.tensor(box_positions, dtype=torch.long),
             "contrastive": (
                 self.config.contrastive
-                and pixel_values is not None
+                and bool(image_tensors)
                 and len(examples) > 1
             ),
             "metadata": {
@@ -709,6 +808,7 @@ class StudentCollator:
                 "language": [example.language for example in examples],
                 "image_key": [example.image_key for example in examples],
                 "visual_canvas_mode": self.config.visual_canvas_mode,
+                "visual_sequence_mode": self.config.visual_sequence_mode,
             },
         }
         if pixel_values is not None and pixel_mask is not None:
@@ -725,6 +825,42 @@ class StudentCollator:
             }
             batch["pixel_values"] = pixel_values
             batch["pixel_mask"] = pixel_mask
+            batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
+            image_ids: dict[str, int] = {}
+            batch["contrastive_ids"] = torch.tensor(
+                [
+                    image_ids.setdefault(
+                        example.image_key or example.sample_id,
+                        len(image_ids),
+                    )
+                    for example in examples
+                ],
+                dtype=torch.long,
+            )
+        elif (
+            packed_pixel_values is not None
+            and packed_position_ids is not None
+            and packed_cu_seqlens is not None
+        ):
+            packed_tokens = int(packed_pixel_values.shape[0])
+            valid_pixels = sum(
+                height * width for height, width in resized_sizes
+            )
+            allocated_pixels = packed_tokens * self.config.patch_size**2
+            batch["metadata"]["visual_batch"] = {
+                "height": batch_height,
+                "width": batch_width,
+                "coordinate_canvas_height": canvas_side,
+                "coordinate_canvas_width": canvas_side,
+                "dense_patch_tokens_per_image": (
+                    packed_tokens / len(examples)
+                ),
+                "executed_patch_tokens": packed_tokens,
+                "valid_pixel_fraction": valid_pixels / allocated_pixels,
+            }
+            batch["packed_pixel_values"] = packed_pixel_values
+            batch["packed_position_ids"] = packed_position_ids
+            batch["packed_cu_seqlens"] = packed_cu_seqlens
             batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
             image_ids: dict[str, int] = {}
             batch["contrastive_ids"] = torch.tensor(

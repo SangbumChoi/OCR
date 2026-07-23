@@ -21,7 +21,7 @@ class _Tokenizer:
         return [3 + ord(character) % 240 for character in text]
 
 
-def _loader():
+def _loader(visual_sequence_mode="dense", batch_size=1):
     from PIL import Image
     from torch.utils.data import DataLoader
 
@@ -54,11 +54,12 @@ def _loader():
             rotation_probability=1.0,
             augmentation_seed=19,
             contrastive=False,
+            visual_sequence_mode=visual_sequence_mode,
         ),
     )
     return DataLoader(
         examples,
-        batch_size=1,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=collator,
         num_workers=0,
@@ -314,7 +315,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
 
     result = train_student(
         student,
-        _loader(),
+        _loader("packed", batch_size=2),
         replace(
             training_config,
             loss_weights={
@@ -333,6 +334,8 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
     )
 
     assert result.global_step == 1
+    assert result.executed_visual_tokens_seen > 0
+    assert result.executed_visual_tokens_seen == result.valid_visual_tokens_seen
     assert "language_projections.s0_t0.weight" in payload["distillation_loss"]
     assert "vision_projections.s0_t0.weight" in payload["distillation_loss"]
 

@@ -385,6 +385,15 @@ def compile_architecture_sweep(
         {
             "op": "replace",
             "path": (
+                "/training/pretraining/input_pipeline/visual_sequence_mode"
+            ),
+            "value": "dense",
+        }
+    )
+    shared_blueprint.append(
+        {
+            "op": "replace",
+            "path": (
                 "/training/pretraining/input_pipeline/aspect_ratio_bucketing"
             ),
             "value": False,
@@ -397,6 +406,7 @@ def compile_architecture_sweep(
         "/training/posttraining/sft/optimizer/total_student_flops",
         "/training/posttraining/rlvr/optimizer/total_student_flops",
         "/training/pretraining/input_pipeline/visual_canvas_mode",
+        "/training/pretraining/input_pipeline/visual_sequence_mode",
         "/training/pretraining/input_pipeline/aspect_ratio_bucketing",
     ):
         controls.append({"document": "blueprint", "path": path})

@@ -57,6 +57,7 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
         assert pretrain["input_pipeline"]["visual_canvas_mode"] == (
             "fixed_square"
         )
+        assert pretrain["input_pipeline"]["visual_sequence_mode"] == "dense"
         assert pretrain["input_pipeline"]["aspect_ratio_bucketing"] is False
         assert sft["total_student_flops"] == plan.budgets.sft
         assert sft["schedule_unit"] == "student_flops"
