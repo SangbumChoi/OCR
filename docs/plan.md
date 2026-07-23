@@ -41,7 +41,7 @@ pixels. The rest of the plan follows from that one decision.
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
         │
 5 decide ARCHITECTURE: integrate, don't ───►  report/research_novelty.md · ablation_plan.md
-   pipeline  (orientation = TODO)
+   pipeline  (orientation = TODO)               sub1b_architecture_blueprint.md
         │
 6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
    → spotting for human-in-the-loop verify     report/technical_report.md §Part 2.1b/1c
@@ -122,6 +122,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   left as a TODO, not yet committed.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
   capability × scale, grounding-supervision causality (does "where" improve "whether"?).
+- **Build:** [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) —
+  the adjustable approximately 790M student, selective-transfer controls, multimodal pretraining,
+  grounded SFT, and verifiable-reward RL design. Its machine-readable source is
+  [`../configs/sub1b_architecture.yaml`](../configs/sub1b_architecture.yaml).
 - **Read:** [`report/ablation_plan.md`](report/ablation_plan.md) — A1 spotting,
   A7 preprocessing, A5 LoRA placement are exactly the "fold the pipeline into the model" moves.
 
@@ -170,7 +174,8 @@ added factor lifting the score a step, ending well above the baseline.
    [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md)
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
-5. [`report/research_novelty.md`](report/research_novelty.md)
+5. [`report/research_novelty.md`](report/research_novelty.md) ·
+   [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
    [`report/synth_generation_survey.md`](report/synth_generation_survey.md) →

@@ -1,0 +1,141 @@
+# Adjustable architecture and training blueprint for a document VLM below one billion parameters.
+# Validate after editing:
+#   python scripts/validate_sub1b_blueprint.py
+
+schema_version: 1
+name: docvlm-790m
+
+budget:
+  max_parameters: 1000000000
+  target_parameters: 800000000
+  tolerance_fraction: 0.08
+
+student:
+  vision:
+    family: vit
+    image_size: 1024
+    patch_size: 14
+    width: 768
+    layers: 12
+    mlp_ratio: 4.0
+    max_position_tokens: 4096
+
+  language:
+    family: decoder_only
+    vocab_size: 64000
+    width: 1536
+    layers: 20
+    attention_heads: 24
+    kv_heads: 8
+    mlp_width: 4096
+    tied_embeddings: true
+
+  connector:
+    family: gated_resampler
+    input_width: 768
+    output_width: 1536
+    latent_tokens: 64
+    layers: 2
+    estimated_parameters: 28000000
+
+  task_heads:
+    # Temporary pretraining heads can be removed for deployment.
+    region_text_contrastive: true
+    orientation: true
+    estimated_parameters: 8000000
+
+initialization_arms:
+  - id: I0_random
+    vision_transfer: 0.0
+    language_transfer: 0.0
+    connector_transfer: 0.0
+    purpose: "Measures what the data and objectives learn without inherited representations."
+  - id: I1_vision
+    vision_transfer: 1.0
+    language_transfer: 0.0
+    connector_transfer: 0.0
+    source: "SigLIP2-compatible vision checkpoint"
+    purpose: "Tests whether visual transfer supplies the sample efficiency needed for OCR."
+  - id: I2_language
+    vision_transfer: 0.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    source: "Width-compatible multilingual language checkpoint"
+    purpose: "Tests inherited language and reasoning without inherited document perception."
+  - id: I3_dual
+    vision_transfer: 1.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    purpose: "Transfers both towers while learning multimodal alignment from a random connector."
+  - id: I4_selective
+    vision_transfer: 0.5
+    language_transfer: 0.5
+    connector_transfer: 0.0
+    policy: "Copy alternating depth-matched blocks; distill every student block."
+    purpose: "Separates useful inherited features from wholesale checkpoint dependence."
+
+training:
+  pretraining:
+    objective: "Learn document perception, reading order, alignment, and multilingual emission."
+    data_mix:
+      synthetic_documents: 0.45
+      public_document_data: 0.25
+      rendered_text_and_formulas: 0.15
+      natural_image_text: 0.10
+      text_only_replay: 0.05
+    losses:
+      autoregressive: 1.00
+      teacher_kl: 0.35
+      hidden_feature_distillation: 0.20
+      region_text_contrastive: 0.15
+      box_regression: 0.20
+      reading_order: 0.10
+      orientation: 0.05
+    curriculum:
+      - "clean single-region recognition"
+      - "dense pages, multilingual text, tables, charts, and formulas"
+      - "degradation, distractors, long pages, and cross-region reasoning"
+
+  posttraining:
+    sft:
+      objective: "Teach grounded instructions, structured output, abstention, and concise reasoning."
+      data_mix:
+        extraction_and_spotting: 0.30
+        tables_charts_formulas: 0.20
+        relational_document_qa: 0.20
+        multilingual_and_reading_order: 0.15
+        reliability_and_abstention: 0.10
+        general_multimodal_replay: 0.05
+    rlvr:
+      algorithm: grpo
+      reference_policy: sft_checkpoint
+      group_size: 8
+      kl_coefficient: 0.04
+      reward_mix:
+        answer_correctness: 0.25
+        normalized_text_similarity: 0.15
+        box_iou: 0.15
+        table_tree_similarity: 0.10
+        chart_numeric_tolerance: 0.10
+        formula_equivalence: 0.10
+        grounded_rationale_consistency: 0.10
+        calibrated_abstention: 0.05
+      safeguards:
+        - "Score final answers separately from rationales."
+        - "Require cited regions to overlap authored evidence boxes."
+        - "Evaluate reward components and task families independently on held-out templates."
+        - "Reject malformed structure before applying task-specific rewards."
+
+evaluation_gates:
+  - id: parameter_budget
+    requirement: "deployment parameters < 1,000,000,000"
+  - id: generalization
+    requirement: "held-out score rises without a widening train-minus-heldout gap"
+  - id: grounding
+    requirement: "spot IoU improves without reducing extraction NED"
+  - id: reasoning
+    requirement: "relational and numeric gains persist under counterfactual value edits"
+  - id: multilingual
+    requirement: "no language loses more than two points versus its monolingual control"
+  - id: reliability
+    requirement: "selective risk improves at fixed coverage and hallucination does not increase"
