@@ -7,6 +7,7 @@ __pycache__/
 .ruff_cache/
 .vscode/
 outputs/
+artifacts/
 # Per-run eval outputs: ignore by default, but COMMIT (a) the reference tables/matrices at the top
 # level and (b) the resume state (predictions.jsonl / summary.json at any depth), so a GPU-limited
 # run can be checkpointed to git and resumed after the container resets (scripts/run_checkpointed.sh).

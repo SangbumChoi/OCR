@@ -3,17 +3,29 @@
 #   python scripts/validate_sub1b_blueprint.py
 
 schema_version: 1
-name: docvlm-790m
+name: docvlm-800m
 
 budget:
   max_parameters: 1000000000
   target_parameters: 800000000
   tolerance_fraction: 0.08
 
+tokenizer:
+  family: byte_level_bpe
+  vocab_size: 64000
+  normalization: NFC
+  min_frequency: 2
+  source_fields:
+    - instructions
+    - answers
+    - full_text
+    - table_html
+    - element_keys_and_values
+
 student:
   vision:
     family: vit
-    image_size: 1024
+    image_size: 896
     patch_size: 14
     width: 768
     layers: 12
@@ -85,6 +97,14 @@ initialization_arms:
 training:
   pretraining:
     objective: "Learn document perception, reading order, alignment, and multilingual emission."
+    input_pipeline:
+      max_text_tokens: 2048
+      max_image_long_side: 896
+      rotation_probability: 1.0
+      allow_upscale: false
+      contrastive: true
+      balance_by: task
+      group_weights: {}
     data_mix:
       synthetic_documents: 0.45
       public_document_data: 0.25

@@ -251,3 +251,17 @@ python scripts/build_sub1b_student.py --device meta
 Exact-shape SigLIP/Llama-style blocks can be depth-mapped and copied; incompatible dimensions stay
 random and are reserved for feature/logit distillation. See
 [`docs/report/sub1b_architecture_blueprint.md`](docs/report/sub1b_architecture_blueprint.md).
+
+The native UDD input path is also executable. It lazily expands every image's QA list, derives
+single-evidence grounding examples from structured elements, balances task/source/language groups,
+trains a new NFC byte-level multilingual tokenizer, rotates boxes with images, masks prompt and
+padding tokens, and prevents padded visual patches from entering ViT or resampler attention:
+
+```bash
+python scripts/train_student_tokenizer.py \
+  --repo danelcsb/UDD \
+  --output artifacts/student_tokenizer
+```
+
+The batch contract and its spatial invariants are documented in
+[`docs/report/student_input_pipeline.md`](docs/report/student_input_pipeline.md).

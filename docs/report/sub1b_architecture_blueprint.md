@@ -36,6 +36,11 @@ Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which 
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
 
+The ViT's 4,096-position budget corresponds to a maximum square canvas of 64 by 64 patches, or
+896 by 896 pixels at patch size 14. The input collator preserves aspect ratio, pads into that fixed
+canvas, and supplies a pixel mask; padded patches are excluded from ViT self-attention, resampler
+cross-attention, and pooled vision features.
+
 ### Why this split
 
 The measured repository results show that small models often read a local value but fail grounding
@@ -111,6 +116,10 @@ normalized box losses. Boxes are parameterized as start plus non-negative extent
 intermediate-feature alignment, and reading-order batching belong in the upcoming pretraining
 runner because they require teacher outputs and UDD annotations rather than extra model heads.
 
+The UDD collator removes two subtle leakage/error paths. Box predictions pool the hidden state at
+the end of the prompt, before any gold box tokens, and mixed QA views from the same image are
+multi-positive pairs rather than false negatives in the contrastive objective.
+
 ## Step 2: post-training
 
 ### Grounded SFT
@@ -177,18 +186,18 @@ what must be inherited, and what can be learned from the controlled document cur
 
 ## Current implementation boundary
 
-The model constructor and initialization path are executable and tested. Three pieces remain before
-a full pretraining run:
+The model constructor, selective initialization, tokenizer, UDD adapter, balanced sampler, and
+multimodal collator are executable and tested. The input implementation is detailed in
+[`student_input_pipeline.md`](student_input_pipeline.md). Two pieces remain before a full
+pretraining run:
 
-1. a tokenizer/image collator that converts UDD rows into prompt-masked text labels, normalized
-   boxes, orientation labels, and task-balanced batches;
-2. a teacher interface that emits logits and selected vision/language features for distillation;
-3. an optimizer/checkpoint runner with token-based schedules, mixed precision, distributed
-   accumulation, and per-source held-out evaluation.
+1. a teacher interface that emits logits and selected vision/language features for distillation;
+2. an optimizer/checkpoint runner with token-based schedules, mixed precision, distributed
+   accumulation, resumable sampler state, and per-source held-out evaluation.
 
-The current vision tower accepts variable image shapes and pads only to the patch boundary. It does
-not yet perform true NaViT multi-example sequence packing or patch-padding masking; those remain
-measured preprocessing/architecture ablations rather than claimed capabilities.
+The current input path uses a fixed masked visual canvas, not true NaViT multi-example sequence
+packing. Aspect-ratio bucketing and packed visual sequences remain measured efficiency ablations
+rather than claimed capabilities.
 
 ## Evidence basis
 

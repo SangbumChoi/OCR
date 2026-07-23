@@ -24,3 +24,17 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
 
     assert any("reward_mix weights sum" in error for error in errors)
     assert any("vision_transfer must be between" in error for error in errors)
+
+
+def test_blueprint_rejects_invalid_input_pipeline_controls():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+    pipeline["rotation_probability"] = 2.0
+    pipeline["balance_by"] = "anything"
+    blueprint["tokenizer"]["vocab_size"] = 32000
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("rotation_probability must be between" in error for error in errors)
+    assert any("balance_by must be task, source, or language" in error for error in errors)
+    assert any("tokenizer.vocab_size must match" in error for error in errors)

@@ -39,16 +39,27 @@ class VisionAttention(nn.Module):
         self.v_proj = nn.Linear(width, width)
         self.o_proj = nn.Linear(width, width)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        token_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch, length, _ = x.shape
         shape = (batch, length, self.heads, self.head_dim)
         q = self.q_proj(x).view(shape).transpose(1, 2)
         k = self.k_proj(x).view(shape).transpose(1, 2)
         v = self.v_proj(x).view(shape).transpose(1, 2)
+        attention_bias = None
+        if token_mask is not None:
+            minimum = torch.finfo(q.dtype).min
+            attention_bias = (
+                1.0 - token_mask[:, None, None, :].to(q.dtype)
+            ) * minimum
         out = F.scaled_dot_product_attention(
             q,
             k,
             v,
+            attn_mask=attention_bias,
             dropout_p=self.dropout if self.training else 0.0,
         )
         return self.o_proj(out.transpose(1, 2).contiguous().view(batch, length, -1))
@@ -77,8 +88,12 @@ class VisionBlock(nn.Module):
             config.dropout,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.norm1(x))
+    def forward(
+        self,
+        x: torch.Tensor,
+        token_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        x = x + self.attn(self.norm1(x), token_mask)
         return x + self.mlp(self.norm2(x))
 
 
@@ -98,23 +113,57 @@ class VisionTower(nn.Module):
         self.blocks = nn.ModuleList([VisionBlock(config) for _ in range(config.layers)])
         self.norm = nn.LayerNorm(config.width)
 
-    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        pixel_values: torch.Tensor,
+        pixel_mask: torch.Tensor | None = None,
+        *,
+        return_mask: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         patch = self.config.patch_size
         height, width = pixel_values.shape[-2:]
+        if pixel_mask is not None and pixel_mask.shape != (
+            pixel_values.shape[0],
+            height,
+            width,
+        ):
+            raise ValueError(
+                "pixel_mask must have shape [batch, image_height, image_width]"
+            )
         pad_h = (-height) % patch
         pad_w = (-width) % patch
         if pad_h or pad_w:
             pixel_values = F.pad(pixel_values, (0, pad_w, 0, pad_h))
+            if pixel_mask is not None:
+                pixel_mask = F.pad(pixel_mask, (0, pad_w, 0, pad_h))
         x = self.patch_embed(pixel_values).flatten(2).transpose(1, 2)
         if x.shape[1] > self.position_embedding.shape[0]:
             raise ValueError(
                 f"image produced {x.shape[1]} visual tokens, above "
                 f"max_position_tokens={self.position_embedding.shape[0]}"
             )
+        if pixel_mask is None:
+            patch_mask = torch.ones(
+                x.shape[:2],
+                dtype=torch.bool,
+                device=x.device,
+            )
+        else:
+            patch_mask = (
+                F.max_pool2d(
+                    pixel_mask[:, None].to(dtype=torch.float32),
+                    kernel_size=patch,
+                    stride=patch,
+                )
+                .flatten(1)
+                .bool()
+            )
         x = x + self.position_embedding[: x.shape[1]].unsqueeze(0).to(x.dtype)
         for block in self.blocks:
-            x = block(x)
-        return self.norm(x)
+            x = block(x, patch_mask)
+            x = x * patch_mask.unsqueeze(-1)
+        x = self.norm(x) * patch_mask.unsqueeze(-1)
+        return (x, patch_mask) if return_mask else x
 
 
 class CrossAttention(nn.Module):
@@ -127,7 +176,12 @@ class CrossAttention(nn.Module):
         self.v_proj = nn.Linear(source_width, query_width)
         self.o_proj = nn.Linear(query_width, query_width)
 
-    def forward(self, query: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        query: torch.Tensor,
+        source: torch.Tensor,
+        source_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch, query_length, width = query.shape
         source_length = source.shape[1]
         q = self.q_proj(query).view(
@@ -139,7 +193,13 @@ class CrossAttention(nn.Module):
         v = self.v_proj(source).view(
             batch, source_length, self.heads, self.head_dim
         ).transpose(1, 2)
-        out = F.scaled_dot_product_attention(q, k, v)
+        attention_bias = None
+        if source_mask is not None:
+            minimum = torch.finfo(q.dtype).min
+            attention_bias = (
+                1.0 - source_mask[:, None, None, :].to(q.dtype)
+            ) * minimum
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_bias)
         return self.o_proj(
             out.transpose(1, 2).contiguous().view(batch, query_length, width)
         )
@@ -169,9 +229,18 @@ class ResamplerLayer(nn.Module):
         self.norm2 = RMSNorm(config.output_width)
         self.mlp = SwiGLU(config.output_width, config.mlp_width)
 
-    def forward(self, latents: torch.Tensor, vision_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        latents: torch.Tensor,
+        vision_tokens: torch.Tensor,
+        vision_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         gate = torch.tanh(self.cross_gate)
-        latents = latents + gate * self.cross_attn(self.norm1(latents), vision_tokens)
+        latents = latents + gate * self.cross_attn(
+            self.norm1(latents),
+            vision_tokens,
+            vision_mask,
+        )
         return latents + self.mlp(self.norm2(latents))
 
 
@@ -181,10 +250,14 @@ class GatedResampler(nn.Module):
         self.latents = nn.Parameter(torch.empty(config.latent_tokens, config.output_width))
         self.layers = nn.ModuleList([ResamplerLayer(config) for _ in range(config.layers)])
 
-    def forward(self, vision_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        vision_tokens: torch.Tensor,
+        vision_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         latents = self.latents.unsqueeze(0).expand(vision_tokens.shape[0], -1, -1)
         for layer in self.layers:
-            latents = layer(latents, vision_tokens)
+            latents = layer(latents, vision_tokens, vision_mask)
         return latents
 
 
@@ -201,6 +274,20 @@ def _apply_rope(
     sin: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     return q * cos + _rotate_half(q) * sin, k * cos + _rotate_half(k) * sin
+
+
+def _multi_positive_contrastive_loss(
+    similarities: torch.Tensor,
+    group_ids: torch.Tensor,
+) -> torch.Tensor:
+    positive = group_ids[:, None] == group_ids[None, :]
+    minimum = torch.finfo(similarities.dtype).min
+    positive_score = torch.logsumexp(
+        similarities.masked_fill(~positive, minimum),
+        dim=-1,
+    )
+    all_score = torch.logsumexp(similarities, dim=-1)
+    return (all_score - positive_score).mean()
 
 
 class RotaryEmbedding(nn.Module):
@@ -400,15 +487,35 @@ class DocumentVLMStudent(nn.Module):
         indices = attention_mask.long().sum(dim=-1).clamp_min(1) - 1
         return text[torch.arange(text.shape[0], device=text.device), indices]
 
+    @staticmethod
+    def _text_state_at(
+        hidden: torch.Tensor,
+        prefix_length: int,
+        positions: torch.Tensor,
+    ) -> torch.Tensor:
+        text = hidden[:, prefix_length:]
+        if positions.shape != (text.shape[0],):
+            raise ValueError("box_query_positions must have shape [batch]")
+        if torch.any(positions < 0) or torch.any(positions >= text.shape[1]):
+            raise ValueError("box_query_positions contains an out-of-range text position")
+        return text[
+            torch.arange(text.shape[0], device=text.device),
+            positions.to(device=text.device, dtype=torch.long),
+        ]
+
     def forward(
         self,
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
+        pixel_mask: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         box_targets: torch.Tensor | None = None,
+        box_target_mask: torch.Tensor | None = None,
+        box_query_positions: torch.Tensor | None = None,
         orientation_labels: torch.Tensor | None = None,
         contrastive: bool = False,
+        contrastive_ids: torch.Tensor | None = None,
         loss_weights: dict[str, float] | None = None,
     ) -> StudentOutput:
         weights = {
@@ -418,8 +525,21 @@ class DocumentVLMStudent(nn.Module):
             "region_text_contrastive": 1.0,
             **(loss_weights or {}),
         }
-        vision_tokens = self.vision(pixel_values) if pixel_values is not None else None
-        prefix = self.connector(vision_tokens) if vision_tokens is not None else None
+        vision_tokens = None
+        vision_mask = None
+        if pixel_values is not None:
+            vision_tokens, vision_mask = self.vision(
+                pixel_values,
+                pixel_mask,
+                return_mask=True,
+            )
+        elif pixel_mask is not None:
+            raise ValueError("pixel_mask requires pixel_values")
+        prefix = (
+            self.connector(vision_tokens, vision_mask)
+            if vision_tokens is not None
+            else None
+        )
         text_embeddings = self.language.token_embedding(input_ids)
         prefix_length = 0 if prefix is None else prefix.shape[1]
         embeddings = (
@@ -454,24 +574,53 @@ class DocumentVLMStudent(nn.Module):
             )
 
         pooled_text = self._last_text_state(hidden, prefix_length, attention_mask)
+        pooled_box = (
+            self._text_state_at(hidden, prefix_length, box_query_positions)
+            if box_query_positions is not None
+            else pooled_text
+        )
         box_predictions = (
-            decode_normalized_box(self.box_head(pooled_text))
+            decode_normalized_box(self.box_head(pooled_box))
             if self.box_head is not None
             else None
         )
         if box_targets is not None:
             if box_predictions is None:
                 raise ValueError("box_targets were provided but the box head is disabled")
-            losses["box_regression"] = (
-                F.smooth_l1_loss(box_predictions, box_targets)
-                + generalized_box_iou_loss(box_predictions, box_targets)
+            valid_boxes = (
+                torch.ones(
+                    box_targets.shape[0],
+                    dtype=torch.bool,
+                    device=box_targets.device,
+                )
+                if box_target_mask is None
+                else box_target_mask.to(device=box_targets.device, dtype=torch.bool)
             )
+            if valid_boxes.shape != (box_targets.shape[0],):
+                raise ValueError("box_target_mask must have shape [batch]")
+            if torch.any(valid_boxes):
+                losses["box_regression"] = (
+                    F.smooth_l1_loss(
+                        box_predictions[valid_boxes],
+                        box_targets[valid_boxes],
+                    )
+                    + generalized_box_iou_loss(
+                        box_predictions[valid_boxes],
+                        box_targets[valid_boxes],
+                    )
+                )
 
         orientation_logits = None
         vision_embeddings = None
         text_projected = None
         if vision_tokens is not None:
-            pooled_vision = vision_tokens.mean(dim=1)
+            if vision_mask is None:
+                pooled_vision = vision_tokens.mean(dim=1)
+            else:
+                denominator = vision_mask.sum(dim=1, keepdim=True).clamp_min(1)
+                pooled_vision = (
+                    vision_tokens * vision_mask.unsqueeze(-1)
+                ).sum(dim=1) / denominator
             orientation_logits = (
                 self.orientation_head(pooled_vision)
                 if self.orientation_head is not None
@@ -482,9 +631,12 @@ class DocumentVLMStudent(nn.Module):
                     raise ValueError(
                         "orientation_labels were provided but the orientation head is disabled"
                     )
-                losses["orientation"] = F.cross_entropy(
-                    orientation_logits, orientation_labels
-                )
+                valid_orientation = orientation_labels != self.config.ignore_index
+                if torch.any(valid_orientation):
+                    losses["orientation"] = F.cross_entropy(
+                        orientation_logits[valid_orientation],
+                        orientation_labels[valid_orientation],
+                    )
             if self.vision_projection is not None and self.text_projection is not None:
                 vision_embeddings = F.normalize(
                     self.vision_projection(pooled_vision), dim=-1
@@ -498,11 +650,26 @@ class DocumentVLMStudent(nn.Module):
                 similarities = (
                     vision_embeddings @ text_projected.T
                 ) / self.contrastive_temperature
-                targets = torch.arange(similarities.shape[0], device=similarities.device)
-                losses["region_text_contrastive"] = 0.5 * (
-                    F.cross_entropy(similarities, targets)
-                    + F.cross_entropy(similarities.T, targets)
-                )
+                if contrastive_ids is None:
+                    targets = torch.arange(
+                        similarities.shape[0],
+                        device=similarities.device,
+                    )
+                    losses["region_text_contrastive"] = 0.5 * (
+                        F.cross_entropy(similarities, targets)
+                        + F.cross_entropy(similarities.T, targets)
+                    )
+                else:
+                    group_ids = contrastive_ids.to(device=similarities.device)
+                    if group_ids.shape != (similarities.shape[0],):
+                        raise ValueError("contrastive_ids must have shape [batch]")
+                    losses["region_text_contrastive"] = 0.5 * (
+                        _multi_positive_contrastive_loss(similarities, group_ids)
+                        + _multi_positive_contrastive_loss(
+                            similarities.T,
+                            group_ids,
+                        )
+                    )
 
         total_loss = None
         for name, value in losses.items():
@@ -523,12 +690,17 @@ class DocumentVLMStudent(nn.Module):
         self,
         input_ids: torch.Tensor,
         pixel_values: torch.Tensor | None = None,
+        pixel_mask: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
     ) -> torch.Tensor:
         generated = input_ids
         for _ in range(max_new_tokens):
-            output = self(generated, pixel_values=pixel_values)
+            output = self(
+                generated,
+                pixel_values=pixel_values,
+                pixel_mask=pixel_mask,
+            )
             next_token = output.logits[:, -1].argmax(dim=-1, keepdim=True)
             generated = torch.cat((generated, next_token), dim=1)
             if eos_token_id is not None and torch.all(next_token == eos_token_id):

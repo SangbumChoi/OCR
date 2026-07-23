@@ -108,7 +108,14 @@ def _validate_mix(name: str, values: Any, errors: list[str]) -> None:
 
 def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[str]]:
     errors: list[str] = []
-    required = {"schema_version", "budget", "student", "initialization_arms", "training"}
+    required = {
+        "schema_version",
+        "budget",
+        "tokenizer",
+        "student",
+        "initialization_arms",
+        "training",
+    }
     missing = sorted(required - blueprint.keys())
     if missing:
         return {}, [f"missing top-level keys: {', '.join(missing)}"]
@@ -130,6 +137,25 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("student.connector.input_width must match student.vision.width")
     if int(connector["output_width"]) != int(language["width"]):
         errors.append("student.connector.output_width must match student.language.width")
+    tokenizer = blueprint["tokenizer"]
+    if int(tokenizer.get("vocab_size", 0)) != int(language["vocab_size"]):
+        errors.append("tokenizer.vocab_size must match student.language.vocab_size")
+    if tokenizer.get("normalization") != "NFC":
+        errors.append("tokenizer.normalization must be NFC for exact document transcription")
+    input_pipeline = blueprint["training"]["pretraining"].get("input_pipeline", {})
+    if int(input_pipeline.get("max_text_tokens", 0)) <= 0:
+        errors.append("training.pretraining.input_pipeline.max_text_tokens must be positive")
+    if int(input_pipeline.get("max_image_long_side", 0)) <= 0:
+        errors.append("training.pretraining.input_pipeline.max_image_long_side must be positive")
+    rotation_probability = float(input_pipeline.get("rotation_probability", -1.0))
+    if not 0.0 <= rotation_probability <= 1.0:
+        errors.append(
+            "training.pretraining.input_pipeline.rotation_probability must be between 0 and 1"
+        )
+    if input_pipeline.get("balance_by") not in {"task", "source", "language"}:
+        errors.append(
+            "training.pretraining.input_pipeline.balance_by must be task, source, or language"
+        )
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
     if estimates["total"] >= maximum:

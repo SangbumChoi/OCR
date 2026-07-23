@@ -1,0 +1,649 @@
+"""UDD-aware examples, batching, augmentation, and balanced sampling for the student."""
+
+from __future__ import annotations
+
+import io
+import json
+import math
+import random
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterator, Sequence
+
+
+@dataclass(frozen=True)
+class StudentExample:
+    """One image-text objective, optionally carrying a single evidence box."""
+
+    sample_id: str
+    source: str
+    task: str
+    prompt: str
+    answer: str
+    image: Any = None
+    image_key: str = ""
+    language: str = ""
+    box: tuple[float, float, float, float] | None = None
+    box_normalized: bool = True
+
+
+@dataclass(frozen=True)
+class _ExampleRef:
+    row_index: int
+    kind: str
+    item_index: int
+    task: str
+    source: str
+    language: str
+    sample_id: str
+
+
+def _parse_elements(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("elements_json")
+    if raw:
+        elements = json.loads(raw) if isinstance(raw, str) else raw
+        return [item for item in elements if isinstance(item, dict)]
+    out: list[dict[str, Any]] = []
+    for field in json.loads(row.get("fields_json") or "[]"):
+        out.append(
+            {
+                "key": field.get("key", ""),
+                "value": field.get("value", ""),
+                "bbox": field.get("bbox"),
+                "kind": "field",
+            }
+        )
+    for region in json.loads(row.get("regions_json") or "[]"):
+        out.append(
+            {
+                "key": region.get("label", ""),
+                "value": region.get("text", ""),
+                "bbox": region.get("bbox"),
+                "kind": "region",
+            }
+        )
+    return out
+
+
+def _metadata_view(dataset: Any) -> Any:
+    if not hasattr(dataset, "select_columns") or not hasattr(dataset, "column_names"):
+        return dataset
+    wanted = {
+        "sample_id",
+        "source",
+        "task",
+        "instructions",
+        "answers",
+        "elements_json",
+        "fields_json",
+        "regions_json",
+        "full_text",
+        "table_html",
+        "language",
+    }
+    columns = [name for name in dataset.column_names if name in wanted]
+    return dataset.select_columns(columns)
+
+
+def _valid_answers(raw: Any) -> list[str]:
+    return [str(value) for value in (raw or []) if str(value).strip()]
+
+
+def _ordinal(index: int) -> str:
+    value = index + 1
+    if 10 <= value % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
+    return f"{value}{suffix}"
+
+
+def _grounding_prompt(elements: list[dict[str, Any]], index: int) -> str:
+    element = elements[index]
+    key = str(element.get("key") or element.get("kind") or "element").strip()
+    value = " ".join(str(element.get("value") or "").split())
+    same_key = [
+        item
+        for item in elements
+        if str(item.get("key") or item.get("kind") or "element").strip() == key
+        and item.get("bbox")
+    ]
+    if value:
+        descriptor = f'the {key} containing "{value[:80]}"'
+    elif len(same_key) > 1:
+        occurrence = sum(
+            1
+            for item in elements[:index]
+            if str(item.get("key") or item.get("kind") or "element").strip() == key
+            and item.get("bbox")
+        )
+        descriptor = f"the {_ordinal(occurrence)} {key} in reading order"
+    else:
+        descriptor = f"the {key}"
+    return (
+        f"Where is {descriptor} in the document? "
+        "Return only its normalized bounding box as [x1, y1, x2, y2]."
+    )
+
+
+class UDDStudentDataset:
+    """Lazy image dataset that expands native UDD QA and localized-element payloads."""
+
+    def __init__(
+        self,
+        dataset: Sequence[dict[str, Any]] | Any,
+        *,
+        include_grounding: bool = True,
+        max_grounding_per_row: int = 16,
+    ):
+        self.dataset = dataset
+        self.include_grounding = include_grounding
+        self.max_grounding_per_row = max_grounding_per_row
+        self._refs: list[_ExampleRef] = []
+        metadata = _metadata_view(dataset)
+        for row_index in range(len(metadata)):
+            row = metadata[row_index]
+            sample_id = str(row.get("sample_id") or f"row-{row_index}")
+            source = str(row.get("source") or "unknown")
+            task = str(row.get("task") or "unknown")
+            language = str(row.get("language") or "und")
+            instructions = list(row.get("instructions") or [])
+            answers = list(row.get("answers") or [])
+            if len(instructions) != len(answers):
+                raise ValueError(
+                    f"UDD row {sample_id!r} has {len(instructions)} instructions "
+                    f"but {len(answers)} answer lists"
+                )
+            for qa_index, (question, golds) in enumerate(zip(instructions, answers)):
+                if str(question).strip() and _valid_answers(golds):
+                    self._refs.append(
+                        _ExampleRef(
+                            row_index,
+                            "qa",
+                            qa_index,
+                            task,
+                            source,
+                            language,
+                            f"{sample_id}:qa{qa_index}",
+                        )
+                    )
+            elements = _parse_elements(row)
+            if include_grounding:
+                used = 0
+                for element_index, element in enumerate(elements):
+                    bbox = element.get("bbox")
+                    if not (isinstance(bbox, (list, tuple)) and len(bbox) >= 4):
+                        continue
+                    self._refs.append(
+                        _ExampleRef(
+                            row_index,
+                            "grounding",
+                            element_index,
+                            "localization",
+                            source,
+                            language,
+                            f"{sample_id}:box{element_index}",
+                        )
+                    )
+                    used += 1
+                    if used >= max_grounding_per_row:
+                        break
+        if not self._refs:
+            raise ValueError("UDD dataset produced no trainable QA or grounding examples")
+
+    def __len__(self) -> int:
+        return len(self._refs)
+
+    @property
+    def tasks(self) -> list[str]:
+        return [ref.task for ref in self._refs]
+
+    @property
+    def sources(self) -> list[str]:
+        return [ref.source for ref in self._refs]
+
+    @property
+    def languages(self) -> list[str]:
+        return [ref.language for ref in self._refs]
+
+    def groups(self, key: str) -> list[str]:
+        if key == "task":
+            return self.tasks
+        if key == "source":
+            return self.sources
+        if key == "language":
+            return self.languages
+        raise ValueError("group key must be one of: task, source, language")
+
+    def __getitem__(self, index: int) -> StudentExample:
+        ref = self._refs[index]
+        row = self.dataset[ref.row_index]
+        image = row.get("image")
+        if image is None:
+            image = row.get("image_path")
+        image_key = str(row.get("sample_id") or ref.row_index)
+        if ref.kind == "qa":
+            question = str(row["instructions"][ref.item_index])
+            answer = _valid_answers(row["answers"][ref.item_index])[0]
+            return StudentExample(
+                sample_id=ref.sample_id,
+                source=ref.source,
+                task=ref.task,
+                prompt=question,
+                answer=answer,
+                image=image,
+                image_key=image_key,
+                language=ref.language,
+            )
+
+        elements = _parse_elements(row)
+        element = elements[ref.item_index]
+        raw_box = element["bbox"]
+        normalized = bool(raw_box[4]) if len(raw_box) >= 5 else True
+        return StudentExample(
+            sample_id=ref.sample_id,
+            source=ref.source,
+            task=ref.task,
+            prompt=_grounding_prompt(elements, ref.item_index),
+            answer="",
+            image=image,
+            image_key=image_key,
+            language=ref.language,
+            box=tuple(float(value) for value in raw_box[:4]),
+            box_normalized=normalized,
+        )
+
+
+def normalize_box(
+    box: tuple[float, float, float, float],
+    width: int,
+    height: int,
+    *,
+    already_normalized: bool,
+) -> tuple[float, float, float, float]:
+    if width <= 0 or height <= 0:
+        raise ValueError("image dimensions must be positive")
+    x1, y1, x2, y2 = box
+    if not already_normalized:
+        x1, x2 = x1 / width, x2 / width
+        y1, y2 = y1 / height, y2 / height
+    left, right = sorted((max(0.0, min(1.0, x1)), max(0.0, min(1.0, x2))))
+    top, bottom = sorted((max(0.0, min(1.0, y1)), max(0.0, min(1.0, y2))))
+    return left, top, right, bottom
+
+
+def rotate_normalized_box(
+    box: tuple[float, float, float, float],
+    quarter_turns_clockwise: int,
+) -> tuple[float, float, float, float]:
+    """Rotate an axis-aligned normalized box by 0/90/180/270 degrees clockwise."""
+
+    x1, y1, x2, y2 = box
+    turns = quarter_turns_clockwise % 4
+    if turns == 0:
+        return box
+    if turns == 1:
+        return 1.0 - y2, x1, 1.0 - y1, x2
+    if turns == 2:
+        return 1.0 - x2, 1.0 - y2, 1.0 - x1, 1.0 - y1
+    return y1, 1.0 - x2, y2, 1.0 - x1
+
+
+@dataclass(frozen=True)
+class StudentCollatorConfig:
+    max_length: int = 2048
+    max_image_long_side: int = 1024
+    patch_size: int = 14
+    max_visual_tokens: int = 4096
+    vocab_size: int | None = None
+    rotation_probability: float = 1.0
+    allow_upscale: bool = False
+    prompt_template: str = "User: {prompt}\nAssistant:"
+    image_mean: tuple[float, float, float] = (0.5, 0.5, 0.5)
+    image_std: tuple[float, float, float] = (0.5, 0.5, 0.5)
+    contrastive: bool = True
+
+    @classmethod
+    def from_blueprint(
+        cls,
+        blueprint: dict[str, Any],
+        **overrides: Any,
+    ) -> "StudentCollatorConfig":
+        vision = blueprint["student"]["vision"]
+        pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+        values = {
+            "max_length": int(pipeline["max_text_tokens"]),
+            "max_image_long_side": int(pipeline["max_image_long_side"]),
+            "patch_size": int(vision["patch_size"]),
+            "max_visual_tokens": int(vision["max_position_tokens"]),
+            "vocab_size": int(blueprint["student"]["language"]["vocab_size"]),
+            "rotation_probability": float(pipeline["rotation_probability"]),
+            "allow_upscale": bool(pipeline.get("allow_upscale", False)),
+            "contrastive": bool(pipeline.get("contrastive", True)),
+        }
+        values.update(overrides)
+        return cls(**values)
+
+    def __post_init__(self) -> None:
+        if self.max_length < 4:
+            raise ValueError("max_length must be at least 4")
+        if (
+            self.max_image_long_side <= 0
+            or self.patch_size <= 0
+            or self.max_visual_tokens <= 0
+        ):
+            raise ValueError("image and patch dimensions must be positive")
+        if not 0.0 <= self.rotation_probability <= 1.0:
+            raise ValueError("rotation_probability must be in [0, 1]")
+
+
+def _open_image(value: Any):
+    from PIL import Image
+
+    if isinstance(value, Image.Image):
+        return value.convert("RGB")
+    if isinstance(value, (str, Path)):
+        with Image.open(value) as image:
+            return image.convert("RGB")
+    if isinstance(value, dict):
+        if value.get("bytes") is not None:
+            with Image.open(io.BytesIO(value["bytes"])) as image:
+                return image.convert("RGB")
+        if value.get("path"):
+            with Image.open(value["path"]) as image:
+                return image.convert("RGB")
+    raise TypeError(f"unsupported image payload: {type(value).__name__}")
+
+
+def _encode(tokenizer: Any, text: str) -> list[int]:
+    encoded = tokenizer.encode(text, add_special_tokens=False)
+    if hasattr(encoded, "ids"):
+        encoded = encoded.ids
+    return [int(token) for token in encoded]
+
+
+class StudentCollator:
+    """Create prompt-masked text tensors and spatially consistent image supervision."""
+
+    def __init__(self, tokenizer: Any, config: StudentCollatorConfig):
+        self.tokenizer = tokenizer
+        self.config = config
+        self.pad_token_id = getattr(tokenizer, "pad_token_id", None)
+        self.bos_token_id = getattr(tokenizer, "bos_token_id", None)
+        self.eos_token_id = getattr(tokenizer, "eos_token_id", None)
+        if self.pad_token_id is None:
+            raise ValueError("tokenizer must define pad_token_id")
+        if self.eos_token_id is None:
+            raise ValueError("tokenizer must define eos_token_id")
+
+    def _tokenize(self, prompt: str, answer: str) -> tuple[list[int], list[int], int]:
+        prompt_text = self.config.prompt_template.format(prompt=prompt)
+        prompt_ids = _encode(self.tokenizer, prompt_text)
+        if self.bos_token_id is not None:
+            prompt_ids = [int(self.bos_token_id), *prompt_ids]
+        answer_ids = _encode(self.tokenizer, answer)
+        if not answer_ids:
+            raise ValueError("student answer tokenized to an empty sequence")
+        max_without_eos = self.config.max_length - 1
+        if len(prompt_ids) >= max_without_eos:
+            prompt_ids = prompt_ids[: max_without_eos - 1]
+        room = max_without_eos - len(prompt_ids)
+        answer_ids = answer_ids[:room]
+        if not answer_ids:
+            raise ValueError("max_length leaves no supervised answer token")
+        sequence = [*prompt_ids, *answer_ids, int(self.eos_token_id)]
+        if self.config.vocab_size is not None:
+            invalid = [
+                token
+                for token in sequence
+                if token < 0 or token >= self.config.vocab_size
+            ]
+            if invalid:
+                raise ValueError(
+                    f"tokenizer emitted ID {invalid[0]} outside student vocabulary "
+                    f"[0, {self.config.vocab_size})"
+                )
+        labels = [-100] * len(prompt_ids) + [*answer_ids, int(self.eos_token_id)]
+        return sequence, labels, len(prompt_ids) - 1
+
+    def __call__(self, examples: Sequence[StudentExample]) -> dict[str, Any]:
+        if not examples:
+            raise ValueError("cannot collate an empty batch")
+        import numpy as np
+        import torch
+        from PIL import Image
+
+        has_images = [example.image is not None for example in examples]
+        if any(has_images) and not all(has_images):
+            raise ValueError("mixed image and text-only examples require separate batches")
+
+        image_tensors: list[torch.Tensor] = []
+        resized_sizes: list[tuple[int, int]] = []
+        transformed_boxes: list[tuple[float, float, float, float] | None] = []
+        orientations: list[int] = []
+        if all(has_images):
+            canvas_patch_side = math.isqrt(self.config.max_visual_tokens)
+            if canvas_patch_side <= 0:
+                raise ValueError("max_visual_tokens cannot form a visual canvas")
+            canvas_side = min(
+                math.ceil(self.config.max_image_long_side / self.config.patch_size),
+                canvas_patch_side,
+            ) * self.config.patch_size
+            for example in examples:
+                image = _open_image(example.image)
+                original_width, original_height = image.size
+                turns = (
+                    int(torch.randint(0, 4, ()).item())
+                    if float(torch.rand(())) < self.config.rotation_probability
+                    else 0
+                )
+                if turns:
+                    transpose = {
+                        1: Image.Transpose.ROTATE_270,
+                        2: Image.Transpose.ROTATE_180,
+                        3: Image.Transpose.ROTATE_90,
+                    }[turns]
+                    image = image.transpose(transpose)
+                normalized_box = None
+                if example.box is not None:
+                    normalized_box = rotate_normalized_box(
+                        normalize_box(
+                            example.box,
+                            original_width,
+                            original_height,
+                            already_normalized=example.box_normalized,
+                        ),
+                        turns,
+                    )
+                width, height = image.size
+                scale = canvas_side / max(width, height)
+                if not self.config.allow_upscale:
+                    scale = min(scale, 1.0)
+                resized_width = max(1, round(width * scale))
+                resized_height = max(1, round(height * scale))
+                if (resized_width, resized_height) != image.size:
+                    image = image.resize(
+                        (resized_width, resized_height),
+                        Image.Resampling.BICUBIC,
+                    )
+                pixels = torch.from_numpy(
+                    np.asarray(image, dtype=np.float32).copy()
+                ).permute(2, 0, 1) / 255.0
+                image_tensors.append(pixels)
+                resized_sizes.append((resized_height, resized_width))
+                transformed_boxes.append(normalized_box)
+                orientations.append(turns)
+
+        batch_height = batch_width = 0
+        pixel_values = pixel_mask = None
+        canvas_boxes: list[tuple[float, float, float, float] | None] = transformed_boxes
+        if image_tensors:
+            batch_height = canvas_side
+            batch_width = canvas_side
+            pixel_values = torch.zeros(
+                len(examples),
+                3,
+                batch_height,
+                batch_width,
+                dtype=torch.float32,
+            )
+            pixel_mask = torch.zeros(
+                len(examples),
+                batch_height,
+                batch_width,
+                dtype=torch.bool,
+            )
+            mean = torch.tensor(self.config.image_mean)[:, None, None]
+            std = torch.tensor(self.config.image_std)[:, None, None]
+            canvas_boxes = []
+            for index, (pixels, size, box) in enumerate(
+                zip(image_tensors, resized_sizes, transformed_boxes)
+            ):
+                height, width = size
+                pixel_values[index, :, :height, :width] = (pixels - mean) / std
+                pixel_mask[index, :height, :width] = True
+                canvas_boxes.append(
+                    None
+                    if box is None
+                    else (
+                        box[0] * width / batch_width,
+                        box[1] * height / batch_height,
+                        box[2] * width / batch_width,
+                        box[3] * height / batch_height,
+                    )
+                )
+
+        sequences: list[list[int]] = []
+        label_rows: list[list[int]] = []
+        box_positions: list[int] = []
+        for example, box in zip(examples, canvas_boxes or [None] * len(examples)):
+            answer = example.answer
+            if box is not None:
+                answer = "[" + ", ".join(f"{value:.6f}" for value in box) + "]"
+            sequence, labels, box_position = self._tokenize(example.prompt, answer)
+            sequences.append(sequence)
+            label_rows.append(labels)
+            box_positions.append(box_position)
+
+        text_length = max(len(sequence) for sequence in sequences)
+        input_ids = torch.full(
+            (len(examples), text_length),
+            int(self.pad_token_id),
+            dtype=torch.long,
+        )
+        labels = torch.full((len(examples), text_length), -100, dtype=torch.long)
+        attention_mask = torch.zeros((len(examples), text_length), dtype=torch.bool)
+        for index, (sequence, label_row) in enumerate(zip(sequences, label_rows)):
+            length = len(sequence)
+            input_ids[index, :length] = torch.tensor(sequence, dtype=torch.long)
+            labels[index, :length] = torch.tensor(label_row, dtype=torch.long)
+            attention_mask[index, :length] = True
+
+        batch: dict[str, Any] = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "box_query_positions": torch.tensor(box_positions, dtype=torch.long),
+            "contrastive": (
+                self.config.contrastive
+                and pixel_values is not None
+                and len(examples) > 1
+            ),
+        }
+        if pixel_values is not None and pixel_mask is not None:
+            batch["pixel_values"] = pixel_values
+            batch["pixel_mask"] = pixel_mask
+            batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
+            image_ids: dict[str, int] = {}
+            batch["contrastive_ids"] = torch.tensor(
+                [
+                    image_ids.setdefault(
+                        example.image_key or example.sample_id,
+                        len(image_ids),
+                    )
+                    for example in examples
+                ],
+                dtype=torch.long,
+            )
+        if any(box is not None for box in canvas_boxes):
+            batch["box_targets"] = torch.tensor(
+                [box if box is not None else (0.0, 0.0, 0.0, 0.0) for box in canvas_boxes],
+                dtype=torch.float32,
+            )
+            batch["box_target_mask"] = torch.tensor(
+                [box is not None for box in canvas_boxes],
+                dtype=torch.bool,
+            )
+        return batch
+
+
+class BalancedGroupBatchSampler:
+    """Sample tasks, sources, or languages by an explicit target distribution."""
+
+    def __init__(
+        self,
+        groups: Sequence[str],
+        batch_size: int,
+        *,
+        group_weights: dict[str, float] | None = None,
+        num_batches: int | None = None,
+        seed: int = 7,
+    ):
+        if not groups:
+            raise ValueError("balanced sampler requires at least one example")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        self.batch_size = batch_size
+        self.num_batches = num_batches or math.ceil(len(groups) / batch_size)
+        self.seed = seed
+        self.epoch = 0
+        self.indices: dict[str, list[int]] = {}
+        for index, group in enumerate(groups):
+            self.indices.setdefault(str(group), []).append(index)
+        self.group_names = sorted(self.indices)
+        supplied = group_weights or {}
+        unknown = set(supplied) - set(self.group_names)
+        if unknown:
+            raise ValueError(f"weights reference unknown groups: {sorted(unknown)}")
+        self.weights = [float(supplied.get(group, 1.0)) for group in self.group_names]
+        if any(weight < 0 for weight in self.weights) or not any(self.weights):
+            raise ValueError("group weights must be non-negative with at least one positive value")
+
+    @classmethod
+    def from_blueprint(
+        cls,
+        dataset: UDDStudentDataset,
+        blueprint: dict[str, Any],
+        batch_size: int,
+        *,
+        num_batches: int | None = None,
+        seed: int = 7,
+    ) -> "BalancedGroupBatchSampler":
+        pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+        balance_by = str(pipeline["balance_by"])
+        return cls(
+            dataset.groups(balance_by),
+            batch_size,
+            group_weights={
+                str(group): float(weight)
+                for group, weight in (pipeline.get("group_weights") or {}).items()
+            },
+            num_batches=num_batches,
+            seed=seed,
+        )
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def __len__(self) -> int:
+        return self.num_batches
+
+    def __iter__(self) -> Iterator[list[int]]:
+        rng = random.Random(self.seed + self.epoch)
+        for _ in range(self.num_batches):
+            selected_groups = rng.choices(
+                self.group_names,
+                weights=self.weights,
+                k=self.batch_size,
+            )
+            yield [rng.choice(self.indices[group]) for group in selected_groups]

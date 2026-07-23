@@ -41,7 +41,7 @@ pixels. The rest of the plan follows from that one decision.
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
         │
 5 decide ARCHITECTURE: integrate, don't ───►  report/research_novelty.md · ablation_plan.md
-   pipeline  (orientation head implemented)     sub1b_architecture_blueprint.md
+   pipeline  (model + UDD input implemented)    sub1b_architecture_blueprint.md
         │
 6 build/collect data → ablate → COMBINE ───►  scripts/make_realistic_cases.py · ablation_plan.md
    → spotting for human-in-the-loop verify     report/technical_report.md §Part 2.1b/1c
@@ -119,13 +119,16 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 
 - **Decision:** prefer in-model capability injection over a model pipeline.
 - **Implemented in the native student:** an explicit four-way **orientation head**; the upcoming
-  UDD collator must supply the rotation labels and held-out retention gate.
+  UDD collator supplies controlled rotation labels and transforms evidence boxes with the image.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
   capability × scale, grounding-supervision causality (does "where" improve "whether"?).
 - **Build:** [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) —
   the adjustable approximately 800M student, executable native model, selective-transfer controls,
   multimodal pretraining, grounded SFT, and verifiable-reward RL design. Its machine-readable source is
   [`../configs/sub1b_architecture.yaml`](../configs/sub1b_architecture.yaml).
+- **Input:** [`report/student_input_pipeline.md`](report/student_input_pipeline.md) — the executable
+  UDD QA/grounding adapter, new multilingual tokenizer, balanced sampler, prompt-masked collator,
+  rotation/box transforms, and visual padding-mask contract.
 - **Survey:** [`report/frontier_method_survey.md`](report/frontier_method_survey.md) — a validated
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
