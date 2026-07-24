@@ -57,12 +57,14 @@ from .teacher_targets import (
 from .sweep import (
     CompiledVariant,
     MatchedControl,
+    PromotionRule,
     SweepPlan,
     SweepRunner,
     aggregate_sweep_results,
     apply_json_patch,
     compile_sweep_plan,
 )
+from .promotion import materialize_promoted_recipe
 from .gradient_audit import (
     aggregate_gradient_conflict_audit,
     write_gradient_conflict_audit,
@@ -146,6 +148,7 @@ __all__ = [
     "MatchedControl",
     "NativeStudentTeacher",
     "PretrainConfig",
+    "PromotionRule",
     "RLVRConfig",
     "RLVRResult",
     "RewardConfig",
@@ -185,6 +188,7 @@ __all__ = [
     "group_relative_policy_loss",
     "generate_teacher_predictions",
     "materialize_component",
+    "materialize_promoted_recipe",
     "parse_structured_response",
     "planned_optimizer_steps",
     "pretraining_supervision_contract",

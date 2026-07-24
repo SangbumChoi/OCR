@@ -226,6 +226,34 @@ then promotes at most `max_promotions`. `comparison.json` records the full contr
 calculation, per-arm evidence, selected variants, and whether the baseline was retained.
 `comparison.md` renders the same decision immediately below the descriptive ranking.
 
+## Materialize the promoted recipe
+
+After a sweep authorizes exactly one arm, materialize a canonical next-stage recipe:
+
+```bash
+python scripts/promote_student_recipe.py \
+  --sweep configs/sub1b_sweep.yaml \
+  --comparison outputs/sweeps/docvlm-core-ablation/comparison.json \
+  --output outputs/promoted/docvlm-core
+```
+
+The command recompiles the current sweep, re-aggregates the stored run artifacts, and requires the
+supplied comparison, sweep fingerprint, and promotion contract to match that recomputed evidence.
+It then applies only the shared and selected-arm patches to the original base experiment and
+blueprint. Replicate patches are deliberately excluded, so a favorable seed block cannot leak into
+the promoted recipe.
+
+The output contains `experiment.yaml`, `blueprint.yaml`, and `promotion_manifest.json`. The
+manifest pins the source sweep and comparison hashes, complete promotion evidence, applied patches,
+artifact hashes, validated experiment fingerprint, and parameter estimates. Repeating the command
+is idempotent only while every fingerprint and artifact hash remains identical. A stale comparison,
+changed contract, tampered artifact, non-promoted result, multiple selected arms, or unrelated
+non-empty output directory fails closed.
+
+The materialized experiment can become `base_experiment` for the next matched sweep. Winners from
+independent sweeps are not merged automatically: their interactions must be measured by a new
+sweep based on the previously promoted recipe before another arm is promoted.
+
 Initialization sample efficiency requires a baseline inside every data scale rather than one global
 baseline. [`student_factorial_runner.md`](student_factorial_runner.md) composes independent matched
 sweeps and estimates paired difference-in-differences while requiring one unchanged heldout set.

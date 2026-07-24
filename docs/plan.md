@@ -177,7 +177,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Run matched ablations:** [`report/student_sweep_runner.md`](report/student_sweep_runner.md) —
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
-  train/heldout comparison.
+  train/heldout comparison, followed by multiplicity-corrected promotion and provenance-pinned
+  canonical recipe materialization.
 - **Audit robustness slices:**
   [`report/student_robustness_slices.md`](report/student_robustness_slices.md) — canonical
   document-family, language, evidence-count, and degradation metadata, matched train/heldout
