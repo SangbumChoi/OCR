@@ -1,0 +1,139 @@
+# Pointwise hidden anchors versus bounded token-relation distillation by three paired replicates.
+
+schema_version: 1
+name: docvlm-token-relation-distillation-ablation
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-token-relation-distillation-ablation
+baseline: hidden_anchors
+
+promotion:
+  primary_metric: heldout_score
+  direction: maximize
+  minimum_effect: 0.005
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-region: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+    reading-order: 0.0
+
+shared_experiment_patches:
+  - {op: replace, path: /pretraining/teacher_checkpoint, value: artifacts/native_teacher/student}
+  - {op: add, path: /evaluation/wandb_tags/-, value: relation-distillation-ablation}
+  - {op: add, path: /evaluation/wandb_tags/-, value: same-native-teacher}
+
+shared_blueprint_patches:
+  - {op: replace, path: /training/pretraining/losses/teacher_kl, value: 0.15}
+  - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/teacher_kl, value: 0.15}
+  - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/teacher_kl, value: 0.15}
+  - {op: replace, path: /training/pretraining/distillation/relation_temperature, value: 1.0}
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/heldout_count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /pretraining/teacher_checkpoint}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/distillation/temperature}
+  - {document: blueprint, path: /training/pretraining/distillation/logit_top_k}
+  - {document: blueprint, path: /training/pretraining/distillation/language_layer_pairs}
+  - {document: blueprint, path: /training/pretraining/distillation/relation_temperature}
+  - {document: blueprint, path: /training/pretraining/losses/teacher_kl}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+  - {document: blueprint, path: /training/pretraining/optimizer/epochs}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_steps}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: hidden_anchors
+    hypothesis: "Pointwise hidden-state anchors are the fixed-weight representation-distillation control."
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/losses/hidden_feature_distillation, value: 0.10}
+      - {op: replace, path: /training/pretraining/losses/token_relation_distillation, value: 0.0}
+      - {op: replace, path: /training/pretraining/distillation/relation_max_tokens, value: 0}
+      - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/hidden_feature_distillation, value: 0.10}
+      - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/hidden_feature_distillation, value: 0.10}
+
+  - id: token_relations
+    hypothesis: "Bounded token-similarity distributions transfer document structure better than pointwise hidden anchors at the same loss weight."
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/losses/hidden_feature_distillation, value: 0.0}
+      - {op: replace, path: /training/pretraining/losses/token_relation_distillation, value: 0.10}
+      - {op: replace, path: /training/pretraining/distillation/relation_max_tokens, value: 128}
+      - {op: add, path: /training/pretraining/curriculum/stages/0/loss_weights/token_relation_distillation, value: 0.10}
+      - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/hidden_feature_distillation, value: 0.0}
+      - {op: add, path: /training/pretraining/curriculum/stages/2/loss_weights/token_relation_distillation, value: 0.10}
+      - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/hidden_feature_distillation, value: 0.0}

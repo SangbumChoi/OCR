@@ -373,6 +373,11 @@ resolved supervision contract, and online native-teacher losses now fail closed 
 teacher is supplied. See
 [`docs/report/student_pretraining_loss_sweep.md`](docs/report/student_pretraining_loss_sweep.md).
 
+The six-run `configs/sub1b_token_relation_distillation_sweep.yaml` compares pointwise hidden
+anchors with bounded token-relation KL under the same native teacher, logit-KL weight,
+representation-loss weight, and three paired seed blocks. See
+[`docs/report/student_token_relation_distillation_sweep.md`](docs/report/student_token_relation_distillation_sweep.md).
+
 A nine-run SFT suite and twelve-run RLVR suite separate target and reward effects. The SFT suite
 compares answer-only, free-rationale, and evidence-linked checkpoints before RLVR. The RLVR suite
 fixes evidence-linked SFT and compares SFT-only, correctness-only, no-rationale, and full

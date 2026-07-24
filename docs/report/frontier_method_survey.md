@@ -26,7 +26,7 @@ The sources span **58 organizations**, **2014-2025**, and expose **221 distinct 
 3. **Decoder:** RMSNorm, SwiGLU, RoPE, and grouped-query attention as the stable control;
    ablate LFM-style gated short convolution at alternating and sparse attention ratios.
 4. **Initialization:** alternating-layer and structured-pruning transfer controls plus logit,
-   hidden-state, and attention-relation distillation. Incompatible widths use distillation,
+   hidden-state, and bounded token-relation distillation. Incompatible widths use distillation,
    never silent tensor surgery.
 5. **Data:** authored document graphs, multilingual typography, public-data replay, and
    fixed-compute domain reweighting. Financial programs, hybrid table-text evidence, charts,

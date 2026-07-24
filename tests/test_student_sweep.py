@@ -65,6 +65,10 @@ QUALITY_PROMOTION_CONTRACTS = {
         "axis.L1-region",
         {"L1-locate", "multilingual", "ocr-full"},
     ),
+    "sub1b_token_relation_distillation_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual", "ocr-full", "reading-order"},
+    ),
 }
 
 FULL_PROMOTION_GATES = {
@@ -268,6 +272,54 @@ def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
         assert "loss-ablation" in variant.plan.raw_spec["evaluation"][
             "wandb_tags"
         ]
+
+
+def test_token_relation_sweep_matches_teacher_and_representation_loss_budget(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_token_relation_distillation_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "relation-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "hidden_anchors"
+    by_arm = {
+        variant.arm_id: variant
+        for variant in plan.variants
+        if variant.replicate_id == "seed_0"
+    }
+    hidden = by_arm["hidden_anchors"].plan.resolved_blueprint[
+        "training"
+    ]["pretraining"]
+    relational = by_arm["token_relations"].plan.resolved_blueprint[
+        "training"
+    ]["pretraining"]
+    assert hidden["losses"]["teacher_kl"] == 0.15
+    assert relational["losses"]["teacher_kl"] == 0.15
+    assert hidden["losses"]["hidden_feature_distillation"] == 0.1
+    assert hidden["losses"]["token_relation_distillation"] == 0.0
+    assert relational["losses"]["hidden_feature_distillation"] == 0.0
+    assert relational["losses"]["token_relation_distillation"] == 0.1
+    assert hidden["distillation"]["relation_max_tokens"] == 0
+    assert relational["distillation"]["relation_max_tokens"] == 128
+    assert {
+        variant.plan.raw_spec["pretraining"]["teacher_checkpoint"]
+        for variant in plan.variants
+    } == {"artifacts/native_teacher/student"}
 
 
 def test_contrastive_objective_sweep_compiles_paired_fixed_compute_arms(

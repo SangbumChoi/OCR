@@ -14,6 +14,7 @@ _SUPPORTED_LOSSES = frozenset(
         "autoregressive",
         "teacher_kl",
         "hidden_feature_distillation",
+        "token_relation_distillation",
         "region_text_contrastive",
         "box_regression",
         "orientation",

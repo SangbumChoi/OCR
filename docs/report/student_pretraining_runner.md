@@ -114,7 +114,7 @@ contract. See [`student_contrastive_memory.md`](student_contrastive_memory.md).
 ## Fail-closed supervision
 
 The default DAG uses cross-tokenizer LFM outputs as quality-gated offline sequence targets.
-`teacher_kl` and `hidden_feature_distillation` remain zero unless
+`teacher_kl`, `hidden_feature_distillation`, and `token_relation_distillation` remain zero unless
 `pretraining.teacher_checkpoint` supplies a same-tokenizer native teacher. The runner resolves
 every curriculum stage before optimization and rejects active online-teacher losses without that
 checkpoint, a teacher checkpoint with no active online loss, or any stage with no active loss.
@@ -129,7 +129,9 @@ SigLIP comparison is
 [`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md), the memory
 necessity test is [`student_contrastive_memory.md`](student_contrastive_memory.md), and the GIoU,
 DIoU, and CIoU comparison is
-[`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md).
+[`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md). Pointwise hidden anchors versus
+bounded token relations are isolated in
+[`student_token_relation_distillation_sweep.md`](student_token_relation_distillation_sweep.md).
 
 ## Teacher contract
 
@@ -154,12 +156,14 @@ Online distillation is deliberately strict:
   remaining-vocabulary mass bucket;
 - selected vision and language depth anchors are retained only for the current step;
 - trainable linear projections align incompatible hidden widths before cosine feature loss;
+- optional token-relation KL matches deterministic bounded token-similarity distributions;
 - text-only batches skip vision feature pairs without inventing visual inputs.
 
 At startup, the runner hashes the native teacher configuration and weight files. Checkpoints record
 that identity together with temperature, top-k compression, feature-layer pairs, and the
 `causal_next_token` alignment, so resume rejects a different teacher or objective. Training logs
-`train/distillation_tokens`, `train/distillation_supervised_coverage`, and
+`train/distillation_tokens`, `train/distillation_relation_pairs`,
+`train/distillation_supervised_coverage`, and
 `train/distillation_target_alignment` to expose the realized teacher dose and alignment.
 
 LFM2.5-VL and other cross-tokenizer teachers do not satisfy this contract. Their outputs enter as

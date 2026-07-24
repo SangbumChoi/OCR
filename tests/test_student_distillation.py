@@ -26,7 +26,7 @@ def _batch():
     }
 
 
-def test_identical_teacher_has_zero_topk_and_feature_distillation_loss():
+def test_identical_teacher_has_zero_logit_feature_and_relation_losses():
     import torch
 
     from docvlm_eval.student.config import StudentConfig
@@ -46,6 +46,8 @@ def test_identical_teacher_has_zero_topk_and_feature_distillation_loss():
         logit_top_k=16,
         vision_layer_pairs=((0, 0), (-1, -1)),
         language_layer_pairs=((1, 1), (-1, -1)),
+        relation_max_tokens=4,
+        relation_temperature=0.7,
     )
     batch = _batch()
     teacher = NativeStudentTeacher(
@@ -73,6 +75,12 @@ def test_identical_teacher_has_zero_topk_and_feature_distillation_loss():
         torch.tensor(0.0),
         atol=1e-6,
     )
+    assert torch.allclose(
+        losses["token_relation_distillation"],
+        torch.tensor(0.0),
+        atol=1e-6,
+    )
+    assert loss_module.last_relation_pairs == 48
 
 
 def test_distillation_uses_logits_preceding_supervised_labels():
@@ -130,6 +138,7 @@ def test_distillation_projects_incompatible_teacher_widths_and_backpropagates():
         logit_top_k=8,
         vision_layer_pairs=((0, 0),),
         language_layer_pairs=((0, 0),),
+        relation_max_tokens=4,
     )
     batch = _batch()
     signals = NativeStudentTeacher(
@@ -155,6 +164,7 @@ def test_distillation_projects_incompatible_teacher_widths_and_backpropagates():
     total.backward()
 
     assert all(torch.isfinite(loss) for loss in losses.values())
+    assert losses["token_relation_distillation"] > 0
     language_projection = loss_module.language_projections["s0_t0"]
     vision_projection = loss_module.vision_projections["s0_t0"]
     assert language_projection.weight.grad is not None
@@ -239,6 +249,8 @@ def test_distillation_config_is_read_from_the_blueprint():
     assert config.to_dict()["target_alignment"] == "causal_next_token"
     assert config.vision_layer_pairs[-1] == (11, 11)
     assert config.language_layer_pairs[-1] == (22, 22)
+    assert config.relation_max_tokens == 0
+    assert config.relation_temperature == 1.0
 
 
 def test_distillation_rejects_noncausal_target_alignment():
@@ -246,6 +258,23 @@ def test_distillation_rejects_noncausal_target_alignment():
 
     with pytest.raises(ValueError, match="causal_next_token"):
         DistillationConfig(target_alignment="same_position")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"relation_max_tokens": -1}, "relation_max_tokens"),
+        ({"relation_max_tokens": 1}, "relation_max_tokens"),
+        ({"relation_max_tokens": 2.5}, "relation_max_tokens"),
+        ({"relation_temperature": 0.0}, "relation_temperature"),
+        ({"relation_temperature": float("inf")}, "relation_temperature"),
+    ],
+)
+def test_distillation_rejects_invalid_relation_contract(kwargs, message):
+    from docvlm_eval.student.distillation import DistillationConfig
+
+    with pytest.raises(ValueError, match=message):
+        DistillationConfig(**kwargs)
 
 
 def test_online_teacher_requires_a_checkpoint_identity():

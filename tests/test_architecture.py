@@ -216,6 +216,18 @@ def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     assert any("box_iou_loss" in error for error in errors)
 
 
+def test_blueprint_rejects_invalid_relation_distillation_contract():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    distillation = blueprint["training"]["pretraining"]["distillation"]
+    distillation["relation_max_tokens"] = -1
+    distillation["relation_temperature"] = float("inf")
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("relation_max_tokens" in error for error in errors)
+    assert any("relation_temperature" in error for error in errors)
+
+
 def test_blueprint_rejects_invalid_curriculum_contracts():
     blueprint = deepcopy(load_blueprint(CONFIG))
     stages = blueprint["training"]["pretraining"]["curriculum"]["stages"]

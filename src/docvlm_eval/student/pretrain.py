@@ -30,7 +30,11 @@ from .model import DocumentVLMStudent
 
 
 _ONLINE_TEACHER_LOSSES = frozenset(
-    {"teacher_kl", "hidden_feature_distillation"}
+    {
+        "teacher_kl",
+        "hidden_feature_distillation",
+        "token_relation_distillation",
+    }
 )
 
 
@@ -383,8 +387,8 @@ def pretraining_supervision_contract(
         )
     if has_online_teacher and not active_online:
         raise ValueError(
-            "native teacher checkpoint provided but teacher_kl and "
-            "hidden_feature_distillation are inactive"
+            "native teacher checkpoint provided but all online-teacher "
+            "losses are inactive"
         )
     if has_online_teacher and online_distillation_contract is None:
         raise ValueError(
@@ -401,6 +405,30 @@ def pretraining_supervision_contract(
         raise ValueError(
             "online-distillation contract provided without a native teacher checkpoint"
         )
+    relation_active = "token_relation_distillation" in active_online
+    if online_distillation_contract is not None:
+        relation_max_tokens = int(
+            online_distillation_contract.get("relation_max_tokens", 0)
+        )
+        language_pairs = online_distillation_contract.get(
+            "language_layer_pairs",
+            [],
+        )
+        if relation_active and relation_max_tokens < 2:
+            raise ValueError(
+                "active token_relation_distillation requires "
+                "relation_max_tokens >= 2"
+            )
+        if relation_active and not language_pairs:
+            raise ValueError(
+                "active token_relation_distillation requires "
+                "language_layer_pairs"
+            )
+        if not relation_active and relation_max_tokens:
+            raise ValueError(
+                "relation_max_tokens must be zero when "
+                "token_relation_distillation is inactive"
+            )
     if config.contrastive_memory.enabled and contrastive_stages == 0:
         raise ValueError(
             "enabled contrastive memory requires an active "
@@ -622,6 +650,7 @@ class PretrainingModule(nn.Module):
         self.last_contrastive_negative_pairs = 0
         self.last_contrastive_additional_flops = 0
         self.last_distillation_tokens = 0
+        self.last_distillation_relation_pairs = 0
 
     def forward(
         self,
@@ -692,6 +721,11 @@ class PretrainingModule(nn.Module):
                     batch["attention_mask"],
                 )
             )
+            self.last_distillation_relation_pairs = (
+                self.distillation_loss.last_relation_pairs
+            )
+        else:
+            self.last_distillation_relation_pairs = 0
         total = None
         for name, loss in losses.items():
             weight = float(loss_weights.get(name, 1.0))
@@ -1604,6 +1638,7 @@ def train_student(
     accumulated_valid_visual_tokens = 0
     accumulated_samples = 0
     accumulated_distillation_tokens = 0
+    accumulated_distillation_relation_pairs = 0
     epoch = state.epoch
     while not stop and (config.epochs is None or epoch < config.epochs):
         if (
@@ -1784,6 +1819,9 @@ def train_student(
                     accumulated_losses.get(name, 0.0) + float(value.detach())
                 )
             accumulated_distillation_tokens += module.last_distillation_tokens
+            accumulated_distillation_relation_pairs += (
+                module.last_distillation_relation_pairs
+            )
             state.batch_in_epoch = batch_index + 1
             if not should_step:
                 continue
@@ -1819,6 +1857,10 @@ def train_student(
             global_samples = _all_reduce_int(accumulated_samples, context)
             global_distillation_tokens = _all_reduce_int(
                 accumulated_distillation_tokens,
+                context,
+            )
+            global_distillation_relation_pairs = _all_reduce_int(
+                accumulated_distillation_relation_pairs,
                 context,
             )
             state.dense_visual_tokens_seen += global_dense_visual_tokens
@@ -1904,6 +1946,9 @@ def train_student(
                     "train/distillation_tokens": float(
                         global_distillation_tokens
                     ),
+                    "train/distillation_relation_pairs": float(
+                        global_distillation_relation_pairs
+                    ),
                     "train/distillation_supervised_coverage": (
                         global_distillation_tokens
                         / global_token_counts["supervised"]
@@ -1946,6 +1991,7 @@ def train_student(
             accumulated_valid_visual_tokens = 0
             accumulated_samples = 0
             accumulated_distillation_tokens = 0
+            accumulated_distillation_relation_pairs = 0
 
             if context.is_main and (
                 state.global_step == 1

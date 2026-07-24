@@ -671,6 +671,7 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "autoregressive",
         "teacher_kl",
         "hidden_feature_distillation",
+        "token_relation_distillation",
         "region_text_contrastive",
         "box_regression",
         "orientation",
@@ -730,6 +731,32 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(f"training.pretraining.losses.{name} is not implemented")
         if float(weight) < 0:
             errors.append(f"training.pretraining.losses.{name} must be non-negative")
+    distillation = training["pretraining"].get("distillation", {})
+    relation_max_tokens = distillation.get("relation_max_tokens", 0)
+    if (
+        not isinstance(relation_max_tokens, int)
+        or isinstance(relation_max_tokens, bool)
+        or relation_max_tokens < 0
+        or relation_max_tokens == 1
+    ):
+        errors.append(
+            "training.pretraining.distillation.relation_max_tokens "
+            "must be zero or an integer of at least two"
+        )
+    relation_temperature = distillation.get(
+        "relation_temperature",
+        1.0,
+    )
+    if (
+        not isinstance(relation_temperature, (int, float))
+        or isinstance(relation_temperature, bool)
+        or not math.isfinite(float(relation_temperature))
+        or float(relation_temperature) <= 0
+    ):
+        errors.append(
+            "training.pretraining.distillation.relation_temperature "
+            "must be a positive finite number"
+        )
     contrastive_memory = training["pretraining"].get(
         "contrastive_memory",
         {},

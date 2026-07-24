@@ -609,6 +609,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
         logit_top_k=8,
         vision_layer_pairs=((0, 0),),
         language_layer_pairs=((0, 0),),
+        relation_max_tokens=4,
     )
     student = DocumentVLMStudent(student_config)
     teacher_model = DocumentVLMStudent(teacher_config)
@@ -628,6 +629,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
                 **training_config.loss_weights,
                 "teacher_kl": 0.3,
                 "hidden_feature_distillation": 0.2,
+                "token_relation_distillation": 0.1,
             },
         ),
         teacher=NativeStudentTeacher(
@@ -670,6 +672,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
         .splitlines()[0]
     )
     assert metric["train/distillation_tokens"] > 0
+    assert metric["train/distillation_relation_pairs"] > 0
     assert metric["train/distillation_supervised_coverage"] == 1.0
     assert (
         metric["train/distillation_target_alignment"]
@@ -681,6 +684,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
         logit_top_k=8,
         vision_layer_pairs=((0, 0),),
         language_layer_pairs=((0, 0),),
+        relation_max_tokens=4,
     )
     resumed_student = DocumentVLMStudent(student_config)
     resumed_teacher = DocumentVLMStudent(teacher_config)
@@ -696,6 +700,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
                     **training_config.loss_weights,
                     "teacher_kl": 0.3,
                     "hidden_feature_distillation": 0.2,
+                    "token_relation_distillation": 0.1,
                 },
             ),
             teacher=NativeStudentTeacher(
@@ -724,6 +729,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
                     **training_config.loss_weights,
                     "teacher_kl": 0.3,
                     "hidden_feature_distillation": 0.2,
+                    "token_relation_distillation": 0.1,
                 },
             ),
             teacher=NativeStudentTeacher(
@@ -751,6 +757,7 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
                 **training_config.loss_weights,
                 "teacher_kl": 0.3,
                 "hidden_feature_distillation": 0.2,
+                "token_relation_distillation": 0.1,
             },
         ),
         teacher=NativeStudentTeacher(
@@ -1066,10 +1073,74 @@ def test_supervision_contract_rejects_silent_online_teacher_mismatch(tmp_path):
             ),
             has_online_teacher=False,
         )
+    with pytest.raises(ValueError, match="require a native teacher"):
+        pretraining_supervision_contract(
+            replace(
+                base,
+                loss_weights={
+                    **base.loss_weights,
+                    "token_relation_distillation": 0.2,
+                },
+            ),
+            has_online_teacher=False,
+        )
     with pytest.raises(ValueError, match="provided but"):
         pretraining_supervision_contract(
             base,
             has_online_teacher=True,
+        )
+
+
+def test_supervision_contract_rejects_silent_relation_distillation(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.pretrain import (
+        pretraining_supervision_contract,
+    )
+
+    base = _config(tmp_path, max_steps=1)
+    relation_config = replace(
+        base,
+        loss_weights={
+            **base.loss_weights,
+            "token_relation_distillation": 0.2,
+        },
+    )
+    contract = {
+        "teacher_id": "test:teacher",
+        "relation_max_tokens": 0,
+        "language_layer_pairs": [[0, 0]],
+    }
+    with pytest.raises(ValueError, match="relation_max_tokens"):
+        pretraining_supervision_contract(
+            relation_config,
+            has_online_teacher=True,
+            online_distillation_contract=contract,
+        )
+    with pytest.raises(ValueError, match="language_layer_pairs"):
+        pretraining_supervision_contract(
+            relation_config,
+            has_online_teacher=True,
+            online_distillation_contract={
+                **contract,
+                "relation_max_tokens": 8,
+                "language_layer_pairs": [],
+            },
+        )
+    with pytest.raises(ValueError, match="must be zero"):
+        pretraining_supervision_contract(
+            replace(
+                base,
+                loss_weights={
+                    **base.loss_weights,
+                    "teacher_kl": 0.2,
+                },
+            ),
+            has_online_teacher=True,
+            online_distillation_contract={
+                **contract,
+                "relation_max_tokens": 8,
+            },
         )
 
 

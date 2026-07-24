@@ -159,6 +159,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Test teacher dependence:**
   [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) — pinned
   LFM/Qwen versus gold-only supervision at a fixed request and accepted-target dose.
+- **Transfer document relations:**
+  [`report/student_token_relation_distillation_sweep.md`](report/student_token_relation_distillation_sweep.md)
+  — same-native-teacher pointwise hidden anchors versus bounded token-relation KL at a fixed
+  representation-loss weight.
 - **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
   — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
   transfer, and the matched random/vision/language/dual/selective suite.
@@ -272,6 +276,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_temperature_calibration.md`](report/student_temperature_calibration.md) ·
    [`report/student_box_iou_loss_sweep.md`](report/student_box_iou_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
+   [`report/student_token_relation_distillation_sweep.md`](report/student_token_relation_distillation_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·

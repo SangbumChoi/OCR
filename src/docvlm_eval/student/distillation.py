@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,12 +22,32 @@ class DistillationConfig:
     target_alignment: str = "causal_next_token"
     vision_layer_pairs: tuple[tuple[int, int], ...] = ()
     language_layer_pairs: tuple[tuple[int, int], ...] = ()
+    relation_max_tokens: int = 0
+    relation_temperature: float = 1.0
 
     def __post_init__(self) -> None:
-        if self.temperature <= 0:
-            raise ValueError("distillation temperature must be positive")
+        if not math.isfinite(self.temperature) or self.temperature <= 0:
+            raise ValueError(
+                "distillation temperature must be positive and finite"
+            )
         if self.logit_top_k < 0:
             raise ValueError("logit_top_k must be non-negative")
+        if (
+            not isinstance(self.relation_max_tokens, int)
+            or isinstance(self.relation_max_tokens, bool)
+            or self.relation_max_tokens < 0
+            or self.relation_max_tokens == 1
+        ):
+            raise ValueError(
+                "relation_max_tokens must be zero or at least two"
+            )
+        if (
+            not math.isfinite(self.relation_temperature)
+            or self.relation_temperature <= 0
+        ):
+            raise ValueError(
+                "relation_temperature must be positive and finite"
+            )
         if self.target_alignment != "causal_next_token":
             raise ValueError(
                 "distillation target_alignment must be causal_next_token"
@@ -49,6 +70,10 @@ class DistillationConfig:
                 (int(pair[0]), int(pair[1]))
                 for pair in raw.get("language_layer_pairs", [])
             ),
+            relation_max_tokens=int(raw.get("relation_max_tokens", 0)),
+            relation_temperature=float(
+                raw.get("relation_temperature", 1.0)
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,6 +87,8 @@ class DistillationConfig:
             "language_layer_pairs": [
                 list(pair) for pair in self.language_layer_pairs
             ],
+            "relation_max_tokens": self.relation_max_tokens,
+            "relation_temperature": self.relation_temperature,
         }
 
     @property
@@ -212,6 +239,7 @@ class DistillationLoss(nn.Module):
                 "online logit distillation requires an identical tokenizer vocabulary"
             )
         self.config = config
+        self.last_relation_pairs = 0
         self.language_projections = nn.ModuleDict()
         self.vision_projections = nn.ModuleDict()
         for student_layer, teacher_layer in config.language_layer_pairs:
@@ -293,6 +321,80 @@ class DistillationLoss(nn.Module):
             raise ValueError("feature mask does not match feature sequence")
         return loss[valid].mean()
 
+    def _token_relation_loss(
+        self,
+        student: torch.Tensor,
+        teacher: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, int]:
+        """Match bounded token-to-token similarity distributions."""
+
+        if student.shape != teacher.shape or student.ndim != 3:
+            raise ValueError(
+                "token relation distillation requires aligned rank-3 features"
+            )
+        if attention_mask.shape != student.shape[:2]:
+            raise ValueError(
+                "token relation attention mask does not match feature sequence"
+            )
+        losses: list[torch.Tensor] = []
+        relation_pairs = 0
+        for batch_index in range(student.shape[0]):
+            indices = torch.nonzero(
+                attention_mask[batch_index].to(dtype=torch.bool),
+                as_tuple=False,
+            ).flatten()
+            if indices.numel() > self.config.relation_max_tokens:
+                positions = torch.linspace(
+                    0,
+                    indices.numel() - 1,
+                    steps=self.config.relation_max_tokens,
+                    device=indices.device,
+                ).round().long()
+                indices = indices[positions]
+            token_count = int(indices.numel())
+            if token_count < 2:
+                continue
+            student_tokens = F.normalize(
+                student[batch_index, indices].float(),
+                dim=-1,
+            )
+            teacher_tokens = F.normalize(
+                teacher[batch_index, indices].float(),
+                dim=-1,
+            )
+            student_relations = (
+                student_tokens @ student_tokens.transpose(0, 1)
+            ) / self.config.relation_temperature
+            teacher_relations = (
+                teacher_tokens @ teacher_tokens.transpose(0, 1)
+            ) / self.config.relation_temperature
+            diagonal = torch.eye(
+                token_count,
+                device=student.device,
+                dtype=torch.bool,
+            )
+            student_relations = student_relations.masked_fill(
+                diagonal,
+                -1.0e4,
+            )
+            teacher_relations = teacher_relations.masked_fill(
+                diagonal,
+                -1.0e4,
+            )
+            losses.append(
+                F.kl_div(
+                    F.log_softmax(student_relations, dim=-1),
+                    F.softmax(teacher_relations, dim=-1),
+                    reduction="batchmean",
+                )
+                * self.config.relation_temperature**2
+            )
+            relation_pairs += token_count * (token_count - 1)
+        if not losses:
+            return student.sum() * 0.0, 0
+        return torch.stack(losses).mean(), relation_pairs
+
     def forward(
         self,
         student_output: StudentOutput,
@@ -308,6 +410,8 @@ class DistillationLoss(nn.Module):
             )
         }
         feature_losses: list[torch.Tensor] = []
+        relation_losses: list[torch.Tensor] = []
+        self.last_relation_pairs = 0
         for student_layer, teacher_layer in self.config.language_layer_pairs:
             projected = self.language_projections[
                 self._pair_key(student_layer, teacher_layer)
@@ -319,6 +423,14 @@ class DistillationLoss(nn.Module):
                     attention_mask,
                 )
             )
+            if self.config.relation_max_tokens > 0:
+                relation_loss, relation_pairs = self._token_relation_loss(
+                    projected,
+                    signals.language_features[teacher_layer],
+                    attention_mask,
+                )
+                relation_losses.append(relation_loss)
+                self.last_relation_pairs += relation_pairs
         for student_layer, teacher_layer in self.config.vision_layer_pairs:
             student_has = student_layer in student_output.vision_features
             teacher_has = teacher_layer in signals.vision_features
@@ -341,5 +453,9 @@ class DistillationLoss(nn.Module):
         if feature_losses:
             losses["hidden_feature_distillation"] = torch.stack(
                 feature_losses
+            ).mean()
+        if relation_losses:
+            losses["token_relation_distillation"] = torch.stack(
+                relation_losses
             ).mean()
         return losses

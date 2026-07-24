@@ -155,6 +155,10 @@ training:
         - [11, 11]
         - [17, 17]
         - [22, 22]
+      # Zero keeps relation distillation inactive in the default recipe.
+      # The dedicated sweep compares it against pointwise hidden anchors.
+      relation_max_tokens: 0
+      relation_temperature: 1.0
       cross_tokenizer_policy: sequence_targets_only
     optimizer:
       # The full run cycles deterministic sampler epochs until the effective-token budget is met.
@@ -195,6 +199,7 @@ training:
       # Cross-tokenizer LFM supervision enters through offline sequence targets.
       teacher_kl: 0.00
       hidden_feature_distillation: 0.00
+      token_relation_distillation: 0.00
       region_text_contrastive: 0.15
       box_regression: 0.20
       orientation: 0.05
