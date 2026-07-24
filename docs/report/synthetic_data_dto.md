@@ -33,8 +33,10 @@ data scale used by the downstream ablations ([`ablation_plan.md`](ablation_plan.
 
 The generator's premise (`src/docvlm_eval/synth/`): **render the document from a single source so
 the image and its labels can never drift.** We author HTML/CSS, render it to a **digital-native
-PDF** (WeasyPrint), rasterise page 0 (PyMuPDF), and read text positions **straight out of the PDF**
-— so spotting boxes are pixel-exact by construction. Faker (seeded) fills realistic field content.
+PDF** (WeasyPrint), rasterise page 0 (PyMuPDF), and read text positions **straight out of the PDF**.
+If its text layer misses a required CJK, RTL, letter-spaced, or wrapped span, an optional
+layout-neutral color-probe render recovers the occurrence-aware pixel box. Faker (seeded) fills
+realistic field content.
 
 Matching the real-world *and* image distribution is done on three axes, all config-controlled:
 
@@ -43,6 +45,7 @@ Matching the real-world *and* image distribution is done on three axes, all conf
 | **Acquisition modality** (the taxonomy's PDF-native / scan / phone-photo / screenshot split) | a photometric Augraphy preset applied to a *copy* (no geometry change → boxes stay valid): `scan`/`photo`/`fax`/`historical`/`screenshot` | `degrade_prob`, `degrade_presets`, `degrade_severity` |
 | **Resolution / capture optics** | rasterise at a chosen DPI; optionally resize the longest side and (de)preserve aspect to mimic a model's preprocessor; record a small-text slice | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Language / script mix** | choose each document's language from a weighted mix; generate content in that Faker locale; record language + writing system | `languages`, `language_weights` |
+| **Spatial-label resolver** | PDF text positions first; model-free color-probe render only for required misses | `color_probe_fallback` |
 
 Because the boxes come from the clean digital-native render and degradation is photometric only,
 **a degraded copy reuses the clean GT** — the heuristic that makes free, exact labels possible.
@@ -63,7 +66,8 @@ DocSample
 ├─ difficulty: level, reasoning hops, distractors, density, cross-region flag, skills
 ├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
-│                      target_long_side, keep_aspect, tiling, aspect_ratio)
+│                      target_long_side, keep_aspect, tiling, aspect_ratio,
+│                      box_resolver, color_probe_fallback_count)
 ├─ degradation:  Degradation(preset, severity, seed, geometry_preserved)
 ├─ gen_config:   the GenConfig that produced this sample (provenance)
 └─ ablation_support: AblationSupport(spotting, rationale, multilingual, small_text,
@@ -101,8 +105,8 @@ of the generated held-out benchmark rather than an optional hand-authored add-on
 The OCR ground truth (what string is where) falls out of the render for free. The harder, more
 valuable GT is **non-OCR understanding** — *where is this word / table?*, *how many times does it
 appear?*, *what is the total?* — and the **reasoning** behind each. `docvlm_eval.synth.derive`
-produces all of it **with no external model**, from the rendered PDF's exact text positions
-(PyMuPDF) + the values the generator already knows. Each derivation is one `DocBuilder.ask_*` call,
+produces all of it **with no external model**, from PDF text positions or their color-probe
+fallback + the values the generator already knows. Each derivation is one `DocBuilder.ask_*` call,
 resolved against the open render at build time, and emits a QA with answer **and** rationale:
 
 | Primitive | GT type | Question it answers | Derived from | Metric |
@@ -131,6 +135,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **A7 preprocessing** | resolution / tiling / aspect; small-text legibility | `RenderSpec.*`, `Field.is_small` | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
+| **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 
 (*A5 LoRA-placement* and *A6 HPO* are training-side — they consume this GT but need no generator
 knob.)

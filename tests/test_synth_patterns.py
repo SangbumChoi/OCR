@@ -94,6 +94,110 @@ def test_repeated_text_boxes_are_distinct_by_occurrence():
     assert gt["spotting"]["first"] != gt["spotting"]["second"]
 
 
+def test_color_probe_recovers_repeated_spots_and_count_derivation(
+    monkeypatch,
+):
+    from docvlm_eval.synth.render import RenderResult
+
+    monkeypatch.setattr(
+        RenderResult,
+        "native_search_boxes",
+        lambda _self, _text: [
+            [1, 1, 2, 2],
+            [3, 1, 4, 2],
+            [5, 1, 6, 2],
+        ],
+    )
+    target = "A&B <C>"
+    b = DocBuilder("t", ["complex-text-layer"], "grounding")
+    b.field(None, target, key="first", spot=True)
+    b.field(None, target, key="second", spot=True)
+    b.ask_count(target)
+
+    img, gt = b.build(dpi=120, color_probe_fallback=True)
+
+    assert _inside(gt["spotting"]["first"], img.size)
+    assert _inside(gt["spotting"]["second"], img.size)
+    assert gt["spotting"]["first"] != gt["spotting"]["second"]
+    assert next(
+        qa for qa in gt["qa"] if qa["answer_type"] == "H-count"
+    )["answers"] == ["2"]
+    assert gt["render"]["box_resolver"] == (
+        "pdf_text_then_color_probe"
+    )
+    assert gt["render"]["color_probe_fallback_count"] == 1
+
+
+def test_color_probe_never_exposes_comment_text(monkeypatch):
+    from docvlm_eval.synth.render import RenderResult
+
+    monkeypatch.setattr(
+        RenderResult,
+        "native_search_boxes",
+        lambda _self, _text: [],
+    )
+    secret = "GT-ONLY-SECRET"
+    b = DocBuilder("t", ["abstain"], "grounding")
+    b.raw(f"<p>visible</p><!-- {secret} -->")
+    b.spot("secret", secret)
+
+    _, gt = b.build(dpi=100, color_probe_fallback=True)
+
+    assert "spotting" not in gt
+    assert gt["render"]["color_probe_fallback_count"] == 0
+
+
+def test_color_probe_supports_locate_and_region_derivations(
+    monkeypatch,
+):
+    from docvlm_eval.synth.render import RenderResult
+
+    monkeypatch.setattr(
+        RenderResult,
+        "native_search_boxes",
+        lambda _self, _text: [],
+    )
+    b = DocBuilder("t", ["regions"], "grounding")
+    b.field(None, "Left anchor", key="left")
+    b.field(None, "Right anchor", key="right")
+    b.ask_where("Left anchor")
+    b.ask_region("the anchor region", ["Left anchor", "Right anchor"])
+
+    img, gt = b.build(dpi=100, color_probe_fallback=True)
+
+    locate = next(
+        qa for qa in gt["qa"] if qa["answer_type"] == "L1-locate"
+    )
+    region = next(
+        qa for qa in gt["qa"] if qa["answer_type"] == "L1-region"
+    )
+    assert _inside(locate["box"], img.size)
+    assert _inside(region["box"], img.size)
+    assert region["box"][0] <= locate["box"][0]
+    assert region["box"][1] <= locate["box"][1]
+    assert region["box"][2] >= locate["box"][2]
+    assert region["box"][3] >= locate["box"][3]
+    assert gt["render"]["color_probe_fallback_count"] == 2
+
+
+def test_color_probe_can_be_disabled(monkeypatch):
+    from docvlm_eval.synth.render import RenderResult
+
+    monkeypatch.setattr(
+        RenderResult,
+        "native_search_boxes",
+        lambda _self, _text: [],
+    )
+    b = DocBuilder("t", ["control"], "grounding")
+    b.field(None, "unresolved", key="target", spot=True)
+
+    _, gt = b.build(dpi=100, color_probe_fallback=False)
+
+    assert "spotting" not in gt
+    assert gt["render"]["box_resolver"] == "pdf_text"
+    assert gt["render"]["color_probe_fallback_count"] == 0
+
+
 def test_qa_records_answerable_pairs():
     b = DocBuilder("t", ["s"], "m")
     b.field("Total", "$145.50", key="total")

@@ -17,7 +17,8 @@ scientific-paper verification.
 4. `resolve()` recomputes the answer and concise rationale from the graph. Validation fails on
    duplicate IDs, dangling relations, unsupported operations, invalid numeric values, or a stale
    authored `expected` answer.
-5. `DocBuilder` renders the same values and resolves every evidence key to an exact PDF text box.
+5. `DocBuilder` renders the same values and resolves every evidence key through the PDF text layer,
+   with an occurrence-aware color-probe fallback for required misses.
 
 The operation registry currently covers direct lookup, sum, mean, difference, ratio, percent
 change, relative reduction, extrema, weighted sum, path products, and sums of independent path
@@ -57,6 +58,7 @@ Each `gt.json` records:
 - content and template fingerprints;
 - a machine-readable `difficulty` profile;
 - explicit split provenance and a deterministic suggested split.
+- the spatial resolver contract and number of color-probe fallbacks used.
 
 ## Hard families
 

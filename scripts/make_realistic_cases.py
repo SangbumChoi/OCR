@@ -233,7 +233,10 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                 builder.field_lang[field_key] = CURRENT_LANG
         if getattr(CFG, "jitter", False):       # per-doc visual theme (paper/accent/font/margin)
             builder.css += _theme_css(_doc_rng(key), structural=key not in _FIXED_LAYOUT)
-        img, gt = builder.build(dpi=CFG.dpi)
+        img, gt = builder.build(
+            dpi=CFG.dpi,
+            color_probe_fallback=CFG.color_probe_fallback,
+        )
     else:
         img = builder_or_img
     # A7 resize (with box rescale) + A1/A2 supervision toggles
@@ -916,7 +919,8 @@ def main():
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
-          f"difficulty={CFG.difficulty_level} split={CFG.split_name}")
+          f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
+          f"color_probe={CFG.color_probe_fallback}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

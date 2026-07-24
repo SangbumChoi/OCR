@@ -118,6 +118,30 @@ def test_genconfig_from_yaml_base_and_overrides(tmp_path):
         GenConfig.from_yaml(str(p), ablation="nope")
 
 
+def test_color_probe_config_and_render_provenance():
+    assert GenConfig().color_probe_fallback is True
+    with pytest.raises(
+        ValueError,
+        match="color_probe_fallback must be boolean",
+    ):
+        GenConfig(color_probe_fallback="yes")
+
+    flat = {
+        "type": "document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "page_count": 1,
+            "box_resolver": "pdf_text_then_color_probe",
+            "color_probe_fallback_count": 2,
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.box_resolver == "pdf_text_then_color_probe"
+    assert render.color_probe_fallback_count == 2
+
+
 def test_graph_evidence_keys_resolve_to_multiple_boxes():
     gt = {
         "type": "hard table",

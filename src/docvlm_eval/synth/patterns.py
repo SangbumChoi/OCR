@@ -27,7 +27,11 @@ from dataclasses import dataclass
 from PIL import Image
 
 from .hard_locale import HARD_DOCUMENT_LANGUAGES, hard_text
-from .render import render_html, resolve_boxes
+from .render import (
+    prepare_color_probe_fallback,
+    render_html,
+    resolve_boxes,
+)
 
 
 def esc(s: object) -> str:
@@ -302,9 +306,41 @@ class DocBuilder:
         """
         return base + self.css
 
-    def build(self, dpi: int = 150) -> tuple[Image.Image, dict]:
-        rr = render_html("".join(self._html), self._full_css(), dpi=dpi)
+    def build(
+        self,
+        dpi: int = 150,
+        *,
+        color_probe_fallback: bool = True,
+    ) -> tuple[Image.Image, dict]:
+        html = "".join(self._html)
+        css = self._full_css()
+        rr = render_html(html, css, dpi=dpi)
         try:
+            if color_probe_fallback:
+                required_occurrences: dict[str, int] = {}
+                for _key, text, occurrence in self._spots:
+                    required_occurrences[text] = max(
+                        required_occurrences.get(text, 0),
+                        occurrence + 1,
+                    )
+                for derivation in self._derivations:
+                    if derivation.kind in {"locate", "count"}:
+                        required_occurrences[derivation.text] = max(
+                            required_occurrences.get(derivation.text, 0),
+                            derivation.occurrence + 1,
+                        )
+                    elif derivation.kind == "region":
+                        for text in derivation.texts or []:
+                            required_occurrences[text] = max(
+                                required_occurrences.get(text, 0),
+                                1,
+                            )
+                prepare_color_probe_fallback(
+                    rr,
+                    html,
+                    css,
+                    required_occurrences,
+                )
             spotting = resolve_boxes(rr, self._spots)
             # resolve model-free understanding GT (where/how-many/totals) against the open render
             if self._derivations:
@@ -332,7 +368,19 @@ class DocBuilder:
                 "anchor_metric": self.anchor_metric,
                 "fields": dict(self.fields),
                 "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
-                "render": {"dpi": dpi, "size_px": list(rr.image.size), "page_count": rr.page_count},
+                "render": {
+                    "dpi": dpi,
+                    "size_px": list(rr.image.size),
+                    "page_count": rr.page_count,
+                    "box_resolver": (
+                        "pdf_text_then_color_probe"
+                        if color_probe_fallback
+                        else "pdf_text"
+                    ),
+                    "color_probe_fallback_count": len(
+                        rr.color_probe_fallbacks
+                    ),
+                },
             }
             if spotting:
                 gt["spotting"] = spotting

@@ -27,6 +27,9 @@ base:
   emit_rationale: true      # A2: include chain-of-thought rationales
   emit_understanding: true  # model-free understanding GT (where / how-many / totals) from derive.py
   emit_counterfactual_pairs: true  # adjacent hard docs share locale/style but edit latent values
+  # Fall back to a layout-neutral color-probe render when the PDF text layer cannot resolve
+  # a required spotting/grounding span (notably CJK, RTL, letter-spaced, or wrapped text).
+  color_probe_fallback: true
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true
@@ -119,6 +122,8 @@ ablation_overrides:
   D_hard_level_1:   {difficulty_level: 1}
   D_hard_level_3:   {difficulty_level: 3}
   D_hard_level_5:   {difficulty_level: 5}
+  D_color_probe_off: {color_probe_fallback: false}
+  D_color_probe_on:  {color_probe_fallback: true}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}

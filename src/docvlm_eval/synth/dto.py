@@ -123,6 +123,8 @@ class RenderSpec:
     keep_aspect: bool = True             # A7
     tiling: dict[str, Any] | None = None  # A7: {"n_max": int, ...} when dynamic tiling was simulated
     fonts: list[str] = field(default_factory=list)
+    box_resolver: str = "pdf_text"
+    color_probe_fallback_count: int = 0
 
     @property
     def aspect_ratio(self) -> float:
@@ -191,6 +193,7 @@ class GenConfig:
     # The OCR GT is free; this is the non-OCR understanding GT that needs no external model.
     emit_understanding: bool = True
     emit_counterfactual_pairs: bool = True
+    color_probe_fallback: bool = True
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -229,6 +232,8 @@ class GenConfig:
             raise ValueError("split_name must be synthetic, train, validation, or heldout")
         if self.split_group_by not in {"content", "template", "document"}:
             raise ValueError("split_group_by must be content, template, or document")
+        if not isinstance(self.color_probe_fallback, bool):
+            raise ValueError("color_probe_fallback must be boolean")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -371,6 +376,10 @@ class DocSample:
             target_long_side=(gen_config.target_long_side if gen_config else None),
             keep_aspect=(gen_config.keep_aspect if gen_config else True),
             tiling=({"n_max": gen_config.tiling_n_max} if gen_config and gen_config.tiling_n_max else None),
+            box_resolver=rj.get("box_resolver", "pdf_text"),
+            color_probe_fallback_count=int(
+                rj.get("color_probe_fallback_count", 0)
+            ),
         )
         langs = sorted({f.language for f in fields} | {gt.get("fields", {}).get("language", "en")}
                        if isinstance(gt.get("fields", {}).get("language"), str) else
