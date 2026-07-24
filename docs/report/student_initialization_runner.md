@@ -66,8 +66,10 @@ their weights invalidates initialization and every downstream stage.
 
 ## Transfer gate
 
-`scripts/build_sub1b_student.py` canonicalizes native, SigLIP, and Llama-style names, depth-maps the
-selected blocks, and copies only exact-shape tensors. It records copied keys and parameters,
+`scripts/build_sub1b_student.py` canonicalizes native, SigLIP, Llama-style, LFM2, and LFM2-VL names,
+depth-maps the selected blocks, and copies only exact-shape tensors. The LFM2 adapter covers
+attention, gated short convolution, norms, and SwiGLU projections for hybrid students. It records
+copied keys and parameters,
 missing source keys, and shape mismatches in `artifacts/initial/metadata.json`. A non-random arm
 fails if any required component copies zero parameters. The connector remains random in all
 shipped arms.

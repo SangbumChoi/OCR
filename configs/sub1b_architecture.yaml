@@ -45,6 +45,11 @@ student:
     tied_embeddings: true
     rope_base: 10000.0
     dropout: 0.0
+    # null preserves the all-attention control. Hybrid sweeps provide explicit
+    # zero-based full-attention layer indices; every other layer uses short conv.
+    full_attention_layers: null
+    conv_kernel_size: 3
+    conv_bias: false
 
   connector:
     family: gated_resampler

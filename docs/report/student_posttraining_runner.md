@@ -99,10 +99,11 @@ replay buffer, so results must be described as single-update GRPO.
 
 The visual tower and connector run once per image during autoregressive rollout; the fixed visual
 prefix is reused across every group member and generated token. The language decoder performs one
-prompt prefill and then appends one-token queries to a per-layer compact GQA KV cache. Cache tensors
-retain only the configured eight KV heads rather than expanding them to all 24 query heads. Buffers
-are allocated once to the configured completion horizon and updated in place, avoiding per-token
-concatenation and cache copies. Set
+prompt prefill and then appends one-token queries to its generation cache. Attention layers retain
+only the configured eight KV heads rather than expanding them to all 24 query heads; optional
+short-convolution layers retain only their bounded recurrent state. Attention buffers are allocated
+once to the configured completion horizon and updated in place, avoiding per-token concatenation
+and cache copies. Set
 `training.posttraining.rlvr.rollout.use_kv_cache: false` only for a full-prefix compute/latency
 ablation. The resolved rollout contract is checkpointed, so resume cannot silently change sampling
 or cache semantics. Policy and frozen-reference log-probabilities are each computed in one

@@ -19,6 +19,31 @@ def test_default_blueprint_is_valid_and_sub1b():
     ] == {"every_steps": 20, "loss_coefficient": 0.10}
 
 
+def test_blueprint_language_mixer_fields_are_backward_compatible():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    language = blueprint["student"]["language"]
+    language.pop("full_attention_layers")
+    language.pop("conv_kernel_size")
+    language.pop("conv_bias")
+
+    estimates, errors = validate_blueprint(blueprint)
+
+    assert errors == []
+    assert estimates["total"] == 799_919_882
+
+
+def test_blueprint_rejects_non_integer_attention_layer_indices():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    blueprint["student"]["language"]["full_attention_layers"] = [
+        2,
+        "5",
+    ]
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("must contain integers" in error for error in errors)
+
+
 def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["posttraining"]["rlvr"]["reward_mix"]["box_iou"] = 0.5
@@ -41,6 +66,10 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     pipeline["aspect_ratio_bucketing"] = "yes"
     pipeline["aspect_ratio_bucket_log2_step"] = 0.0
     blueprint["student"]["vision"]["max_position_tokens"] = 4095
+    language = blueprint["student"]["language"]
+    language["full_attention_layers"] = [5, 5, 99]
+    language["conv_kernel_size"] = 1
+    language["conv_bias"] = "no"
     sequence_targets = blueprint["training"]["pretraining"]["distillation"]["sequence_targets"]
     sequence_targets["probability"] = 1.1
     sequence_targets["min_score"] = -0.1
@@ -57,6 +86,10 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("aspect_ratio_bucketing must be boolean" in error for error in errors)
     assert any("aspect_ratio_bucket_log2_step" in error for error in errors)
     assert any("max_position_tokens" in error for error in errors)
+    assert any("full_attention_layers must be unique" in error for error in errors)
+    assert any("out-of-range index" in error for error in errors)
+    assert any("conv_kernel_size" in error for error in errors)
+    assert any("conv_bias must be a boolean" in error for error in errors)
     assert any("sequence_targets.probability" in error for error in errors)
     assert any("sequence_targets.min_score" in error for error in errors)
     assert any("sequence_targets.seed" in error for error in errors)

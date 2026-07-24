@@ -64,6 +64,23 @@ def test_checkpoint_snapshot_validates_family_and_content(tmp_path):
         )
 
 
+@pytest.mark.parametrize("model_type", ["lfm2", "lfm2_vl"])
+def test_checkpoint_snapshot_accepts_lfm2_family(tmp_path, model_type):
+    snapshot = _snapshot(tmp_path, model_type=model_type)
+    manifest = validate_checkpoint_snapshot(
+        snapshot,
+        HubCheckpointSpec(
+            repo_id="LiquidAI/LFM2-compatible",
+            revision=REVISION,
+            family="lfm2",
+        ),
+        resolved_revision=REVISION,
+    )
+
+    assert manifest["model_type"] == model_type
+    assert manifest["spec"]["family"] == "lfm2"
+
+
 def test_hub_checkpoint_acquisition_writes_a_live_cache_manifest(tmp_path):
     snapshot = _snapshot(tmp_path)
     calls = {}

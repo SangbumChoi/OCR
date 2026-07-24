@@ -16,14 +16,26 @@ from typing import Any
 
 import yaml
 
-from ..architecture import load_blueprint
+from ..architecture import (
+    load_blueprint,
+    validate_blueprint,
+)
 from .compute import compute_profile
 from .config import StudentConfig
-from .sweep import SweepPlan, SweepRunner, compile_sweep_plan
+from .sweep import (
+    SweepPlan,
+    SweepRunner,
+    apply_json_patch,
+    compile_sweep_plan,
+)
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STAGES = ("pretrain", "sft", "rlvr")
+_PROFILE_RESERVED_PATHS = {
+    "/student/vision/image_size",
+    "/student/connector/latent_tokens",
+}
 
 
 def _resolve_path(root: Path, value: str | Path) -> Path:
@@ -71,6 +83,8 @@ class ArchitectureProfile:
     id: str
     image_long_side: int
     latent_tokens: int
+    hypothesis: str
+    blueprint_patches: tuple[dict[str, Any], ...]
     compute: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -78,6 +92,8 @@ class ArchitectureProfile:
             "id": self.id,
             "image_long_side": self.image_long_side,
             "latent_tokens": self.latent_tokens,
+            "hypothesis": self.hypothesis,
+            "blueprint_patches": list(self.blueprint_patches),
             "compute": self.compute,
         }
 
@@ -315,12 +331,38 @@ def compile_architecture_sweep(
         latent_tokens = int(item.get("latent_tokens", 0))
         if image_long_side <= 0 or latent_tokens <= 0:
             raise ValueError("architecture dimensions must be positive")
+        profile_patches = item.get("blueprint_patches") or []
+        if not isinstance(profile_patches, list):
+            raise ValueError(
+                "architecture profile blueprint_patches must be a list"
+            )
+        for operation in profile_patches:
+            path = (
+                str(operation.get("path") or "")
+                if isinstance(operation, dict)
+                else ""
+            )
+            if not path.startswith("/student/"):
+                raise ValueError(
+                    "architecture profile patches must target /student"
+                )
+            if path in _PROFILE_RESERVED_PATHS:
+                raise ValueError(
+                    f"architecture profile patch cannot override {path}"
+                )
         candidate = copy.deepcopy(blueprint)
         candidate["student"]["vision"]["image_size"] = image_long_side
         candidate["student"]["connector"]["latent_tokens"] = latent_tokens
         candidate["training"]["pretraining"]["input_pipeline"][
             "max_image_long_side"
         ] = image_long_side
+        candidate = apply_json_patch(candidate, profile_patches)
+        parameter_counts, errors = validate_blueprint(candidate)
+        if errors:
+            raise ValueError(
+                f"invalid architecture profile {profile_id}: "
+                + "; ".join(errors)
+            )
         model_config = StudentConfig.from_blueprint(candidate)
         reference = raw.get("reference_budget") or {}
         profile = compute_profile(
@@ -343,11 +385,22 @@ def compile_architecture_sweep(
                 ]["use_kv_cache"]
             ),
         )
+        profile["parameter_counts"] = parameter_counts
+        hypothesis = str(item.get("hypothesis") or "").strip()
+        if not hypothesis:
+            hypothesis = (
+                f"Tests {image_long_side}px input with "
+                f"{latent_tokens} visual latents at matched student FLOPs."
+            )
         profiles.append(
             ArchitectureProfile(
                 id=profile_id,
                 image_long_side=image_long_side,
                 latent_tokens=latent_tokens,
+                hypothesis=hypothesis,
+                blueprint_patches=tuple(
+                    copy.deepcopy(profile_patches)
+                ),
                 compute=profile,
             )
         )
@@ -447,10 +500,7 @@ def compile_architecture_sweep(
     child["variants"] = [
         {
             "id": profile.id,
-            "hypothesis": (
-                f"Tests {profile.image_long_side}px input with "
-                f"{profile.latent_tokens} visual latents at matched student FLOPs."
-            ),
+            "hypothesis": profile.hypothesis,
             "experiment_patches": [
                 {
                     "op": "add",
@@ -466,6 +516,11 @@ def compile_architecture_sweep(
                     "op": "add",
                     "path": "/evaluation/wandb_tags/-",
                     "value": "compute-matched-architecture",
+                },
+                {
+                    "op": "add",
+                    "path": "/evaluation/wandb_tags/-",
+                    "value": f"architecture-profile:{profile.id}",
                 },
             ],
             "blueprint_patches": [
@@ -487,6 +542,7 @@ def compile_architecture_sweep(
                     "path": "/student/connector/latent_tokens",
                     "value": profile.latent_tokens,
                 },
+                *copy.deepcopy(profile.blueprint_patches),
             ],
         }
         for profile in profiles

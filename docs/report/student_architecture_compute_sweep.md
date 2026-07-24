@@ -38,7 +38,9 @@ The estimate excludes normalization, activation, softmax, loss, optimizer, data 
 external-teacher compute. It is a reproducible student-compute estimand, not a claim about hardware
 throughput, energy, or total experiment cost. The estimator counts the actual dense batch tensor.
 This architecture sweep pins `fixed_square` to preserve its square-canvas estimand; the separate
-visual-canvas sweep isolates adaptive padding.
+visual-canvas sweep isolates adaptive padding. The compiler also accepts profile-local blueprint
+patches, which the language-mixer sweep uses to vary decoder operators under the same phase
+budgets.
 
 ## Budget derivation
 
@@ -111,3 +113,5 @@ training latency, peak memory, or teacher-generation cost. Adaptive padding is i
 [`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md), while this architecture sweep
 pins dense fixed-square execution to preserve its original analytical estimand. The remaining
 systems questions require separate controlled experiments.
+The orthogonal all-attention versus gated-short-convolution comparison is defined in
+[`student_language_mixer_sweep.md`](student_language_mixer_sweep.md).

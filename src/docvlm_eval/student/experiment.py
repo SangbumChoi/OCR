@@ -958,7 +958,7 @@ def build_experiment_plan(
     )
     for component, allowed in (
         ("vision", {"student", "siglip"}),
-        ("language", {"student", "llama"}),
+        ("language", {"student", "llama", "lfm2"}),
     ):
         family = str(
             initialization.get(f"{component}_family")

@@ -21,7 +21,7 @@ def main() -> None:
     parser.add_argument(
         "--family",
         required=True,
-        choices=["student", "siglip", "llama"],
+        choices=["student", "siglip", "llama", "lfm2"],
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

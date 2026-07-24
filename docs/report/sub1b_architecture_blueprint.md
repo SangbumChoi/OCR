@@ -37,6 +37,15 @@ Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which 
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
 
+The all-attention language stack remains the default control. Set
+`student.language.full_attention_layers` to a sorted zero-based subset to replace every other
+layer with an LFM-style gated causal depthwise convolution. `conv_kernel_size` and `conv_bias`
+remain explicit architecture controls. Attention layers use RoPE and compact GQA; convolution
+layers retain a bounded recurrent state during generation. The four-arm fixed-FLOP comparison is
+executable through
+[`student_language_mixer_sweep.md`](student_language_mixer_sweep.md). No hybrid quality advantage
+is assumed before that paired held-out experiment is complete.
+
 Autoregressive generation encodes the image and prompt once, stores RoPE-applied keys and values at
 the eight native GQA KV heads, and advances the decoder with one-token queries. The uncached
 full-prefix path remains selectable as an explicit ablation. For the production RLVR shape
@@ -251,6 +260,9 @@ replicates, including the data-scale cross in
 [`student_factorial_runner.md`](student_factorial_runner.md) and the fixed-FLOP visual cross in
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md), then publish
 held-out capability and efficiency curves with confidence intervals.
+The language-mixer comparison in
+[`student_language_mixer_sweep.md`](student_language_mixer_sweep.md) uses the same compute-budget
+and paired-seed discipline for all-attention, alternating, and LFM-ratio decoders.
 
 The current input path uses per-image packed patch sequences with stable two-dimensional visual
 positions. Dense adaptive, aspect-bucketed, and fixed-square controls plus sequence-aware FLOP

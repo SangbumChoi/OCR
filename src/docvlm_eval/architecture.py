@@ -45,13 +45,39 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
         embeddings *= 2
     head_dim = ld // attention_heads
     kv_width = head_dim * kv_heads
+    full_attention_layers = language.get("full_attention_layers")
+    attention_layer_count = (
+        llayers
+        if full_attention_layers is None
+        else (
+            len(full_attention_layers)
+            if isinstance(full_attention_layers, list)
+            else llayers
+        )
+    )
+    convolution_layer_count = llayers - attention_layer_count
     language_attention = (
         ld * ld + ld
         + 2 * (ld * kv_width + kv_width)
         + ld * ld + ld
     )
+    conv_bias = bool(language.get("conv_bias", False))
+    conv_kernel = int(language.get("conv_kernel_size", 3))
+    language_convolution = (
+        3 * ld * ld
+        + (3 * ld if conv_bias else 0)
+        + ld * conv_kernel
+        + (ld if conv_bias else 0)
+        + ld * ld
+        + (ld if conv_bias else 0)
+    )
     language_ffn = 2 * (ld * mlp_width + mlp_width) + mlp_width * ld + ld
-    language_blocks = llayers * (language_attention + language_ffn + 2 * ld)
+    language_blocks = (
+        attention_layer_count
+        * (language_attention + language_ffn + 2 * ld)
+        + convolution_layer_count
+        * (language_convolution + language_ffn + 2 * ld)
+    )
     language_params = embeddings + language_blocks + ld
 
     connector = student["connector"]
@@ -138,6 +164,41 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("student.language.width must be divisible by attention_heads")
     if int(language["attention_heads"]) % int(language["kv_heads"]):
         errors.append("student.language.attention_heads must be divisible by kv_heads")
+    full_attention_layers = language.get("full_attention_layers")
+    if full_attention_layers is not None:
+        if not isinstance(full_attention_layers, list):
+            errors.append(
+                "student.language.full_attention_layers must be null or a list"
+            )
+        else:
+            if not all(
+                type(index) is int
+                for index in full_attention_layers
+            ):
+                indices = []
+                errors.append(
+                    "student.language.full_attention_layers must contain integers"
+                )
+            else:
+                indices = list(full_attention_layers)
+            if not indices:
+                errors.append(
+                    "student.language requires at least one full attention layer"
+                )
+            if len(set(indices)) != len(indices) or indices != sorted(indices):
+                errors.append(
+                    "student.language.full_attention_layers must be unique and sorted"
+                )
+            if any(index < 0 or index >= int(language["layers"]) for index in indices):
+                errors.append(
+                    "student.language.full_attention_layers contains an out-of-range index"
+                )
+    if int(language.get("conv_kernel_size", 3)) < 2:
+        errors.append(
+            "student.language.conv_kernel_size must be at least two"
+        )
+    if not isinstance(language.get("conv_bias", False), bool):
+        errors.append("student.language.conv_bias must be a boolean")
     if int(connector["output_width"]) % int(connector["attention_heads"]):
         errors.append("student.connector.output_width must be divisible by attention_heads")
     if int(connector["input_width"]) != int(vision["width"]):

@@ -50,6 +50,55 @@ def test_gqa_kv_cache_uses_only_configured_kv_heads():
         )
 
 
+def test_hybrid_cache_and_flops_follow_the_mixer_pattern():
+    from dataclasses import replace
+
+    dense = StudentConfig.tiny()
+    hybrid = replace(
+        dense,
+        language=replace(
+            dense.language,
+            full_attention_layers=(1,),
+            conv_kernel_size=3,
+        ),
+    )
+    sequence_tokens = 17
+    batch_size = 3
+    head_dim = (
+        hybrid.language.width
+        // hybrid.language.attention_heads
+    )
+    expected_cache = (
+        2
+        * batch_size
+        * hybrid.language.kv_heads
+        * sequence_tokens
+        * head_dim
+        * 2
+        + batch_size
+        * hybrid.language.width
+        * (hybrid.language.conv_kernel_size - 1)
+        * 2
+    )
+
+    assert estimate_language_kv_cache_bytes(
+        hybrid,
+        sequence_tokens=sequence_tokens,
+        batch_size=batch_size,
+    ) == expected_cache
+    dense_forward = estimate_forward_flops(
+        dense,
+        text_tokens=64,
+        vision_tokens=16,
+    )
+    hybrid_forward = estimate_forward_flops(
+        hybrid,
+        text_tokens=64,
+        vision_tokens=16,
+    )
+    assert dense_forward.language != hybrid_forward.language
+
+
 def test_forward_flops_increase_with_resolution_and_visual_latents():
     config = StudentConfig.tiny()
     low_resolution = estimate_forward_flops(

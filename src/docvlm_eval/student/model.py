@@ -936,13 +936,148 @@ class GroupedQueryAttention(nn.Module):
         )
 
 
-class DecoderBlock(nn.Module):
+class GatedShortConvolution(nn.Module):
+    """LFM-style gated causal depthwise convolution."""
+
     def __init__(self, config: LanguageConfig):
         super().__init__()
+        self.width = config.width
+        self.kernel_size = config.conv_kernel_size
+        self.in_proj = nn.Linear(
+            config.width,
+            3 * config.width,
+            bias=config.conv_bias,
+        )
+        self.conv = nn.Conv1d(
+            config.width,
+            config.width,
+            self.kernel_size,
+            groups=config.width,
+            bias=config.conv_bias,
+            padding=self.kernel_size - 1,
+        )
+        self.out_proj = nn.Linear(
+            config.width,
+            config.width,
+            bias=config.conv_bias,
+        )
+
+    def _project(
+        self,
+        x: torch.Tensor,
+        token_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if token_mask is not None:
+            if token_mask.shape != x.shape[:2]:
+                raise ValueError(
+                    "short-convolution token mask must match hidden states"
+                )
+            x = x * token_mask[:, :, None].to(x.dtype)
+        gate_in, gate_out, value = self.in_proj(x).chunk(3, dim=-1)
+        return gate_out, gate_in * value
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        token_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        gate, mixed = self._project(x, token_mask)
+        length = x.shape[1]
+        convolved = self.conv(mixed.transpose(1, 2))[..., :length]
+        return self.out_proj(
+            gate * convolved.transpose(1, 2).contiguous()
+        )
+
+    def prefill(
+        self,
+        x: torch.Tensor,
+        token_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        gate, mixed = self._project(x, token_mask)
+        length = x.shape[1]
+        mixed_channels = mixed.transpose(1, 2)
+        convolved = self.conv(mixed_channels)[..., :length]
+        history = F.pad(
+            mixed_channels,
+            (max(self.kernel_size - 1 - length, 0), 0),
+        )[..., -(self.kernel_size - 1) :].contiguous()
+        output = self.out_proj(
+            gate * convolved.transpose(1, 2).contiguous()
+        )
+        return output, history
+
+    def decode(
+        self,
+        x: torch.Tensor,
+        state: torch.Tensor,
+        token_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if x.shape[1] != 1:
+            raise ValueError(
+                "cached short-convolution decode requires one token"
+            )
+        expected = (x.shape[0], self.width, self.kernel_size - 1)
+        if state.shape != expected:
+            raise ValueError("invalid short-convolution cache state")
+        gate, mixed = self._project(x, token_mask)
+        current = mixed.transpose(1, 2)
+        window = torch.cat((state, current), dim=-1)
+        weight = self.conv.weight[:, 0, :][None]
+        convolved = (window * weight).sum(dim=-1, keepdim=True)
+        if self.conv.bias is not None:
+            convolved = convolved + self.conv.bias[None, :, None]
+        state.copy_(window[..., 1:])
+        return self.out_proj(
+            gate * convolved.transpose(1, 2).contiguous()
+        )
+
+
+@dataclass(frozen=True)
+class AttentionLayerCache:
+    key: torch.Tensor
+    value: torch.Tensor
+
+    @property
+    def tensor_bytes(self) -> int:
+        return sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (self.key, self.value)
+        )
+
+
+@dataclass(frozen=True)
+class ShortConvLayerCache:
+    state: torch.Tensor
+
+    @property
+    def tensor_bytes(self) -> int:
+        return self.state.numel() * self.state.element_size()
+
+
+LanguageLayerCache = AttentionLayerCache | ShortConvLayerCache
+
+
+class DecoderBlock(nn.Module):
+    def __init__(
+        self,
+        config: LanguageConfig,
+        layer_type: str,
+    ):
+        super().__init__()
+        if layer_type not in {"attention", "short_conv"}:
+            raise ValueError(f"unsupported language layer type {layer_type!r}")
+        self.layer_type = layer_type
         self.norm1 = RMSNorm(config.width)
-        self.attn = GroupedQueryAttention(config)
+        if self.is_attention:
+            self.attn = GroupedQueryAttention(config)
+        else:
+            self.conv = GatedShortConvolution(config)
         self.norm2 = RMSNorm(config.width)
         self.mlp = SwiGLU(config.width, config.mlp_width)
+
+    @property
+    def is_attention(self) -> bool:
+        return self.layer_type == "attention"
 
     def forward(
         self,
@@ -951,8 +1086,21 @@ class DecoderBlock(nn.Module):
         is_causal: bool,
         cos: torch.Tensor,
         sin: torch.Tensor,
+        token_mask: torch.Tensor | None,
     ) -> torch.Tensor:
-        x = x + self.attn(self.norm1(x), attention_bias, is_causal, cos, sin)
+        normalized = self.norm1(x)
+        mixed = (
+            self.attn(
+                normalized,
+                attention_bias,
+                is_causal,
+                cos,
+                sin,
+            )
+            if self.is_attention
+            else self.conv(normalized, token_mask)
+        )
+        x = x + mixed
         return x + self.mlp(self.norm2(x))
 
     def forward_cached(
@@ -962,19 +1110,26 @@ class DecoderBlock(nn.Module):
         is_causal: bool,
         cos: torch.Tensor,
         sin: torch.Tensor,
-        past_key_value: tuple[torch.Tensor, torch.Tensor] | None,
-    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        attention, present = self.attn(
-            self.norm1(x),
-            attention_bias,
-            is_causal,
-            cos,
-            sin,
-            past_key_value=past_key_value,
-            use_cache=True,
-        )
-        x = x + attention
-        return x + self.mlp(self.norm2(x)), present
+        token_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, LanguageLayerCache]:
+        normalized = self.norm1(x)
+        if self.is_attention:
+            attention, present = self.attn(
+                normalized,
+                attention_bias,
+                is_causal,
+                cos,
+                sin,
+                use_cache=True,
+            )
+            key, value = present
+            mixed = attention
+            cache: LanguageLayerCache = AttentionLayerCache(key, value)
+        else:
+            mixed, state = self.conv.prefill(normalized, token_mask)
+            cache = ShortConvLayerCache(state)
+        x = x + mixed
+        return x + self.mlp(self.norm2(x)), cache
 
     def forward_static_cache(
         self,
@@ -982,39 +1137,48 @@ class DecoderBlock(nn.Module):
         attention_bias: torch.Tensor | None,
         cos: torch.Tensor,
         sin: torch.Tensor,
-        key_cache: torch.Tensor,
-        value_cache: torch.Tensor,
+        layer_cache: LanguageLayerCache,
         cache_position: int,
+        token_mask: torch.Tensor | None,
     ) -> torch.Tensor:
-        attention = self.attn.forward_static_cache(
-            self.norm1(x),
-            attention_bias,
-            cos,
-            sin,
-            key_cache,
-            value_cache,
-            cache_position,
-        )
-        x = x + attention
+        normalized = self.norm1(x)
+        if self.is_attention:
+            if not isinstance(layer_cache, AttentionLayerCache):
+                raise ValueError(
+                    "attention layer received a convolution cache"
+                )
+            mixed = self.attn.forward_static_cache(
+                normalized,
+                attention_bias,
+                cos,
+                sin,
+                layer_cache.key,
+                layer_cache.value,
+                cache_position,
+            )
+        else:
+            if not isinstance(layer_cache, ShortConvLayerCache):
+                raise ValueError(
+                    "short-convolution layer received an attention cache"
+                )
+            mixed = self.conv.decode(
+                normalized,
+                layer_cache.state,
+                token_mask,
+            )
+        x = x + mixed
         return x + self.mlp(self.norm2(x))
 
 
 @dataclass(frozen=True)
 class LanguageKVCache:
-    layers: tuple[tuple[torch.Tensor, torch.Tensor], ...]
+    layers: tuple[LanguageLayerCache, ...]
     sequence_length: int
-
-    @property
-    def capacity(self) -> int:
-        return int(self.layers[0][0].shape[2]) if self.layers else 0
+    capacity: int
 
     @property
     def tensor_bytes(self) -> int:
-        return sum(
-            tensor.numel() * tensor.element_size()
-            for pair in self.layers
-            for tensor in pair
-        )
+        return sum(layer.tensor_bytes for layer in self.layers)
 
 
 class LanguageDecoder(nn.Module):
@@ -1022,7 +1186,12 @@ class LanguageDecoder(nn.Module):
         super().__init__()
         self.config = config
         self.token_embedding = nn.Embedding(config.vocab_size, config.width)
-        self.blocks = nn.ModuleList([DecoderBlock(config) for _ in range(config.layers)])
+        self.blocks = nn.ModuleList(
+            [
+                DecoderBlock(config, layer_type)
+                for layer_type in config.layer_types
+            ]
+        )
         self.norm = RMSNorm(config.width)
         self.rotary = RotaryEmbedding(
             config.width // config.attention_heads,
@@ -1052,6 +1221,7 @@ class LanguageDecoder(nn.Module):
                     is_causal,
                     cos,
                     sin,
+                    attention_mask,
                 ),
                 x,
                 enabled=self.gradient_checkpointing and self.training,
@@ -1098,7 +1268,7 @@ class LanguageDecoder(nn.Module):
         *,
         max_cache_length: int | None = None,
     ) -> tuple[torch.Tensor, LanguageKVCache]:
-        """Run an inference prefill and retain compact GQA keys and values."""
+        """Prefill compact attention K/V and convolution recurrent state."""
 
         if torch.is_grad_enabled():
             raise RuntimeError("language KV cache is inference-only")
@@ -1116,7 +1286,7 @@ class LanguageDecoder(nn.Module):
         )
         if capacity < sequence_length:
             raise ValueError("language KV cache cannot be shorter than prefill")
-        present: list[tuple[torch.Tensor, torch.Tensor]] = []
+        present: list[LanguageLayerCache] = []
         for block in self.blocks:
             x, layer_cache = block.forward_cached(
                 x,
@@ -1124,29 +1294,39 @@ class LanguageDecoder(nn.Module):
                 is_causal,
                 cos,
                 sin,
-                None,
+                attention_mask,
             )
-            key, value = layer_cache
-            if capacity > sequence_length:
-                key_buffer = key.new_empty(
-                    key.shape[0],
-                    key.shape[1],
+            if (
+                isinstance(layer_cache, AttentionLayerCache)
+                and capacity > sequence_length
+            ):
+                key_buffer = layer_cache.key.new_empty(
+                    layer_cache.key.shape[0],
+                    layer_cache.key.shape[1],
                     capacity,
-                    key.shape[3],
+                    layer_cache.key.shape[3],
                 )
-                value_buffer = value.new_empty(
-                    value.shape[0],
-                    value.shape[1],
+                value_buffer = layer_cache.value.new_empty(
+                    layer_cache.value.shape[0],
+                    layer_cache.value.shape[1],
                     capacity,
-                    value.shape[3],
+                    layer_cache.value.shape[3],
                 )
-                key_buffer[:, :, :sequence_length].copy_(key)
-                value_buffer[:, :, :sequence_length].copy_(value)
-                layer_cache = (key_buffer, value_buffer)
+                key_buffer[:, :, :sequence_length].copy_(
+                    layer_cache.key
+                )
+                value_buffer[:, :, :sequence_length].copy_(
+                    layer_cache.value
+                )
+                layer_cache = AttentionLayerCache(
+                    key_buffer,
+                    value_buffer,
+                )
             present.append(layer_cache)
         return self.norm(x), LanguageKVCache(
             tuple(present),
             sequence_length=sequence_length,
+            capacity=capacity,
         )
 
     def decode(
@@ -1155,7 +1335,7 @@ class LanguageDecoder(nn.Module):
         cache: LanguageKVCache,
         attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, LanguageKVCache]:
-        """Decode one token against a prefilled language KV cache."""
+        """Decode one token against a prefilled hybrid language cache."""
 
         if torch.is_grad_enabled():
             raise RuntimeError("language KV cache is inference-only")
@@ -1190,20 +1370,30 @@ class LanguageDecoder(nn.Module):
         sin = sin[..., past_length:total_length, :]
         x = embeddings
         for block, layer_cache in zip(self.blocks, cache.layers):
-            if int(layer_cache[0].shape[2]) != cache.capacity:
-                raise ValueError("language KV cache capacities disagree")
+            if (
+                isinstance(layer_cache, AttentionLayerCache)
+                and int(layer_cache.key.shape[2]) != cache.capacity
+            ):
+                raise ValueError(
+                    "language attention-cache capacities disagree"
+                )
             x = block.forward_static_cache(
                 x,
                 attention_bias,
                 cos,
                 sin,
-                layer_cache[0],
-                layer_cache[1],
+                layer_cache,
                 past_length,
+                (
+                    attention_mask[:, -1:]
+                    if attention_mask is not None
+                    else None
+                ),
             )
         return self.norm(x), LanguageKVCache(
             cache.layers,
             sequence_length=total_length,
+            capacity=cache.capacity,
         )
 
 
@@ -1326,7 +1516,10 @@ class DocumentVLMStudent(nn.Module):
 
     @staticmethod
     def _init_weights(module: nn.Module) -> None:
-        if isinstance(module, (nn.Linear, nn.Embedding, nn.Conv2d)):
+        if isinstance(
+            module,
+            (nn.Linear, nn.Embedding, nn.Conv1d, nn.Conv2d),
+        ):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if getattr(module, "bias", None) is not None:
                 nn.init.zeros_(module.bias)

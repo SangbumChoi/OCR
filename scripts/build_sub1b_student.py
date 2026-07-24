@@ -35,7 +35,11 @@ def main() -> None:
     parser.add_argument("--vision-source", type=Path)
     parser.add_argument("--vision-family", default="student", choices=["student", "siglip"])
     parser.add_argument("--language-source", type=Path)
-    parser.add_argument("--language-family", default="student", choices=["student", "llama"])
+    parser.add_argument(
+        "--language-family",
+        default="student",
+        choices=["student", "llama", "lfm2"],
+    )
     parser.add_argument(
         "--token-map",
         type=Path,

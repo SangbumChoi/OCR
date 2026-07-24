@@ -74,15 +74,17 @@ def estimate_language_kv_cache_bytes(
     batch_size: int = 1,
     bytes_per_element: int = 2,
 ) -> int:
-    """Return compact GQA key/value storage for every decoder layer."""
+    """Return attention KV plus recurrent short-convolution state bytes."""
 
     if min(sequence_tokens, batch_size, bytes_per_element) <= 0:
         raise ValueError("KV-cache dimensions must be positive")
     head_dim = (
         config.language.width // config.language.attention_heads
     )
-    return (
-        config.language.layers
+    attention_layers = config.language.layer_types.count("attention")
+    convolution_layers = config.language.layers - attention_layers
+    attention_bytes = (
+        attention_layers
         * 2
         * batch_size
         * config.language.kv_heads
@@ -90,6 +92,14 @@ def estimate_language_kv_cache_bytes(
         * head_dim
         * bytes_per_element
     )
+    convolution_bytes = (
+        convolution_layers
+        * batch_size
+        * config.language.width
+        * (config.language.conv_kernel_size - 1)
+        * bytes_per_element
+    )
+    return attention_bytes + convolution_bytes
 
 
 def _vision_block_flops(
@@ -161,16 +171,27 @@ def _language_flops(
         language.kv_heads
         * (language.width // language.attention_heads)
     )
-    projections = (
+    attention_projections = (
         4 * sequence_tokens * width * width
         + 4 * sequence_tokens * width * kv_width
     )
     attention_products = (
         4 * sequence_tokens * sequence_tokens * width
     )
+    convolution = (
+        8 * sequence_tokens * width * width
+        + 2
+        * sequence_tokens
+        * width
+        * language.conv_kernel_size
+    )
     mlp = 6 * sequence_tokens * width * language.mlp_width
-    return batch_size * language.layers * (
-        projections + attention_products + mlp
+    attention_layers = language.layer_types.count("attention")
+    convolution_layers = language.layers - attention_layers
+    return batch_size * (
+        attention_layers
+        * (attention_projections + attention_products + mlp)
+        + convolution_layers * (convolution + mlp)
     )
 
 
@@ -187,11 +208,21 @@ def _language_decode_flops(
         language.kv_heads
         * (language.width // language.attention_heads)
     )
-    projections = 4 * width * width + 4 * width * kv_width
+    attention_projections = (
+        4 * width * width + 4 * width * kv_width
+    )
     attention_products = 4 * key_tokens * width
+    convolution = (
+        8 * width * width
+        + 2 * width * language.conv_kernel_size
+    )
     mlp = 6 * width * language.mlp_width
-    return batch_size * language.layers * (
-        projections + attention_products + mlp
+    attention_layers = language.layer_types.count("attention")
+    convolution_layers = language.layers - attention_layers
+    return batch_size * (
+        attention_layers
+        * (attention_projections + attention_products + mlp)
+        + convolution_layers * (convolution + mlp)
     )
 
 

@@ -257,7 +257,10 @@ def test_language_kv_cache_matches_full_prefix_logits():
     from docvlm_eval.student.compute import (
         estimate_language_kv_cache_bytes,
     )
-    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.model import (
+        AttentionLayerCache,
+        DocumentVLMStudent,
+    )
 
     torch.manual_seed(17)
     config = StudentConfig.tiny()
@@ -282,10 +285,14 @@ def test_language_kv_cache_matches_full_prefix_logits():
     assert state.cache.sequence_length == (
         config.connector.latent_tokens + input_ids.shape[1]
     )
-    for key, value in state.cache.layers:
-        assert key.shape == value.shape
-        assert key.shape[:2] == (2, config.language.kv_heads)
-        assert key.shape[2] == state.cache.capacity
+    for layer_cache in state.cache.layers:
+        assert isinstance(layer_cache, AttentionLayerCache)
+        assert layer_cache.key.shape == layer_cache.value.shape
+        assert layer_cache.key.shape[:2] == (
+            2,
+            config.language.kv_heads,
+        )
+        assert layer_cache.key.shape[2] == state.cache.capacity
     assert state.cache.tensor_bytes == estimate_language_kv_cache_bytes(
         config,
         sequence_tokens=state.cache.capacity,
@@ -293,8 +300,8 @@ def test_language_kv_cache_matches_full_prefix_logits():
         bytes_per_element=4,
     )
     cache_pointers = [
-        (key.data_ptr(), value.data_ptr())
-        for key, value in state.cache.layers
+        (layer_cache.key.data_ptr(), layer_cache.value.data_ptr())
+        for layer_cache in state.cache.layers
     ]
 
     sequence = input_ids
@@ -311,11 +318,136 @@ def test_language_kv_cache_matches_full_prefix_logits():
         ).logits[:, -1].float()
         assert torch.allclose(cached, full, atol=1e-5, rtol=1e-5)
         assert [
-            (key.data_ptr(), value.data_ptr())
-            for key, value in state.cache.layers
+            (
+                layer_cache.key.data_ptr(),
+                layer_cache.value.data_ptr(),
+            )
+            for layer_cache in state.cache.layers
         ] == cache_pointers
     with pytest.raises(ValueError, match="capacity exceeded"):
         model.decode_generation(torch.tensor([[11], [12]]), state)
+
+
+def test_hybrid_language_cache_matches_full_prefix_and_backpropagates():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.compute import (
+        estimate_language_kv_cache_bytes,
+    )
+    from docvlm_eval.student.model import (
+        AttentionLayerCache,
+        DocumentVLMStudent,
+        ShortConvLayerCache,
+    )
+
+    torch.manual_seed(29)
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        language=replace(
+            base.language,
+            full_attention_layers=(1,),
+            conv_kernel_size=3,
+        ),
+    )
+    model = DocumentVLMStudent(config)
+    input_ids = torch.randint(0, config.language.vocab_size, (2, 5))
+    attention_mask = torch.ones_like(input_ids)
+    training = model(
+        input_ids,
+        attention_mask=attention_mask,
+        labels=input_ids,
+    )
+    assert training.loss is not None
+    expected_logits = training.logits.detach()
+    expected_loss = training.loss.detach()
+    training.loss.backward()
+    assert model.language.blocks[0].conv.conv.weight.grad is not None
+    model.zero_grad(set_to_none=True)
+    model.configure_gradient_checkpointing(
+        enabled=True,
+        components=("language",),
+        use_reentrant=False,
+    )
+    checkpointed = model(
+        input_ids,
+        attention_mask=attention_mask,
+        labels=input_ids,
+    )
+    assert checkpointed.loss is not None
+    assert torch.equal(checkpointed.logits, expected_logits)
+    assert torch.equal(checkpointed.loss, expected_loss)
+    checkpointed.loss.backward()
+    assert model.language.blocks[0].conv.conv.weight.grad is not None
+
+    model.eval()
+    with torch.no_grad():
+        eval_mask = attention_mask.clone()
+        eval_mask[1, :2] = 0
+        full = model(
+            input_ids,
+            attention_mask=eval_mask,
+        ).logits[:, -1].float()
+        cached, state = model.prefill_generation(
+            input_ids,
+            attention_mask=eval_mask,
+            max_new_tokens=3,
+        )
+        assert torch.allclose(cached, full, atol=1e-5, rtol=1e-5)
+        assert isinstance(state.cache.layers[0], ShortConvLayerCache)
+        assert isinstance(state.cache.layers[1], AttentionLayerCache)
+        conv_state = state.cache.layers[0].state
+        assert conv_state.shape == (
+            2,
+            config.language.width,
+            config.language.conv_kernel_size - 1,
+        )
+        assert state.cache.tensor_bytes == estimate_language_kv_cache_bytes(
+            config,
+            sequence_tokens=state.cache.capacity,
+            batch_size=2,
+            bytes_per_element=4,
+        )
+        cache_pointers = (
+            conv_state.data_ptr(),
+            state.cache.layers[1].key.data_ptr(),
+            state.cache.layers[1].value.data_ptr(),
+        )
+        sequence = input_ids
+        sequence_mask = eval_mask
+        for token in (
+            torch.tensor([[13], [14]]),
+            torch.tensor([[15], [16]]),
+        ):
+            sequence = torch.cat((sequence, token), dim=1)
+            sequence_mask = torch.cat(
+                (
+                    sequence_mask,
+                    torch.ones(
+                        sequence_mask.shape[0],
+                        1,
+                        dtype=sequence_mask.dtype,
+                    ),
+                ),
+                dim=1,
+            )
+            cached, state = model.decode_generation(token, state)
+            full = model(
+                sequence,
+                attention_mask=sequence_mask,
+            ).logits[:, -1].float()
+            assert torch.allclose(
+                cached,
+                full,
+                atol=1e-5,
+                rtol=1e-5,
+            )
+            assert (
+                state.cache.layers[0].state.data_ptr(),
+                state.cache.layers[1].key.data_ptr(),
+                state.cache.layers[1].value.data_ptr(),
+            ) == cache_pointers
 
 
 def test_cached_generation_matches_uncached_and_decodes_one_token(monkeypatch):
@@ -495,6 +627,56 @@ def test_full_meta_model_matches_the_blueprint_estimator():
     assert actual["total"] < 1_000_000_000
 
 
+def test_hybrid_meta_model_matches_the_blueprint_estimator():
+    import torch
+
+    from docvlm_eval.architecture import estimate_parameters, load_blueprint
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import (
+        DocumentVLMStudent,
+        count_unique_parameters,
+    )
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    blueprint["student"]["language"]["full_attention_layers"] = [
+        2,
+        5,
+        8,
+        11,
+        14,
+        17,
+        20,
+        22,
+    ]
+    with torch.device("meta"):
+        model = DocumentVLMStudent(
+            StudentConfig.from_blueprint(blueprint)
+        )
+
+    actual = count_unique_parameters(model)
+    estimated = estimate_parameters(blueprint)
+    assert actual == estimated
+    assert 800_000_000 < actual["total"] < 1_000_000_000
+
+
+def test_student_config_preserves_invalid_mixer_indices_for_validation():
+    from docvlm_eval.architecture import load_blueprint
+    from docvlm_eval.student.config import StudentConfig
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    blueprint["student"]["language"]["full_attention_layers"] = [
+        1.5,
+    ]
+
+    config = StudentConfig.from_blueprint(blueprint)
+
+    assert config.language.full_attention_layers == (1.5,)
+    assert any(
+        "must contain integers" in error
+        for error in config.validate()
+    )
+
+
 def test_selective_transfer_depth_maps_exact_shape_blocks_only():
     import torch
 
@@ -528,6 +710,67 @@ def test_selective_transfer_depth_maps_exact_shape_blocks_only():
     assert torch.all(student.language.blocks[1].attn.q_proj.weight == 4)
     assert "language.blocks.1.attn.q_proj.weight" in report.copied_keys
     assert report.copied_parameters > 0
+
+
+def test_lfm2_hybrid_transfer_maps_attention_convolution_and_mlp():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        language=replace(
+            base.language,
+            full_attention_layers=(1,),
+        ),
+    )
+    student = DocumentVLMStudent(config)
+    target = student.state_dict()
+    source = {
+        "model.layers.0.conv.in_proj.weight": torch.full_like(
+            target["language.blocks.0.conv.in_proj.weight"],
+            1.0,
+        ),
+        "model.layers.0.feed_forward.w1.weight": torch.full_like(
+            target["language.blocks.0.mlp.gate_proj.weight"],
+            2.0,
+        ),
+        "model.language_model.layers.1.self_attn.out_proj.weight": torch.full_like(
+            target["language.blocks.1.attn.o_proj.weight"],
+            3.0,
+        ),
+        "model.layers.1.operator_norm.weight": torch.full_like(
+            target["language.blocks.1.norm1.weight"],
+            4.0,
+        ),
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        family="lfm2",
+    )
+
+    assert torch.all(
+        student.language.blocks[0].conv.in_proj.weight == 1
+    )
+    assert torch.all(
+        student.language.blocks[0].mlp.gate_proj.weight == 2
+    )
+    assert torch.all(
+        student.language.blocks[1].attn.o_proj.weight == 3
+    )
+    assert torch.all(student.language.blocks[1].norm1.weight == 4)
+    assert {
+        "language.blocks.0.conv.in_proj.weight",
+        "language.blocks.0.mlp.gate_proj.weight",
+        "language.blocks.1.attn.o_proj.weight",
+        "language.blocks.1.norm1.weight",
+    } <= set(report.copied_keys)
 
 
 def test_selective_transfer_reports_shape_mismatch_without_cropping():

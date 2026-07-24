@@ -23,8 +23,8 @@ The sources span **58 organizations**, **2014-2025**, and expose **220 distinct 
    and a fixed visual-token budget. Compare full SigLIP2 transfer with partial and random arms.
 2. **Alignment:** a small Perceiver-like gated resampler; sweep latent-token count against
    small-text OCR, cross-region reasoning, latency, and memory.
-3. **Decoder:** RMSNorm, SwiGLU, RoPE, and grouped-query attention; ablate a Griffin-style
-   recurrent/attention hybrid only after the attention baseline is stable.
+3. **Decoder:** RMSNorm, SwiGLU, RoPE, and grouped-query attention as the stable control;
+   ablate LFM-style gated short convolution at alternating and sparse attention ratios.
 4. **Initialization:** alternating-layer and structured-pruning transfer controls plus logit,
    hidden-state, and attention-relation distillation. Incompatible widths use distillation,
    never silent tensor surgery.

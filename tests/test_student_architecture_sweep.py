@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from docvlm_eval.student.architecture_sweep import (
@@ -31,6 +32,28 @@ def _compile(tmp_path: Path):
         repo_root=ROOT,
         python=sys.executable,
         compile_root=tmp_path / "compiled",
+    )
+
+
+def _compile_mixer(tmp_path: Path):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_language_mixer_compute_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "mixer-output")
+    config = tmp_path / "language-mixer-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+    return compile_architecture_sweep(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "mixer-compiled",
     )
 
 
@@ -93,6 +116,82 @@ def test_architecture_sweep_profiles_have_expected_compute_order(tmp_path):
         profiles["r896_l64"].compute["training_flops_per_sample"]
         > profiles["r896_l32"].compute["training_flops_per_sample"]
     )
+
+
+def test_language_mixer_sweep_compiles_hybrid_profiles(tmp_path):
+    plan = _compile_mixer(tmp_path)
+    profiles = {profile.id: profile for profile in plan.profiles}
+
+    assert plan.baseline == "all_attention"
+    assert len(plan.profiles) == 4
+    assert len(plan.sweep.variants) == 12
+    assert profiles["all_attention"].blueprint_patches == ()
+    assert (
+        profiles["lfm_ratio_k3"].compute["parameter_counts"]["total"]
+        < 1_000_000_000
+    )
+    assert (
+        profiles["lfm_ratio_k3"].compute[
+            "training_flops_per_sample"
+        ]
+        != profiles["all_attention"].compute[
+            "training_flops_per_sample"
+        ]
+    )
+    for variant in plan.sweep.variants:
+        layer_indices = variant.plan.resolved_blueprint["student"][
+            "language"
+        ]["full_attention_layers"]
+        if variant.id.startswith("all_attention"):
+            assert layer_indices is None
+        elif variant.id.startswith("alternating_k3"):
+            assert len(layer_indices) == 12
+        else:
+            assert len(layer_indices) == 8
+        assert (
+            variant.plan.resolved_blueprint["training"]["pretraining"][
+                "optimizer"
+            ]["total_student_flops"]
+            == plan.budgets.pretrain
+        )
+        assert "architecture-profile:" in " ".join(
+            variant.plan.raw_spec["evaluation"]["wandb_tags"]
+        )
+
+
+def test_architecture_profile_patches_cannot_override_compute_contract(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_language_mixer_compute_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["profiles"][1]["blueprint_patches"] = [
+        {
+            "op": "replace",
+            "path": (
+                "/training/pretraining/optimizer/"
+                "total_student_flops"
+            ),
+            "value": 1,
+        }
+    ]
+    config = tmp_path / "invalid-profile-patch.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must target /student"):
+        compile_architecture_sweep(
+            config,
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "invalid-compiled",
+        )
 
 
 def test_compute_budget_report_rejects_excessive_overshoot(tmp_path):

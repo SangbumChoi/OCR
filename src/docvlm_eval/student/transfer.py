@@ -1,4 +1,4 @@
-"""Auditable selective transfer for same-shape student, SigLIP, and Llama checkpoints."""
+"""Auditable selective transfer for compatible native and Hugging Face checkpoints."""
 
 from __future__ import annotations
 
@@ -33,9 +33,11 @@ def canonicalize_source_state(
     source: Mapping[str, torch.Tensor],
     family: str = "student",
 ) -> dict[str, torch.Tensor]:
-    """Map common HF SigLIP/Llama state names into the native student's semantic names."""
-    if family not in {"student", "siglip", "llama"}:
-        raise ValueError("source family must be student, siglip, or llama")
+    """Map supported source state names into native student semantic names."""
+    if family not in {"student", "siglip", "llama", "lfm2"}:
+        raise ValueError(
+            "source family must be student, siglip, llama, or lfm2"
+        )
     out: dict[str, torch.Tensor] = {}
     for original, tensor in source.items():
         key = original.removeprefix("module.")
@@ -86,6 +88,48 @@ def canonicalize_source_state(
             )
             key = re.sub(
                 r"^(?:model\.)?(?:language_model\.)?lm_head\.",
+                "lm_head.",
+                key,
+            )
+        elif family == "lfm2":
+            key = re.sub(
+                r"^(?:model\.)?language_model\.",
+                "",
+                key,
+            )
+            key = re.sub(
+                r"^(?:model\.)?embed_tokens\.",
+                "language.token_embedding.",
+                key,
+            )
+            key = re.sub(
+                r"^(?:model\.)?layers\.(\d+)\.",
+                r"language.blocks.\1.",
+                key,
+            )
+            key = key.replace(".self_attn.", ".attn.")
+            key = key.replace(".attn.out_proj.", ".attn.o_proj.")
+            key = key.replace(".operator_norm.", ".norm1.")
+            key = key.replace(".ffn_norm.", ".norm2.")
+            key = key.replace(
+                ".feed_forward.w1.",
+                ".mlp.gate_proj.",
+            )
+            key = key.replace(
+                ".feed_forward.w3.",
+                ".mlp.up_proj.",
+            )
+            key = key.replace(
+                ".feed_forward.w2.",
+                ".mlp.down_proj.",
+            )
+            key = re.sub(
+                r"^(?:model\.)?embedding_norm\.",
+                "language.norm.",
+                key,
+            )
+            key = re.sub(
+                r"^(?:model\.)?lm_head\.",
                 "lm_head.",
                 key,
             )

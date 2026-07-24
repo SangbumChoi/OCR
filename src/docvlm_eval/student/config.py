@@ -31,6 +31,19 @@ class LanguageConfig:
     tied_embeddings: bool = True
     rope_base: float = 10_000.0
     dropout: float = 0.0
+    full_attention_layers: tuple[int, ...] | None = None
+    conv_kernel_size: int = 3
+    conv_bias: bool = False
+
+    @property
+    def layer_types(self) -> tuple[str, ...]:
+        if self.full_attention_layers is None:
+            return ("attention",) * self.layers
+        attention = set(self.full_attention_layers)
+        return tuple(
+            "attention" if index in attention else "short_conv"
+            for index in range(self.layers)
+        )
 
 
 @dataclass(frozen=True)
@@ -66,6 +79,10 @@ class StudentConfig:
         student = blueprint["student"]
         vision = {k: v for k, v in student["vision"].items() if k != "family"}
         language = {k: v for k, v in student["language"].items() if k != "family"}
+        if language.get("full_attention_layers") is not None:
+            language["full_attention_layers"] = tuple(
+                language["full_attention_layers"]
+            )
         connector = {k: v for k, v in student["connector"].items() if k != "family"}
         return cls(
             vision=VisionConfig(**vision),
@@ -110,9 +127,14 @@ class StudentConfig:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "StudentConfig":
+        language = dict(raw["language"])
+        if language.get("full_attention_layers") is not None:
+            language["full_attention_layers"] = tuple(
+                language["full_attention_layers"]
+            )
         return cls(
             vision=VisionConfig(**raw["vision"]),
-            language=LanguageConfig(**raw["language"]),
+            language=LanguageConfig(**language),
             connector=ConnectorConfig(**raw["connector"]),
             task_heads=TaskHeadConfig(**raw["task_heads"]),
             ignore_index=int(raw.get("ignore_index", -100)),
@@ -126,6 +148,37 @@ class StudentConfig:
             errors.append("language width must be divisible by language attention heads")
         if self.language.attention_heads % self.language.kv_heads:
             errors.append("language attention heads must be divisible by KV heads")
+        attention_layers = self.language.full_attention_layers
+        if attention_layers is not None:
+            valid_indices = all(
+                type(index) is int for index in attention_layers
+            )
+            if not valid_indices:
+                errors.append(
+                    "language full attention layers must contain integers"
+                )
+            elif (
+                len(set(attention_layers)) != len(attention_layers)
+                or tuple(sorted(attention_layers)) != attention_layers
+            ):
+                errors.append(
+                    "language full attention layers must be unique and sorted"
+                )
+            if not attention_layers:
+                errors.append(
+                    "language requires at least one full attention layer"
+                )
+            if valid_indices and any(
+                index < 0 or index >= self.language.layers
+                for index in attention_layers
+            ):
+                errors.append(
+                    "language full attention layer index is out of range"
+                )
+        if self.language.conv_kernel_size < 2:
+            errors.append("language convolution kernel size must be at least two")
+        if not isinstance(self.language.conv_bias, bool):
+            errors.append("language convolution bias must be boolean")
         if self.connector.output_width % self.connector.attention_heads:
             errors.append("connector output width must be divisible by connector attention heads")
         if self.connector.input_width != self.vision.width:

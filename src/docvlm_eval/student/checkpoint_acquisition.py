@@ -16,6 +16,7 @@ _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _FAMILY_MODEL_TYPES = {
     "siglip": {"siglip"},
     "llama": {"llama", "mistral", "qwen2", "qwen3"},
+    "lfm2": {"lfm2", "lfm2_vl"},
     "student": {"docvlm_student"},
 }
 _DEFAULT_ALLOW_PATTERNS = (
@@ -82,7 +83,7 @@ class HubCheckpointSpec:
             )
         if self.family not in _FAMILY_MODEL_TYPES:
             raise ValueError(
-                "checkpoint family must be student, siglip, or llama"
+                "checkpoint family must be student, siglip, llama, or lfm2"
             )
         if not self.allow_patterns:
             raise ValueError("checkpoint allow_patterns cannot be empty")
