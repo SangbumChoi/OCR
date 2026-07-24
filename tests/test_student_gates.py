@@ -141,11 +141,15 @@ def _visual_report(
     device_type="cuda",
     resolved_backend="flex",
     speedup=1.2,
+    min_speedup=1.1,
     memory_ratio=0.95,
     numerical_delta=0.01,
     dense_speedup=1.15,
+    dense_min_speedup=1.05,
     dense_memory_ratio=0.9,
     measured_iterations=10,
+    rounds=3,
+    schema_version=2,
 ):
     from docvlm_eval.student.config import (
         StudentConfig,
@@ -154,7 +158,7 @@ def _visual_report(
 
     student = StudentConfig.from_blueprint(_blueprint())
     return {
-        "schema_version": 1,
+        "schema_version": schema_version,
         "scope": "student_vision_tower_and_gated_resampler",
         "student_config_fingerprint": student_config_fingerprint(student),
         "student_config": student.to_dict(),
@@ -162,6 +166,7 @@ def _visual_report(
             "mode": "training",
             "warmup_iterations": 3,
             "measured_iterations": measured_iterations,
+            "rounds": rounds,
         },
         "resolved_precision": "bfloat16",
         "environment": {
@@ -185,10 +190,15 @@ def _visual_report(
                 "requested_backend": "auto",
                 "resolved_backend": resolved_backend,
                 "median_ms": 100.0,
+                "rounds": rounds,
+                "paired_rounds_vs_loop": rounds,
+                "paired_rounds_vs_dense_adaptive": rounds,
                 "median_speedup_vs_loop": speedup,
+                "min_speedup_vs_loop": min_speedup,
                 "peak_memory_ratio_vs_loop": memory_ratio,
                 "max_abs_delta_vs_loop": numerical_delta,
                 "median_speedup_vs_dense_adaptive": dense_speedup,
+                "min_speedup_vs_dense_adaptive": dense_min_speedup,
                 "peak_memory_ratio_vs_dense_adaptive": dense_memory_ratio,
             },
             {
@@ -315,6 +325,27 @@ def test_visual_efficiency_gate_requires_target_gpu_and_measurement_dose():
         {"heldout": []},
         visual_backend_report=_visual_report(measured_iterations=2),
     )
+    few_rounds = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(rounds=1),
+    )
+    legacy = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(schema_version=1),
+    )
+    malformed = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(schema_version="legacy"),
+    )
 
     cpu_gate = next(
         gate for gate in cpu["gates"] if gate["id"] == "visual_efficiency"
@@ -322,8 +353,24 @@ def test_visual_efficiency_gate_requires_target_gpu_and_measurement_dose():
     short_gate = next(
         gate for gate in short["gates"] if gate["id"] == "visual_efficiency"
     )
+    few_rounds_gate = next(
+        gate
+        for gate in few_rounds["gates"]
+        if gate["id"] == "visual_efficiency"
+    )
+    legacy_gate = next(
+        gate for gate in legacy["gates"] if gate["id"] == "visual_efficiency"
+    )
+    malformed_gate = next(
+        gate
+        for gate in malformed["gates"]
+        if gate["id"] == "visual_efficiency"
+    )
     assert cpu_gate["status"] == "insufficient_evidence"
     assert short_gate["status"] == "insufficient_evidence"
+    assert few_rounds_gate["status"] == "insufficient_evidence"
+    assert legacy_gate["status"] == "insufficient_evidence"
+    assert malformed_gate["status"] == "insufficient_evidence"
 
 
 def test_visual_efficiency_gate_rejects_dense_control_regression():
@@ -347,6 +394,30 @@ def test_visual_efficiency_gate_rejects_dense_control_regression():
     assert gate["evidence"]["violations"] == [
         "dense_adaptive_speedup",
         "dense_adaptive_peak_memory",
+    ]
+
+
+def test_visual_efficiency_gate_rejects_any_regressive_round():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(
+            min_speedup=0.99,
+            dense_min_speedup=0.98,
+        ),
+    )
+
+    gate = next(
+        gate for gate in report["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert gate["status"] == "fail"
+    assert gate["evidence"]["violations"] == [
+        "round_speedup",
+        "dense_adaptive_round_speedup",
     ]
 
 

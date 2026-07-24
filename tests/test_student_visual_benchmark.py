@@ -19,6 +19,7 @@ def _run(**overrides):
         "backends": ("loop", "auto", "flex"),
         "warmup_iterations": 0,
         "measured_iterations": 1,
+        "rounds": 1,
         "mode": "forward",
         "precision": "float32",
         "device": "cpu",
@@ -35,6 +36,7 @@ def test_cpu_benchmark_records_fallback_and_explicit_flex_error():
     report = _run()
 
     assert report["scope"] == "student_vision_tower_and_gated_resampler"
+    assert report["schema_version"] == 2
     assert report["language_decoder_included"] is False
     assert report["visual_tokens"] == 8
     assert report["batch_size"] == 2
@@ -47,7 +49,10 @@ def test_cpu_benchmark_records_fallback_and_explicit_flex_error():
     assert records["auto"]["resolved_backend"] == "loop"
     assert records["auto"]["max_abs_delta_vs_loop"] == pytest.approx(0.0)
     assert records["flex"]["status"] == "error"
-    assert records["flex"]["error_type"] == "RuntimeError"
+    assert records["flex"]["error_type"] == "BenchmarkRoundError"
+    assert records["flex"]["trial_errors"][0]["error_type"] == "RuntimeError"
+    assert len(report["execution_orders"]) == 1
+    assert len(report["trials"]) == 3
     assert report["gates"] == {
         "require_flex": False,
         "flex_resolved": False,
@@ -79,6 +84,28 @@ def test_training_mode_measures_forward_and_backward():
     assert record["status"] == "ok"
     assert record["median_ms"] > 0
     assert record["tokens_per_second"] > 0
+
+
+def test_rounds_randomize_order_and_aggregate_paired_measurements():
+    report = _run(
+        backends=("loop", "auto"),
+        rounds=3,
+    )
+
+    assert len(report["execution_orders"]) == 3
+    assert all(
+        sorted(order) == ["auto", "loop"]
+        for order in report["execution_orders"]
+    )
+    assert len({tuple(order) for order in report["execution_orders"]}) > 1
+    assert len(report["trials"]) == 6
+    records = {
+        record["requested_backend"]: record for record in report["results"]
+    }
+    assert records["auto"]["rounds"] == 3
+    assert records["auto"]["paired_rounds_vs_loop"] == 3
+    assert len(records["auto"]["speedup_samples_vs_loop"]) == 3
+    assert records["auto"]["min_speedup_vs_loop"] > 0
 
 
 def test_dense_policies_share_patch_content_and_match_packed_output():

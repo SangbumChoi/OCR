@@ -71,6 +71,7 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
     payload: dict[str, Any] = {
         "visual_benchmark/visual_tokens": report["visual_tokens"],
         "visual_benchmark/batch_size": report["batch_size"],
+        "visual_benchmark/rounds": report["benchmark_config"]["rounds"],
     }
     for record in report["results"]:
         backend = record["requested_backend"]
@@ -85,11 +86,14 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
             "tokens_per_second",
             "max_abs_delta_vs_loop",
             "median_speedup_vs_loop",
+            "min_speedup_vs_loop",
             "peak_memory_ratio_vs_loop",
             "peak_memory_reduction_fraction_vs_loop",
             "median_speedup_vs_dense_adaptive",
+            "min_speedup_vs_dense_adaptive",
             "peak_memory_ratio_vs_dense_adaptive",
             "peak_memory_reduction_fraction_vs_dense_adaptive",
+            "rounds",
             "peak_memory_allocated_bytes",
             "peak_memory_reserved_bytes",
             "executed_visual_tokens",
@@ -144,6 +148,7 @@ def main() -> None:
     )
     parser.add_argument("--warmup-iterations", type=int, default=3)
     parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--mode", choices=["forward", "training"], default="training")
     parser.add_argument(
         "--precision",
@@ -178,6 +183,7 @@ def main() -> None:
         backends=tuple(args.backends),
         warmup_iterations=args.warmup_iterations,
         measured_iterations=args.iterations,
+        rounds=args.rounds,
         mode=args.mode,
         precision=args.precision,
         device=args.device,

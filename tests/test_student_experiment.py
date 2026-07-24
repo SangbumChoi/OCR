@@ -108,6 +108,9 @@ def test_default_experiment_compiles_complete_stage_dag():
         "dense_fixed_square",
     )
     assert "--require-flex" not in visual_benchmark.command
+    assert visual_benchmark.command[
+        visual_benchmark.command.index("--rounds") + 1
+    ] == "3"
     assert visual_benchmark.artifacts[0].path.endswith(
         "artifacts/benchmarks/visual_backend.json"
     )
@@ -209,6 +212,7 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
             "require_flex needs auto or flex",
         ),
         ({"iterations": 0}, "iterations must be positive"),
+        ({"rounds": 0}, "rounds must be positive"),
         (
             {"sequence_lengths": [65]},
             "sequence_lengths exceed the resolved visual position grid",

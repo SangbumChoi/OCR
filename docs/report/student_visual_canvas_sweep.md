@@ -78,6 +78,7 @@ python scripts/benchmark_student_visual_backend.py \
   --precision bfloat16 \
   --warmup-iterations 3 \
   --iterations 10 \
+  --rounds 3 \
   --device cuda \
   --require-flex \
   --output outputs/visual_backend_a100_bf16.json \
@@ -86,11 +87,13 @@ python scripts/benchmark_student_visual_backend.py \
 ```
 
 Use `float16` on devices without BF16. `--require-flex` exits nonzero if either `auto` or explicit
-`flex` errors or resolves to `loop`, but writes the JSON and W&B evidence first. The report includes
-requested and resolved backends, median/p95 latency, visual-token throughput, allocated and
-reserved peak CUDA memory, output checksum, maximum absolute delta from `loop`, PyTorch/CUDA/device
-metadata, loop-relative speed and memory ratios, and a fingerprint of the complete student
-configuration.
+`flex` errors or resolves to `loop`, but writes the JSON and W&B evidence first. The schema-v2
+report includes requested and resolved backends, per-round and aggregate median/p95 latency,
+visual-token throughput, allocated and reserved peak CUDA memory, output checksum, maximum
+absolute delta from `loop`, PyTorch/CUDA/device metadata, paired speed and memory ratios, and a
+fingerprint of the complete student configuration. A seed-shuffled backend order is cyclically
+rotated across three rounds so one policy cannot always occupy the first or last measurement slot.
+Ratios pair candidate and control measurements from the same round.
 
 The two patch grids are a matched portrait/landscape pair. Every policy receives the same random
 patch content and canonical 64-by-64 position IDs. `dense_adaptive` pads both documents to the
@@ -102,6 +105,9 @@ Do not compare records across different sequence lengths, modes, precision, GPU 
 configuration fingerprints. Accept FlexAttention only when the gate passes, numerical delta is
 within the recorded tolerance, and it improves median latency without unacceptable memory growth
 against both packed `loop` and `dense_adaptive`.
+The gate requires paired median speedup of at least 1.05 against each control, no individual round
+below 1.0 speedup, and a worst paired peak-memory ratio no greater than 1.05. A one-off fast round
+therefore cannot approve the packed path.
 An `auto` record resolving to `loop` is valid fallback evidence, not FlexAttention performance.
 The end-to-end evaluator consumes this JSON as the `visual_efficiency` deployment gate; throughput
 is therefore part of the same final acceptance report as held-out quality, grounding, reasoning,

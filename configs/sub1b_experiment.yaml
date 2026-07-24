@@ -15,6 +15,7 @@ runtime:
     backends: [loop, auto, flex, dense_adaptive, dense_fixed_square]
     warmup_iterations: 3
     iterations: 10
+    rounds: 3
     mode: training
     precision: auto
     seed: 7

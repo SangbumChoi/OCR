@@ -84,13 +84,15 @@ falls back or fails. Keep it false when the portable loop backend is an accepted
 resolved fallback remains visible in the artifact and W&B.
 
 The final evaluator receives that artifact through `--visual-backend-benchmark`. The default
-`visual_efficiency` gate requires CUDA training-mode evidence over at least 4,096 visual tokens,
-batch size two, three warmup iterations, and ten measured iterations. The `auto` candidate must
-resolve to `flex`, be at least 1.05 times as fast as `loop` at median latency, stay within 1.05
-times loop peak allocated memory, and meet the same 1.05 speed and memory bounds against the
-matched `dense_adaptive` control. It must also remain within 0.02 maximum absolute output delta.
-A CPU report, short benchmark, or missing dense control is `insufficient_evidence`; a mismatched
-architecture, fallback, execution error, numerical violation, or runtime regression is `fail`.
+`visual_efficiency` gate requires schema-v2 CUDA training-mode evidence over at least 4,096 visual
+tokens, batch size two, three warmup iterations, ten measured iterations, and three order-rotated
+rounds. The `auto` candidate must resolve to `flex`, be at least 1.05 times as fast as `loop` at
+paired median latency, never fall below 1.0 in an individual round, and stay within 1.05
+worst-round loop peak allocated memory. The same speed and memory rules apply against the matched
+`dense_adaptive` control. It must also remain within 0.02 maximum absolute output delta. A CPU
+report, legacy or short benchmark, or missing dense control is `insufficient_evidence`; a
+mismatched architecture, fallback, execution error, numerical violation, or runtime regression
+is `fail`.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication

@@ -777,10 +777,12 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 "evaluation_gates.visual_efficiency.required_mode must be training"
             )
         for field in (
+            "min_benchmark_schema_version",
             "min_visual_tokens",
             "min_batch_size",
             "min_warmup_iterations",
             "min_measured_iterations",
+            "min_rounds",
         ):
             if int(efficiency.get(field, -1)) <= 0:
                 errors.append(
@@ -789,8 +791,10 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 )
         for field in (
             "min_median_speedup_vs_loop",
+            "min_round_speedup_vs_loop",
             "max_peak_memory_ratio_vs_loop",
             "min_median_speedup_vs_dense_adaptive",
+            "min_round_speedup_vs_dense_adaptive",
             "max_peak_memory_ratio_vs_dense_adaptive",
         ):
             if float(efficiency.get(field, 0)) <= 0:

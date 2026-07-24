@@ -306,12 +306,16 @@ evaluation_gates:
     required_resolved_backend: flex
     required_device_type: cuda
     required_mode: training
+    min_benchmark_schema_version: 2
     min_visual_tokens: 4096
     min_batch_size: 2
     min_warmup_iterations: 3
     min_measured_iterations: 10
+    min_rounds: 3
     min_median_speedup_vs_loop: 1.05
+    min_round_speedup_vs_loop: 1.0
     max_peak_memory_ratio_vs_loop: 1.05
     min_median_speedup_vs_dense_adaptive: 1.05
+    min_round_speedup_vs_dense_adaptive: 1.0
     max_peak_memory_ratio_vs_dense_adaptive: 1.05
     max_abs_delta_vs_loop: 0.02

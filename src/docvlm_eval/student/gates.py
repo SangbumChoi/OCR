@@ -462,8 +462,15 @@ def _visual_efficiency(
             "insufficient_evidence",
             "a target-device visual backend benchmark is required",
         )
+    minimum_schema_version = int(
+        gate.get("min_benchmark_schema_version", 2)
+    )
+    try:
+        reported_schema_version = int(report.get("schema_version", 0))
+    except (TypeError, ValueError):
+        reported_schema_version = 0
     if (
-        int(report.get("schema_version", 0)) != 1
+        reported_schema_version < minimum_schema_version
         or report.get("scope")
         != "student_vision_tower_and_gated_resampler"
     ):
@@ -586,7 +593,9 @@ def _visual_efficiency(
     minimum_batch = int(gate.get("min_batch_size", 1))
     minimum_warmup = int(gate.get("min_warmup_iterations", 0))
     minimum_iterations = int(gate.get("min_measured_iterations", 1))
+    minimum_rounds = int(gate.get("min_rounds", 1))
     evidence = {
+        "benchmark_schema_version": report.get("schema_version"),
         "device": environment.get("device"),
         "device_name": environment.get("device_name"),
         "torch": environment.get("torch"),
@@ -597,12 +606,21 @@ def _visual_efficiency(
         "batch_size": report.get("batch_size"),
         "warmup_iterations": benchmark_config.get("warmup_iterations"),
         "measured_iterations": benchmark_config.get("measured_iterations"),
+        "rounds": benchmark_config.get("rounds"),
+        "candidate_rounds": candidate.get("rounds"),
+        "paired_rounds_vs_loop": candidate.get(
+            "paired_rounds_vs_loop"
+        ),
+        "paired_rounds_vs_dense_adaptive": candidate.get(
+            "paired_rounds_vs_dense_adaptive"
+        ),
         "requested_backend": requested,
         "resolved_backend": candidate.get("resolved_backend"),
         "median_ms": candidate.get("median_ms"),
         "median_speedup_vs_loop": candidate.get(
             "median_speedup_vs_loop"
         ),
+        "min_speedup_vs_loop": candidate.get("min_speedup_vs_loop"),
         "peak_memory_ratio_vs_loop": candidate.get(
             "peak_memory_ratio_vs_loop"
         ),
@@ -613,6 +631,9 @@ def _visual_efficiency(
         "median_speedup_vs_dense_adaptive": candidate.get(
             "median_speedup_vs_dense_adaptive"
         ),
+        "min_speedup_vs_dense_adaptive": candidate.get(
+            "min_speedup_vs_dense_adaptive"
+        ),
         "peak_memory_ratio_vs_dense_adaptive": candidate.get(
             "peak_memory_ratio_vs_dense_adaptive"
         ),
@@ -622,16 +643,26 @@ def _visual_efficiency(
     }
     try:
         evidence_sufficient = (
-            benchmark_config.get("mode") == required_mode
+            int(report["schema_version"]) >= minimum_schema_version
+            and benchmark_config.get("mode") == required_mode
             and int(report["visual_tokens"]) >= minimum_tokens
             and int(report["batch_size"]) >= minimum_batch
             and int(benchmark_config["warmup_iterations"]) >= minimum_warmup
             and int(benchmark_config["measured_iterations"])
             >= minimum_iterations
+            and int(benchmark_config["rounds"]) >= minimum_rounds
+            and int(candidate["rounds"]) >= minimum_rounds
+            and int(candidate["paired_rounds_vs_loop"])
+            >= minimum_rounds
+            and int(candidate["paired_rounds_vs_dense_adaptive"])
+            >= minimum_rounds
             and candidate.get("median_speedup_vs_loop") is not None
+            and candidate.get("min_speedup_vs_loop") is not None
             and candidate.get("peak_memory_ratio_vs_loop") is not None
             and candidate.get("max_abs_delta_vs_loop") is not None
             and candidate.get("median_speedup_vs_dense_adaptive")
+            is not None
+            and candidate.get("min_speedup_vs_dense_adaptive")
             is not None
             and candidate.get("peak_memory_ratio_vs_dense_adaptive")
             is not None
@@ -642,17 +673,21 @@ def _visual_efficiency(
         return _result(
             gate,
             "insufficient_evidence",
-            "benchmark dose, mode, or loop-relative measurements are insufficient",
+            "benchmark schema, dose, mode, or paired measurements are insufficient",
             evidence,
         )
 
     required_backend = str(gate.get("required_resolved_backend", "flex"))
     try:
         speedup = float(candidate["median_speedup_vs_loop"])
+        minimum_observed_speedup = float(candidate["min_speedup_vs_loop"])
         memory_ratio = float(candidate["peak_memory_ratio_vs_loop"])
         numerical_delta = float(candidate["max_abs_delta_vs_loop"])
         dense_speedup = float(
             candidate["median_speedup_vs_dense_adaptive"]
+        )
+        dense_minimum_observed_speedup = float(
+            candidate["min_speedup_vs_dense_adaptive"]
         )
         dense_memory_ratio = float(
             candidate["peak_memory_ratio_vs_dense_adaptive"]
@@ -665,12 +700,18 @@ def _visual_efficiency(
             evidence,
         )
     minimum_speedup = float(gate.get("min_median_speedup_vs_loop", 1.0))
+    minimum_round_speedup = float(
+        gate.get("min_round_speedup_vs_loop", 1.0)
+    )
     maximum_memory_ratio = float(
         gate.get("max_peak_memory_ratio_vs_loop", 1.0)
     )
     maximum_delta = float(gate.get("max_abs_delta_vs_loop", 0.0))
     minimum_dense_speedup = float(
         gate.get("min_median_speedup_vs_dense_adaptive", 1.0)
+    )
+    minimum_dense_round_speedup = float(
+        gate.get("min_round_speedup_vs_dense_adaptive", 1.0)
     )
     maximum_dense_memory_ratio = float(
         gate.get("max_peak_memory_ratio_vs_dense_adaptive", 1.0)
@@ -679,12 +720,16 @@ def _visual_efficiency(
     valid_measurements = (
         math.isfinite(speedup)
         and speedup > 0
+        and math.isfinite(minimum_observed_speedup)
+        and minimum_observed_speedup > 0
         and math.isfinite(memory_ratio)
         and memory_ratio >= 0
         and math.isfinite(numerical_delta)
         and numerical_delta >= 0
         and math.isfinite(dense_speedup)
         and dense_speedup > 0
+        and math.isfinite(dense_minimum_observed_speedup)
+        and dense_minimum_observed_speedup > 0
         and math.isfinite(dense_memory_ratio)
         and dense_memory_ratio >= 0
     )
@@ -694,6 +739,11 @@ def _visual_efficiency(
         violations.append("resolved_backend")
     if valid_measurements and speedup < minimum_speedup:
         violations.append("median_speedup")
+    if (
+        valid_measurements
+        and minimum_observed_speedup < minimum_round_speedup
+    ):
+        violations.append("round_speedup")
     if valid_measurements and memory_ratio > maximum_memory_ratio:
         violations.append("peak_memory")
     if valid_measurements and numerical_delta > maximum_delta:
@@ -702,16 +752,28 @@ def _visual_efficiency(
         violations.append("dense_adaptive_speedup")
     if (
         valid_measurements
+        and dense_minimum_observed_speedup
+        < minimum_dense_round_speedup
+    ):
+        violations.append("dense_adaptive_round_speedup")
+    if (
+        valid_measurements
         and dense_memory_ratio > maximum_dense_memory_ratio
     ):
         violations.append("dense_adaptive_peak_memory")
     evidence.update(
         {
             "required_resolved_backend": required_backend,
+            "min_benchmark_schema_version": minimum_schema_version,
+            "min_rounds": minimum_rounds,
             "min_median_speedup_vs_loop": minimum_speedup,
+            "min_round_speedup_vs_loop": minimum_round_speedup,
             "max_peak_memory_ratio_vs_loop": maximum_memory_ratio,
             "max_abs_delta_threshold": maximum_delta,
             "min_median_speedup_vs_dense_adaptive": minimum_dense_speedup,
+            "min_round_speedup_vs_dense_adaptive": (
+                minimum_dense_round_speedup
+            ),
             "max_peak_memory_ratio_vs_dense_adaptive": (
                 maximum_dense_memory_ratio
             ),

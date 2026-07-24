@@ -449,6 +449,10 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             raise ValueError(
                 "runtime.visual_backend_benchmark.iterations must be positive"
             )
+        if int(visual_benchmark.get("rounds", 3)) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.rounds must be positive"
+            )
         if int(visual_benchmark.get("seed", 7)) < 0:
             raise ValueError(
                 "runtime.visual_backend_benchmark.seed must be non-negative"
@@ -927,6 +931,8 @@ def build_experiment_plan(
                 str(int(visual_benchmark.get("warmup_iterations", 3))),
                 "--iterations",
                 str(int(visual_benchmark.get("iterations", 10))),
+                "--rounds",
+                str(int(visual_benchmark.get("rounds", 3))),
                 "--mode",
                 str(visual_benchmark.get("mode") or "training"),
                 "--precision",

@@ -261,7 +261,9 @@ dose, resolved backend, numerical delta, loop-relative median latency, and loop-
 memory inside the same `gates.json` that evaluates held-out generalization and capability
 retention. The same matched portrait/landscape patches also run through dense adaptive and fixed
 square controls; packed deployment must outperform the adaptive control as well as its portable
-loop. Missing or CPU-only timing cannot pass; evidence from a different architecture fails.
+loop. Three seed-deterministic order rotations produce same-round paired speed and memory ratios;
+deployment requires both a median gain and no regressive round. Missing, legacy, or CPU-only
+timing cannot pass; evidence from a different architecture fails.
 
 ## Evidence basis
 

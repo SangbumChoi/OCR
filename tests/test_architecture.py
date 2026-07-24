@@ -149,6 +149,7 @@ def test_blueprint_rejects_invalid_visual_efficiency_gate():
     gate["required_device_type"] = "cpu"
     gate["dense_control_requested_backend"] = "dense_fixed_square"
     gate["min_measured_iterations"] = 0
+    gate["min_rounds"] = 0
     gate["min_median_speedup_vs_loop"] = 0.0
 
     _, errors = validate_blueprint(blueprint)
@@ -157,4 +158,5 @@ def test_blueprint_rejects_invalid_visual_efficiency_gate():
     assert any("required_device_type" in error for error in errors)
     assert any("dense_control_requested_backend" in error for error in errors)
     assert any("min_measured_iterations" in error for error in errors)
+    assert any("min_rounds" in error for error in errors)
     assert any("min_median_speedup_vs_loop" in error for error in errors)
