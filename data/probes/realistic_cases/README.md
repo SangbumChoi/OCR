@@ -91,7 +91,7 @@ controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`ba
 `ablation_overrides`), so each ablation arm is one `--ablation` flag:
 
 ```bash
-python scripts/make_realistic_cases.py --count 500                       # 20 * 500 = 10000 labelled docs
+python scripts/make_realistic_cases.py --count 500                       # 21 * 500 = 10500 labelled docs
 python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
@@ -101,13 +101,15 @@ python scripts/make_realistic_cases.py --ablation D_overlays_on           # forc
 python scripts/make_realistic_cases.py --overlay-prob 1 --overlay-type stamp seal
 python scripts/make_realistic_cases.py --only audit_packet --multipage-mode grid
 python scripts/make_realistic_cases.py --only investment_dossier --multidocument-mode grid
+python scripts/make_realistic_cases.py --only hard_diagram --difficulty-level 5 --hard-layout compact-v1
 ```
 
-The four hard families select from `classic-v1`, `compact-v1`, and `report-v1`. Their graph
-programs and answers remain unchanged across layouts while page geometry, section order, and
-spatial grouping vary. `render.layout_family` and `render.layout_fingerprint` record this visual
-provenance separately from semantic template fingerprints; adjacent counterfactual variants share
-one layout.
+Five hard families select from `classic-v1`, `compact-v1`, and `report-v1`. The four HTML/PDF
+families support the five-language locale projection; `hard_diagram` is currently English-only.
+Their graph programs and answers remain unchanged across layouts while page geometry, section
+order, and spatial grouping vary. `render.layout_family` and `render.layout_fingerprint` record
+this visual provenance separately from semantic template fingerprints; adjacent counterfactual
+variants in the four paired families share one layout.
 
 Handwritten notes, approval stamps, and validity seals are authored before perspective and
 photometric degradation. Placement minimizes existing ink and cannot intersect any authored
@@ -161,6 +163,7 @@ inside the image, redacted values never leak, `to_dict` stays back-compatible, e
 | `pdf_paper`      | PDF research paper (2-col) | multi-column · read-order · figure · header/footer | read-order + NED + TEDS |
 | `audit_packet`   | procurement audit packet | multi-page · reconciliation · cross-page grounding | relaxed acc + evidence IoU |
 | `investment_dossier` | investment evidence bundle | independent sources · valuation · claim verification · next action | relaxed acc + evidence IoU |
+| `hard_diagram`    | scientific process diagram | directed topology · parallel paths · edge rates · expected count | relaxed acc + evidence IoU |
 
 `website`, `mobile_app`, and `pdf_paper` are **digital-native media surfaces**. They use the same
 WeasyPrint pipeline; only
@@ -179,7 +182,7 @@ absent from an ID card).
 
 ```bash
 pip install -e ".[synth]"          # weasyprint + pymupdf + faker + augraphy
-python scripts/make_realistic_cases.py                  # all 20 cases (clean + degraded)
+python scripts/make_realistic_cases.py                  # all 21 cases (clean + degraded)
 python scripts/make_realistic_cases.py --only id_card cheque
 python scripts/make_realistic_cases.py --no-degrade     # clean only (fast)
 ```

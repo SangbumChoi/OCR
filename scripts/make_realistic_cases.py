@@ -46,6 +46,7 @@ from docvlm_eval.synth import (  # noqa: E402
     derive_overlay_seed,
     derive_perspective_seed,
     esc,
+    hard_process_diagram,
     warp_perspective,
 )
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
@@ -1660,6 +1661,24 @@ def case_hard_science(do_degrade):
     _emit_hard_case("hard_science", do_degrade)
 
 
+def case_hard_diagram(do_degrade):
+    image, ground_truth = hard_process_diagram(
+        random.Random(random.randrange(2**31)),
+        level=CFG.difficulty_level,
+        layout_family=_hard_layout_family("hard_diagram"),
+    )
+    emit(
+        "hard_diagram",
+        image,
+        "scan",
+        do_degrade,
+        gt=ground_truth,
+        domain="science",
+        acquisition="pdf-native",
+        language="en",
+    )
+
+
 CASES = {
     "invoice": case_invoice, "id_card": case_id_card, "checkbox_form": case_checkbox_form,
     "redacted": case_redacted, "bank_statement": case_bank_statement, "rtl_arabic": case_rtl_arabic,
@@ -1670,6 +1689,7 @@ CASES = {
     "lcd_7seg": case_lcd,
     "hard_table": case_hard_table, "hard_chart": case_hard_chart,
     "hard_investment": case_hard_investment, "hard_science": case_hard_science,
+    "hard_diagram": case_hard_diagram,
 }
 
 

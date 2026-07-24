@@ -36,6 +36,7 @@ from .latent import (
     DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
 )
 from .hard_layout import HARD_LAYOUT_FAMILIES, HardLayoutSpec, hard_layout_spec, layout_fingerprint
+from .hard_diagram import hard_process_diagram
 from .overlays import (
     OVERLAY_TYPES, OverlayMark, apply_document_overlays, derive_overlay_seed,
     overlay_fingerprint,
@@ -66,6 +67,7 @@ __all__ = [
     "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
     "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
     "HARD_LAYOUT_FAMILIES", "HardLayoutSpec", "hard_layout_spec", "layout_fingerprint",
+    "hard_process_diagram",
     "OVERLAY_TYPES", "OverlayMark", "apply_document_overlays", "derive_overlay_seed",
     "overlay_fingerprint",
     "apply_supervision_toggles",

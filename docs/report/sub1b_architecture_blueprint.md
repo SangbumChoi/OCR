@@ -70,6 +70,11 @@ map. This lets the fixed architecture train cross-document retrieval and claim v
 without pretending to support a multi-image API; document-grid versus vertical-strip packing is a
 matched data ablation.
 
+Programmatic process diagrams add sparse long-range topology to the same visual canvas. Exact
+stage and edge-label boxes supervise connector alignment, while executable path-product and
+parallel-path queries test whether the compact language stack can compose visually separated
+relations instead of memorizing one chart template.
+
 ### Why this split
 
 The measured repository results show that small models often read a local value but fail grounding

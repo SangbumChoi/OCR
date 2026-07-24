@@ -77,6 +77,7 @@ Each `gt.json` records:
 | `hard_investment` | direct beneficial-ownership schedule | relation lookup, path product, sum of path products | effective ownership across two independent paths |
 | `hard_science` | paper title, abstract, equation, result table, caption | lookup, argmin, control-relative reduction, treatment comparison | quantitative claim verification against the stated equation |
 | `investment_dossier` | audited filing, exchange snapshot, and external analyst memo | weighted valuation, percent change, discrepancy checks, decision lookup | three-source claim verification and next action |
+| `hard_diagram` | directed parallel-assay workflow with exact edge labels | lookup, topology, path product, sum of paths, weighted expected count | six- and seven-box process reasoning |
 
 The `difficulty_level` knob is an integer from 1 to 5. Level 1 emits direct visual lookup. Higher
 levels add aggregation or relational paths. Level 5 enables multi-path or cross-region reasoning
@@ -161,6 +162,32 @@ packing controls. The sample bridge records `evidence_documents`, `cross_documen
 axis. This preserves the production student's one-image API rather than relying on an unimplemented
 multi-image path.
 
+## Programmatic diagrams
+
+`hard_diagram` is drawn directly with PIL rather than rasterizing a decorative figure. Every stage
+label and edge-rate label has an authored pixel box, and every arrow weight is also an executable
+`GraphEdge`. The graph represents sample intake, a quality gate, two routed assay branches, fusion
+review, and release decision. Routing fractions sum to one; branch retention and final release
+rates are independently sampled.
+
+The five-level curriculum is structural:
+
+| Level | Added supervision |
+| --- | --- |
+| 1 | direct edge-rate reading |
+| 2 | identify the stage where two branches merge |
+| 3 | multiply the complete Assay A path |
+| 4 | sum both path products and compare branch yields |
+| 5 | combine the submitted batch size with total release yield |
+
+`classic-v1` is left-to-right, `compact-v1` is top-to-bottom, and `report-v1` uses a mixed report
+composition. All three retain identical semantic and template fingerprints for the same RNG state
+while changing image size, node coordinates, and layout fingerprint. The family is English-only
+until a diagram-specific locale catalog is authored; its metadata is fixed to `en` rather than
+mislabeling English pixels as another language. Existing difficulty, layout, spotting, rationale,
+overlay, degradation, resize, split, and evidence-quality controls apply without a new special
+ablation.
+
 ## Grounded post-training
 
 Hard questions can cite multiple evidence cells. `QAItem.evidence_keys` is resolved after rendering
@@ -186,12 +213,12 @@ become a hidden reasoning target.
 ```bash
 # Curriculum endpoints
 python scripts/make_realistic_cases.py \
-  --only hard_table hard_chart hard_investment hard_science \
+  --only hard_table hard_chart hard_investment hard_science hard_diagram \
   --difficulty-level 1 --split-name train --seed 7 --count 100 \
   --out data/generated/hard_train_l1
 
 python scripts/make_realistic_cases.py \
-  --only hard_table hard_chart hard_investment hard_science \
+  --only hard_table hard_chart hard_investment hard_science hard_diagram \
   --difficulty-level 5 --split-name heldout --seed 7007 --count 100 \
   --out data/generated/hard_heldout_l5
 
@@ -251,7 +278,8 @@ counterfactual pair shared its seed, destination corners, and homography while r
 content fingerprints. Across 256 base seeds, the default 0.35 probability selected 335 of 1,024
 eligible document decisions (32.71%); non-photo families never received geometry.
 
-A 12-cell family-by-layout render covered every hard family in all three layouts at 96 DPI. Every
+A 12-cell family-by-layout render covered the four original hard families in all three layouts at
+96 DPI. Every
 render stayed on one page, produced a distinct raster within its family, and passed required-box
 visibility auditing while retaining identical content and template fingerprints across layouts.
 A separate 24-document degraded CLI smoke passed all clean/degraded gates; each adjacent
@@ -279,4 +307,11 @@ audited-growth control cited `[0]`. Three forced-overlay degraded variants passe
 degraded gate on the first attempt, with minimum structure correlation 0.646. A 178x768 vertical
 low-resolution control also preserved all document origins, evidence boxes, and quality checks,
 while exposing the expected severe text-resolution cost of strip packing. A subsequent
-forced-overlay clean smoke covered all 20 current case families and every evidence gate passed.
+forced-overlay clean smoke covered all 21 current case families and every evidence gate passed.
+
+A three-layout level-5 diagram smoke produced distinct 1,200x760, 900x900, and 1,200x900 rasters
+with identical semantic content fingerprints. Visual inspection caught and corrected a compact
+header/node overlap. Three forced-overlay degraded variants passed every clean/degraded gate on
+their first attempt; minimum structure correlation was 0.819. A representative graph emitted six
+executable reasoning queries with evidence counts 1, 1, 4, 6, 6, and 7, and all thirteen required
+stage/edge/audit spotting keys passed the clean raster gate.

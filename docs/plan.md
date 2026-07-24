@@ -256,6 +256,9 @@ added factor lifting the score a step, ending well above the baseline.
   A three-source investment dossier adds exact cross-document valuation, claim verification,
   source reliability, and next-action supervision. Document IDs, origins, and evidence ownership
   survive the one-image student input path and form a document-count robustness slice.
+  A programmatic parallel-process diagram links every visible arrow rate to executable path
+  products, parallel-path aggregation, topology lookup, and expected-count targets across three
+  semantic-preserving layouts and five difficulty levels.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)
