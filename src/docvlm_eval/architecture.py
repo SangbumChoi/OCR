@@ -1091,6 +1091,9 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "reliability": (
                 "min_selective_risk_reduction",
                 "max_hallucination_increase",
+                "max_calibrated_ece",
+                "max_ece_increase_vs_raw",
+                "min_calibrated_ece_reduction",
             ),
             "visual_efficiency": ("max_abs_delta_vs_loop",),
         }

@@ -21,7 +21,12 @@ from .text import (
 from .bank import (METRIC_BANK, cer_sim, drop_em, drop_normalize, score_all, semantic_match,
                    token_f1)
 from .order import content_bag, order_tau
-from .calibration import expected_calibration_error, reliability_table
+from .calibration import (
+    expected_calibration_error,
+    fit_temperature_scaling,
+    reliability_table,
+    temperature_scale_confidence,
+)
 from .aggregate import aggregate
 from .tables import teds, teds_struct
 
@@ -45,7 +50,9 @@ __all__ = [
     "content_bag",
     "order_tau",
     "expected_calibration_error",
+    "fit_temperature_scaling",
     "reliability_table",
+    "temperature_scale_confidence",
     "aggregate",
     "teds",
     "teds_struct",

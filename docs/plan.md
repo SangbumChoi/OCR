@@ -146,6 +146,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Choose the contrastive objective:**
   [`report/student_contrastive_objective_sweep.md`](report/student_contrastive_objective_sweep.md) —
   paired fixed-compute SigLIP versus multi-positive softmax alignment.
+- **Calibrate deployment confidence:**
+  [`report/student_temperature_calibration.md`](report/student_temperature_calibration.md) —
+  leakage-safe heldout partitioning, scalar temperature fitting, paired ECE logging, and gates.
 - **Test teacher dependence:**
   [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) — pinned
   LFM/Qwen versus gold-only supervision at a fixed request and accepted-target dose.
@@ -257,6 +260,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_contrastive_objective_sweep.md`](report/student_contrastive_objective_sweep.md) ·
+   [`report/student_temperature_calibration.md`](report/student_temperature_calibration.md) ·
    [`report/student_box_iou_loss_sweep.md`](report/student_box_iou_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·

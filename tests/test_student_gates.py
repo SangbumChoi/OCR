@@ -25,6 +25,10 @@ def _comparison(train_score, heldout_score, languages=None):
     heldout = {
         "score": heldout_score,
         "by_language": languages,
+        "calibration": {
+            "raw_ece": 0.1,
+            "calibrated_ece": 0.08 if heldout_score >= 0.75 else 0.12,
+        },
     }
     return {
         "splits": {"train": train, "heldout": heldout},
@@ -367,6 +371,31 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
         ]
         == 0.8
     )
+
+
+def test_reliability_gate_rejects_calibration_that_worsens_ece():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    current = _comparison(0.82, 0.8)
+    current["splits"]["heldout"]["calibration"] = {
+        "raw_ece": 0.05,
+        "calibrated_ece": 0.10,
+    }
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"vision": 100, "language": 200, "total": 300},
+        current,
+        {"heldout": current_rows},
+        baseline_comparison=_comparison(0.74, 0.7),
+        baseline_rows={"heldout": baseline_rows},
+    )
+
+    reliability = next(
+        gate for gate in report["gates"] if gate["id"] == "reliability"
+    )
+    assert reliability["status"] == "fail"
+    assert reliability["evidence"]["ece_increase_vs_raw"] == 0.05
 
 
 @pytest.mark.parametrize(

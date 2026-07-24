@@ -82,10 +82,9 @@ table tree-edit similarity.
   training and written to `docs/results/ablation_results.json`, then visualized by the notebooks'
   before/after bars and the staircase — **not** streamed per-epoch to W&B. W&B carries the
   *in-training* `train`/`heldout` curves; the JSON carries the *final* cross-probe scores.
-- **ECE (calibration)**, **answer-rate**, and **per-sample** detail are computed by
-  `docvlm_eval.metrics.aggregate` and saved in each run's `summary.json` / `per_sample` — they are
-  not currently pushed per-epoch to W&B (the W&B stream is intentionally minimal: loss + score +
-  per-axis score).
+- **Per-sample** reliability detail remains in each run's `per_sample.jsonl`. Native-student final
+  evaluation now fits a disjoint calibration subset and pushes raw/calibrated ECE to W&B; the
+  generic Part-1 comparison adapters still save ECE only in their local summaries.
 
 ## 6. Quick reference — namespaces
 
@@ -96,6 +95,8 @@ eval/train_score      ← overall score on the train set   (x = epoch)   [memori
 eval/heldout_score    ← overall score on the held-out set(x = epoch)   [generalization]
 eval/<split>_<axis>   ← that split, sliced by capability (x = epoch)   [which ability moved]
 eval_by_axis/<axis>/<split>  ← same numbers regrouped by axis (x = epoch) [train-vs-heldout per capability on one chart]
+eval_by_axis/ece_raw/<split> ← raw confidence ECE from native final evaluation
+eval_by_axis/ece_calibrated/<split> ← temperature-scaled ECE on the same split
 ```
 
 > **Two groupings, same data.** `eval/<split>_<axis>` is keyed *split-first* (good for "how does the

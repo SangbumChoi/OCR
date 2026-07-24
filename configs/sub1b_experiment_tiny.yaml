@@ -93,6 +93,15 @@ evaluation:
   use_kv_cache: true
   precision: float32
   seed: 31
+  temperature_calibration:
+    enabled: false
+    source_split: heldout
+    fraction: 0.2
+    min_samples: 20
+    correct_threshold: 0.5
+    min_temperature: 0.05
+    max_temperature: 20.0
+    seed: 47
   wandb_project: null
   wandb_tags: [native-student, smoke]
   baseline_evaluation: null

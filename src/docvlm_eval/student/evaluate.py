@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import quote
 
 import torch
 
+from ..metrics.calibration import (
+    expected_calibration_error,
+    fit_temperature_scaling,
+    temperature_scale_confidence,
+)
 from ..metrics.text import score_sample
+from ..schema import Sample
 from .data import StudentCollator, visual_model_inputs
 from .model import DocumentVLMStudent
 from .posttrain import StructuredPostTrainingDataset, posttraining_prompt_batch
@@ -207,6 +214,155 @@ def _atomic_write_jsonl(path: Path, rows: Sequence[dict[str, Any]]) -> None:
                 json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
             )
     os.replace(temporary, path)
+
+
+def partition_calibration_samples(
+    samples: Sequence[Sample],
+    *,
+    fraction: float,
+    min_samples: int,
+    seed: int,
+) -> tuple[list[Sample], list[Sample]]:
+    """Deterministically carve calibration rows out of an evaluation split."""
+
+    if not 0.0 < fraction < 1.0:
+        raise ValueError("calibration fraction must be within (0, 1)")
+    if min_samples <= 0:
+        raise ValueError("calibration min_samples must be positive")
+    if len(samples) <= min_samples:
+        raise ValueError(
+            "source split must contain more rows than calibration min_samples"
+        )
+    ranked = sorted(
+        samples,
+        key=lambda sample: hashlib.sha256(
+            f"{seed}:{sample.sample_id}".encode("utf-8")
+        ).hexdigest(),
+    )
+    fit_count = max(min_samples, round(len(ranked) * fraction))
+    fit_count = min(fit_count, len(ranked) - 1)
+    fit_ids = {sample.sample_id for sample in ranked[:fit_count]}
+    calibration = [
+        sample for sample in samples if sample.sample_id in fit_ids
+    ]
+    evaluation = [
+        sample for sample in samples if sample.sample_id not in fit_ids
+    ]
+    return calibration, evaluation
+
+
+def apply_temperature_calibration(
+    rows_by_split: dict[str, list[dict[str, Any]]],
+    summaries: dict[str, dict[str, Any]],
+    *,
+    fit_split: str,
+    output_dir: str | Path,
+    correct_threshold: float,
+    min_samples: int,
+    min_temperature: float,
+    max_temperature: float,
+    partition: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Fit on one split, apply to every split, and rewrite evaluation artifacts."""
+
+    if fit_split not in rows_by_split:
+        raise ValueError(f"calibration fit split {fit_split!r} is missing")
+    fit_rows = rows_by_split[fit_split]
+    fit_confidences = [
+        row.get("confidence")
+        for row in fit_rows
+        if row.get("confidence") is not None
+    ]
+    fit_correctness = [
+        float(float(row["score"]) >= correct_threshold)
+        for row in fit_rows
+        if row.get("confidence") is not None
+    ]
+    fitted = fit_temperature_scaling(
+        fit_confidences,
+        fit_correctness,
+        min_samples=min_samples,
+        min_temperature=min_temperature,
+        max_temperature=max_temperature,
+    )
+    temperature = fitted.temperature
+    split_metrics: dict[str, dict[str, Any]] = {}
+    for split_name, rows in rows_by_split.items():
+        raw_confidences: list[float] = []
+        calibrated_confidences: list[float] = []
+        correctness: list[float] = []
+        for row in rows:
+            confidence = row.get("confidence")
+            target = float(float(row["score"]) >= correct_threshold)
+            if confidence is None:
+                row["calibrated_confidence"] = None
+                continue
+            raw_confidences.append(float(confidence))
+            correctness.append(target)
+            calibrated = (
+                temperature_scale_confidence(float(confidence), temperature)
+                if temperature is not None
+                else None
+            )
+            row["calibrated_confidence"] = (
+                _round(calibrated) if calibrated is not None else None
+            )
+            if calibrated is not None:
+                calibrated_confidences.append(calibrated)
+        raw_ece = expected_calibration_error(
+            raw_confidences,
+            correctness,
+        )
+        calibrated_ece = (
+            expected_calibration_error(
+                calibrated_confidences,
+                correctness,
+            )
+            if temperature is not None
+            else None
+        )
+        metrics = {
+            "status": fitted.status,
+            "fit_split": fit_split,
+            "temperature": (
+                _round(temperature) if temperature is not None else None
+            ),
+            "n_confidence": len(raw_confidences),
+            "correct_threshold": correct_threshold,
+            "raw_ece": _round(raw_ece) if raw_ece is not None else None,
+            "calibrated_ece": (
+                _round(calibrated_ece)
+                if calibrated_ece is not None
+                else None
+            ),
+        }
+        summaries[split_name]["calibration"] = metrics
+        split_metrics[split_name] = metrics
+        split_dir = Path(output_dir) / split_name
+        _atomic_write_json(split_dir / "summary.json", summaries[split_name])
+        _atomic_write_jsonl(split_dir / "per_sample.jsonl", rows)
+    sample_ids = sorted(str(row["sample_id"]) for row in fit_rows)
+    artifact = {
+        "schema_version": 1,
+        "method": "scalar_temperature_scaling",
+        "confidence_source": "mean_generated_token_probability",
+        "fit_split": fit_split,
+        "fit_sample_fingerprint": "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                sample_ids,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest(),
+        "correct_threshold": correct_threshold,
+        "temperature_bounds": [min_temperature, max_temperature],
+        "partition": dict(partition or {}),
+        "fit": asdict(fitted),
+        "splits": split_metrics,
+    }
+    _atomic_write_json(Path(output_dir) / "calibration.json", artifact)
+    return artifact
 
 
 def evaluate_structured_student(
@@ -477,6 +633,20 @@ def wandb_metrics_for_split(
             )
     for name, values in summary.get("reward_components", {}).items():
         metrics[f"eval_reward/{name}/{split_name}"] = float(values["score"])
+    calibration = summary.get("calibration", {})
+    for metric_name in ("raw_ece", "calibrated_ece"):
+        value = calibration.get(metric_name)
+        if value is not None:
+            short_name = (
+                "ece_raw" if metric_name == "raw_ece" else "ece_calibrated"
+            )
+            metrics[f"eval/{split_name}_{short_name}"] = float(value)
+            metrics[f"eval_by_axis/{short_name}/{split_name}"] = float(value)
+    temperature = calibration.get("temperature")
+    if temperature is not None:
+        metrics[f"eval/{split_name}_calibration_temperature"] = float(
+            temperature
+        )
     return metrics
 
 

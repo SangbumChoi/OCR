@@ -707,6 +707,49 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         "bfloat16",
     }:
         raise ValueError("evaluation.precision is unsupported")
+    calibration = evaluation.get("temperature_calibration")
+    if not isinstance(calibration, dict):
+        raise ValueError(
+            "evaluation.temperature_calibration must be a mapping"
+        )
+    if not isinstance(calibration.get("enabled"), bool):
+        raise ValueError(
+            "evaluation.temperature_calibration.enabled must be a boolean"
+        )
+    if calibration.get("source_split") not in {"train", "heldout"}:
+        raise ValueError(
+            "evaluation.temperature_calibration.source_split must be train or heldout"
+        )
+    fraction = float(calibration.get("fraction", 0.0))
+    if not 0.0 < fraction < 1.0:
+        raise ValueError(
+            "evaluation.temperature_calibration.fraction must be within (0, 1)"
+        )
+    if int(calibration.get("min_samples", 0)) <= 0:
+        raise ValueError(
+            "evaluation.temperature_calibration.min_samples must be positive"
+        )
+    correct_threshold = float(
+        calibration.get("correct_threshold", -1.0)
+    )
+    if not 0.0 <= correct_threshold <= 1.0:
+        raise ValueError(
+            "evaluation.temperature_calibration.correct_threshold must be within [0, 1]"
+        )
+    minimum_temperature = float(
+        calibration.get("min_temperature", 0.0)
+    )
+    maximum_temperature = float(
+        calibration.get("max_temperature", 0.0)
+    )
+    if not 0.0 < minimum_temperature < maximum_temperature:
+        raise ValueError(
+            "evaluation.temperature_calibration temperature bounds must be positive and ordered"
+        )
+    if int(calibration.get("seed", -1)) < 0:
+        raise ValueError(
+            "evaluation.temperature_calibration.seed must be non-negative"
+        )
     return name, output_root, blueprint
 
 
@@ -1831,6 +1874,27 @@ def build_experiment_plan(
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
     if not bool(evaluation["use_kv_cache"]):
         eval_command.append("--no-kv-cache")
+    calibration = evaluation["temperature_calibration"]
+    if not bool(calibration["enabled"]):
+        eval_command.append("--no-temperature-calibration")
+    eval_command.extend(
+        [
+            "--calibration-source-split",
+            str(calibration["source_split"]),
+            "--calibration-fraction",
+            str(float(calibration["fraction"])),
+            "--calibration-min-samples",
+            str(int(calibration["min_samples"])),
+            "--calibration-correct-threshold",
+            str(float(calibration["correct_threshold"])),
+            "--calibration-min-temperature",
+            str(float(calibration["min_temperature"])),
+            "--calibration-max-temperature",
+            str(float(calibration["max_temperature"])),
+            "--calibration-seed",
+            str(int(calibration["seed"])),
+        ]
+    )
     for key, flag in (
         ("baseline_evaluation", "--baseline-evaluation"),
         (

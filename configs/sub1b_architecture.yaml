@@ -352,10 +352,13 @@ evaluation_gates:
     max_language_drop: 0.02
     min_languages: 2
   - id: reliability
-    requirement: "selective risk improves at fixed coverage and hallucination does not increase"
+    requirement: "selective risk and calibrated ECE improve while hallucination does not increase"
     coverage: 0.8
     min_selective_risk_reduction: 0.001
     max_hallucination_increase: 0.0
+    max_calibrated_ece: 0.15
+    max_ece_increase_vs_raw: 0.0
+    min_calibrated_ece_reduction: 0.0
   - id: visual_efficiency
     requirement: "the target-GPU fused visual path preserves parity and improves over loop and dense adaptive execution"
     candidate_requested_backend: auto

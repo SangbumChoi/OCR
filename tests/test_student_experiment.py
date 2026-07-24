@@ -484,6 +484,31 @@ def test_experiment_supports_independent_train_and_heldout_synthetic_counts(
     assert heldout.command[heldout.command.index("--count") + 1] == "5"
 
 
+def test_experiment_compiles_temperature_calibration_contract(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "experiment.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+
+    assert "--no-temperature-calibration" not in evaluate.command
+    assert evaluate.command[
+        evaluate.command.index("--calibration-source-split") + 1
+    ] == "heldout"
+    assert evaluate.command[
+        evaluate.command.index("--calibration-min-samples") + 1
+    ] == "20"
+    assert evaluate.command[
+        evaluate.command.index("--calibration-seed") + 1
+    ] == "47"
+
+
 def test_experiment_builds_separate_pretraining_validation_split(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(

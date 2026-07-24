@@ -345,11 +345,18 @@ def _selective_risk(
     rows: Sequence[Mapping[str, Any]],
     coverage: float,
 ) -> float | None:
-    if not rows or any(row.get("confidence") is None for row in rows):
+    if not rows:
+        return None
+    confidence_key = (
+        "calibrated_confidence"
+        if all(row.get("calibrated_confidence") is not None for row in rows)
+        else "confidence"
+    )
+    if any(row.get(confidence_key) is None for row in rows):
         return None
     selected = sorted(
         rows,
-        key=lambda row: float(row["confidence"]),
+        key=lambda row: float(row[confidence_key]),
         reverse=True,
     )[: max(1, math.ceil(len(rows) * coverage))]
     return 1.0 - _mean([float(row["score"]) for row in selected])
@@ -375,11 +382,12 @@ def _hallucination_rate(rows: Sequence[Mapping[str, Any]]) -> float | None:
 
 def _reliability(
     gate: Mapping[str, Any],
+    current: Mapping[str, Any],
+    baseline: Mapping[str, Any] | None,
     pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
     pair_error: str | None,
-    baseline_available: bool,
 ) -> dict[str, Any]:
-    if not baseline_available:
+    if baseline is None:
         return _result(
             gate,
             "insufficient_evidence",
@@ -394,6 +402,22 @@ def _reliability(
     baseline_risk = _selective_risk(baseline_rows, coverage)
     current_hallucination = _hallucination_rate(current_rows)
     baseline_hallucination = _hallucination_rate(baseline_rows)
+    try:
+        current_calibration = current["splits"]["heldout"]["calibration"]
+        baseline_calibration = baseline["splits"]["heldout"]["calibration"]
+        current_raw_ece = float(current_calibration["raw_ece"])
+        current_calibrated_ece = float(
+            current_calibration["calibrated_ece"]
+        )
+        baseline_calibrated_ece = float(
+            baseline_calibration["calibrated_ece"]
+        )
+    except (KeyError, TypeError, ValueError):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "held-out raw and calibrated ECE are required",
+        )
     if (
         current_risk is None
         or baseline_risk is None
@@ -416,9 +440,19 @@ def _reliability(
     hallucination_increase = current_hallucination - baseline_hallucination
     minimum_reduction = float(gate["min_selective_risk_reduction"])
     maximum_hallucination = float(gate["max_hallucination_increase"])
+    maximum_ece = float(gate["max_calibrated_ece"])
+    maximum_ece_increase = float(gate["max_ece_increase_vs_raw"])
+    minimum_ece_reduction = float(
+        gate["min_calibrated_ece_reduction"]
+    )
+    ece_increase = current_calibrated_ece - current_raw_ece
+    ece_reduction = baseline_calibrated_ece - current_calibrated_ece
     passed = (
         risk_reduction >= minimum_reduction
         and hallucination_increase <= maximum_hallucination
+        and current_calibrated_ece <= maximum_ece
+        and ece_increase <= maximum_ece_increase
+        and ece_reduction >= minimum_ece_reduction
     )
     return _result(
         gate,
@@ -434,6 +468,14 @@ def _reliability(
             "baseline_hallucination_rate": _round(baseline_hallucination),
             "hallucination_increase": _round(hallucination_increase),
             "max_hallucination_increase": maximum_hallucination,
+            "current_raw_ece": _round(current_raw_ece),
+            "current_calibrated_ece": _round(current_calibrated_ece),
+            "baseline_calibrated_ece": _round(baseline_calibrated_ece),
+            "calibrated_ece_reduction": _round(ece_reduction),
+            "min_calibrated_ece_reduction": minimum_ece_reduction,
+            "ece_increase_vs_raw": _round(ece_increase),
+            "max_ece_increase_vs_raw": maximum_ece_increase,
+            "max_calibrated_ece": maximum_ece,
         },
     )
 
@@ -1217,9 +1259,10 @@ def evaluate_deployment_gates(
         elif gate_id == "reliability":
             result = _reliability(
                 gate,
+                current_comparison,
+                baseline_comparison,
                 pairs,
                 pair_error,
-                baseline_comparison is not None,
             )
         elif gate_id == "visual_efficiency":
             result = evaluate_visual_efficiency_gate(

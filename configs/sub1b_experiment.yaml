@@ -147,6 +147,15 @@ evaluation:
   use_kv_cache: true
   precision: bfloat16
   seed: 31
+  temperature_calibration:
+    enabled: true
+    source_split: heldout
+    fraction: 0.2
+    min_samples: 20
+    correct_threshold: 0.5
+    min_temperature: 0.05
+    max_temperature: 20.0
+    seed: 47
   wandb_project: null
   wandb_entity: null
   wandb_run: null

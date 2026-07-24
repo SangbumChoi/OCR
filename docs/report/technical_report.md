@@ -206,7 +206,7 @@ GT (§Part 2.3).
 | **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match                              | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                                                                 | **used** (H1 / H3) |
 | **Exact / TEDS / grounding-IoU** | exact string / table tree-edit sim / box IoU                        | strict answers, table structure, and spotting localisation respectively                                                                                                     | **used** (counts, tables, L1) |
 | **OCRBench score**       | Gold string ⊆ prediction, summed /1000                                      | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                                                                          | **not exercised** — applies only to the OCRBench dataset, which we **cite (published) but did not reproduce**; no probe uses this scorer |
-| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     | **partially used** — computed per-model in Part-1 `summary.json` for logit-exposing backends (n/a for OCR specialists); **not surfaced in the headline tables, not logged in fine-tuning** |
+| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     | **used in native-student evaluation** — raw and temperature-scaled ECE are logged from a disjoint calibration split; generic Part-1 adapters retain local raw-ECE summaries |
 | **Robustness retention** | score(perturbed) / score(clean), per perturbation family                    | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                                                                               | **partially used** — the rotation-retention slice runs on the custom-eval; the full degraded-input robustness sweep is wired but not in the headline run |
 | **Operational**          | answer-rate, load time, avg latency/sample                                  | Edge viability: a model that's accurate but 10× slower may be unusable                                                                                                      | **used** (efficiency table) |
 
@@ -216,7 +216,8 @@ GT (§Part 2.3).
 > **OCRBench score** is only meaningful on the OCRBench dataset (we report its *published* figures in
 > the comparison table and did not re-run that sweep), and **ECE** is genuinely computed in the
 > Part-1 capability/probe runs (`docs/results/<model>/<probe>/summary.json` — e.g. SmolVLM-256M ≈ 0.43)
-> but is **not pulled into the headline matrices and is not part of the fine-tuning W&B stream**.
+> but is **not pulled into the Part-1 headline matrices**. The separate native-student final
+> evaluator now logs raw and temperature-scaled ECE to its W&B run.
 
 Confidence for ECE is the **mean token probability** of the generated answer, read from HF
 `generate(output_scores=True)`. Genuinely autoregressive backends (InternVL, SmolVLM,

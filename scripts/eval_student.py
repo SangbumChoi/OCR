@@ -14,8 +14,10 @@ from docvlm_eval.benchmarks import load_jsonl
 from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 from docvlm_eval.student.evaluate import (
     StructuredEvalConfig,
+    apply_temperature_calibration,
     compare_split_summaries,
     evaluate_structured_student,
+    partition_calibration_samples,
     wandb_metrics_for_split,
     write_split_comparison,
 )
@@ -101,6 +103,18 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
             "max_samples": args.max_samples,
             "use_kv_cache": not args.no_kv_cache,
             "precision": args.precision,
+            "temperature_calibration": {
+                "enabled": not args.no_temperature_calibration,
+                "source_split": args.calibration_source_split,
+                "fraction": args.calibration_fraction,
+                "min_samples": args.calibration_min_samples,
+                "correct_threshold": args.calibration_correct_threshold,
+                "temperature_bounds": [
+                    args.calibration_min_temperature,
+                    args.calibration_max_temperature,
+                ],
+                "seed": args.calibration_seed,
+            },
         },
     )
     wandb.define_metric("evaluation/checkpoint_step")
@@ -155,6 +169,26 @@ def main() -> None:
     )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--no-temperature-calibration", action="store_true")
+    parser.add_argument("--calibration-source-split", default="heldout")
+    parser.add_argument("--calibration-fraction", type=float, default=0.2)
+    parser.add_argument("--calibration-min-samples", type=int, default=20)
+    parser.add_argument(
+        "--calibration-correct-threshold",
+        type=float,
+        default=0.5,
+    )
+    parser.add_argument(
+        "--calibration-min-temperature",
+        type=float,
+        default=0.05,
+    )
+    parser.add_argument(
+        "--calibration-max-temperature",
+        type=float,
+        default=20.0,
+    )
+    parser.add_argument("--calibration-seed", type=int, default=47)
     parser.add_argument("--wandb-project")
     parser.add_argument("--wandb-entity")
     parser.add_argument("--wandb-run")
@@ -183,6 +217,55 @@ def main() -> None:
     args = parser.parse_args()
 
     split_paths = _parse_splits(args.split)
+    samples_by_split = {
+        split_name: load_jsonl(path)
+        for split_name, path in split_paths
+    }
+    calibration_enabled = not args.no_temperature_calibration
+    if calibration_enabled:
+        if not 0.0 <= args.calibration_correct_threshold <= 1.0:
+            raise SystemExit(
+                "calibration correct threshold must be within [0, 1]"
+            )
+        if not (
+            0.0
+            < args.calibration_min_temperature
+            < args.calibration_max_temperature
+        ):
+            raise SystemExit(
+                "calibration temperature bounds must be positive and ordered"
+            )
+        if args.calibration_seed < 0:
+            raise SystemExit("calibration seed must be non-negative")
+        source_split = args.calibration_source_split
+        if source_split == "calibration":
+            raise SystemExit("calibration source split cannot be named calibration")
+        if "calibration" in samples_by_split:
+            raise SystemExit(
+                "temperature calibration reserves the split name 'calibration'"
+            )
+        if source_split not in samples_by_split:
+            raise SystemExit(
+                f"calibration source split {source_split!r} was not provided"
+            )
+        try:
+            calibration_samples, evaluation_samples = (
+                partition_calibration_samples(
+                    samples_by_split[source_split],
+                    fraction=args.calibration_fraction,
+                    min_samples=args.calibration_min_samples,
+                    seed=args.calibration_seed,
+                )
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        samples_by_split[source_split] = evaluation_samples
+        ordered_samples: dict[str, list] = {}
+        for split_name in [name for name, _ in split_paths]:
+            if split_name == source_split:
+                ordered_samples["calibration"] = calibration_samples
+            ordered_samples[split_name] = samples_by_split[split_name]
+        samples_by_split = ordered_samples
     blueprint = load_blueprint(args.config)
     _, errors = validate_blueprint(blueprint)
     if errors:
@@ -222,9 +305,9 @@ def main() -> None:
         "evaluation/checkpoint_step": float(_checkpoint_step(metadata))
     }
     try:
-        for split_name, path in split_paths:
+        for split_name, samples in samples_by_split.items():
             dataset = StructuredPostTrainingDataset(
-                load_jsonl(path),
+                samples,
                 target_mode="evidence_linked",
             )
             result = evaluate_structured_student(
@@ -241,14 +324,46 @@ def main() -> None:
             )
             summaries[split_name] = result.summary
             rows_by_split[split_name] = result.per_sample
-            wandb_payload.update(
-                wandb_metrics_for_split(result.summary, split_name)
-            )
             print(
                 f"[student-eval:{split_name}] score={result.summary['score']:.4f} "
                 f"reward={result.summary['reward']:.4f} "
                 f"valid={result.summary['valid_structure_fraction']:.4f}",
                 flush=True,
+            )
+        calibration_artifact = None
+        if calibration_enabled:
+            calibration_artifact = apply_temperature_calibration(
+                rows_by_split,
+                summaries,
+                fit_split="calibration",
+                output_dir=args.output,
+                correct_threshold=args.calibration_correct_threshold,
+                min_samples=args.calibration_min_samples,
+                min_temperature=args.calibration_min_temperature,
+                max_temperature=args.calibration_max_temperature,
+                partition={
+                    "source_split": args.calibration_source_split,
+                    "fit_split": "calibration",
+                    "fraction": args.calibration_fraction,
+                    "min_samples": args.calibration_min_samples,
+                    "seed": args.calibration_seed,
+                    "source_samples": (
+                        len(samples_by_split["calibration"])
+                        + len(
+                            samples_by_split[
+                                args.calibration_source_split
+                            ]
+                        )
+                    ),
+                    "fit_samples": len(samples_by_split["calibration"]),
+                    "evaluation_samples": len(
+                        samples_by_split[args.calibration_source_split]
+                    ),
+                },
+            )
+        for split_name, summary in summaries.items():
+            wandb_payload.update(
+                wandb_metrics_for_split(summary, split_name)
             )
         comparison_path = write_split_comparison(args.output, summaries)
         comparison = compare_split_summaries(summaries)
@@ -290,6 +405,7 @@ def main() -> None:
             "checkpoint_metadata": metadata,
             "tokenizer_fingerprint": tokenizer.fingerprint,
             "evaluation": asdict(base_config),
+            "temperature_calibration": calibration_artifact,
             "comparison": str(comparison_path),
             "gates": str(gate_path),
             "baseline_evaluation": (

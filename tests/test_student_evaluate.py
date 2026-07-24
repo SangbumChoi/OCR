@@ -285,3 +285,95 @@ def test_split_comparison_and_wandb_metrics_pair_matching_axes(tmp_path):
     )
     assert train_metrics["eval_reward/box_iou/train"] == 0.6
     assert heldout_metrics["eval_reward/box_iou/heldout"] == 0.3
+
+
+def test_temperature_calibration_partition_is_stable_and_exclusive():
+    from docvlm_eval.schema import Sample
+    from docvlm_eval.student.evaluate import partition_calibration_samples
+
+    samples = [
+        Sample(
+            sample_id=f"sample-{index}",
+            image_path="",
+            question="q",
+            answers=["a"],
+        )
+        for index in range(30)
+    ]
+    first_fit, first_eval = partition_calibration_samples(
+        samples,
+        fraction=0.2,
+        min_samples=5,
+        seed=47,
+    )
+    second_fit, second_eval = partition_calibration_samples(
+        list(reversed(samples)),
+        fraction=0.2,
+        min_samples=5,
+        seed=47,
+    )
+
+    first_fit_ids = {sample.sample_id for sample in first_fit}
+    assert first_fit_ids == {sample.sample_id for sample in second_fit}
+    assert {sample.sample_id for sample in first_eval} == {
+        sample.sample_id for sample in second_eval
+    }
+    assert not first_fit_ids & {sample.sample_id for sample in first_eval}
+    assert len(first_fit) == 6
+    assert len(first_eval) == 24
+
+
+def test_temperature_calibration_rewrites_rows_summaries_and_wandb(tmp_path):
+    from docvlm_eval.student.evaluate import (
+        apply_temperature_calibration,
+        wandb_metrics_for_split,
+    )
+
+    fit_rows = [
+        {
+            "sample_id": f"fit-{index}",
+            "confidence": 0.9,
+            "score": float(index < 10),
+        }
+        for index in range(20)
+    ]
+    heldout_rows = [
+        {"sample_id": "held-correct", "confidence": 0.9, "score": 1.0},
+        {"sample_id": "held-wrong", "confidence": 0.9, "score": 0.0},
+    ]
+    rows = {"calibration": fit_rows, "heldout": heldout_rows}
+    summaries = {
+        name: {
+            "score": 0.5,
+            "reward": 0.5,
+            "valid_structure_fraction": 1.0,
+            "answer_rate": 1.0,
+        }
+        for name in rows
+    }
+
+    artifact = apply_temperature_calibration(
+        rows,
+        summaries,
+        fit_split="calibration",
+        output_dir=tmp_path,
+        correct_threshold=0.5,
+        min_samples=20,
+        min_temperature=0.05,
+        max_temperature=20.0,
+        partition={"source_split": "heldout", "seed": 47},
+    )
+
+    assert artifact["fit"]["status"] == "fitted"
+    assert artifact["partition"] == {
+        "source_split": "heldout",
+        "seed": 47,
+    }
+    assert summaries["heldout"]["calibration"]["raw_ece"] == 0.4
+    assert summaries["heldout"]["calibration"]["calibrated_ece"] < 0.03
+    assert heldout_rows[0]["calibrated_confidence"] < 0.53
+    metrics = wandb_metrics_for_split(summaries["heldout"], "heldout")
+    assert metrics["eval/heldout_ece_raw"] == 0.4
+    assert metrics["eval_by_axis/ece_calibrated/heldout"] < 0.03
+    assert (tmp_path / "calibration.json").is_file()
+    assert (tmp_path / "heldout" / "summary.json").is_file()

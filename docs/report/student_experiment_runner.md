@@ -138,6 +138,10 @@ Set `evaluation.baseline_evaluation` to an evaluation root produced by
 control root. Both roots must contain `comparison.json` and split-level `per_sample.jsonl` files.
 The native evaluator records each sample's source metadata and geometric-mean generated-token
 confidence, enabling matched counterfactual and fixed-coverage reliability checks.
+The production configuration also carves a deterministic, disjoint calibration subset from
+heldout, fits scalar temperature scaling, preserves raw confidence, and evaluates calibrated ECE
+only on the untouched remainder. See
+[`student_temperature_calibration.md`](student_temperature_calibration.md).
 It uses compact-GQA KV caching by default and records `generation_backend`; setting
 `evaluation.use_kv_cache: false` compiles an explicit full-prefix ablation.
 
