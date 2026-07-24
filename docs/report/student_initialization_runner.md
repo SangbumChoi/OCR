@@ -106,6 +106,12 @@ initialization. Within each replicate they hold synthetic and public data, the 2
 budget, teacher targets, SFT, RLVR, evaluation sampling, and every stochastic seed fixed. The same
 Hub cache serves all arms and replicates.
 
+The promotion contract requires three complete paired replicates, a Bonferroni-corrected
+heldout-score lower bound above 0.005, all six deployment gates, and simultaneous non-regression on
+both `L1-locate` and `L1-region`. Mean-score rank alone cannot promote a pretrained initialization
+arm. This keeps selective transfer a measured sample-efficiency intervention rather than an
+assumed default.
+
 This suite isolates initialization at the full data scale. Sample efficiency is tested separately
 by the executable 45-run initialization-by-data-scale design in
 [`student_factorial_runner.md`](student_factorial_runner.md). It holds optimization tokens and

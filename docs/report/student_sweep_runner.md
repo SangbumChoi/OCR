@@ -167,9 +167,9 @@ Each suite root contains:
 - `gates/<variant>--<replicate>.json` and `gates/<variant>.json` with matched baseline decisions;
 - `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
   deltas, document-family/language/evidence-count/degradation deltas, confidence intervals,
-  final-checkpoint pretraining efficiency statistics, gate status, and ranking;
+  final-checkpoint pretraining efficiency statistics, gate status, ranking, and promotion evidence;
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
-  generalization gap, evidence conclusion, and deployment-gate status.
+  generalization gap, evidence conclusion, deployment-gate status, and promotion decision.
 
 Every compiled evaluator receives the same W&B group and a unique arm-replicate run name. Native
 evaluation already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
@@ -181,6 +181,50 @@ Tags include `native-student-sweep`, `variant:<id>`, and `replicate:<id>`.
 Ranking sorts mean heldout score descending, then prefers a smaller mean train-minus-heldout score.
 Ranking remains a navigation aid: paired intervals, capability slices, multiple-comparison
 discipline, and failure inspection are required before selecting the deployment recipe.
+
+## Fail-closed promotion contract
+
+Quality sweeps may declare a machine-readable `promotion` block:
+
+```yaml
+promotion:
+  primary_metric: heldout_score
+  direction: maximize
+  minimum_effect: 0.005
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+```
+
+The aggregator converts every paired primary-metric delta into a positive-is-better benefit,
+including metrics configured with `direction: minimize`. It then computes a deterministic
+one-sided percentile-bootstrap lower bound using a Bonferroni alpha divided across every candidate
+primary effect and required axis guardrail. This controls the declared family-wise error rate
+instead of promoting whichever arm happens to rank first.
+
+An arm is eligible only when:
+
+- every required deployment gate is `pass`;
+- the complete replicate count reaches `minimum_replicates`;
+- the simultaneous lower bound is strictly above `minimum_effect`;
+- every required capability-axis lower bound meets its declared non-regression threshold.
+
+A failed gate or regressed axis rejects the arm. Missing metrics, axes, confidence, or gate evidence
+produces `insufficient_evidence`; it never becomes a pass. When several arms are eligible, the
+selector orders them by simultaneous lower bound, mean benefit, parameter count, and stable ID,
+then promotes at most `max_promotions`. `comparison.json` records the full contract, multiplicity
+calculation, per-arm evidence, selected variants, and whether the baseline was retained.
+`comparison.md` renders the same decision immediately below the descriptive ranking.
 
 Initialization sample efficiency requires a baseline inside every data scale rather than one global
 baseline. [`student_factorial_runner.md`](student_factorial_runner.md) composes independent matched

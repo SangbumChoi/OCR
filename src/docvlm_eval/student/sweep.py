@@ -228,6 +228,30 @@ class CompiledVariant:
 
 
 @dataclass(frozen=True)
+class PromotionRule:
+    primary_metric: str
+    direction: str
+    minimum_effect: float
+    minimum_replicates: int
+    familywise_alpha: float
+    max_promotions: int
+    required_gates: tuple[str, ...]
+    required_axis_deltas: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "primary_metric": self.primary_metric,
+            "direction": self.direction,
+            "minimum_effect": self.minimum_effect,
+            "minimum_replicates": self.minimum_replicates,
+            "familywise_alpha": self.familywise_alpha,
+            "max_promotions": self.max_promotions,
+            "required_gates": list(self.required_gates),
+            "required_axis_deltas": self.required_axis_deltas,
+        }
+
+
+@dataclass(frozen=True)
 class SweepPlan:
     name: str
     root: str
@@ -238,6 +262,7 @@ class SweepPlan:
     control_values_by_replicate: dict[str, dict[str, Any]]
     replicates: tuple[str, ...]
     variants: tuple[CompiledVariant, ...]
+    promotion: PromotionRule | None
     fingerprint: str
     raw_spec: dict[str, Any]
 
@@ -261,6 +286,9 @@ class SweepPlan:
             "control_values_by_replicate": self.control_values_by_replicate,
             "replicates": list(self.replicates),
             "variants": [variant.to_dict() for variant in self.variants],
+            "promotion": (
+                None if self.promotion is None else self.promotion.to_dict()
+            ),
             "fingerprint": self.fingerprint,
         }
 
@@ -356,6 +384,88 @@ def _parse_replicates(
     return tuple(replicates)
 
 
+def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
+    value = raw.get("promotion")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("sweep.promotion must be a mapping")
+    primary_metric = str(value.get("primary_metric") or "")
+    if not _NAME.fullmatch(primary_metric):
+        raise ValueError("promotion.primary_metric must be a safe metric name")
+    direction = str(value.get("direction") or "maximize")
+    if direction not in {"maximize", "minimize"}:
+        raise ValueError("promotion.direction must be maximize or minimize")
+    minimum_effect = value.get("minimum_effect", 0.0)
+    if (
+        not isinstance(minimum_effect, (int, float))
+        or isinstance(minimum_effect, bool)
+        or not math.isfinite(float(minimum_effect))
+        or float(minimum_effect) < 0
+    ):
+        raise ValueError("promotion.minimum_effect must be finite and non-negative")
+    minimum_replicates = value.get("minimum_replicates", 3)
+    if (
+        not isinstance(minimum_replicates, int)
+        or isinstance(minimum_replicates, bool)
+        or minimum_replicates < 2
+    ):
+        raise ValueError("promotion.minimum_replicates must be an integer >= 2")
+    familywise_alpha = value.get("familywise_alpha", 0.05)
+    if (
+        not isinstance(familywise_alpha, (int, float))
+        or isinstance(familywise_alpha, bool)
+        or not math.isfinite(float(familywise_alpha))
+        or not 0 < float(familywise_alpha) < 0.5
+    ):
+        raise ValueError("promotion.familywise_alpha must be within (0, 0.5)")
+    max_promotions = value.get("max_promotions", 1)
+    if (
+        not isinstance(max_promotions, int)
+        or isinstance(max_promotions, bool)
+        or max_promotions < 1
+    ):
+        raise ValueError("promotion.max_promotions must be an integer >= 1")
+    required_gates = value.get("required_gates", [])
+    normalized_gates = (
+        [str(gate) for gate in required_gates]
+        if isinstance(required_gates, list)
+        else []
+    )
+    if (
+        not isinstance(required_gates, list)
+        or any(not _NAME.fullmatch(gate) for gate in normalized_gates)
+        or len(set(normalized_gates)) != len(normalized_gates)
+    ):
+        raise ValueError("promotion.required_gates must contain unique safe names")
+    required_axis_deltas = value.get("required_axis_deltas", {})
+    if not isinstance(required_axis_deltas, dict):
+        raise ValueError("promotion.required_axis_deltas must be a mapping")
+    normalized_axes: dict[str, float] = {}
+    for axis, threshold in required_axis_deltas.items():
+        if not isinstance(axis, str) or not axis:
+            raise ValueError("promotion axis names must be non-empty strings")
+        if (
+            not isinstance(threshold, (int, float))
+            or isinstance(threshold, bool)
+            or not math.isfinite(float(threshold))
+        ):
+            raise ValueError(
+                "promotion.required_axis_deltas values must be finite"
+            )
+        normalized_axes[axis] = float(threshold)
+    return PromotionRule(
+        primary_metric=primary_metric,
+        direction=direction,
+        minimum_effect=float(minimum_effect),
+        minimum_replicates=minimum_replicates,
+        familywise_alpha=float(familywise_alpha),
+        max_promotions=max_promotions,
+        required_gates=tuple(normalized_gates),
+        required_axis_deltas=normalized_axes,
+    )
+
+
 def compile_sweep_plan(
     sweep_path: str | Path,
     *,
@@ -406,6 +516,7 @@ def compile_sweep_plan(
                 f"replicate controls must also be matched controls: {sorted(unpaired)}"
             )
     replicates = _parse_replicates(raw, replicate_controls)
+    promotion = _parse_promotion(raw)
     variants_raw = raw.get("variants")
     if not isinstance(variants_raw, list) or len(variants_raw) < 2:
         raise ValueError("sweep.variants must contain at least two variants")
@@ -556,6 +667,9 @@ def compile_sweep_plan(
     sweep_fingerprint = _fingerprint(
         {
             "spec": raw,
+            "promotion": (
+                None if promotion is None else promotion.to_dict()
+            ),
             "base_experiment": base_experiment,
             "base_blueprint": base_blueprint,
             "variants": [variant.fingerprint for variant in compiled],
@@ -571,6 +685,7 @@ def compile_sweep_plan(
         control_values_by_replicate=control_values_by_replicate,
         replicates=tuple(str(replicate["id"]) for replicate in replicates),
         variants=tuple(compiled),
+        promotion=promotion,
         fingerprint=sweep_fingerprint,
         raw_spec=raw,
     )
@@ -725,6 +840,202 @@ def _distribution(values: list[float], *, key: str) -> dict[str, Any]:
         "minimum": round(min(values), 8),
         "maximum": round(max(values), 8),
         "ci95": ci95,
+    }
+
+
+def _one_sided_lower_bound(
+    values: list[float],
+    *,
+    alpha: float,
+    key: str,
+) -> float | None:
+    if len(values) < 2:
+        return None
+    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
+    rng = random.Random(seed)
+    bootstrap_means = sorted(
+        _mean([values[rng.randrange(len(values))] for _ in values])
+        for _ in range(10_000)
+    )
+    index = math.floor(alpha * (len(bootstrap_means) - 1))
+    return round(bootstrap_means[index], 8)
+
+
+def _promotion_decision(
+    plan: SweepPlan,
+    arm_records: dict[str, dict[str, Any]],
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    rule = plan.promotion
+    if rule is None:
+        return {
+            "status": "not_configured",
+            "selected_variants": [],
+            "baseline_retained": True,
+            "candidates": {},
+        }
+    candidate_ids = sorted(set(arm_records) - {plan.baseline})
+    if not candidate_ids:
+        raise ValueError("promotion requires at least one non-baseline arm")
+    comparisons_per_candidate = 1 + len(rule.required_axis_deltas)
+    comparison_count = len(candidate_ids) * comparisons_per_candidate
+    corrected_alpha = rule.familywise_alpha / comparison_count
+    direction_sign = 1.0 if rule.direction == "maximize" else -1.0
+    candidates: dict[str, dict[str, Any]] = {}
+    eligible: list[str] = []
+    for arm_id in candidate_ids:
+        ordered = [
+            records_by_arm[arm_id][replicate_id]
+            for replicate_id in plan.replicates
+        ]
+        missing_metric = [
+            record["replicate_id"]
+            for record in ordered
+            if rule.primary_metric not in record["delta_vs_baseline"]
+        ]
+        benefits = (
+            []
+            if missing_metric
+            else [
+                direction_sign
+                * float(record["delta_vs_baseline"][rule.primary_metric])
+                for record in ordered
+            ]
+        )
+        lower_bound = (
+            _one_sided_lower_bound(
+                benefits,
+                alpha=corrected_alpha,
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{rule.primary_metric}:"
+                    "promotion"
+                ),
+            )
+            if benefits
+            else None
+        )
+        gate_statuses = arm_records[arm_id]["gate_statuses"]
+        failed_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) == "fail"
+        )
+        incomplete_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) not in {"pass", "fail"}
+        )
+        axis_evidence: dict[str, dict[str, Any]] = {}
+        missing_axes = []
+        regressed_axes = []
+        for axis, minimum_delta in sorted(
+            rule.required_axis_deltas.items()
+        ):
+            if any(
+                axis not in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            ):
+                missing_axes.append(axis)
+                continue
+            values = [
+                float(record["heldout_axis_delta_vs_baseline"][axis])
+                for record in ordered
+            ]
+            axis_lower_bound = _one_sided_lower_bound(
+                values,
+                alpha=corrected_alpha,
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:promotion-axis",
+            )
+            axis_evidence[axis] = {
+                "mean_delta": round(_mean(values), 8),
+                "simultaneous_lower_bound": axis_lower_bound,
+                "minimum_delta": minimum_delta,
+            }
+            if (
+                axis_lower_bound is not None
+                and axis_lower_bound < minimum_delta
+            ):
+                regressed_axes.append(axis)
+        evidence = {
+            "replicate_count": len(ordered),
+            "primary_metric": rule.primary_metric,
+            "direction": rule.direction,
+            "mean_benefit": (
+                None if not benefits else round(_mean(benefits), 8)
+            ),
+            "simultaneous_lower_bound": lower_bound,
+            "minimum_effect": rule.minimum_effect,
+            "failed_gates": failed_gates,
+            "incomplete_gates": incomplete_gates,
+            "missing_metric_replicates": missing_metric,
+            "missing_axes": missing_axes,
+            "regressed_axes": regressed_axes,
+            "axis_guardrails": axis_evidence,
+            "parameters": arm_records[arm_id]["parameters"],
+        }
+        if failed_gates or regressed_axes:
+            decision = "reject"
+        elif (
+            len(ordered) < rule.minimum_replicates
+            or lower_bound is None
+            or missing_metric
+            or incomplete_gates
+            or missing_axes
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in axis_evidence.values()
+            )
+        ):
+            decision = "insufficient_evidence"
+        elif lower_bound <= rule.minimum_effect:
+            decision = "retain_baseline"
+        else:
+            decision = "eligible"
+            eligible.append(arm_id)
+        candidates[arm_id] = {
+            "decision": decision,
+            "evidence": evidence,
+        }
+    eligible.sort(
+        key=lambda arm_id: (
+            -float(
+                candidates[arm_id]["evidence"]["simultaneous_lower_bound"]
+            ),
+            -float(candidates[arm_id]["evidence"]["mean_benefit"]),
+            int(candidates[arm_id]["evidence"]["parameters"]["total"]),
+            arm_id,
+        )
+    )
+    selected = eligible[: rule.max_promotions]
+    for arm_id in eligible:
+        candidates[arm_id]["decision"] = (
+            "promote" if arm_id in selected else "eligible_not_selected"
+        )
+    if selected:
+        status = "promote"
+    elif any(
+        record["decision"] == "insufficient_evidence"
+        for record in candidates.values()
+    ):
+        status = "insufficient_evidence"
+    else:
+        status = "retain_baseline"
+    return {
+        "status": status,
+        "selected_variants": selected,
+        "baseline_retained": not bool(selected),
+        "contract": rule.to_dict(),
+        "multiple_comparisons": {
+            "method": "bonferroni_one_sided_percentile_bootstrap",
+            "candidate_count": len(candidate_ids),
+            "guardrails_per_candidate": len(rule.required_axis_deltas),
+            "comparison_count": comparison_count,
+            "familywise_alpha": rule.familywise_alpha,
+            "per_comparison_alpha": corrected_alpha,
+            "simultaneous_confidence_level": 1.0 - corrected_alpha,
+            "resamples": 10_000,
+        },
+        "candidates": candidates,
     }
 
 
@@ -1243,8 +1554,13 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         matched_artifacts = next(iter(artifact_controls.values()))
     else:
         matched_artifacts = artifact_controls
+    promotion = _promotion_decision(
+        plan,
+        arm_records,
+        records_by_arm,
+    )
     result = {
-        "schema_version": 3,
+        "schema_version": 4,
         "sweep": plan.name,
         "sweep_fingerprint": plan.fingerprint,
         "baseline": plan.baseline,
@@ -1261,6 +1577,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         "matched_evaluation_artifacts": matched_artifacts,
         "matched_evaluation_artifacts_by_replicate": artifact_controls,
         "ranking": ranking,
+        "promotion": promotion,
         "variants": arm_records,
         "runs": run_records,
     }
@@ -1300,6 +1617,56 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
             f"`{record['heldout_score_conclusion']}` | "
             f"`{record['gate_status']}` |"
         )
+    promotion = result["promotion"]
+    lines.extend(
+        [
+            "",
+            "## Promotion decision",
+            "",
+            f"- Status: `{promotion['status']}`",
+            "- Selected variants: "
+            + (
+                ", ".join(
+                    f"`{variant}`"
+                    for variant in promotion["selected_variants"]
+                )
+                if promotion["selected_variants"]
+                else "none"
+            ),
+        ]
+    )
+    if promotion["status"] != "not_configured":
+        multiplicity = promotion["multiple_comparisons"]
+        lines.extend(
+            [
+                "- Multiplicity control: "
+                f"`{multiplicity['method']}` over "
+                f"{multiplicity['comparison_count']} comparisons",
+                "",
+                "| Candidate | Decision | Mean benefit | Simultaneous lower bound |",
+                "| --- | --- | ---: | ---: |",
+            ]
+        )
+        for variant_id, candidate in sorted(
+            promotion["candidates"].items()
+        ):
+            evidence = candidate["evidence"]
+            mean_benefit = evidence["mean_benefit"]
+            lower_bound = evidence["simultaneous_lower_bound"]
+            mean_text = (
+                "unavailable"
+                if mean_benefit is None
+                else f"{mean_benefit:+.6f}"
+            )
+            lower_text = (
+                "unavailable"
+                if lower_bound is None
+                else f"{lower_bound:+.6f}"
+            )
+            lines.append(
+                f"| `{variant_id}` | `{candidate['decision']}` | "
+                f"{mean_text} | {lower_text} |"
+            )
     lines.extend(["", "## Matched controls by replicate", ""])
     for replicate_id, controls in sorted(
         result["matched_controls_by_replicate"].items()
@@ -1432,6 +1799,15 @@ class SweepRunner:
             comparison = aggregate_sweep_results(self.plan)
             response["comparison"] = str(Path(self.plan.root) / "comparison.json")
             response["ranking"] = comparison["ranking"]
+            response["promotion"] = {
+                "status": comparison["promotion"]["status"],
+                "selected_variants": comparison["promotion"][
+                    "selected_variants"
+                ],
+                "baseline_retained": comparison["promotion"][
+                    "baseline_retained"
+                ],
+            }
         response["status"] = "completed"
         _atomic_write_json(summary_path, response)
         return response

@@ -1,12 +1,15 @@
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from docvlm_eval.student.sweep import (
+    PromotionRule,
     SweepRunner,
+    _promotion_decision,
     aggregate_sweep_results,
     apply_json_patch,
     compile_sweep_plan,
@@ -61,6 +64,13 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
 
     assert plan.baseline == "baseline"
     assert plan.replicates == ("seed_0", "seed_1")
+    assert plan.promotion is not None
+    assert plan.promotion.primary_metric == "heldout_score"
+    assert plan.promotion.minimum_replicates == 2
+    assert plan.to_dict()["promotion"]["required_gates"] == [
+        "parameter_budget",
+        "generalization",
+    ]
     assert [(variant.arm_id, variant.replicate_id) for variant in plan.variants] == [
         ("baseline", "seed_0"),
         ("no_sequence_distillation", "seed_0"),
@@ -902,6 +912,87 @@ def test_sweep_rejects_undeclared_or_incomplete_replicate_dimensions(tmp_path):
         )
 
 
+def test_sweep_rejects_an_invalid_promotion_contract(tmp_path):
+    def mutate(raw):
+        raw["promotion"]["familywise_alpha"] = 0.75
+        raw["promotion"]["required_axis_deltas"] = {"L1-region": "zero"}
+
+    with pytest.raises(ValueError, match="promotion.familywise_alpha"):
+        compile_sweep_plan(
+            _tiny_sweep(tmp_path, mutate=mutate),
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "compiled",
+        )
+
+
+def test_promotion_corrects_all_candidates_and_axis_guardrails():
+    plan = SimpleNamespace(
+        promotion=PromotionRule(
+            primary_metric="heldout_score",
+            direction="maximize",
+            minimum_effect=0.05,
+            minimum_replicates=2,
+            familywise_alpha=0.05,
+            max_promotions=1,
+            required_gates=("parameter_budget",),
+            required_axis_deltas={"L1-region": 0.0},
+        ),
+        baseline="baseline",
+        replicates=("seed_0", "seed_1"),
+        fingerprint="sha256:test-promotion",
+    )
+    arm_records = {
+        "baseline": {},
+        "higher_score_but_regressed": {
+            "gate_statuses": {"parameter_budget": "pass"},
+            "parameters": {"total": 700},
+        },
+        "safe_gain": {
+            "gate_statuses": {"parameter_budget": "pass"},
+            "parameters": {"total": 600},
+        },
+    }
+
+    def record(replicate, score, axis):
+        return {
+            "replicate_id": replicate,
+            "delta_vs_baseline": {"heldout_score": score},
+            "heldout_axis_delta_vs_baseline": {"L1-region": axis},
+        }
+
+    records_by_arm = {
+        "higher_score_but_regressed": {
+            "seed_0": record("seed_0", 0.2, -0.01),
+            "seed_1": record("seed_1", 0.2, 0.02),
+        },
+        "safe_gain": {
+            "seed_0": record("seed_0", 0.1, 0.01),
+            "seed_1": record("seed_1", 0.12, 0.01),
+        },
+    }
+
+    decision = _promotion_decision(
+        plan,
+        arm_records,
+        records_by_arm,
+    )
+
+    assert decision["status"] == "promote"
+    assert decision["selected_variants"] == ["safe_gain"]
+    assert decision["candidates"]["higher_score_but_regressed"][
+        "decision"
+    ] == "reject"
+    assert decision["candidates"]["higher_score_but_regressed"][
+        "evidence"
+    ]["regressed_axes"] == ["L1-region"]
+    assert decision["multiple_comparisons"]["candidate_count"] == 2
+    assert decision["multiple_comparisons"]["comparison_count"] == 4
+    assert decision["multiple_comparisons"][
+        "per_comparison_alpha"
+    ] == pytest.approx(0.0125)
+
+
 def test_full_sweep_compiles_loss_sft_and_reward_ablation_contracts(tmp_path):
     plan = compile_sweep_plan(
         ROOT / "configs" / "sub1b_sweep.yaml",
@@ -1117,6 +1208,23 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
         result["variants"]["baseline"]["gate_statuses"]["generalization"]
         == "insufficient_evidence"
     )
+    promotion = result["promotion"]
+    assert promotion["status"] == "promote"
+    assert promotion["selected_variants"] == [
+        "no_sequence_distillation"
+    ]
+    candidate_promotion = promotion["candidates"][
+        "no_sequence_distillation"
+    ]
+    assert candidate_promotion["decision"] == "promote"
+    assert candidate_promotion["evidence"][
+        "simultaneous_lower_bound"
+    ] == pytest.approx(0.1)
+    assert promotion["multiple_comparisons"]["candidate_count"] == 1
+    assert promotion["multiple_comparisons"]["comparison_count"] == 1
+    assert promotion["multiple_comparisons"][
+        "simultaneous_confidence_level"
+    ] == pytest.approx(0.95)
     robustness = candidate["heldout_robustness_delta_statistics"][
         "document_family"
     ]["chart"]
@@ -1136,6 +1244,8 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
     markdown = (Path(plan.root) / "comparison.md").read_text(encoding="utf-8")
     assert "Paired delta [95% CI]" in markdown
     assert "Gates" in markdown
+    assert "Promotion decision" in markdown
+    assert "`promote`" in markdown
     assert "`no_sequence_distillation`" in markdown
 
 
