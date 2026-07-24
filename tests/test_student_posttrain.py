@@ -90,6 +90,7 @@ def _rl_config(
     *,
     replay_every=0,
     replay_coefficient=0.0,
+    advantage_estimator="group_standardized",
 ):
     from docvlm_eval.student.posttrain import RLVRConfig
 
@@ -97,6 +98,7 @@ def _rl_config(
         output_dir=str(output),
         max_steps=max_steps,
         group_size=2,
+        advantage_estimator=advantage_estimator,
         max_new_tokens=2,
         temperature=1.0,
         top_p=1.0,
@@ -138,6 +140,7 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
         )
         assert config.gradient_checkpointing_use_reentrant is False
     assert rlvr.use_kv_cache is True
+    assert rlvr.advantage_estimator == "group_standardized"
 
 
 def test_structured_posttraining_dataset_exposes_ablation_targets():
@@ -254,6 +257,46 @@ def test_group_relative_policy_loss_uses_reward_rank_and_reference_kl():
     assert metrics["reference_kl"] >= 0
     assert policy.grad is not None
     assert policy.grad[0].mean() < policy.grad[1].mean()
+
+
+def test_group_relative_policy_loss_supports_leave_one_out_advantages():
+    import torch
+
+    from docvlm_eval.student.posttrain import group_relative_policy_loss
+
+    policy = torch.tensor(
+        [[-1.0], [-1.0], [-1.0]],
+        requires_grad=True,
+    )
+    reference = policy.detach().clone()
+    rewards = torch.tensor([1.0, 0.5, 0.0])
+
+    _, standardized = group_relative_policy_loss(
+        policy,
+        reference,
+        torch.ones(3, 1, dtype=torch.bool),
+        rewards,
+        kl_coefficient=0.0,
+        advantage_epsilon=1e-4,
+        advantage_estimator="group_standardized",
+    )
+    _, leave_one_out = group_relative_policy_loss(
+        policy,
+        reference,
+        torch.ones(3, 1, dtype=torch.bool),
+        rewards,
+        kl_coefficient=0.0,
+        advantage_epsilon=1e-4,
+        advantage_estimator="leave_one_out",
+    )
+
+    assert standardized["advantage_std"] == pytest.approx(1.0)
+    assert leave_one_out["advantage_std"] == pytest.approx(
+        rewards.std(unbiased=False) * 1.5
+    )
+    assert leave_one_out["advantage_abs_mean"] < standardized[
+        "advantage_abs_mean"
+    ]
 
 
 def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):
@@ -494,6 +537,42 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
                 use_kv_cache=False,
             ),
             rewards,
+        )
+    with pytest.raises(ValueError, match="objective contract mismatch"):
+        train_grpo(
+            copy.deepcopy(resumed),
+            copy.deepcopy(reference_resumed),
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            _rl_config(
+                tmp_path / "resumed",
+                2,
+                "latest",
+                replay_every=1,
+                replay_coefficient=0.5,
+                advantage_estimator="leave_one_out",
+            ),
+            rewards,
+        )
+    changed_rewards = RewardConfig(
+        weights={"answer_correctness": 1.0},
+    )
+    with pytest.raises(ValueError, match="objective contract mismatch"):
+        train_grpo(
+            copy.deepcopy(resumed),
+            copy.deepcopy(reference_resumed),
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            _rl_config(
+                tmp_path / "resumed",
+                2,
+                "latest",
+                replay_every=1,
+                replay_coefficient=0.5,
+            ),
+            changed_rewards,
         )
     resumed_result = train_grpo(
         resumed,

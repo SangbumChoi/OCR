@@ -773,6 +773,19 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         )
     if int(rlvr.get("group_size", 0)) < 2:
         errors.append("training.posttraining.rlvr.group_size must be at least two")
+    advantage_estimator = rlvr.get(
+        "advantage_estimator",
+        "group_standardized",
+    )
+    if (
+        not isinstance(advantage_estimator, str)
+        or advantage_estimator
+        not in {"group_standardized", "leave_one_out"}
+    ):
+        errors.append(
+            "training.posttraining.rlvr.advantage_estimator must be "
+            "group_standardized or leave_one_out"
+        )
     if float(rlvr.get("kl_coefficient", -1)) < 0:
         errors.append("training.posttraining.rlvr.kl_coefficient must be non-negative")
     if float(rlvr.get("advantage_epsilon", 0)) <= 0:

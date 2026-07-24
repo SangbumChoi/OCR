@@ -332,6 +332,62 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
         ]
 
 
+def test_rlvr_advantage_sweep_compiles_compute_matched_estimators(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_rlvr_advantage_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "rlvr-advantage-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "group_standardized"
+    baseline_by_replicate = {
+        variant.replicate_id: variant.plan.resolved_blueprint["training"][
+            "posttraining"
+        ]["rlvr"]
+        for variant in plan.variants
+        if variant.arm_id == "group_standardized"
+    }
+    for variant in plan.variants:
+        rlvr = variant.plan.resolved_blueprint["training"]["posttraining"][
+            "rlvr"
+        ]
+        baseline_rlvr = baseline_by_replicate[variant.replicate_id]
+        expected = (
+            "leave_one_out"
+            if variant.arm_id == "leave_one_out"
+            else "group_standardized"
+        )
+        assert rlvr["advantage_estimator"] == expected
+        assert rlvr["group_size"] == 8
+        assert rlvr["reward_mix"] == baseline_rlvr["reward_mix"]
+        assert rlvr["rollout"] == baseline_rlvr["rollout"]
+        assert rlvr["optimizer"] == baseline_rlvr["optimizer"]
+        assert rlvr["optimizer"]["max_steps"] is None
+        assert rlvr["optimizer"]["stop_at_student_flops"] is True
+        assert (
+            rlvr["optimizer"]["total_student_flops"]
+            == 192_000_000_000_000_000
+        )
+        assert "rlvr" in variant.plan.stage_names
+        assert "rlvr-advantage-ablation" in variant.plan.raw_spec[
+            "evaluation"
+        ]["wandb_tags"]
+
+
 def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_sequence_teacher_sweep.yaml").read_text(

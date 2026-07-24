@@ -255,6 +255,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
+   [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) ·
    [`report/student_language_mixer_sweep.md`](report/student_language_mixer_sweep.md) ·

@@ -200,6 +200,7 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     blueprint["training"]["posttraining"]["sft"]["target_mode"] = "hidden_reasoning"
     rlvr = blueprint["training"]["posttraining"]["rlvr"]
     rlvr["group_size"] = 1
+    rlvr["advantage_estimator"] = "critic"
     rlvr["rollout"]["top_p"] = 2.0
     rlvr["rollout"]["use_kv_cache"] = "yes"
     rlvr["supervised_replay"]["every_steps"] = 0
@@ -209,6 +210,7 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
 
     assert any("sft.target_mode is invalid" in error for error in errors)
     assert any("group_size must be at least two" in error for error in errors)
+    assert any("advantage_estimator" in error for error in errors)
     assert any("rollout.top_p must be within" in error for error in errors)
     assert any("rollout.use_kv_cache must be a boolean" in error for error in errors)
     assert any("interval and coefficient" in error for error in errors)

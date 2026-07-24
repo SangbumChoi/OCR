@@ -1,0 +1,127 @@
+# GRPO-standardized versus RLOO advantages by three paired replicates.
+
+schema_version: 1
+name: docvlm-rlvr-advantage-ablation
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-rlvr-advantage-ablation
+baseline: group_standardized
+
+shared_experiment_patches:
+  - {op: add, path: /evaluation/wandb_tags/-, value: posttraining-ablation}
+  - {op: add, path: /evaluation/wandb_tags/-, value: rlvr-advantage-ablation}
+
+shared_blueprint_patches:
+  - {op: replace, path: /training/posttraining/rlvr/optimizer/max_steps, value: null}
+  - {op: replace, path: /training/posttraining/rlvr/optimizer/total_student_flops, value: 192000000000000000}
+  - {op: replace, path: /training/posttraining/rlvr/optimizer/stop_at_student_flops, value: true}
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/heldout_count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/sft/target_mode}
+  - {document: experiment, path: /posttraining/rlvr/enabled}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+  - {document: blueprint, path: /training/pretraining/optimizer/epochs}
+  - {document: blueprint, path: /training/activation_checkpointing}
+  - {document: blueprint, path: /training/posttraining/sft/target_mode}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
+  - {document: blueprint, path: /training/posttraining/rlvr/algorithm}
+  - {document: blueprint, path: /training/posttraining/rlvr/update_policy}
+  - {document: blueprint, path: /training/posttraining/rlvr/reference_policy}
+  - {document: blueprint, path: /training/posttraining/rlvr/group_size}
+  - {document: blueprint, path: /training/posttraining/rlvr/kl_coefficient}
+  - {document: blueprint, path: /training/posttraining/rlvr/advantage_epsilon}
+  - {document: blueprint, path: /training/posttraining/rlvr/supervised_replay}
+  - {document: blueprint, path: /training/posttraining/rlvr/rollout}
+  - {document: blueprint, path: /training/posttraining/rlvr/reward_mix}
+  - {document: blueprint, path: /training/posttraining/rlvr/malformed_reward}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_steps}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/total_student_flops}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/stop_at_student_flops}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/learning_rate}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/weight_decay}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/betas}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_grad_norm}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/precision}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /sequence_teacher/seed, value: 7}
+      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /sequence_teacher/seed, value: 107}
+      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /sequence_teacher/seed, value: 207}
+      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: group_standardized
+    hypothesis: "Tests the current GRPO reward-centering and within-group standardization."
+
+  - id: leave_one_out
+    hypothesis: "Tests RLOO advantages without erasing the verifier reward scale."
+    blueprint_patches:
+      - op: replace
+        path: /training/posttraining/rlvr/advantage_estimator
+        value: leave_one_out

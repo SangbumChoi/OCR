@@ -262,6 +262,7 @@ training:
       update_policy: one_on_policy_update_per_group
       reference_policy: sft_checkpoint
       group_size: 8
+      advantage_estimator: group_standardized
       kl_coefficient: 0.04
       advantage_epsilon: 0.0001
       supervised_replay:

@@ -92,10 +92,14 @@ python scripts/posttrain_student.py rlvr \
   --output outputs/student_rlvr/full_reward
 ```
 
-For each selected prompt, the policy samples one group with top-p sampling. Rewards are normalized
-within that group. The runner performs one on-policy update, applies a frozen-reference KL penalty,
-then discards the group. It does not implement PPO clipping or multiple optimization epochs over a
-replay buffer, so results must be described as single-update GRPO.
+For each selected prompt, the policy samples one group with top-p sampling. The default
+`group_standardized` estimator centers and standardizes rewards within that group. The executable
+`leave_one_out` alternative subtracts the mean reward of the other completions without dividing
+away verifier scale. The runner performs one on-policy update, applies a frozen-reference KL
+penalty, then discards the group. It does not implement PPO clipping or multiple optimization
+epochs over a replay buffer, so results must be described as single-update group-relative RL.
+The paired estimator design is
+[`student_rlvr_advantage_sweep.md`](student_rlvr_advantage_sweep.md).
 
 The visual tower and connector run once per image during autoregressive rollout; the fixed visual
 prefix is reused across every group member and generated token. The language decoder performs one
@@ -160,18 +164,20 @@ equivalence reward. This is intentionally narrower than a theorem prover. The ra
 proves cited-region overlap and rationale presence, not semantic entailment; keep that metric
 separate before making faithful-reasoning claims.
 
-`metrics.jsonl` reports total reward, reward variance, policy loss, reference KL, total loss,
-gradient norm, structural-validity fraction, replay application/loss/token count, the replay sample
-ID, cumulative and per-step analytical student FLOPs, and every applicable reward component
-independently. A group with no reward variance receives zero policy advantage; a scheduled replay
-anchor can still provide a supervised update.
+`metrics.jsonl` reports the estimator, total reward, reward variance, advantage scale, policy loss,
+reference KL, total loss, gradient norm, structural-validity fraction, replay
+application/loss/token count, the replay sample ID, cumulative and per-step analytical student
+FLOPs, and every applicable reward component independently. A group with no reward variance
+receives zero policy advantage; a scheduled replay anchor can still provide a supervised update.
 
 ## Resume and operational boundary
 
 RLVR checkpoints contain policy weights, optimizer and AMP scaler state, Python/Torch/CUDA RNG
 state, rollout and optimizer cursors, student FLOPs consumed, tokenizer fingerprint, and a
 frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, replay
-contract, compute-budget contract, or activation-checkpointing contract. Setting `max_steps: null`,
+contract, objective contract, compute-budget contract, or activation-checkpointing contract. The
+objective contract covers advantage estimator, epsilon, KL coefficient, reward weights, and
+malformed reward. Setting `max_steps: null`,
 `stop_at_student_flops: true`, and
 `total_student_flops` makes the compute budget the production stop; this is used by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).

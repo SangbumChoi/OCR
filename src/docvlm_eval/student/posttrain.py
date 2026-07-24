@@ -364,6 +364,7 @@ class RLVRConfig:
     total_student_flops: int | None = None
     stop_at_student_flops: bool = False
     group_size: int = 8
+    advantage_estimator: str = "group_standardized"
     max_new_tokens: int = 128
     temperature: float = 0.8
     top_p: float = 0.95
@@ -408,6 +409,12 @@ class RLVRConfig:
             )
         if self.group_size < 2 or self.max_new_tokens <= 0:
             raise ValueError("RLVR steps/tokens must be positive and group_size at least two")
+        if (
+            not isinstance(self.advantage_estimator, str)
+            or self.advantage_estimator
+            not in {"group_standardized", "leave_one_out"}
+        ):
+            raise ValueError("unsupported RLVR advantage estimator")
         if self.temperature <= 0 or not 0 < self.top_p <= 1:
             raise ValueError("RLVR sampling controls are invalid")
         if not isinstance(self.use_kv_cache, bool):
@@ -478,6 +485,9 @@ class RLVRConfig:
                 optimizer.get("stop_at_student_flops", False)
             ),
             "group_size": int(raw["group_size"]),
+            "advantage_estimator": str(
+                raw.get("advantage_estimator", "group_standardized")
+            ),
             "max_new_tokens": int(rollout["max_new_tokens"]),
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
@@ -724,8 +734,9 @@ def group_relative_policy_loss(
     *,
     kl_coefficient: float,
     advantage_epsilon: float,
+    advantage_estimator: str = "group_standardized",
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Single-update GRPO objective with a group baseline and frozen-reference KL."""
+    """Single-update group policy objective with a frozen-reference KL."""
 
     if policy_log_probs.shape != reference_log_probs.shape:
         raise ValueError("policy and reference log-probability shapes must match")
@@ -737,11 +748,27 @@ def group_relative_policy_loss(
     token_counts = mask.sum(dim=1).clamp_min(1)
     reward_mean = rewards.mean()
     reward_std = rewards.std(unbiased=False)
-    advantages = (
-        (rewards - reward_mean) / reward_std.clamp_min(advantage_epsilon)
-        if reward_std >= advantage_epsilon
-        else torch.zeros_like(rewards)
-    )
+    if advantage_estimator == "group_standardized":
+        advantages = (
+            (rewards - reward_mean)
+            / reward_std.clamp_min(advantage_epsilon)
+            if reward_std >= advantage_epsilon
+            else torch.zeros_like(rewards)
+        )
+    elif advantage_estimator == "leave_one_out":
+        group_size = rewards.numel()
+        if group_size < 2:
+            raise ValueError(
+                "leave-one-out advantages require at least two rewards"
+            )
+        leave_one_out_baseline = (
+            rewards.sum() - rewards
+        ) / (group_size - 1)
+        advantages = rewards - leave_one_out_baseline
+    else:
+        raise ValueError(
+            f"unsupported advantage estimator {advantage_estimator!r}"
+        )
     sequence_log_probs = (policy_log_probs * mask).sum(dim=1) / token_counts
     policy_loss = -(advantages.detach() * sequence_log_probs).mean()
     log_ratio = reference_log_probs - policy_log_probs
@@ -754,6 +781,7 @@ def group_relative_policy_loss(
         "reward_mean": reward_mean,
         "reward_std": reward_std,
         "advantage_abs_mean": advantages.abs().mean(),
+        "advantage_std": advantages.std(unbiased=False),
     }
 
 
@@ -823,12 +851,29 @@ def _rlvr_rollout_contract(
     }
 
 
+def _rlvr_objective_contract(
+    config: RLVRConfig,
+    reward_config: RewardConfig,
+) -> dict[str, Any]:
+    return {
+        "advantage_estimator": config.advantage_estimator,
+        "advantage_epsilon": config.advantage_epsilon,
+        "kl_coefficient": config.kl_coefficient,
+        "reward_weights": {
+            name: float(weight)
+            for name, weight in sorted(reward_config.weights.items())
+        },
+        "malformed_reward": reward_config.malformed_reward,
+    }
+
+
 def _save_rlvr_checkpoint(
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
     scaler: torch.amp.GradScaler,
     state: RLVRState,
     config: RLVRConfig,
+    reward_config: RewardConfig,
 ) -> Path:
     output = Path(config.output_dir)
     checkpoints = output / "checkpoints"
@@ -849,6 +894,7 @@ def _save_rlvr_checkpoint(
             ),
             "supervised_replay": _supervised_replay_contract(config),
             "rollout": _rlvr_rollout_contract(config),
+            "objective": _rlvr_objective_contract(config, reward_config),
             "compute_budget": _rlvr_budget_contract(config),
         },
     )
@@ -894,6 +940,7 @@ def _load_rlvr_checkpoint(
     optimizer: torch.optim.Optimizer,
     scaler: torch.amp.GradScaler,
     config: RLVRConfig,
+    reward_config: RewardConfig,
     device: torch.device,
 ) -> RLVRState:
     metadata = json.loads(
@@ -916,6 +963,11 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR supervised replay contract mismatch")
     if metadata.get("rollout") != _rlvr_rollout_contract(config):
         raise ValueError("RLVR rollout contract mismatch")
+    if metadata.get("objective") != _rlvr_objective_contract(
+        config,
+        reward_config,
+    ):
+        raise ValueError("RLVR objective contract mismatch")
     if metadata.get("compute_budget") != _rlvr_budget_contract(config):
         raise ValueError("RLVR compute-budget contract mismatch")
     model.load_state_dict(
@@ -952,7 +1004,7 @@ def train_grpo(
     *,
     replay_dataset: StructuredPostTrainingDataset | None = None,
 ) -> RLVRResult:
-    """Run resumable GRPO with an optional supervised multimodal replay anchor."""
+    """Run resumable group-relative RL with an optional supervised replay anchor."""
 
     device = _device(config.device)
     random.seed(config.seed)
@@ -995,6 +1047,7 @@ def train_grpo(
             optimizer,
             scaler,
             config,
+            reward_config,
             device,
         )
     last_checkpoint = resume_path
@@ -1058,6 +1111,7 @@ def train_grpo(
                 rewards,
                 kl_coefficient=config.kl_coefficient,
                 advantage_epsilon=config.advantage_epsilon,
+                advantage_estimator=config.advantage_estimator,
             )
         replay_applied = (
             config.supervised_replay_every_steps > 0
@@ -1193,6 +1247,7 @@ def train_grpo(
                     "kind": "rlvr",
                     "sample_id": dataset.samples[sample_index].sample_id,
                     "supervised_replay_sample_id": replay_sample_id,
+                    "advantage_estimator": config.advantage_estimator,
                     **final_metrics,
                 },
             )
@@ -1215,6 +1270,7 @@ def train_grpo(
                 scaler,
                 state,
                 config,
+                reward_config,
             )
     if (
         last_checkpoint is None
@@ -1226,6 +1282,7 @@ def train_grpo(
             scaler,
             state,
             config,
+            reward_config,
         )
     return RLVRResult(
         output_dir=str(output_dir),

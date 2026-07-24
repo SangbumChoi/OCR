@@ -279,6 +279,10 @@ probe. [`student_gradient_conflict_audit.md`](student_gradient_conflict_audit.md
 loss cosines on shared-trunk anchors across paired replicates and requires material evidence before
 PCGrad or GradNorm is added as an intervention.
 
+Post-training exposes both standardized GRPO and leave-one-out reward advantages under one
+checkpointed objective contract. The compute-matched comparison is specified in
+[`student_rlvr_advantage_sweep.md`](student_rlvr_advantage_sweep.md).
+
 Final deployment acceptance joins those two evidence streams. `eval_student.py` verifies the
 benchmark's complete student configuration and canonical fingerprint, CUDA runtime, benchmark
 dose, resolved backend, numerical delta, loop-relative median latency, and loop-relative peak
