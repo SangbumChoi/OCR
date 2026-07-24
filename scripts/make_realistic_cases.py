@@ -466,6 +466,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     if out.get("semantic_graph"):
         policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
         out["suggested_split"] = policy.assign(out)
+    out["generator_case"] = key
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
     img.save(folder / "clean.png")
@@ -1159,6 +1160,19 @@ def case_audit_packet(do_degrade):
         "not present — abstain",
     )
     b.want_fulltext()
+    b.difficulty = DifficultySpec(
+        level=5,
+        reasoning_hops=4,
+        distractor_count=3,
+        visual_density=0.72,
+        cross_region=True,
+        skills=(
+            "cross-page-retrieval",
+            "reconciliation",
+            "claim-verification",
+            "evidence-grounding",
+        ),
+    ).to_dict()
     emit(
         "audit_packet",
         b,
@@ -1717,6 +1731,11 @@ def main():
     ap.add_argument("--count", type=int, default=None,
                     help="variants per case (overrides config.count; >1 fans out into <key>/<NNNN>/)")
     ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
+    ap.add_argument(
+        "--language",
+        default=None,
+        help="force one generation language (overrides config languages and weights)",
+    )
     ap.add_argument("--difficulty-level", type=int, choices=range(1, 6), default=None,
                     help="hard-document curriculum level in [1,5] (overrides config)")
     ap.add_argument(
@@ -1770,6 +1789,12 @@ def main():
         CFG.count = args.count
     if args.seed is not None:
         CFG.seed = args.seed
+    if args.language is not None:
+        language = args.language.strip()
+        if not language:
+            raise ValueError("language cannot be empty")
+        CFG.languages = [language]
+        CFG.language_weights = None
     if args.difficulty_level is not None:
         CFG.difficulty_level = args.difficulty_level
     if args.perspective_prob is not None:

@@ -121,6 +121,7 @@ def case_to_samples(
     overlays = render.get("overlays") or []
     base_meta = {
         "case": prefix,
+        "generator_case": str(gt.get("generator_case") or prefix),
         "doc_type": gt.get("type"),
         "document_family": str(document_family),
         "stressors": gt.get("stressors"),
@@ -131,6 +132,7 @@ def case_to_samples(
         "split": gt.get("split", "synthetic"),
         "difficulty": gt.get("difficulty"),
         "template_family": (gt.get("semantic_graph") or {}).get("template_family"),
+        "layout_family": render.get("layout_family"),
         "counterfactual": gt.get("counterfactual"),
         "overlay_types": [
             str(mark.get("kind"))

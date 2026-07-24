@@ -7,10 +7,11 @@ or task scores.
 ## Leakage contract
 
 The production experiment deterministically partitions the configured source split by hashing
-`seed:sample_id`. With the default settings, 20% of `heldout` and at least 20 samples become a
+`seed:sample_id`. With the default settings, 20% of `validation` and at least 20 samples become a
 separate `calibration` split. Those rows fit one scalar temperature by minimizing binary negative
-log likelihood. The remaining 80% retain the `heldout` name and are the only rows used for
-heldout quality, generalization, reliability gates, and model selection.
+log likelihood. The remaining 80% retain the `validation` name and may drive adaptive data or
+synthesis policies. The independent heldout split remains untouched and is the only split used for
+final generalization, reliability gates, and model selection.
 
 The partition is stable under input reordering, disjoint by construction, and fingerprinted in
 `calibration.json`. Fitting fails closed as `insufficient_evidence` when confidence is unavailable,
@@ -36,7 +37,7 @@ threshold, and temperature.
 evaluation:
   temperature_calibration:
     enabled: true
-    source_split: heldout
+    source_split: validation
     fraction: 0.2
     min_samples: 20
     correct_threshold: 0.5

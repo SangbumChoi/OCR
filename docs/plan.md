@@ -145,6 +145,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   page/document count propagation and a task-preserving secondary sampler that progresses from
   single pages through multi-page packets to cross-document dossiers, with a paired static-versus-
   staged sweep.
+- **Close the validation-to-data loop:**
+  [`report/student_failure_driven_synthesis.md`](report/student_failure_driven_synthesis.md) —
+  leakage-safe validation rewards, factor-shrinkage allocation across case, language, difficulty,
+  layout, and composition arms, exact generator execution, and a content-addressed next-run plan.
 - **Isolate pretraining losses:**
   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
   fail-closed supervision provenance and paired leave-one-active-loss-out experiments.
@@ -192,7 +196,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   DPO-versus-IPO comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
-  weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
+  weighted UDD mixing, pretraining, SFT, RLVR, train/validation/heldout evaluation, and next-batch
+  synthesis planning.
 - **Attest execution evidence:**
   [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
   source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,

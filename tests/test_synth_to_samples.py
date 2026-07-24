@@ -56,7 +56,24 @@ def test_include_probes_toggle():
 def test_meta_carries_case_context():
     s = case_to_samples(GT, "img.png", "invoice")
     assert all(x.meta["case"] == "invoice" for x in s)
+    assert all(x.meta["generator_case"] == "invoice" for x in s)
     assert s[0].meta["doc_type"] == "invoice/receipt"
+
+
+def test_meta_preserves_exact_generator_and_layout_identity():
+    gt = {
+        **GT,
+        "generator_case": "hard_table",
+        "render": {
+            **GT["render"],
+            "layout_family": "compact-v1",
+        },
+    }
+    sample = case_to_samples(gt, "img.png", "hard_table_0007")[0]
+
+    assert sample.meta["case"] == "hard_table_0007"
+    assert sample.meta["generator_case"] == "hard_table"
+    assert sample.meta["layout_family"] == "compact-v1"
 
 
 def test_handles_minimal_gt_without_optional_sections():

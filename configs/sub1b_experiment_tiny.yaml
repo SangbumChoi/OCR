@@ -27,6 +27,9 @@ synthetic:
   heldout_seed: 17017
   no_degrade: true
   variant: clean
+  training_policy_plan: null
+  adaptation_policy:
+    enabled: false
 
 data:
   components:

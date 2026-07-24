@@ -354,9 +354,13 @@ python scripts/run_student_experiment.py \
 The full configuration is `configs/sub1b_experiment.yaml`. Both configurations connect independent
 hard-document train/heldout generation, leakage validation, weighted UDD mixing, cross-tokenizer
 teacher generation and quality gating, tokenizer and student creation, pretraining, SFT, RLVR, and
-split evaluation. The full DAG also blocks initialization on target-GPU visual parity/performance
-and a production-shaped full-model forward/backward/AdamW memory probe. See
+split evaluation. The full DAG adds a separate validation split and converts its structured
+failures into a content-addressed next-batch synthesis plan; only validation-derived plans may
+replace train generation in the following run. It also blocks initialization on target-GPU visual
+parity/performance and a production-shaped full-model forward/backward/AdamW memory probe. See
 [`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
+The policy and leakage contract are documented in
+[`docs/report/student_failure_driven_synthesis.md`](docs/report/student_failure_driven_synthesis.md).
 
 After a run, produce and independently re-verify a full-hash evidence attestation:
 

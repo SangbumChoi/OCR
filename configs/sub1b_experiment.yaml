@@ -60,14 +60,22 @@ synthetic:
     - investment_dossier
   count: 100
   train_count: null
-  validation_count: null
+  validation_count: 10
   heldout_count: null
   difficulty_level: 5
   train_seed: 7
-  validation_seed: null
+  validation_seed: 3507
   heldout_seed: 7007
   no_degrade: false
   variant: degraded
+  # Set this to a prior run's training-authorized next_train_plan.json to
+  # replace the fixed train generation above with failure-driven allocation.
+  training_policy_plan: null
+  adaptation_policy:
+    enabled: true
+    config: configs/sub1b_synthesis_policy.yaml
+    budget: 700
+    seed: 9107
 
 data:
   # Add public components as additional NAME/path/weight entries. Weights must sum to 1.
@@ -156,7 +164,7 @@ evaluation:
   seed: 31
   temperature_calibration:
     enabled: true
-    source_split: heldout
+    source_split: validation
     fraction: 0.2
     min_samples: 20
     correct_threshold: 0.5

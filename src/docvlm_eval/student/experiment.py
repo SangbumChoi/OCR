@@ -29,6 +29,10 @@ from .config import StudentConfig
 from .distillation import DistillationConfig
 from .mixture import MixtureComponent, validate_components
 from .pretrain import PretrainConfig, pretraining_supervision_contract
+from .synthesis_policy import (
+    load_synthesis_policy_config,
+    validate_generation_plan,
+)
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -575,6 +579,45 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     )
     if not synth_config.is_file():
         raise ValueError(f"synthetic config does not exist: {synth_config}")
+    training_policy_plan = synthetic.get("training_policy_plan")
+    if training_policy_plan:
+        plan_path = _resolve_path(repo_root, training_policy_plan)
+        if not plan_path.is_file():
+            raise ValueError(
+                f"synthetic training policy plan does not exist: {plan_path}"
+            )
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        if not isinstance(plan, dict):
+            raise ValueError("synthetic training policy plan must be a mapping")
+        validate_generation_plan(
+            plan,
+            require_training_authorized=True,
+        )
+    adaptation = synthetic.get("adaptation_policy") or {}
+    if not isinstance(adaptation, dict):
+        raise ValueError("synthetic.adaptation_policy must be a mapping")
+    if bool(adaptation.get("enabled", False)):
+        if validation_count is None:
+            raise ValueError(
+                "enabled synthetic adaptation policy requires validation_count"
+            )
+        policy_path = _resolve_path(
+            repo_root,
+            adaptation.get("config")
+            or "configs/sub1b_synthesis_policy.yaml",
+        )
+        if not policy_path.is_file():
+            raise ValueError(
+                f"synthetic adaptation policy config does not exist: {policy_path}"
+            )
+        policy_config = load_synthesis_policy_config(policy_path)
+        budget = adaptation.get("budget", policy_config["budget"])
+        seed = adaptation.get("seed", policy_config["seed"])
+        if int(budget) <= 0 or int(seed) < 0:
+            raise ValueError(
+                "synthetic adaptation policy budget must be positive and "
+                "seed non-negative"
+            )
     data = _require_mapping(raw, "data")
     if not isinstance(data.get("components"), list) or not data["components"]:
         raise ValueError("data.components must be a non-empty list")
@@ -717,9 +760,13 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError(
             "evaluation.temperature_calibration.enabled must be a boolean"
         )
-    if calibration.get("source_split") not in {"train", "heldout"}:
+    allowed_calibration_splits = {"train", "heldout"}
+    if validation_count is not None:
+        allowed_calibration_splits.add("validation")
+    if calibration.get("source_split") not in allowed_calibration_splits:
         raise ValueError(
-            "evaluation.temperature_calibration.source_split must be train or heldout"
+            "evaluation.temperature_calibration.source_split must be an "
+            "available train, validation, or heldout split"
         )
     fraction = float(calibration.get("fraction", 0.0))
     if not 0.0 < fraction < 1.0:
@@ -883,6 +930,30 @@ def build_experiment_plan(
     input_fingerprints: dict[str, Any] = {
         "synthetic_config": _file_fingerprint(synth_config_path),
     }
+    training_policy_plan_path = (
+        _resolve_path(repo_root, synthetic["training_policy_plan"])
+        if synthetic.get("training_policy_plan")
+        else None
+    )
+    if training_policy_plan_path is not None:
+        input_fingerprints["synthetic_training_policy_plan"] = (
+            _file_fingerprint(training_policy_plan_path)
+        )
+    adaptation_spec = synthetic.get("adaptation_policy") or {}
+    adaptation_enabled = bool(adaptation_spec.get("enabled", False))
+    adaptation_config_path = (
+        _resolve_path(
+            repo_root,
+            adaptation_spec.get("config")
+            or "configs/sub1b_synthesis_policy.yaml",
+        )
+        if adaptation_enabled
+        else None
+    )
+    if adaptation_config_path is not None:
+        input_fingerprints["synthetic_adaptation_policy"] = (
+            _file_fingerprint(adaptation_config_path)
+        )
     posttraining_spec = raw.get("posttraining") or {}
     preference_spec = posttraining_spec.get("preference") or {}
     preference_enabled = bool(preference_spec.get("enabled", False))
@@ -914,6 +985,7 @@ def build_experiment_plan(
     mixed_data = artifacts / "data" / "mixture"
     sample_dir = artifacts / "samples"
     train_samples = sample_dir / "train.jsonl"
+    validation_samples = sample_dir / "validation.jsonl"
     heldout_samples = sample_dir / "heldout.jsonl"
     tokenizer_dir = artifacts / "tokenizer"
     initial_dir = artifacts / "initial"
@@ -922,6 +994,7 @@ def build_experiment_plan(
     preference_dir = artifacts / "preference"
     rlvr_dir = artifacts / "rlvr"
     eval_dir = artifacts / "evaluation"
+    next_synthesis_plan = artifacts / "synthetic" / "next_train_plan.json"
     leakage_report = artifacts / "data" / "split_leakage.json"
     resolved_blueprint_path = output_root / "resolved_blueprint.yaml"
     component_root = artifacts / "data" / "components"
@@ -1274,7 +1347,7 @@ def build_experiment_plan(
             python,
             script("make_realistic_cases.py"),
             "--config",
-            str(_resolve_path(repo_root, synthetic.get("config") or "configs/synth_data.yaml")),
+            str(synth_config_path),
             "--only",
             *[str(case) for case in synthetic["cases"]],
             "--difficulty-level",
@@ -1307,22 +1380,35 @@ def build_experiment_plan(
                 ),
             )
         for split, seed, count, output in split_specs:
+            if split == "train" and training_policy_plan_path is not None:
+                command = [
+                    python,
+                    script("generate_from_synthesis_policy.py"),
+                    "--plan",
+                    str(training_policy_plan_path),
+                    "--config",
+                    str(synth_config_path),
+                    "--out",
+                    str(output),
+                    "--python",
+                    python,
+                ]
+            else:
+                command = [
+                    *common,
+                    "--count",
+                    str(count),
+                    "--seed",
+                    str(int(seed)),
+                    "--split-name",
+                    split,
+                    "--out",
+                    str(output),
+                ]
             stages.append(
                 ExperimentStage(
                     f"synthetic_{split}",
-                    tuple(
-                        [
-                            *common,
-                            "--count",
-                            str(count),
-                            "--seed",
-                            str(int(seed)),
-                            "--split-name",
-                            split,
-                            "--out",
-                            str(output),
-                        ]
-                    ),
+                    tuple(command),
                     (),
                     (
                         Artifact(str(output / "index.json")),
@@ -1410,22 +1496,39 @@ def build_experiment_plan(
             ]
         )
         if validation_enabled:
-            stages.append(
-                ExperimentStage(
-                    "build_validation_udd",
-                    (
-                        python,
-                        script("build_udd_synthetic.py"),
-                        "--root",
-                        str(validation_cases),
-                        "--out",
-                        str(validation_udd_root),
-                        "--variant",
-                        variant,
+            stages.extend(
+                [
+                    ExperimentStage(
+                        "build_validation_udd",
+                        (
+                            python,
+                            script("build_udd_synthetic.py"),
+                            "--root",
+                            str(validation_cases),
+                            "--out",
+                            str(validation_udd_root),
+                            "--variant",
+                            variant,
+                        ),
+                        ("validate_synthetic_splits",),
+                        (Artifact(str(validation_udd), "directory"),),
                     ),
-                    ("validate_synthetic_splits",),
-                    (Artifact(str(validation_udd), "directory"),),
-                )
+                    ExperimentStage(
+                        "build_validation_samples",
+                        (
+                            python,
+                            script("build_realistic_benchmark.py"),
+                            "--root",
+                            str(validation_cases),
+                            "--variant",
+                            variant,
+                            "--out",
+                            str(validation_samples),
+                        ),
+                        ("validate_synthetic_splits",),
+                        (Artifact(str(validation_samples)),),
+                    ),
+                ]
             )
 
     for name, spec in hub_specs.items():
@@ -1867,8 +1970,6 @@ def build_experiment_plan(
         str(resolved_blueprint_path),
         "--split",
         f"train={train_samples}",
-        "--split",
-        f"heldout={heldout_samples}",
         "--tokenizer",
         str(tokenizer_dir),
         "--checkpoint",
@@ -1883,6 +1984,17 @@ def build_experiment_plan(
         str(int(evaluation.get("max_new_tokens", 128))),
         "--seed",
         str(int(evaluation.get("seed", 0))),
+    ]
+    if validation_enabled:
+        heldout_split_index = eval_command.index("--tokenizer")
+        eval_command[heldout_split_index:heldout_split_index] = [
+            "--split",
+            f"validation={validation_samples}",
+        ]
+    heldout_split_index = eval_command.index("--tokenizer")
+    eval_command[heldout_split_index:heldout_split_index] = [
+        "--split",
+        f"heldout={heldout_samples}",
     ]
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
     if not bool(evaluation["use_kv_cache"]):
@@ -1947,17 +2059,20 @@ def build_experiment_plan(
     tags = evaluation.get("wandb_tags") or []
     if tags:
         eval_command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+    evaluation_dependencies = [
+        final_checkpoint_stage,
+        "build_train_samples",
+        "build_heldout_samples",
+        *visual_benchmark_stage_names,
+        *training_benchmark_stage_names,
+    ]
+    if validation_enabled:
+        evaluation_dependencies.append("build_validation_samples")
     stages.append(
         ExperimentStage(
             "evaluate",
             tuple(eval_command),
-            (
-                final_checkpoint_stage,
-                "build_train_samples",
-                "build_heldout_samples",
-                *visual_benchmark_stage_names,
-                *training_benchmark_stage_names,
-            ),
+            tuple(evaluation_dependencies),
             (
                 Artifact(str(eval_dir / "manifest.json")),
                 Artifact(str(eval_dir / "comparison.json")),
@@ -1965,6 +2080,35 @@ def build_experiment_plan(
             ),
         )
     )
+    if adaptation_enabled:
+        policy_command = [
+            python,
+            script("plan_student_synthesis.py"),
+            "--per-sample",
+            str(eval_dir / "validation" / "per_sample.jsonl"),
+            "--config",
+            str(adaptation_config_path),
+            "--output",
+            str(next_synthesis_plan),
+        ]
+        _add_optional(
+            policy_command,
+            "--budget",
+            adaptation_spec.get("budget"),
+        )
+        _add_optional(
+            policy_command,
+            "--seed",
+            adaptation_spec.get("seed"),
+        )
+        stages.append(
+            ExperimentStage(
+                "plan_next_synthetic_batch",
+                tuple(policy_command),
+                ("evaluate",),
+                (Artifact(str(next_synthesis_plan)),),
+            )
+        )
 
     input_fingerprints["python_source"] = _source_fingerprint(
         repo_root,

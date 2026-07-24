@@ -15,6 +15,7 @@ from docvlm_eval.student.experiment import (
     build_experiment_plan,
 )
 from docvlm_eval.student.config import StudentConfig
+from docvlm_eval.student.synthesis_policy import payload_fingerprint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,11 +31,14 @@ def test_default_experiment_compiles_complete_stage_dag():
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
         "synthetic_train",
+        "synthetic_validation",
         "synthetic_heldout",
         "validate_synthetic_splits",
         "build_synthetic_udd",
         "build_train_samples",
         "build_heldout_samples",
+        "build_validation_udd",
+        "build_validation_samples",
         "acquire_component_public_udd",
         "mix_pretraining_data",
         "export_teacher_requests",
@@ -46,6 +50,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "sft",
         "rlvr",
         "evaluate",
+        "plan_next_synthetic_batch",
     ]
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["balance_by"] == "component"
@@ -500,7 +505,7 @@ def test_experiment_compiles_temperature_calibration_contract(tmp_path):
     assert "--no-temperature-calibration" not in evaluate.command
     assert evaluate.command[
         evaluate.command.index("--calibration-source-split") + 1
-    ] == "heldout"
+    ] == "validation"
     assert evaluate.command[
         evaluate.command.index("--calibration-min-samples") + 1
     ] == "20"
@@ -540,6 +545,98 @@ def test_experiment_builds_separate_pretraining_validation_split(tmp_path):
     assert "validation=" in " ".join(leakage.command)
     assert "build_validation_udd" in pretrain.dependencies
     assert "--eval-src" in pretrain.command
+
+
+def test_experiment_emits_next_batch_plan_from_validation(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["synthetic"]["validation_count"] = 1
+    raw["synthetic"]["validation_seed"] = 3017
+    raw["synthetic"]["adaptation_policy"] = {
+        "enabled": True,
+        "config": "configs/sub1b_synthesis_policy.yaml",
+        "budget": 5,
+        "seed": 99,
+    }
+    config = tmp_path / "experiment.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    policy = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "plan_next_synthetic_batch"
+    )
+
+    assert any(
+        argument.endswith("validation.jsonl")
+        for argument in evaluate.command
+    )
+    assert "build_validation_samples" in evaluate.dependencies
+    assert policy.dependencies == ("evaluate",)
+    assert policy.command[policy.command.index("--budget") + 1] == "5"
+    assert policy.command[policy.command.index("--seed") + 1] == "99"
+
+
+def test_experiment_can_generate_train_split_from_authorized_plan(tmp_path):
+    generation_plan = {
+        "schema_version": 1,
+        "policy": "test",
+        "training_authorized": True,
+        "source": {
+            "split": "validation",
+            "path": "/tmp/validation.jsonl",
+            "fingerprint": "sha256:test",
+            "rows": 1,
+        },
+        "budget": 1,
+        "jobs": [
+            {
+                "arm_id": "sha256:arm",
+                "generator_case": "hard_table",
+                "language": "en",
+                "difficulty_level": 2,
+                "layout_family": "compact-v1",
+                "composition_tier": "single_document",
+                "count": 1,
+                "seed": 7,
+                "output_subdir": "job-0000",
+            }
+        ],
+    }
+    generation_plan["plan_fingerprint"] = payload_fingerprint(
+        generation_plan
+    )
+    plan_path = tmp_path / "next_train_plan.json"
+    plan_path.write_text(
+        json.dumps(generation_plan),
+        encoding="utf-8",
+    )
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["synthetic"]["training_policy_plan"] = str(plan_path)
+    config = tmp_path / "experiment.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    train = next(
+        stage for stage in plan.stages if stage.name == "synthetic_train"
+    )
+
+    assert train.command[1].endswith(
+        "generate_from_synthesis_policy.py"
+    )
+    assert train.command[train.command.index("--plan") + 1] == str(plan_path)
+    assert "synthetic_training_policy_plan" in plan.input_fingerprints
 
 
 def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):

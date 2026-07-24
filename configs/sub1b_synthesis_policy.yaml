@@ -1,0 +1,56 @@
+# Failure-driven allocation for the next exact synthetic training batch.
+# Only validation per-sample artifacts may authorize a training plan.
+
+schema_version: 1
+budget: 700
+seed: 9107
+
+failure_weights:
+  score_deficit: 0.50
+  reward_deficit: 0.30
+  structure_failure: 0.20
+
+prior_strength: 4.0
+uncertainty_coefficient: 0.15
+temperature: 0.25
+exploration_fraction: 0.15
+factor_weights:
+  generator_case: 0.30
+  language: 0.20
+  difficulty_level: 0.15
+  layout_family: 0.15
+  composition_tier: 0.20
+
+candidate_space:
+  languages: [en, es, ko, ja, zh]
+  difficulty_levels: [3, 4, 5]
+  cases:
+    - generator_case: hard_table
+      composition_tier: single_document
+      layout_families: [classic-v1, compact-v1, report-v1]
+    - generator_case: hard_chart
+      composition_tier: single_document
+      layout_families: [classic-v1, compact-v1, report-v1]
+    - generator_case: hard_investment
+      composition_tier: single_document
+      layout_families: [classic-v1, compact-v1, report-v1]
+    - generator_case: hard_science
+      composition_tier: single_document
+      layout_families: [classic-v1, compact-v1, report-v1]
+    - generator_case: hard_diagram
+      composition_tier: single_document
+      layout_families: [classic-v1, compact-v1, report-v1]
+      languages: [en]
+    - generator_case: audit_packet
+      composition_tier: multi_page
+      layout_families: null
+      languages: [en]
+      difficulty_levels: [5]
+    - generator_case: investment_dossier
+      composition_tier: multi_document
+      layout_families: null
+      languages: [en]
+      difficulty_levels: [5]
+
+generation:
+  no_degrade: false

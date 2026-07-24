@@ -3,8 +3,9 @@
 [`scripts/run_student_experiment.py`](../../scripts/run_student_experiment.py) compiles one validated
 YAML experiment into a resumable stage DAG. It connects hard-document synthesis, semantic split
 validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer distillation,
-tokenizer training, student initialization, pretraining, grounded SFT, optional preference optimization or RLVR, and
-train/heldout generation evaluation. The full configuration first benchmarks packed visual attention on the
+tokenizer training, student initialization, pretraining, grounded SFT, optional preference
+optimization or RLVR, train/validation/heldout generation evaluation, and failure-driven planning
+of the next synthetic train batch. The full configuration first benchmarks packed visual attention on the
 active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
 and peak memory as a checked run artifact.
 
@@ -55,7 +56,8 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 19 stages, including target-device visual-backend and full-training preflights.
+The full plan has 23 stages, including target-device visual-backend and full-training preflights,
+validation conversion/evaluation, and next-batch synthesis planning.
 The CPU contract test disables those deployment preflights and omits the full plan's public-Hub acquisition, leaving
 16 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, and one optimizer step
 per training phase:
@@ -77,8 +79,14 @@ training limits, evaluation settings, and W&B metadata. `synthetic.train_count` 
 experiments to retain one fixed benchmark. Setting both `synthetic.validation_count` and
 `synthetic.validation_seed` adds a third leakage-checked root, converts it to UDD, and passes it to
 pretraining through `--eval-src`. This optimizer-heldout validation split can drive adaptive data
-mixing while the final heldout root remains untouched. The runner writes a resolved architecture
-blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+mixing while the final heldout root remains untouched. It is also converted to structured
+evaluation samples. When `synthetic.adaptation_policy.enabled` is true, the final
+`plan_next_synthetic_batch` stage turns those validation failures into an authorized plan for the
+next run. Setting `synthetic.training_policy_plan` to that artifact replaces fixed train generation
+with exact policy execution; heldout-derived plans are rejected. See
+[`student_failure_driven_synthesis.md`](student_failure_driven_synthesis.md). The runner writes a
+resolved architecture blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions
+match the experiment.
 
 The production synthetic list includes five single-page hard families plus `audit_packet` and
 `investment_dossier`. Those composed families supply the exact multi-page and cross-document tiers
