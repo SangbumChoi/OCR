@@ -81,9 +81,41 @@ def test_training_mode_measures_forward_and_backward():
     assert record["tokens_per_second"] > 0
 
 
+def test_dense_policies_share_patch_content_and_match_packed_output():
+    report = _run(
+        sequence_lengths=None,
+        patch_grids=((1, 3), (3, 1)),
+        backends=("loop", "dense_adaptive", "dense_fixed_square"),
+    )
+
+    records = {
+        record["requested_backend"]: record for record in report["results"]
+    }
+    assert report["patch_grids"] == [[1, 3], [3, 1]]
+    assert records["dense_adaptive"]["status"] == "ok"
+    assert records["dense_fixed_square"]["status"] == "ok"
+    assert records["dense_adaptive"]["resolved_backend"] == "dense"
+    assert records["dense_adaptive"]["max_abs_delta_vs_loop"] < 1e-5
+    assert records["dense_fixed_square"]["max_abs_delta_vs_loop"] < 1e-5
+    assert records["loop"]["executed_visual_tokens"] == 6
+    assert records["dense_adaptive"]["executed_visual_tokens"] == 18
+    assert records["dense_fixed_square"]["executed_visual_tokens"] == 128
+    assert records["loop"]["median_speedup_vs_dense_adaptive"] > 0
+
+
 def test_rejects_visual_sequence_above_position_grid():
     with pytest.raises(ValueError, match="max_position_tokens"):
         _run(sequence_lengths=(65,), backends=("loop",))
+
+
+def test_rejects_dense_policy_without_patch_grids():
+    with pytest.raises(ValueError, match="require patch_grids"):
+        _run(backends=("loop", "dense_adaptive"))
+
+
+def test_rejects_both_sequence_lengths_and_patch_grids():
+    with pytest.raises(ValueError, match="only one"):
+        _run(patch_grids=((1, 3), (1, 5)))
 
 
 @pytest.mark.skipif(

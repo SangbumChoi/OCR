@@ -141,16 +141,21 @@ visual_benchmark/<requested_backend>/median_ms
 visual_benchmark/<requested_backend>/p95_ms
 visual_benchmark/<requested_backend>/tokens_per_second
 visual_benchmark/<requested_backend>/median_speedup_vs_loop
+visual_benchmark/<requested_backend>/median_speedup_vs_dense_adaptive
 visual_benchmark/<requested_backend>/peak_memory_allocated_bytes
 visual_benchmark/<requested_backend>/peak_memory_reserved_bytes
 visual_benchmark/<requested_backend>/peak_memory_reduction_fraction_vs_loop
+visual_benchmark/<requested_backend>/peak_memory_reduction_fraction_vs_dense_adaptive
 visual_benchmark/<requested_backend>/max_abs_delta_vs_loop
+visual_benchmark/<requested_backend>/executed_visual_tokens
+visual_benchmark/<requested_backend>/valid_visual_token_fraction
 ```
 
-Here `<requested_backend>` is `loop`, `auto`, or `flex`. Filter or group by the W&B config fields
-`mode`, `precision`, `sequence_lengths`, `student_config_fingerprint`, and device metadata before
-comparing latency. `resolved_flex=0` on an `auto` run means the portable fallback executed; it must
-not be presented as a FlexAttention measurement.
+Here `<requested_backend>` is `loop`, `auto`, `flex`, `dense_adaptive`, or
+`dense_fixed_square`. Filter or group by the W&B config fields `mode`, `precision`, `patch_grids`,
+`student_config_fingerprint`, and device metadata before comparing latency. `resolved_flex=0` on
+an `auto` run means the portable fallback executed; it must not be presented as a FlexAttention
+measurement.
 
 ## 7. Glossary — every term you'll see
 

@@ -537,27 +537,47 @@ def _visual_efficiency(
         ),
         None,
     )
-    if candidate is None or loop is None:
+    dense_requested = str(
+        gate.get("dense_control_requested_backend", "dense_adaptive")
+    )
+    dense = next(
+        (
+            record
+            for record in records
+            if isinstance(record, Mapping)
+            and record.get("requested_backend") == dense_requested
+        ),
+        None,
+    )
+    if candidate is None or loop is None or dense is None:
         return _result(
             gate,
             "insufficient_evidence",
-            "matched loop and candidate backend records are required",
+            "matched loop, dense-control, and candidate records are required",
             {
                 "candidate_requested_backend": requested,
                 "candidate_available": candidate is not None,
                 "loop_available": loop is not None,
+                "dense_control_requested_backend": dense_requested,
+                "dense_control_available": dense is not None,
             },
         )
-    if candidate.get("status") != "ok" or loop.get("status") != "ok":
+    if (
+        candidate.get("status") != "ok"
+        or loop.get("status") != "ok"
+        or dense.get("status") != "ok"
+    ):
         return _result(
             gate,
             "fail",
-            "the loop reference or candidate backend failed",
+            "the loop, dense control, or candidate backend failed",
             {
                 "candidate_status": candidate.get("status"),
                 "candidate_error": candidate.get("error"),
                 "loop_status": loop.get("status"),
                 "loop_error": loop.get("error"),
+                "dense_control_status": dense.get("status"),
+                "dense_control_error": dense.get("error"),
             },
         )
 
@@ -589,6 +609,13 @@ def _visual_efficiency(
         "max_abs_delta_vs_loop": candidate.get(
             "max_abs_delta_vs_loop"
         ),
+        "dense_control_requested_backend": dense_requested,
+        "median_speedup_vs_dense_adaptive": candidate.get(
+            "median_speedup_vs_dense_adaptive"
+        ),
+        "peak_memory_ratio_vs_dense_adaptive": candidate.get(
+            "peak_memory_ratio_vs_dense_adaptive"
+        ),
         "student_config_fingerprint": report.get(
             "student_config_fingerprint"
         ),
@@ -604,6 +631,10 @@ def _visual_efficiency(
             and candidate.get("median_speedup_vs_loop") is not None
             and candidate.get("peak_memory_ratio_vs_loop") is not None
             and candidate.get("max_abs_delta_vs_loop") is not None
+            and candidate.get("median_speedup_vs_dense_adaptive")
+            is not None
+            and candidate.get("peak_memory_ratio_vs_dense_adaptive")
+            is not None
         )
     except (KeyError, TypeError, ValueError):
         evidence_sufficient = False
@@ -620,6 +651,12 @@ def _visual_efficiency(
         speedup = float(candidate["median_speedup_vs_loop"])
         memory_ratio = float(candidate["peak_memory_ratio_vs_loop"])
         numerical_delta = float(candidate["max_abs_delta_vs_loop"])
+        dense_speedup = float(
+            candidate["median_speedup_vs_dense_adaptive"]
+        )
+        dense_memory_ratio = float(
+            candidate["peak_memory_ratio_vs_dense_adaptive"]
+        )
     except (TypeError, ValueError):
         return _result(
             gate,
@@ -632,6 +669,12 @@ def _visual_efficiency(
         gate.get("max_peak_memory_ratio_vs_loop", 1.0)
     )
     maximum_delta = float(gate.get("max_abs_delta_vs_loop", 0.0))
+    minimum_dense_speedup = float(
+        gate.get("min_median_speedup_vs_dense_adaptive", 1.0)
+    )
+    maximum_dense_memory_ratio = float(
+        gate.get("max_peak_memory_ratio_vs_dense_adaptive", 1.0)
+    )
     violations = []
     valid_measurements = (
         math.isfinite(speedup)
@@ -640,6 +683,10 @@ def _visual_efficiency(
         and memory_ratio >= 0
         and math.isfinite(numerical_delta)
         and numerical_delta >= 0
+        and math.isfinite(dense_speedup)
+        and dense_speedup > 0
+        and math.isfinite(dense_memory_ratio)
+        and dense_memory_ratio >= 0
     )
     if not valid_measurements:
         violations.append("invalid_measurement")
@@ -651,12 +698,23 @@ def _visual_efficiency(
         violations.append("peak_memory")
     if valid_measurements and numerical_delta > maximum_delta:
         violations.append("numerical_parity")
+    if valid_measurements and dense_speedup < minimum_dense_speedup:
+        violations.append("dense_adaptive_speedup")
+    if (
+        valid_measurements
+        and dense_memory_ratio > maximum_dense_memory_ratio
+    ):
+        violations.append("dense_adaptive_peak_memory")
     evidence.update(
         {
             "required_resolved_backend": required_backend,
             "min_median_speedup_vs_loop": minimum_speedup,
             "max_peak_memory_ratio_vs_loop": maximum_memory_ratio,
             "max_abs_delta_threshold": maximum_delta,
+            "min_median_speedup_vs_dense_adaptive": minimum_dense_speedup,
+            "max_peak_memory_ratio_vs_dense_adaptive": (
+                maximum_dense_memory_ratio
+            ),
             "violations": violations,
         }
     )

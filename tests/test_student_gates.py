@@ -143,6 +143,8 @@ def _visual_report(
     speedup=1.2,
     memory_ratio=0.95,
     numerical_delta=0.01,
+    dense_speedup=1.15,
+    dense_memory_ratio=0.9,
     measured_iterations=10,
 ):
     from docvlm_eval.student.config import (
@@ -186,6 +188,14 @@ def _visual_report(
                 "median_speedup_vs_loop": speedup,
                 "peak_memory_ratio_vs_loop": memory_ratio,
                 "max_abs_delta_vs_loop": numerical_delta,
+                "median_speedup_vs_dense_adaptive": dense_speedup,
+                "peak_memory_ratio_vs_dense_adaptive": dense_memory_ratio,
+            },
+            {
+                "status": "ok",
+                "requested_backend": "dense_adaptive",
+                "resolved_backend": "dense",
+                "median_ms": 115.0,
             },
         ],
     }
@@ -249,6 +259,12 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
         "ko": 0.01,
     }
     assert evidence["visual_efficiency"]["median_speedup_vs_loop"] == 1.2
+    assert (
+        evidence["visual_efficiency"][
+            "median_speedup_vs_dense_adaptive"
+        ]
+        == 1.15
+    )
 
 
 def test_visual_efficiency_gate_rejects_fallback_and_regressions():
@@ -308,6 +324,30 @@ def test_visual_efficiency_gate_requires_target_gpu_and_measurement_dose():
     )
     assert cpu_gate["status"] == "insufficient_evidence"
     assert short_gate["status"] == "insufficient_evidence"
+
+
+def test_visual_efficiency_gate_rejects_dense_control_regression():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.8, 0.7),
+        {"heldout": []},
+        visual_backend_report=_visual_report(
+            dense_speedup=0.95,
+            dense_memory_ratio=1.1,
+        ),
+    )
+
+    gate = next(
+        gate for gate in report["gates"] if gate["id"] == "visual_efficiency"
+    )
+    assert gate["status"] == "fail"
+    assert gate["evidence"]["violations"] == [
+        "dense_adaptive_speedup",
+        "dense_adaptive_peak_memory",
+    ]
 
 
 def test_visual_efficiency_gate_does_not_approve_dense_execution():

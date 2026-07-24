@@ -259,7 +259,9 @@ Final deployment acceptance joins those two evidence streams. `eval_student.py` 
 benchmark's complete student configuration and canonical fingerprint, CUDA runtime, benchmark
 dose, resolved backend, numerical delta, loop-relative median latency, and loop-relative peak
 memory inside the same `gates.json` that evaluates held-out generalization and capability
-retention. Missing or CPU-only timing cannot pass; evidence from a different architecture fails.
+retention. The same matched portrait/landscape patches also run through dense adaptive and fixed
+square controls; packed deployment must outperform the adaptive control as well as its portable
+loop. Missing or CPU-only timing cannot pass; evidence from a different architecture fails.
 
 ## Evidence basis
 

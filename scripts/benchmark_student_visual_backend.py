@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark packed attention in the native student's vision path."""
+"""Benchmark packed and dense policies in the native student's vision path."""
 
 from __future__ import annotations
 
@@ -26,6 +26,25 @@ def _sequence_lengths(value: str) -> tuple[int, ...]:
         raise argparse.ArgumentTypeError("expected comma-separated integers") from error
     if not result or any(length <= 0 for length in result):
         raise argparse.ArgumentTypeError("sequence lengths must be positive")
+    return result
+
+
+def _patch_grids(value: str) -> tuple[tuple[int, int], ...]:
+    try:
+        result = tuple(
+            tuple(int(dimension.strip()) for dimension in item.lower().split("x"))
+            for item in value.split(",")
+        )
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "expected comma-separated HEIGHTxWIDTH grids"
+        ) from error
+    if (
+        not result
+        or any(len(grid) != 2 for grid in result)
+        or any(dimension <= 0 for grid in result for dimension in grid)
+    ):
+        raise argparse.ArgumentTypeError("patch grids must be positive HEIGHTxWIDTH pairs")
     return result
 
 
@@ -68,8 +87,13 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
             "median_speedup_vs_loop",
             "peak_memory_ratio_vs_loop",
             "peak_memory_reduction_fraction_vs_loop",
+            "median_speedup_vs_dense_adaptive",
+            "peak_memory_ratio_vs_dense_adaptive",
+            "peak_memory_reduction_fraction_vs_dense_adaptive",
             "peak_memory_allocated_bytes",
             "peak_memory_reserved_bytes",
+            "executed_visual_tokens",
+            "valid_visual_token_fraction",
         ):
             value = record.get(metric)
             if value is not None:
@@ -89,17 +113,34 @@ def main() -> None:
         type=Path,
         default=ROOT / "configs" / "sub1b_architecture.yaml",
     )
-    parser.add_argument(
+    shapes = parser.add_mutually_exclusive_group()
+    shapes.add_argument(
         "--sequence-lengths",
         type=_sequence_lengths,
-        default=(2520, 2520),
         help="Comma-separated unpadded visual-token counts, one per document.",
+    )
+    shapes.add_argument(
+        "--patch-grids",
+        type=_patch_grids,
+        help="Comma-separated HEIGHTxWIDTH patch grids, one per document.",
     )
     parser.add_argument(
         "--backends",
         nargs="+",
-        choices=["loop", "auto", "flex"],
-        default=["loop", "auto", "flex"],
+        choices=[
+            "loop",
+            "auto",
+            "flex",
+            "dense_adaptive",
+            "dense_fixed_square",
+        ],
+        default=[
+            "loop",
+            "auto",
+            "flex",
+            "dense_adaptive",
+            "dense_fixed_square",
+        ],
     )
     parser.add_argument("--warmup-iterations", type=int, default=3)
     parser.add_argument("--iterations", type=int, default=10)
@@ -124,6 +165,8 @@ def main() -> None:
     parser.add_argument("--wandb-group")
     parser.add_argument("--wandb-tags", nargs="*")
     args = parser.parse_args()
+    if args.sequence_lengths is None and args.patch_grids is None:
+        args.patch_grids = ((40, 63), (63, 40))
 
     blueprint = load_blueprint(args.config)
     _, errors = validate_blueprint(blueprint)
@@ -131,6 +174,7 @@ def main() -> None:
         raise SystemExit("\n".join(f"ERROR: {error}" for error in errors))
     config = VisualBenchmarkConfig(
         sequence_lengths=args.sequence_lengths,
+        patch_grids=args.patch_grids,
         backends=tuple(args.backends),
         warmup_iterations=args.warmup_iterations,
         measured_iterations=args.iterations,

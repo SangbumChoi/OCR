@@ -95,12 +95,18 @@ def test_default_experiment_compiles_complete_stage_dag():
         stage for stage in plan.stages if stage.name == "visual_backend_benchmark"
     )
     assert visual_benchmark.command[
-        visual_benchmark.command.index("--sequence-lengths") + 1
-    ] == "2520,2520"
+        visual_benchmark.command.index("--patch-grids") + 1
+    ] == "40x63,63x40"
     assert visual_benchmark.command[
         visual_benchmark.command.index("--backends") + 1 :
         visual_benchmark.command.index("--warmup-iterations")
-    ] == ("loop", "auto", "flex")
+    ] == (
+        "loop",
+        "auto",
+        "flex",
+        "dense_adaptive",
+        "dense_fixed_square",
+    )
     assert "--require-flex" not in visual_benchmark.command
     assert visual_benchmark.artifacts[0].path.endswith(
         "artifacts/benchmarks/visual_backend.json"
@@ -208,6 +214,10 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
             "sequence_lengths exceed the resolved visual position grid",
         ),
         ({"require_flex": "yes"}, "require_flex must be a boolean"),
+        (
+            {"backends": ["loop", "dense_adaptive"]},
+            "dense policies require patch_grids",
+        ),
     ],
 )
 def test_experiment_rejects_invalid_visual_backend_benchmark(
@@ -231,6 +241,28 @@ def test_experiment_rejects_invalid_visual_backend_benchmark(
     config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(ValueError, match=message):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
+def test_experiment_rejects_patch_grid_beyond_visual_position_side(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["runtime"]["visual_backend_benchmark"] = {
+        "enabled": True,
+        "patch_grids": [[1, 9]],
+        "backends": ["loop", "dense_adaptive"],
+    }
+    config = tmp_path / "invalid-visual-grid.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="patch_grids exceed the resolved visual position grid",
+    ):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

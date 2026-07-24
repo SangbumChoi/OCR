@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -342,6 +343,33 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         )
     if bool(visual_benchmark.get("enabled", False)):
         lengths = visual_benchmark.get("sequence_lengths")
+        grids = visual_benchmark.get("patch_grids")
+        if lengths is not None and grids is not None:
+            raise ValueError(
+                "runtime.visual_backend_benchmark must set only one of "
+                "sequence_lengths or patch_grids"
+            )
+        if grids is not None:
+            if (
+                not isinstance(grids, list)
+                or not grids
+                or any(
+                    not isinstance(grid, list)
+                    or len(grid) != 2
+                    or any(
+                        not isinstance(dimension, int)
+                        or isinstance(dimension, bool)
+                        or dimension <= 0
+                        for dimension in grid
+                    )
+                    for grid in grids
+                )
+            ):
+                raise ValueError(
+                    "runtime.visual_backend_benchmark.patch_grids must contain "
+                    "positive [height, width] pairs"
+                )
+            lengths = [height * width for height, width in grids]
         if (
             not isinstance(lengths, list)
             or not lengths
@@ -363,13 +391,20 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             or any(not isinstance(backend, str) for backend in backends)
             or len(set(backends)) != len(backends)
             or any(
-                backend not in {"loop", "auto", "flex"}
+                backend
+                not in {
+                    "loop",
+                    "auto",
+                    "flex",
+                    "dense_adaptive",
+                    "dense_fixed_square",
+                }
                 for backend in backends
             )
         ):
             raise ValueError(
                 "runtime.visual_backend_benchmark.backends must be a unique "
-                "list of loop, auto, or flex"
+                "list of supported policies"
             )
         if "loop" not in backends:
             raise ValueError(
@@ -382,6 +417,12 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         ):
             raise ValueError(
                 "runtime.visual_backend_benchmark.require_flex needs auto or flex"
+            )
+        if any(backend.startswith("dense_") for backend in backends) and (
+            grids is None
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark dense policies require patch_grids"
             )
         if visual_benchmark.get("mode", "training") not in {
             "forward",
@@ -775,11 +816,29 @@ def build_experiment_plan(
         sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
         sequence_target_seed=int(sequence_teacher.get("seed", 7)),
     )
-    if visual_benchmark_enabled and max(
-        visual_benchmark["sequence_lengths"]
-    ) > int(blueprint["student"]["vision"]["max_position_tokens"]):
+    visual_benchmark_lengths = (
+        [
+            height * width
+            for height, width in visual_benchmark.get("patch_grids", [])
+        ]
+        or visual_benchmark.get("sequence_lengths", [])
+    )
+    if visual_benchmark_enabled and max(visual_benchmark_lengths) > int(
+        blueprint["student"]["vision"]["max_position_tokens"]
+    ):
         raise ValueError(
             "runtime.visual_backend_benchmark.sequence_lengths exceed the "
+            "resolved visual position grid"
+        )
+    visual_position_side = math.isqrt(
+        int(blueprint["student"]["vision"]["max_position_tokens"])
+    )
+    if visual_benchmark_enabled and any(
+        height > visual_position_side or width > visual_position_side
+        for height, width in visual_benchmark.get("patch_grids", [])
+    ):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.patch_grids exceed the "
             "resolved visual position grid"
         )
     pretraining_supervision_contract(
@@ -839,28 +898,47 @@ def build_experiment_plan(
             script("benchmark_student_visual_backend.py"),
             "--config",
             str(resolved_blueprint_path),
-            "--sequence-lengths",
-            ",".join(
-                str(value)
-                for value in visual_benchmark["sequence_lengths"]
-            ),
-            "--backends",
-            *[str(value) for value in visual_benchmark["backends"]],
-            "--warmup-iterations",
-            str(int(visual_benchmark.get("warmup_iterations", 3))),
-            "--iterations",
-            str(int(visual_benchmark.get("iterations", 10))),
-            "--mode",
-            str(visual_benchmark.get("mode") or "training"),
-            "--precision",
-            str(visual_benchmark.get("precision") or "auto"),
-            "--device",
-            device,
-            "--seed",
-            str(int(visual_benchmark.get("seed", 7))),
-            "--output",
-            str(output),
         ]
+        if visual_benchmark.get("patch_grids") is not None:
+            command.extend(
+                [
+                    "--patch-grids",
+                    ",".join(
+                        f"{height}x{width}"
+                        for height, width in visual_benchmark["patch_grids"]
+                    ),
+                ]
+            )
+        else:
+            command.extend(
+                [
+                    "--sequence-lengths",
+                    ",".join(
+                        str(value)
+                        for value in visual_benchmark["sequence_lengths"]
+                    ),
+                ]
+            )
+        command.extend(
+            [
+                "--backends",
+                *[str(value) for value in visual_benchmark["backends"]],
+                "--warmup-iterations",
+                str(int(visual_benchmark.get("warmup_iterations", 3))),
+                "--iterations",
+                str(int(visual_benchmark.get("iterations", 10))),
+                "--mode",
+                str(visual_benchmark.get("mode") or "training"),
+                "--precision",
+                str(visual_benchmark.get("precision") or "auto"),
+                "--device",
+                device,
+                "--seed",
+                str(int(visual_benchmark.get("seed", 7))),
+                "--output",
+                str(output),
+            ]
+        )
         _add_optional(
             command,
             "--parity-atol",

@@ -300,8 +300,9 @@ evaluation_gates:
     min_selective_risk_reduction: 0.001
     max_hallucination_increase: 0.0
   - id: visual_efficiency
-    requirement: "the target-GPU fused visual path preserves parity and improves loop throughput"
+    requirement: "the target-GPU fused visual path preserves parity and improves over loop and dense adaptive execution"
     candidate_requested_backend: auto
+    dense_control_requested_backend: dense_adaptive
     required_resolved_backend: flex
     required_device_type: cuda
     required_mode: training
@@ -311,4 +312,6 @@ evaluation_gates:
     min_measured_iterations: 10
     min_median_speedup_vs_loop: 1.05
     max_peak_memory_ratio_vs_loop: 1.05
+    min_median_speedup_vs_dense_adaptive: 1.05
+    max_peak_memory_ratio_vs_dense_adaptive: 1.05
     max_abs_delta_vs_loop: 0.02

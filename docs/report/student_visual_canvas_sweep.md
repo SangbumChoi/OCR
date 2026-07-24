@@ -72,8 +72,8 @@ Run this on the same GPU type and software image intended for training:
 ```bash
 python scripts/benchmark_student_visual_backend.py \
   --config configs/sub1b_architecture.yaml \
-  --sequence-lengths 2520,2520 \
-  --backends loop auto flex \
+  --patch-grids 40x63,63x40 \
+  --backends loop auto flex dense_adaptive dense_fixed_square \
   --mode training \
   --precision bfloat16 \
   --warmup-iterations 3 \
@@ -92,16 +92,24 @@ reserved peak CUDA memory, output checksum, maximum absolute delta from `loop`, 
 metadata, loop-relative speed and memory ratios, and a fingerprint of the complete student
 configuration.
 
+The two patch grids are a matched portrait/landscape pair. Every policy receives the same random
+patch content and canonical 64-by-64 position IDs. `dense_adaptive` pads both documents to the
+shared 63-by-63 patch canvas; `dense_fixed_square` uses 64 by 64; packed policies execute only
+5,040 valid patches. Inputs for one policy are materialized at a time so another policy's tensors
+cannot inflate its CUDA peak-memory measurement.
+
 Do not compare records across different sequence lengths, modes, precision, GPU models, or
 configuration fingerprints. Accept FlexAttention only when the gate passes, numerical delta is
-within the recorded tolerance, and repeated target-GPU runs improve median latency or peak memory.
+within the recorded tolerance, and it improves median latency without unacceptable memory growth
+against both packed `loop` and `dense_adaptive`.
 An `auto` record resolving to `loop` is valid fallback evidence, not FlexAttention performance.
 The end-to-end evaluator consumes this JSON as the `visual_efficiency` deployment gate; throughput
 is therefore part of the same final acceptance report as held-out quality, grounding, reasoning,
 multilingual retention, and reliability rather than an unattached benchmark.
-This packed-backend runner is enabled only for the packed sweep arm. Dense controls disable the
-preflight and receive `insufficient_evidence` for this gate rather than being incorrectly approved
-using packed-path timing.
+This matched-policy runner is enabled once per packed sweep replicate and includes both dense
+controls in that report. Dense training arms disable redundant preflights and receive
+`insufficient_evidence` for their own packed deployment gate rather than being approved using a
+different execution path.
 
 ## Matched experiment
 

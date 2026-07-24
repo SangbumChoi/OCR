@@ -754,6 +754,14 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 "evaluation_gates.visual_efficiency."
                 "candidate_requested_backend must be auto or flex"
             )
+        if (
+            efficiency.get("dense_control_requested_backend")
+            != "dense_adaptive"
+        ):
+            errors.append(
+                "evaluation_gates.visual_efficiency."
+                "dense_control_requested_backend must be dense_adaptive"
+            )
         if efficiency.get("required_resolved_backend") != "flex":
             errors.append(
                 "evaluation_gates.visual_efficiency."
@@ -782,6 +790,8 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         for field in (
             "min_median_speedup_vs_loop",
             "max_peak_memory_ratio_vs_loop",
+            "min_median_speedup_vs_dense_adaptive",
+            "max_peak_memory_ratio_vs_dense_adaptive",
         ):
             if float(efficiency.get(field, 0)) <= 0:
                 errors.append(

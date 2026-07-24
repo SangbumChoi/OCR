@@ -1,4 +1,4 @@
-"""Reproducible benchmark for packed student vision attention backends."""
+"""Matched benchmark for packed and dense student vision execution policies."""
 
 from __future__ import annotations
 
@@ -17,15 +17,28 @@ from .config import StudentConfig, student_config_fingerprint
 from .model import DocumentVLMStudent, GatedResampler, VisionTower
 
 
-Backend = Literal["loop", "auto", "flex"]
+Backend = Literal[
+    "loop",
+    "auto",
+    "flex",
+    "dense_adaptive",
+    "dense_fixed_square",
+]
 Mode = Literal["forward", "training"]
 Precision = Literal["auto", "float32", "float16", "bfloat16"]
 
 
 @dataclass(frozen=True)
 class VisualBenchmarkConfig:
-    sequence_lengths: tuple[int, ...]
-    backends: tuple[Backend, ...] = ("loop", "auto", "flex")
+    sequence_lengths: tuple[int, ...] | None = None
+    patch_grids: tuple[tuple[int, int], ...] | None = None
+    backends: tuple[Backend, ...] = (
+        "loop",
+        "auto",
+        "flex",
+        "dense_adaptive",
+        "dense_fixed_square",
+    )
     warmup_iterations: int = 3
     measured_iterations: int = 10
     mode: Mode = "training"
@@ -35,17 +48,47 @@ class VisualBenchmarkConfig:
     require_flex: bool = False
     parity_atol: float | None = None
 
+    @property
+    def resolved_sequence_lengths(self) -> tuple[int, ...]:
+        if self.patch_grids is not None:
+            return tuple(height * width for height, width in self.patch_grids)
+        return tuple(self.sequence_lengths or ())
+
     def validate(self, student: StudentConfig) -> None:
-        if not self.sequence_lengths or any(length <= 0 for length in self.sequence_lengths):
+        lengths = self.resolved_sequence_lengths
+        if not lengths or any(length <= 0 for length in lengths):
             raise ValueError("sequence_lengths must contain positive integers")
-        if max(self.sequence_lengths) > student.vision.max_position_tokens:
+        if self.sequence_lengths is not None and self.patch_grids is not None:
+            raise ValueError("set only one of sequence_lengths or patch_grids")
+        if max(lengths) > student.vision.max_position_tokens:
             raise ValueError("each sequence length must be at most vision.max_position_tokens")
-        if not self.backends or any(
-            backend not in {"loop", "auto", "flex"} for backend in self.backends
+        grid_side = math.isqrt(student.vision.max_position_tokens)
+        if self.patch_grids is not None and any(
+            height <= 0
+            or width <= 0
+            or height > grid_side
+            or width > grid_side
+            for height, width in self.patch_grids
         ):
-            raise ValueError("backends must contain loop, auto, or flex")
+            raise ValueError("patch_grids exceed the visual position grid")
+        if not self.backends or any(
+            backend
+            not in {
+                "loop",
+                "auto",
+                "flex",
+                "dense_adaptive",
+                "dense_fixed_square",
+            }
+            for backend in self.backends
+        ):
+            raise ValueError("unsupported visual benchmark backend")
         if len(set(self.backends)) != len(self.backends):
             raise ValueError("backends must not contain duplicates")
+        if any(backend.startswith("dense_") for backend in self.backends) and (
+            self.patch_grids is None
+        ):
+            raise ValueError("dense policies require patch_grids")
         if self.warmup_iterations < 0:
             raise ValueError("warmup_iterations must be non-negative")
         if self.measured_iterations <= 0:
@@ -127,13 +170,21 @@ def _default_parity_atol(precision: str) -> float:
     }[precision]
 
 
-def _packed_inputs(
+@dataclass(frozen=True)
+class _CanonicalInputs:
+    patches: torch.Tensor
+    position_ids: torch.Tensor
+    cu_seqlens: torch.Tensor
+    patch_grids: tuple[tuple[int, int], ...] | None
+
+
+def _canonical_inputs(
     student: StudentConfig,
     lengths: tuple[int, ...],
     *,
-    device: torch.device,
+    patch_grids: tuple[tuple[int, int], ...] | None,
     seed: int,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> _CanonicalInputs:
     generator = torch.Generator(device="cpu")
     generator.manual_seed(seed)
     total = sum(lengths)
@@ -145,16 +196,90 @@ def _packed_inputs(
         patch,
         generator=generator,
         dtype=torch.float32,
-    ).to(device)
-    positions = torch.cat([torch.arange(length, dtype=torch.long) for length in lengths]).to(device)
+    )
+    if patch_grids is None:
+        positions = torch.cat(
+            [torch.arange(length, dtype=torch.long) for length in lengths]
+        )
+    else:
+        grid_side = math.isqrt(student.vision.max_position_tokens)
+        positions = torch.cat(
+            [
+                (
+                    torch.arange(height)[:, None] * grid_side
+                    + torch.arange(width)[None, :]
+                ).flatten()
+                for height, width in patch_grids
+            ]
+        )
     cumulative = [0]
     for length in lengths:
         cumulative.append(cumulative[-1] + length)
-    cu_seqlens = torch.tensor(cumulative, dtype=torch.int32, device=device)
-    return pixels, positions, cu_seqlens
+    return _CanonicalInputs(
+        patches=pixels,
+        position_ids=positions,
+        cu_seqlens=torch.tensor(cumulative, dtype=torch.int32),
+        patch_grids=patch_grids,
+    )
 
 
-def _resolved_backend(vision: VisionTower, connector: GatedResampler) -> str:
+def _materialize_inputs(
+    student: StudentConfig,
+    canonical: _CanonicalInputs,
+    backend: Backend,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if backend in {"loop", "auto", "flex"}:
+        return (
+            canonical.patches.to(device),
+            canonical.position_ids.to(device),
+            canonical.cu_seqlens.to(device),
+        )
+    if canonical.patch_grids is None:
+        raise ValueError("dense policies require patch_grids")
+    grid_side = math.isqrt(student.vision.max_position_tokens)
+    if backend == "dense_fixed_square":
+        canvas_height = grid_side
+        canvas_width = grid_side
+    else:
+        canvas_height = max(height for height, _ in canonical.patch_grids)
+        canvas_width = max(width for _, width in canonical.patch_grids)
+    patch = student.vision.patch_size
+    images = torch.zeros(
+        len(canonical.patch_grids),
+        3,
+        canvas_height * patch,
+        canvas_width * patch,
+        dtype=canonical.patches.dtype,
+    )
+    masks = torch.zeros(
+        len(canonical.patch_grids),
+        canvas_height * patch,
+        canvas_width * patch,
+        dtype=torch.bool,
+    )
+    offset = 0
+    for index, (height, width) in enumerate(canonical.patch_grids):
+        count = height * width
+        document = (
+            canonical.patches[offset : offset + count]
+            .view(height, width, 3, patch, patch)
+            .permute(2, 0, 3, 1, 4)
+            .reshape(3, height * patch, width * patch)
+        )
+        images[index, :, : height * patch, : width * patch] = document
+        masks[index, : height * patch, : width * patch] = True
+        offset += count
+    return images.to(device), masks.to(device), canonical.cu_seqlens.to(device)
+
+
+def _resolved_backend(
+    vision: VisionTower,
+    connector: GatedResampler,
+    backend: Backend,
+) -> str:
+    if backend in {"dense_adaptive", "dense_fixed_square"}:
+        return "dense"
     if (
         vision.last_packed_attention_backend == "flex"
         and connector.last_packed_attention_backend == "flex"
@@ -171,11 +296,18 @@ def _forward(
     precision: str,
     device: torch.device,
 ) -> torch.Tensor:
-    pixels, positions, cu_seqlens = inputs
+    pixels, second, cu_seqlens = inputs
     with _autocast(precision, device):
+        if backend in {"dense_adaptive", "dense_fixed_square"}:
+            vision_tokens, vision_mask = vision(
+                pixels,
+                second,
+                return_mask=True,
+            )
+            return connector(vision_tokens, vision_mask)
         vision_tokens, _ = vision.forward_packed(
             pixels,
-            positions,
+            second,
             cu_seqlens,
             attention_backend=backend,
         )
@@ -199,7 +331,10 @@ def _parity_output(
     with torch.no_grad():
         output = _forward(vision, connector, inputs, backend, precision, device)
     _synchronize(device)
-    return output.detach().float().cpu(), _resolved_backend(vision, connector)
+    return (
+        output.detach().float().cpu(),
+        _resolved_backend(vision, connector, backend),
+    )
 
 
 def _measure_backend(
@@ -271,8 +406,21 @@ def _measure_backend(
         _synchronize(device)
         latencies_ms.append((time.perf_counter() - started) * 1_000.0)
 
-    resolved = _resolved_backend(vision, connector)
+    resolved = _resolved_backend(vision, connector, backend)
     median_ms = statistics.median(latencies_ms)
+    lengths = config.resolved_sequence_lengths
+    if backend == "dense_fixed_square":
+        side = math.isqrt(vision.config.max_position_tokens)
+        executed_tokens = len(lengths) * side * side
+    elif backend == "dense_adaptive":
+        grids = config.patch_grids or ()
+        executed_tokens = (
+            len(grids)
+            * max(height for height, _ in grids)
+            * max(width for _, width in grids)
+        )
+    else:
+        executed_tokens = sum(lengths)
     record: dict[str, Any] = {
         "status": "ok",
         "requested_backend": backend,
@@ -282,7 +430,9 @@ def _measure_backend(
         "median_ms": median_ms,
         "p95_ms": _percentile(latencies_ms, 0.95),
         "min_ms": min(latencies_ms),
-        "tokens_per_second": sum(config.sequence_lengths) / (median_ms / 1_000.0),
+        "tokens_per_second": sum(lengths) / (median_ms / 1_000.0),
+        "executed_visual_tokens": executed_tokens,
+        "valid_visual_token_fraction": sum(lengths) / executed_tokens,
         "max_abs_delta_vs_loop": max_abs_delta,
         "parity_atol": parity_atol,
         "output_checksum": hashlib.sha256(output.numpy().tobytes()).hexdigest(),
@@ -320,23 +470,39 @@ def run_visual_backend_benchmark(
     connector.apply(DocumentVLMStudent._init_weights)
     torch.nn.init.normal_(connector.latents, std=0.02)
     torch.nn.init.zeros_(vision.position_embedding)
-    inputs = _packed_inputs(
+    lengths = config.resolved_sequence_lengths
+    canonical = _canonical_inputs(
         student,
-        config.sequence_lengths,
-        device=device,
+        lengths,
+        patch_grids=config.patch_grids,
         seed=config.seed,
+    )
+    reference_inputs = _materialize_inputs(
+        student,
+        canonical,
+        "loop",
+        device,
     )
     reference, _ = _parity_output(
         vision,
         connector,
-        inputs,
+        reference_inputs,
         "loop",
         precision,
         device,
     )
+    del reference_inputs
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
 
     results: list[dict[str, Any]] = []
     for backend in config.backends:
+        inputs = _materialize_inputs(
+            student,
+            canonical,
+            backend,
+            device,
+        )
         try:
             result = _measure_backend(
                 vision,
@@ -357,6 +523,10 @@ def run_visual_backend_benchmark(
                 "error_type": type(error).__name__,
                 "error": str(error),
             }
+        finally:
+            del inputs
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
         results.append(result)
 
     loop_record = next(
@@ -381,6 +551,37 @@ def run_visual_backend_benchmark(
                 record["peak_memory_ratio_vs_loop"] = None
                 record["peak_memory_reduction_fraction_vs_loop"] = None
 
+    dense_record = next(
+        (
+            record
+            for record in results
+            if record["requested_backend"] == "dense_adaptive"
+            and record["status"] == "ok"
+        ),
+        None,
+    )
+    if dense_record is not None:
+        for record in results:
+            if record["status"] != "ok":
+                continue
+            record["median_speedup_vs_dense_adaptive"] = (
+                dense_record["median_ms"] / record["median_ms"]
+            )
+            dense_memory = dense_record["peak_memory_allocated_bytes"]
+            record_memory = record["peak_memory_allocated_bytes"]
+            if dense_memory is not None and record_memory is not None:
+                record["peak_memory_ratio_vs_dense_adaptive"] = (
+                    record_memory / dense_memory
+                )
+                record[
+                    "peak_memory_reduction_fraction_vs_dense_adaptive"
+                ] = (1.0 - record_memory / dense_memory)
+            else:
+                record["peak_memory_ratio_vs_dense_adaptive"] = None
+                record[
+                    "peak_memory_reduction_fraction_vs_dense_adaptive"
+                ] = None
+
     flex_records = [record for record in results if record["requested_backend"] in {"auto", "flex"}]
     flex_gate_passed = bool(flex_records) and all(
         record["status"] == "ok" and record["resolved_backend"] == "flex" for record in flex_records
@@ -394,8 +595,13 @@ def run_visual_backend_benchmark(
         "benchmark_config": asdict(config),
         "resolved_precision": precision,
         "environment": _environment(device),
-        "visual_tokens": sum(config.sequence_lengths),
-        "batch_size": len(config.sequence_lengths),
+        "visual_tokens": sum(lengths),
+        "batch_size": len(lengths),
+        "patch_grids": (
+            [list(grid) for grid in config.patch_grids]
+            if config.patch_grids is not None
+            else None
+        ),
         "gates": {
             "require_flex": config.require_flex,
             "flex_resolved": flex_gate_passed,

@@ -87,9 +87,10 @@ The final evaluator receives that artifact through `--visual-backend-benchmark`.
 `visual_efficiency` gate requires CUDA training-mode evidence over at least 4,096 visual tokens,
 batch size two, three warmup iterations, and ten measured iterations. The `auto` candidate must
 resolve to `flex`, be at least 1.05 times as fast as `loop` at median latency, stay within 1.05
-times loop peak allocated memory, and remain within 0.02 maximum absolute output delta. A CPU
-report or short benchmark is `insufficient_evidence`; a mismatched architecture, fallback,
-execution error, numerical violation, or runtime regression is `fail`.
+times loop peak allocated memory, and meet the same 1.05 speed and memory bounds against the
+matched `dense_adaptive` control. It must also remain within 0.02 maximum absolute output delta.
+A CPU report, short benchmark, or missing dense control is `insufficient_evidence`; a mismatched
+architecture, fallback, execution error, numerical violation, or runtime regression is `fail`.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
