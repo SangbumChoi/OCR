@@ -74,6 +74,7 @@ student:
 initialization_arms:
   - id: I0_random
     shape_policy: exact
+    require_attention_geometry: false
     vision_transfer: 0.0
     language_transfer: 0.0
     connector_transfer: 0.0
@@ -81,6 +82,7 @@ initialization_arms:
     purpose: "Measures what the data and objectives learn without inherited representations."
   - id: I1_vision
     shape_policy: exact
+    require_attention_geometry: false
     vision_transfer: 1.0
     language_transfer: 0.0
     connector_transfer: 0.0
@@ -89,6 +91,7 @@ initialization_arms:
     purpose: "Tests whether visual transfer supplies the sample efficiency needed for OCR."
   - id: I2_language
     shape_policy: exact
+    require_attention_geometry: false
     vision_transfer: 0.0
     language_transfer: 1.0
     connector_transfer: 0.0
@@ -97,6 +100,7 @@ initialization_arms:
     purpose: "Tests inherited language and reasoning without inherited document perception."
   - id: I3_dual
     shape_policy: exact
+    require_attention_geometry: false
     vision_transfer: 1.0
     language_transfer: 1.0
     connector_transfer: 0.0
@@ -104,6 +108,7 @@ initialization_arms:
     purpose: "Transfers both towers while learning multimodal alignment from a random connector."
   - id: I4_selective
     shape_policy: exact
+    require_attention_geometry: false
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
@@ -112,12 +117,22 @@ initialization_arms:
     purpose: "Separates useful inherited features from wholesale checkpoint dependence."
   - id: I5_structured_mlp
     shape_policy: structured_mlp
+    require_attention_geometry: false
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
     minimum_component_parameter_fraction: {vision: 0.40, language: 0.25}
     policy: "Copy alternating exact-shape tensors and jointly salience-select wider source SwiGLU channels."
     purpose: "Tests whether structured FFN reduction preserves useful teacher capacity that exact-shape transfer discards."
+  - id: I6_strict_structured
+    shape_policy: structured_mlp
+    require_attention_geometry: true
+    vision_transfer: 0.5
+    language_transfer: 0.5
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.40, language: 0.25}
+    policy: "Apply structured MLP transfer and copy attention only when hidden, head, KV-head, head-dimension, and RoPE geometry all match."
+    purpose: "Separates semantically compatible attention inheritance from same-shape projection copying."
 
 training:
   activation_checkpointing:

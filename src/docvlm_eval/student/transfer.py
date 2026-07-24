@@ -16,6 +16,9 @@ _MLP_WEIGHT = re.compile(
     r"^language\.blocks\.(\d+)\.mlp\."
     r"(gate_proj|up_proj|down_proj)\.weight$"
 )
+_LANGUAGE_ATTENTION = re.compile(
+    r"^language\.blocks\.(\d+)\.attn\."
+)
 _SHAPE_POLICIES = {"exact", "structured_mlp"}
 
 
@@ -24,6 +27,10 @@ class TransferReport:
     family: str
     fractions: dict[str, float]
     shape_policy: str
+    require_attention_geometry: bool
+    source_attention_geometry: dict[str, int | float] | None = None
+    target_attention_geometry: dict[str, int | float] | None = None
+    attention_geometry_compatible: bool | None = None
     copied_tensors: int = 0
     copied_parameters: int = 0
     structured_tensors: int = 0
@@ -32,6 +39,7 @@ class TransferReport:
     token_rows_copied: int = 0
     skipped_by_policy: int = 0
     skipped_shape: list[dict[str, Any]] = field(default_factory=list)
+    skipped_semantic: list[dict[str, Any]] = field(default_factory=list)
     missing_source: list[str] = field(default_factory=list)
     copied_keys: list[str] = field(default_factory=list)
 
@@ -178,6 +186,64 @@ def _depth_map(target_index: int, target_count: int, source_count: int) -> int:
     return round(target_index * (source_count - 1) / (target_count - 1))
 
 
+def _target_attention_geometry(
+    student: nn.Module,
+) -> dict[str, int | float] | None:
+    config = getattr(student, "config", None)
+    language = getattr(config, "language", None)
+    if language is None:
+        return None
+    hidden = int(language.width)
+    heads = int(language.attention_heads)
+    return {
+        "hidden_width": hidden,
+        "attention_heads": heads,
+        "kv_heads": int(language.kv_heads),
+        "head_dim": hidden // heads,
+        "rope_base": float(language.rope_base),
+    }
+
+
+def _normalize_attention_geometry(
+    value: Mapping[str, int | float] | None,
+) -> dict[str, int | float] | None:
+    if value is None:
+        return None
+    required = {
+        "hidden_width",
+        "attention_heads",
+        "kv_heads",
+        "head_dim",
+        "rope_base",
+    }
+    if set(value) != required:
+        raise ValueError(
+            "attention geometry must contain hidden_width, attention_heads, "
+            "kv_heads, head_dim, and rope_base"
+        )
+    normalized: dict[str, int | float] = {
+        "hidden_width": int(value["hidden_width"]),
+        "attention_heads": int(value["attention_heads"]),
+        "kv_heads": int(value["kv_heads"]),
+        "head_dim": int(value["head_dim"]),
+        "rope_base": float(value["rope_base"]),
+    }
+    if (
+        any(
+            int(normalized[key]) <= 0
+            for key in (
+                "hidden_width",
+                "attention_heads",
+                "kv_heads",
+                "head_dim",
+            )
+        )
+        or float(normalized["rope_base"]) <= 0
+    ):
+        raise ValueError("attention geometry values must be positive")
+    return normalized
+
+
 def _axis_squared_l2(tensor: torch.Tensor, axis: int) -> torch.Tensor:
     """Compute channel salience in bounded-memory chunks."""
     channels = tensor.shape[axis]
@@ -300,6 +366,8 @@ def selective_transfer(
     token_map: Mapping[int, int] | None = None,
     copy_token_embeddings: bool | None = None,
     shape_policy: str = "exact",
+    source_attention_geometry: Mapping[str, int | float] | None = None,
+    require_attention_geometry: bool = False,
 ) -> TransferReport:
     """Copy policy-compatible tensors under component and depth controls.
 
@@ -316,10 +384,32 @@ def selective_transfer(
     }
     if any(not 0.0 <= value <= 1.0 for value in normalized_fractions.values()):
         raise ValueError("transfer fractions must be between zero and one")
+    source_geometry = _normalize_attention_geometry(
+        source_attention_geometry
+    )
+    target_geometry = _target_attention_geometry(student)
+    geometry_compatible = (
+        None
+        if source_geometry is None or target_geometry is None
+        else source_geometry == target_geometry
+    )
+    if (
+        require_attention_geometry
+        and normalized_fractions["language"] > 0
+        and geometry_compatible is None
+    ):
+        raise ValueError(
+            "strict language attention transfer requires source and target "
+            "attention geometry"
+        )
     report = TransferReport(
         family=family,
         fractions=normalized_fractions,
         shape_policy=shape_policy,
+        require_attention_geometry=require_attention_geometry,
+        source_attention_geometry=source_geometry,
+        target_attention_geometry=target_geometry,
+        attention_geometry_compatible=geometry_compatible,
     )
     source = canonicalize_source_state(source, family)
     target = student.state_dict()
@@ -421,6 +511,20 @@ def selective_transfer(
             )
             source_key = f"{block_component}.blocks.{source_index}.{suffix}"
 
+        if (
+            require_attention_geometry
+            and _LANGUAGE_ATTENTION.match(target_key)
+            and not geometry_compatible
+        ):
+            report.skipped_by_policy += 1
+            report.skipped_semantic.append(
+                {
+                    "target": target_key,
+                    "source": source_key,
+                    "reason": "attention_geometry_mismatch",
+                }
+            )
+            continue
         source_tensor = source.get(source_key)
         if source_tensor is None:
             report.missing_source.append(source_key)

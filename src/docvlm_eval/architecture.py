@@ -588,6 +588,13 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 f"{arm_id}.shape_policy must be exact or structured_mlp"
             )
+        if not isinstance(
+            arm.get("require_attention_geometry", False),
+            bool,
+        ):
+            errors.append(
+                f"{arm_id}.require_attention_geometry must be a boolean"
+            )
         for key in ("vision_transfer", "language_transfer", "connector_transfer"):
             value = float(arm.get(key, -1.0))
             if not 0.0 <= value <= 1.0:

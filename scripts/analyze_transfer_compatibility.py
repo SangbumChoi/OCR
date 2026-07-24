@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
@@ -41,12 +42,23 @@ def main() -> None:
         default="exact",
         choices=["exact", "structured_mlp"],
     )
+    parser.add_argument("--language-attention-heads", type=int)
+    parser.add_argument("--language-kv-heads", type=int)
+    parser.add_argument("--language-rope-base", type=float)
+    parser.add_argument("--require-attention-geometry", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     import torch
-    from huggingface_hub import HfApi, get_safetensors_metadata
+    from huggingface_hub import (
+        HfApi,
+        get_safetensors_metadata,
+        hf_hub_download,
+    )
 
+    from docvlm_eval.student.checkpoint import (
+        load_checkpoint_attention_geometry,
+    )
     from docvlm_eval.student.model import (
         DocumentVLMStudent,
         count_unique_parameters,
@@ -84,10 +96,45 @@ def main() -> None:
     _, errors = validate_blueprint(blueprint)
     if errors:
         raise SystemExit("\n".join(errors))
-    with torch.device("meta"):
-        student = DocumentVLMStudent(
-            StudentConfig.from_blueprint(blueprint)
+    config = StudentConfig.from_blueprint(blueprint)
+    geometry_overrides = (
+        args.language_attention_heads,
+        args.language_kv_heads,
+        args.language_rope_base,
+    )
+    if any(value is not None for value in geometry_overrides):
+        if args.component != "language" or not all(
+            value is not None for value in geometry_overrides
+        ):
+            raise SystemExit(
+                "language attention heads, KV heads, and RoPE base must be "
+                "provided together for a language analysis"
+            )
+        config = replace(
+            config,
+            language=replace(
+                config.language,
+                attention_heads=args.language_attention_heads,
+                kv_heads=args.language_kv_heads,
+                rope_base=args.language_rope_base,
+            ),
         )
+        config_errors = config.validate()
+        if config_errors:
+            raise SystemExit("\n".join(config_errors))
+    source_config_path = Path(
+        hf_hub_download(
+            spec.repo_id,
+            "config.json",
+            revision=spec.revision,
+        )
+    )
+    source_geometry = load_checkpoint_attention_geometry(
+        source_config_path.parent,
+        family=spec.family,
+    )
+    with torch.device("meta"):
+        student = DocumentVLMStudent(config)
         source = {
             key: torch.empty(shape)
             for key, shape in source_shapes.items()
@@ -98,6 +145,8 @@ def main() -> None:
         {args.component: args.fraction},
         family=spec.family,
         shape_policy=args.shape_policy,
+        source_attention_geometry=source_geometry,
+        require_attention_geometry=args.require_attention_geometry,
     ).to_dict()
     parameter_counts = count_unique_parameters(student)
     student_parameters = parameter_counts["total"]
@@ -111,6 +160,14 @@ def main() -> None:
         "component": args.component,
         "fraction": args.fraction,
         "shape_policy": args.shape_policy,
+        "require_attention_geometry": args.require_attention_geometry,
+        "source_attention_geometry": source_geometry,
+        "target_attention_geometry": report[
+            "target_attention_geometry"
+        ],
+        "attention_geometry_compatible": report[
+            "attention_geometry_compatible"
+        ],
         "source_tensors": len(source_shapes),
         "source_shape_fingerprint": (
             "sha256:"

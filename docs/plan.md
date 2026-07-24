@@ -169,6 +169,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Test structured initialization:**
   [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md)
   — exact-shape selective transfer versus a shared-channel reduction of wider teacher MLPs.
+- **Test source-aligned attention:**
+  [`report/student_attention_geometry_transfer_factorial.md`](report/student_attention_geometry_transfer_factorial.md)
+  — strict semantic transfer gates and a paired 2x2 geometry-by-transfer interaction.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, single-update GRPO, periodic
@@ -281,6 +284,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_token_relation_distillation_sweep.md`](report/student_token_relation_distillation_sweep.md) ·
    [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md) ·
+   [`report/student_attention_geometry_transfer_factorial.md`](report/student_attention_geometry_transfer_factorial.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·

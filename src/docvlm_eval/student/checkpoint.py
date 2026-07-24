@@ -7,6 +7,66 @@ from pathlib import Path
 from typing import Any
 
 
+def _language_config(raw: dict[str, Any]) -> dict[str, Any]:
+    for key in ("language", "text_config", "language_config", "llm_config"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            return value
+    return raw
+
+
+def load_checkpoint_attention_geometry(
+    path: str | Path,
+    *,
+    family: str,
+) -> dict[str, int | float] | None:
+    """Read language attention geometry without loading checkpoint tensors."""
+    path = Path(path)
+    root = path.parent if path.is_file() else path
+    config_names = (
+        ("student_config.json", "config.json")
+        if family == "student"
+        else ("config.json",)
+    )
+    config_path = next(
+        (root / name for name in config_names if (root / name).is_file()),
+        None,
+    )
+    if config_path is None:
+        return None
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return None
+    language = _language_config(raw)
+    hidden = language.get("width", language.get("hidden_size"))
+    heads = language.get(
+        "attention_heads",
+        language.get("num_attention_heads"),
+    )
+    kv_heads = language.get(
+        "kv_heads",
+        language.get("num_key_value_heads"),
+    )
+    rope_base = language.get(
+        "rope_base",
+        language.get("rope_theta"),
+    )
+    if any(value is None for value in (hidden, heads, kv_heads, rope_base)):
+        return None
+    hidden = int(hidden)
+    heads = int(heads)
+    kv_heads = int(kv_heads)
+    if hidden <= 0 or heads <= 0 or kv_heads <= 0 or hidden % heads:
+        return None
+    return {
+        "hidden_width": hidden,
+        "attention_heads": heads,
+        "kv_heads": kv_heads,
+        "head_dim": int(language.get("head_dim") or hidden // heads),
+        "rope_base": float(rope_base),
+    }
+
+
 def _load_one(path: Path) -> dict[str, Any]:
     if path.suffix == ".safetensors":
         try:

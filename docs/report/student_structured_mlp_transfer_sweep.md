@@ -54,4 +54,6 @@ score improvement of at least 0.005, all six deployment gates, and non-regressio
 
 This is evidence for or against a specific initialization mechanism, not a claim that the broader
 Minitron recipe is reproduced. Depth, attention-head, and hidden-width pruning remain separate
-unimplemented estimands.
+estimands. Same-shape attention projections are not proof of semantic compatibility; the strict
+geometry gate and its 2x2 factorial are specified in
+[`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).

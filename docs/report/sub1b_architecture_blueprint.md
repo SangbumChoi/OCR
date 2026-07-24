@@ -116,6 +116,9 @@ quickly but relies more on priors is not automatically better.
 Pinned source acquisition, zero-download shape analysis, fail-closed transfer validation, the
 five-arm baseline suite, and the focused structured-MLP suite are executable in
 [`student_initialization_runner.md`](student_initialization_runner.md).
+The source-aligned 12-head/2-KV-head profile is not a new default: its random and transferred
+effects are isolated by the 2x2 design in
+[`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).
 
 ## Step 1: multimodal pretraining
 

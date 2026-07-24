@@ -51,7 +51,10 @@ def main() -> None:
     import torch
 
     from docvlm_eval.student.model import DocumentVLMStudent, count_unique_parameters
-    from docvlm_eval.student.checkpoint import load_checkpoint_state
+    from docvlm_eval.student.checkpoint import (
+        load_checkpoint_attention_geometry,
+        load_checkpoint_state,
+    )
     from docvlm_eval.student.transfer import selective_transfer
 
     if args.seed < 0:
@@ -107,6 +110,9 @@ def main() -> None:
                 {"vision": arm["vision_transfer"]},
                 family=args.vision_family,
                 shape_policy=str(arm.get("shape_policy", "exact")),
+                require_attention_geometry=bool(
+                    arm.get("require_attention_geometry", False)
+                ),
             ).to_dict()
         )
     if active_sources["language"]:
@@ -122,6 +128,15 @@ def main() -> None:
                 family=args.language_family,
                 token_map=token_map,
                 shape_policy=str(arm.get("shape_policy", "exact")),
+                source_attention_geometry=(
+                    load_checkpoint_attention_geometry(
+                        active_sources["language"],
+                        family=args.language_family,
+                    )
+                ),
+                require_attention_geometry=bool(
+                    arm.get("require_attention_geometry", False)
+                ),
             ).to_dict()
         )
     minimum_fractions = arm["minimum_component_parameter_fraction"]

@@ -132,6 +132,9 @@ shared Hugging Face cache while each run stores a content manifest, avoiding che
 across paired sweeps. See
 [`student_initialization_runner.md`](student_initialization_runner.md) for the source schema,
 compatibility analyzer, five-arm baseline initialization suite, and structured-MLP comparison.
+Sweep specifications may also declare zero-sum linear contrasts. The aggregator evaluates each
+contrast within replicate before deterministic bootstrap aggregation, enabling difference-in-
+differences without treating independent runs as paired observations.
 
 Set `evaluation.baseline_evaluation` to an evaluation root produced by
 `scripts/eval_student.py`, and set `evaluation.monolingual_control_evaluation` to the corresponding

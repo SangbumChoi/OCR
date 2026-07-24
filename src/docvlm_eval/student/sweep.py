@@ -295,6 +295,20 @@ class ParetoPromotionRule:
 
 
 @dataclass(frozen=True)
+class LinearContrast:
+    id: str
+    hypothesis: str
+    coefficients: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "hypothesis": self.hypothesis,
+            "coefficients": self.coefficients,
+        }
+
+
+@dataclass(frozen=True)
 class SweepPlan:
     name: str
     root: str
@@ -305,6 +319,7 @@ class SweepPlan:
     control_values_by_replicate: dict[str, dict[str, Any]]
     replicates: tuple[str, ...]
     variants: tuple[CompiledVariant, ...]
+    contrasts: tuple[LinearContrast, ...]
     promotion: PromotionRule | ParetoPromotionRule | None
     fingerprint: str
     raw_spec: dict[str, Any]
@@ -329,6 +344,9 @@ class SweepPlan:
             "control_values_by_replicate": self.control_values_by_replicate,
             "replicates": list(self.replicates),
             "variants": [variant.to_dict() for variant in self.variants],
+            "contrasts": [
+                contrast.to_dict() for contrast in self.contrasts
+            ],
             "promotion": (
                 None if self.promotion is None else self.promotion.to_dict()
             ),
@@ -342,6 +360,57 @@ def _load_sweep(path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("sweep root must be a mapping")
     return raw
+
+
+def _parse_contrasts(
+    raw: dict[str, Any],
+    variant_ids: set[str],
+) -> tuple[LinearContrast, ...]:
+    value = raw.get("contrasts", [])
+    if not isinstance(value, list):
+        raise ValueError("sweep.contrasts must be a list")
+    contrasts = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("every sweep contrast must be a mapping")
+        contrast_id = str(item.get("id") or "")
+        if not _NAME.fullmatch(contrast_id) or contrast_id in seen:
+            raise ValueError("contrast ids must be unique safe names")
+        seen.add(contrast_id)
+        raw_coefficients = item.get("coefficients")
+        if not isinstance(raw_coefficients, dict):
+            raise ValueError("contrast coefficients must be a mapping")
+        coefficients: dict[str, float] = {}
+        for variant_id, coefficient in raw_coefficients.items():
+            if (
+                variant_id not in variant_ids
+                or not isinstance(coefficient, (int, float))
+                or isinstance(coefficient, bool)
+                or not math.isfinite(float(coefficient))
+                or float(coefficient) == 0.0
+            ):
+                raise ValueError(
+                    "contrast coefficients require known variants and "
+                    "finite nonzero numeric values"
+                )
+            coefficients[str(variant_id)] = float(coefficient)
+        if len(coefficients) < 2:
+            raise ValueError("a contrast requires at least two variants")
+        if not math.isclose(
+            sum(coefficients.values()),
+            0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError("contrast coefficients must sum to zero")
+        contrasts.append(
+            LinearContrast(
+                id=contrast_id,
+                hypothesis=str(item.get("hypothesis") or ""),
+                coefficients=coefficients,
+            )
+        )
+    return tuple(contrasts)
 
 
 def _parse_controls(
@@ -729,6 +798,7 @@ def compile_sweep_plan(
         )
     if baseline not in ids:
         raise ValueError("sweep baseline must name one compiled variant")
+    contrasts = _parse_contrasts(raw, ids)
 
     compiled: list[CompiledVariant] = []
     control_values_by_replicate: dict[str, dict[str, Any]] = {}
@@ -868,6 +938,7 @@ def compile_sweep_plan(
         control_values_by_replicate=control_values_by_replicate,
         replicates=tuple(str(replicate["id"]) for replicate in replicates),
         variants=tuple(compiled),
+        contrasts=contrasts,
         promotion=promotion,
         fingerprint=sweep_fingerprint,
         raw_spec=raw,
@@ -1614,6 +1685,161 @@ def _aggregate_gate_reports(
     }
 
 
+def _contrast_distributions(
+    plan: SweepPlan,
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+    *,
+    field: str,
+    key_suffix: str,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    results: dict[str, dict[str, dict[str, Any]]] = {}
+    for contrast in plan.contrasts:
+        arms = [
+            records_by_arm[arm_id]
+            for arm_id in contrast.coefficients
+        ]
+        common_names = sorted(
+            set.intersection(
+                *[
+                    set(next(iter(arm.values()))[field])
+                    for arm in arms
+                ]
+            )
+        )
+        results[contrast.id] = {
+            name: _distribution(
+                [
+                    sum(
+                        coefficient
+                        * float(
+                            records_by_arm[arm_id][replicate_id][field][
+                                name
+                            ]
+                        )
+                        for arm_id, coefficient
+                        in contrast.coefficients.items()
+                    )
+                    for replicate_id in plan.replicates
+                ],
+                key=(
+                    f"{plan.fingerprint}:{contrast.id}:{name}:"
+                    f"{key_suffix}"
+                ),
+            )
+            for name in common_names
+            if all(
+                name
+                in records_by_arm[arm_id][replicate_id][field]
+                for arm_id in contrast.coefficients
+                for replicate_id in plan.replicates
+            )
+        }
+    return results
+
+
+def _aggregate_linear_contrasts(
+    plan: SweepPlan,
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    if not plan.contrasts:
+        return {}
+    metric_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="metrics",
+        key_suffix="contrast-metric",
+    )
+    axis_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="heldout_by_answer_type",
+        key_suffix="contrast-axis",
+    )
+    robustness_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="heldout_slice_scores",
+        key_suffix="contrast-robustness",
+    )
+    efficiency_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="pretraining_efficiency",
+        key_suffix="contrast-efficiency",
+    )
+    results = {}
+    for contrast in plan.contrasts:
+        parameter_names = set.intersection(
+            *[
+                set(
+                    next(iter(records_by_arm[arm_id].values()))[
+                        "parameters"
+                    ]
+                )
+                for arm_id in contrast.coefficients
+            ]
+        )
+        parameters = {
+            name: round(
+                sum(
+                    coefficient
+                    * float(
+                        next(iter(records_by_arm[arm_id].values()))[
+                            "parameters"
+                        ][name]
+                    )
+                    for arm_id, coefficient
+                    in contrast.coefficients.items()
+                ),
+                8,
+            )
+            for name in sorted(parameter_names)
+        }
+        metrics = metric_statistics[contrast.id]
+        results[contrast.id] = {
+            "hypothesis": contrast.hypothesis,
+            "coefficients": contrast.coefficients,
+            "replicate_count": len(plan.replicates),
+            "metrics": {
+                name: statistics["mean"]
+                for name, statistics in metrics.items()
+            },
+            "metric_statistics": metrics,
+            "heldout_by_answer_type": {
+                name: statistics["mean"]
+                for name, statistics in axis_statistics[
+                    contrast.id
+                ].items()
+            },
+            "heldout_axis_statistics": axis_statistics[contrast.id],
+            "heldout_by_robustness_axis": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics in robustness_statistics[
+                        contrast.id
+                    ].items()
+                }
+            ),
+            "heldout_robustness_statistics": _nested_slice_values(
+                robustness_statistics[contrast.id]
+            ),
+            "pretraining_efficiency": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_statistics[
+                    contrast.id
+                ].items()
+            },
+            "pretraining_efficiency_statistics": efficiency_statistics[
+                contrast.id
+            ],
+            "parameter_contrast": parameters,
+            "heldout_score_conclusion": _paired_conclusion(
+                metrics["heldout_score"]
+            ),
+        }
+    return results
+
+
 def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
     """Aggregate run metrics and paired replicate deltas against the baseline arm."""
 
@@ -2051,8 +2277,12 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         arm_records,
         records_by_arm,
     )
+    contrasts = _aggregate_linear_contrasts(
+        plan,
+        records_by_arm,
+    )
     result = {
-        "schema_version": 4,
+        "schema_version": 5,
         "sweep": plan.name,
         "sweep_fingerprint": plan.fingerprint,
         "baseline": plan.baseline,
@@ -2070,6 +2300,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         "matched_evaluation_artifacts_by_replicate": artifact_controls,
         "ranking": ranking,
         "promotion": promotion,
+        "contrasts": contrasts,
         "variants": arm_records,
         "runs": run_records,
     }
@@ -2131,6 +2362,33 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
         promotion.get("external_gates", {}).items()
     ):
         lines.append(f"- External gate `{gate}`: `{status}`")
+    if result["contrasts"]:
+        lines.extend(
+            [
+                "",
+                "## Paired linear contrasts",
+                "",
+                "| Contrast | Heldout mean | 95% CI | Conclusion | "
+                "Parameter contrast |",
+                "| --- | ---: | ---: | --- | ---: |",
+            ]
+        )
+        for contrast_id, contrast in result["contrasts"].items():
+            statistics = contrast["metric_statistics"][
+                "heldout_score"
+            ]
+            ci95 = statistics["ci95"]
+            ci_text = (
+                "unavailable"
+                if ci95 is None
+                else f"{ci95[0]:+.6f}, {ci95[1]:+.6f}"
+            )
+            lines.append(
+                f"| `{contrast_id}` | {statistics['mean']:+.6f} | "
+                f"{ci_text} | "
+                f"`{contrast['heldout_score_conclusion']}` | "
+                f"{contrast['parameter_contrast'].get('total', 0):+,.0f} |"
+            )
     if promotion["status"] != "not_configured":
         multiplicity = promotion["multiple_comparisons"]
         lines.extend(

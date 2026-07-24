@@ -129,6 +129,18 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
     assert plan.promotion is not None
     assert plan.promotion.primary_metric == "heldout_score"
     assert plan.promotion.minimum_replicates == 2
+    assert [contrast.to_dict() for contrast in plan.contrasts] == [
+        {
+            "id": "sequence_distillation_effect",
+            "hypothesis": (
+                "Measures the paired effect of removing sequence distillation."
+            ),
+            "coefficients": {
+                "baseline": -1.0,
+                "no_sequence_distillation": 1.0,
+            },
+        }
+    ]
     assert plan.to_dict()["promotion"]["required_gates"] == [
         "parameter_budget",
         "generalization",
@@ -220,6 +232,72 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
     )
+
+
+def test_attention_geometry_transfer_factorial_compiles_four_cells(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_attention_geometry_transfer_factorial.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "attention-factorial.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 12
+    assert len(plan.contrasts) == 5
+    assert plan.promotion is None
+    expected = {
+        "native_random": (799_919_884, 24, 8, 10_000.0, "I0_random"),
+        "qwen_random": (781_820_172, 12, 2, 1_000_000.0, "I0_random"),
+        "native_strict_transfer": (
+            799_919_884,
+            24,
+            8,
+            10_000.0,
+            "I6_strict_structured",
+        ),
+        "qwen_strict_transfer": (
+            781_820_172,
+            12,
+            2,
+            1_000_000.0,
+            "I6_strict_structured",
+        ),
+    }
+    for variant in plan.variants:
+        total, heads, kv_heads, rope_base, arm = expected[
+            variant.arm_id
+        ]
+        language = variant.plan.resolved_blueprint["student"]["language"]
+        assert variant.parameters["total"] == total
+        assert language["attention_heads"] == heads
+        assert language["kv_heads"] == kv_heads
+        assert language["rope_base"] == rope_base
+        assert variant.plan.raw_spec["initialization"]["arm"] == arm
+    interaction = next(
+        contrast
+        for contrast in plan.contrasts
+        if contrast.id == "geometry_x_transfer"
+    )
+    assert interaction.coefficients == {
+        "native_random": 1.0,
+        "qwen_random": -1.0,
+        "native_strict_transfer": -1.0,
+        "qwen_strict_transfer": 1.0,
+    }
 
 
 def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
@@ -1008,6 +1086,35 @@ def test_sweep_rejects_a_variant_that_changes_a_matched_control(tmp_path):
         )
 
 
+def test_sweep_rejects_invalid_linear_contrasts(tmp_path):
+    def unknown_variant(raw):
+        raw["contrasts"][0]["coefficients"] = {
+            "baseline": -1.0,
+            "missing": 1.0,
+        }
+
+    with pytest.raises(ValueError, match="known variants"):
+        compile_sweep_plan(
+            _tiny_sweep(tmp_path / "unknown", mutate=unknown_variant),
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "unknown-compiled",
+        )
+
+    def nonzero_sum(raw):
+        raw["contrasts"][0]["coefficients"][
+            "no_sequence_distillation"
+        ] = 2.0
+
+    with pytest.raises(ValueError, match="sum to zero"):
+        compile_sweep_plan(
+            _tiny_sweep(tmp_path / "sum", mutate=nonzero_sum),
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "sum-compiled",
+        )
+
+
 def test_sweep_rejects_undeclared_or_incomplete_replicate_dimensions(tmp_path):
     def undeclared(raw):
         raw["replicates"][0]["experiment_patches"].append(
@@ -1490,6 +1597,13 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
     result = aggregate_sweep_results(plan)
 
     assert result["ranking"] == ["no_sequence_distillation", "baseline"]
+    contrast = result["contrasts"]["sequence_distillation_effect"]
+    assert contrast["metrics"]["heldout_score"] == pytest.approx(0.125)
+    assert contrast["metric_statistics"]["heldout_score"]["ci95"] == pytest.approx(
+        [0.1, 0.15]
+    )
+    assert contrast["heldout_score_conclusion"] == "improved"
+    assert contrast["parameter_contrast"]["total"] == 0.0
     assert result["variants"]["no_sequence_distillation"]["delta_vs_baseline"][
         "heldout_score"
     ] == pytest.approx(0.125)
@@ -1552,6 +1666,8 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
     assert "Paired delta [95% CI]" in markdown
     assert "Gates" in markdown
     assert "Promotion decision" in markdown
+    assert "Paired linear contrasts" in markdown
+    assert "`sequence_distillation_effect`" in markdown
     assert "`promote`" in markdown
     assert "`no_sequence_distillation`" in markdown
 

@@ -56,6 +56,7 @@ from .teacher_targets import (
 )
 from .sweep import (
     CompiledVariant,
+    LinearContrast,
     MatchedControl,
     ParetoObjective,
     ParetoPromotionRule,
@@ -145,6 +146,7 @@ __all__ = [
     "ForwardFlops",
     "GradientConflictProbeConfig",
     "LanguageConfig",
+    "LinearContrast",
     "HubComponentSpec",
     "MixtureComponent",
     "MatchedControl",

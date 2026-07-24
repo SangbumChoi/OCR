@@ -55,6 +55,9 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
         "minimum_component_parameter_fraction"
     ] = {}
     blueprint["initialization_arms"][3]["shape_policy"] = "crop"
+    blueprint["initialization_arms"][4][
+        "require_attention_geometry"
+    ] = "yes"
 
     _, errors = validate_blueprint(blueprint)
 
@@ -69,6 +72,10 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
         for error in errors
     )
     assert any("shape_policy must be" in error for error in errors)
+    assert any(
+        "require_attention_geometry must be a boolean" in error
+        for error in errors
+    )
 
 
 def test_blueprint_rejects_invalid_input_pipeline_controls():

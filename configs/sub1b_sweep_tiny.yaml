@@ -109,3 +109,10 @@ variants:
       - op: replace
         path: /sequence_teacher/enabled
         value: false
+
+contrasts:
+  - id: sequence_distillation_effect
+    hypothesis: "Measures the paired effect of removing sequence distillation."
+    coefficients:
+      baseline: -1.0
+      no_sequence_distillation: 1.0

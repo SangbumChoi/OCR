@@ -1102,6 +1102,128 @@ def test_selective_transfer_rejects_unknown_shape_policy():
         )
 
 
+def test_strict_transfer_skips_same_shape_attention_with_wrong_geometry():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    config = StudentConfig.tiny()
+    student = DocumentVLMStudent(config)
+    target = student.state_dict()
+    q_key = "language.blocks.0.attn.q_proj.weight"
+    norm_key = "language.blocks.0.norm1.weight"
+    original_q = target[q_key].clone()
+    source = {
+        q_key: torch.full_like(target[q_key], 3.0),
+        norm_key: torch.full_like(target[norm_key], 4.0),
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        source_attention_geometry={
+            "hidden_width": 128,
+            "attention_heads": 4,
+            "kv_heads": 1,
+            "head_dim": 32,
+            "rope_base": 10_000.0,
+        },
+        require_attention_geometry=True,
+    )
+
+    assert torch.equal(student.state_dict()[q_key], original_q)
+    assert torch.all(student.state_dict()[norm_key] == 4)
+    assert report.attention_geometry_compatible is False
+    assert any(
+        item["target"] == q_key
+        and item["reason"] == "attention_geometry_mismatch"
+        for item in report.skipped_semantic
+    )
+
+
+def test_strict_transfer_copies_attention_with_matching_geometry():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    config = StudentConfig.tiny()
+    student = DocumentVLMStudent(config)
+    key = "language.blocks.0.attn.k_proj.weight"
+    source = {
+        key: torch.full_like(student.state_dict()[key], 5.0),
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        source_attention_geometry={
+            "hidden_width": 128,
+            "attention_heads": 8,
+            "kv_heads": 2,
+            "head_dim": 16,
+            "rope_base": 10_000.0,
+        },
+        require_attention_geometry=True,
+    )
+
+    assert torch.all(student.state_dict()[key] == 5)
+    assert report.attention_geometry_compatible is True
+    assert report.skipped_semantic == []
+
+
+def test_strict_transfer_requires_source_attention_geometry():
+    import pytest
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    with pytest.raises(ValueError, match="requires source and target"):
+        selective_transfer(
+            DocumentVLMStudent(StudentConfig.tiny()),
+            {},
+            {"language": 1.0},
+            require_attention_geometry=True,
+        )
+
+
+def test_checkpoint_attention_geometry_reads_external_config(tmp_path):
+    import json
+
+    from docvlm_eval.student.checkpoint import (
+        load_checkpoint_attention_geometry,
+    )
+
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "hidden_size": 1536,
+                "num_attention_heads": 12,
+                "num_key_value_heads": 2,
+                "rope_theta": 1_000_000.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_checkpoint_attention_geometry(
+        tmp_path,
+        family="llama",
+    ) == {
+        "hidden_width": 1536,
+        "attention_heads": 12,
+        "kv_heads": 2,
+        "head_dim": 128,
+        "rope_base": 1_000_000.0,
+    }
+
+
 def test_meta_selective_transfer_counts_copied_target_shapes_exactly():
     import torch
 
@@ -1256,7 +1378,9 @@ def test_student_builder_records_the_realized_component_transfer_dose(tmp_path):
     assert report["minimum_component_parameter_fraction"] == 0.8
 
 
-def test_student_builder_routes_structured_mlp_arm_and_records_groups(tmp_path):
+def test_student_builder_routes_strict_structured_arm_and_records_groups(
+    tmp_path,
+):
     import json
 
     import torch
@@ -1282,8 +1406,13 @@ def test_student_builder_routes_structured_mlp_arm_and_records_groups(tmp_path):
             [state[key], torch.ones(state[key].shape[0], 4)],
             dim=1,
         )
-    checkpoint = tmp_path / "structured.pt"
-    torch.save(state, checkpoint)
+    checkpoint = tmp_path / "structured"
+    checkpoint.mkdir()
+    torch.save(state, checkpoint / "model.pt")
+    (checkpoint / "student_config.json").write_text(
+        json.dumps(model.config.to_dict()),
+        encoding="utf-8",
+    )
     output = tmp_path / "student"
 
     subprocess.run(
@@ -1296,7 +1425,7 @@ def test_student_builder_routes_structured_mlp_arm_and_records_groups(tmp_path):
             "--device",
             "cpu",
             "--init-arm",
-            "I5_structured_mlp",
+            "I6_strict_structured",
             "--vision-source",
             str(checkpoint),
             "--vision-family",
@@ -1323,6 +1452,8 @@ def test_student_builder_routes_structured_mlp_arm_and_records_groups(tmp_path):
         if report["component"] == "language"
     )
     assert language_report["shape_policy"] == "structured_mlp"
+    assert language_report["require_attention_geometry"] is True
+    assert language_report["attention_geometry_compatible"] is True
     assert language_report["structured_tensors"] == 3
     assert language_report["structured_parameters"] > 0
     assert len(language_report["structured_groups"]) == 1

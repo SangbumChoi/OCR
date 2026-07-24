@@ -94,6 +94,7 @@ parameters against a component-relative floor declared by the arm:
 | `I3_dual` | 80% | 15% |
 | `I4_selective` | 40% | 7.5% |
 | `I5_structured_mlp` | 40% | 25% |
+| `I6_strict_structured` | 40% | 25% |
 
 These conservative floors sit below the pinned compatibility counts but reject a source,
 canonicalization, or architecture change that leaves only a token number of copied tensors.
@@ -107,6 +108,13 @@ thing.
 Every materialized structured group records its source and target widths, selection method,
 channel-index SHA-256, and a bounded index preview. Header-only compatibility analysis records
 `shape_only_compatibility` instead of pretending that salience can be known without weights.
+
+`I6_strict_structured` adds a semantic attention gate. It reads hidden width, query heads, KV
+heads, head dimension, and RoPE base from the checkpoint config. Missing geometry fails closed;
+any mismatch leaves selected attention tensors random and records `skipped_semantic`. This matters
+for the pinned Qwen source: Q and O matrix shapes match the default student even though Qwen uses
+12/2 heads, 128-dimensional heads, and RoPE base 1,000,000 while the default student uses 24/8,
+64-dimensional heads, and RoPE base 10,000.
 
 ## Matched experiment
 
@@ -148,3 +156,8 @@ evaluation, and all stochastic seeds fixed. Only `I4_selective`'s exact shape po
 `I5_structured_mlp`'s joint MLP channel reduction changes. Promotion requires three paired
 replicates, the same six deployment gates, and simultaneous non-regression on locating, region
 grounding, multilingual, OCR, and reading-order axes.
+
+The geometry-by-transfer factorial is documented in
+[`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).
+It uses a strict transfer arm and paired linear contrasts to distinguish a generally better
+attention architecture from an architecture that specifically receives the pinned teacher better.
