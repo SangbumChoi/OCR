@@ -201,7 +201,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Continue failure-driven rounds:**
   [`report/student_curriculum_runner.md`](report/student_curriculum_runner.md) — full-hash parent
   attestation, exact model/tokenizer preservation, validation-authorized generation, deterministic
-  replay, and post-training-only continuation with an explicit optimizer reset policy.
+  origin-stratified cumulative replay, and post-training-only continuation with an explicit
+  optimizer reset policy.
 - **Attest execution evidence:**
   [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
   source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,

@@ -98,6 +98,8 @@ class ContinuationContract:
     checkpoint: str
     tokenizer: str
     replay_samples: str
+    replay_source_kind: str
+    replay_origin_rounds: tuple[int, ...]
     training_policy_plan: str
     student_config_fingerprint: str
     tokenizer_fingerprint: str
@@ -109,7 +111,8 @@ class ContinuationContract:
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload["schema_version"] = 1
+        payload["replay_origin_rounds"] = list(self.replay_origin_rounds)
+        payload["schema_version"] = 2
         payload["continuation_fingerprint"] = payload_fingerprint(payload)
         return payload
 
@@ -299,10 +302,27 @@ def resolve_continuation_contract(
             "do not share one token-ID contract"
         )
 
-    replay_samples = parent_root / "artifacts" / "samples" / "train.jsonl"
+    if parent_round_index == 0:
+        replay_samples = parent_root / "artifacts" / "samples" / "train.jsonl"
+        replay_source_kind = "base_train"
+        replay_origin_rounds = (0,)
+    else:
+        replay_samples = (
+            parent_root
+            / "artifacts"
+            / "continuation"
+            / "replay_memory.jsonl"
+        )
+        replay_source_kind = "cumulative_replay_memory"
     if not replay_samples.is_file():
         raise ValueError(
             f"parent replay samples do not exist: {replay_samples}"
+        )
+    if parent_round_index > 0:
+        replay_rows = _load_jsonl(replay_samples, "parent replay memory")
+        replay_origin_rounds = _validate_replay_memory(
+            replay_rows,
+            parent_round_index=parent_round_index,
         )
     policy_path = (
         parent_root / "artifacts" / "synthetic" / "next_train_plan.json"
@@ -372,6 +392,8 @@ def resolve_continuation_contract(
         checkpoint=str(checkpoint),
         tokenizer=str(tokenizer),
         replay_samples=str(replay_samples),
+        replay_source_kind=replay_source_kind,
+        replay_origin_rounds=replay_origin_rounds,
         training_policy_plan=str(policy_path),
         student_config_fingerprint=expected_student_fingerprint,
         tokenizer_fingerprint=tokenizer_fingerprint,
@@ -403,6 +425,30 @@ def write_continuation_manifest(
         encoding="utf-8",
     )
     temporary.replace(destination)
+
+
+def materialize_continuation_tokenizer(
+    contract: ContinuationContract,
+    output: str | Path,
+) -> dict[str, Any]:
+    """Copy the verified tokenizer contract into the child experiment root."""
+
+    source = Path(contract.tokenizer)
+    destination = Path(output)
+    destination.mkdir(parents=True, exist_ok=True)
+    names = ("tokenizer.json", "tokenizer_config.json")
+    for name in names:
+        source_path = source / name
+        destination_path = destination / name
+        temporary = destination_path.with_name(f".{destination_path.name}.tmp")
+        temporary.write_bytes(source_path.read_bytes())
+        temporary.replace(destination_path)
+    tokenizer = DocumentTokenizer.from_pretrained(destination)
+    if tokenizer.fingerprint != contract.tokenizer_fingerprint:
+        raise ValueError(
+            "materialized tokenizer differs from the continuation contract"
+        )
+    return _tree_record(destination, names)
 
 
 def prepare_next_round_spec(
@@ -500,6 +546,115 @@ def _load_jsonl(path: Path, label: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _validate_unique_sample_ids(
+    rows: list[dict[str, Any]],
+    label: str,
+) -> None:
+    sample_ids = [str(row["sample_id"]) for row in rows]
+    if len(sample_ids) != len(set(sample_ids)):
+        raise ValueError(f"{label} sample IDs must be unique")
+
+
+def _validate_replay_memory(
+    rows: list[dict[str, Any]],
+    *,
+    parent_round_index: int,
+) -> tuple[int, ...]:
+    origins: set[int] = set()
+    for row in rows:
+        meta = row.get("meta")
+        if not isinstance(meta, dict):
+            raise ValueError("replay memory sample meta must be a mapping")
+        origin = meta.get("curriculum_origin_round_index")
+        if not isinstance(origin, int) or not 0 <= origin <= parent_round_index:
+            raise ValueError(
+                "replay memory origin must be an integer within completed "
+                "curriculum rounds"
+            )
+        source_id = str(meta.get("curriculum_source_sample_id") or "")
+        expected_id = f"memory-r{origin:03d}:{source_id}"
+        if not source_id or row["sample_id"] != expected_id:
+            raise ValueError(
+                "replay memory sample ID does not match its origin lineage"
+            )
+        origins.add(origin)
+    expected_origins = set(range(parent_round_index + 1))
+    if origins != expected_origins:
+        raise ValueError(
+            "replay memory must contain every completed curriculum round"
+        )
+    _validate_unique_sample_ids(rows, "replay memory")
+    return tuple(sorted(origins))
+
+
+def _memory_row(
+    row: Mapping[str, Any],
+    *,
+    origin_round_index: int,
+) -> dict[str, Any]:
+    item = copy.deepcopy(dict(row))
+    meta = item.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        raise ValueError("curriculum sample meta must be a mapping")
+    source_id = str(item["sample_id"])
+    item["sample_id"] = f"memory-r{origin_round_index:03d}:{source_id}"
+    meta.update(
+        {
+            "curriculum_role": "replay_memory",
+            "curriculum_origin_round_index": origin_round_index,
+            "curriculum_source_sample_id": source_id,
+        }
+    )
+    return item
+
+
+def _stratified_replay(
+    rows: list[dict[str, Any]],
+    *,
+    count: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    if count <= 0:
+        return []
+    by_origin: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        origin = int(row["meta"]["curriculum_origin_round_index"])
+        by_origin.setdefault(origin, []).append(row)
+    rng = random.Random(seed)
+    origin_order = sorted(by_origin)
+    rng.shuffle(origin_order)
+    for origin in origin_order:
+        rng.shuffle(by_origin[origin])
+    selected: list[dict[str, Any]] = []
+    offsets = {origin: 0 for origin in origin_order}
+    while len(selected) < count:
+        progressed = False
+        for origin in origin_order:
+            offset = offsets[origin]
+            group = by_origin[origin]
+            if offset >= len(group):
+                continue
+            selected.append(group[offset])
+            offsets[origin] += 1
+            progressed = True
+            if len(selected) == count:
+                break
+        if not progressed:
+            break
+    return selected
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(
+                json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+    temporary.replace(path)
+
+
 def build_curriculum_samples(
     *,
     current_samples: str | Path,
@@ -508,9 +663,10 @@ def build_curriculum_samples(
     replay_seed: int,
     parent_round_index: int,
     output: str | Path,
+    memory_output: str | Path,
     manifest_output: str | Path,
 ) -> dict[str, Any]:
-    """Keep every new failure sample and add deterministic parent replay."""
+    """Build bounded active training data and unbounded cumulative replay memory."""
 
     if not 0.0 <= replay_fraction < 1.0:
         raise ValueError("replay_fraction must be within [0, 1)")
@@ -520,17 +676,36 @@ def build_curriculum_samples(
     replay_path = Path(replay_samples).resolve()
     current = _load_jsonl(current_path, "current samples")
     replay = _load_jsonl(replay_path, "replay samples")
+    _validate_unique_sample_ids(current, "current samples")
+    if parent_round_index == 0:
+        replay_memory = [
+            _memory_row(row, origin_round_index=0) for row in replay
+        ]
+        replay_origins = (0,)
+    else:
+        replay_origins = _validate_replay_memory(
+            replay,
+            parent_round_index=parent_round_index,
+        )
+        replay_memory = copy.deepcopy(replay)
+    current_round_index = parent_round_index + 1
+    current_memory = [
+        _memory_row(row, origin_round_index=current_round_index)
+        for row in current
+    ]
+    cumulative_memory = [*replay_memory, *current_memory]
+    _validate_unique_sample_ids(cumulative_memory, "cumulative replay memory")
     desired_replay = (
         round(len(current) * replay_fraction / (1.0 - replay_fraction))
         if replay_fraction > 0
         else 0
     )
-    replay_count = min(len(replay), desired_replay)
+    replay_count = min(len(replay_memory), desired_replay)
     rng = random.Random(replay_seed)
-    selected = (
-        [replay[index] for index in rng.sample(range(len(replay)), replay_count)]
-        if replay_count
-        else []
+    selected = _stratified_replay(
+        replay_memory,
+        count=replay_count,
+        seed=replay_seed,
     )
     rows: list[dict[str, Any]] = []
     for row in current:
@@ -538,13 +713,19 @@ def build_curriculum_samples(
         meta = item.setdefault("meta", {})
         if not isinstance(meta, dict):
             raise ValueError("current sample meta must be a mapping")
-        meta["curriculum_role"] = "new_failure_batch"
+        meta.update(
+            {
+                "curriculum_role": "new_failure_batch",
+                "curriculum_origin_round_index": current_round_index,
+                "curriculum_source_sample_id": str(item["sample_id"]),
+            }
+        )
         rows.append(item)
     for ordinal, row in enumerate(selected):
         item = copy.deepcopy(row)
-        original_id = str(item["sample_id"])
+        memory_id = str(item["sample_id"])
         item["sample_id"] = (
-            f"replay-r{parent_round_index:03d}-{ordinal:06d}:{original_id}"
+            f"replay-r{parent_round_index:03d}-{ordinal:06d}:{memory_id}"
         )
         meta = item.setdefault("meta", {})
         if not isinstance(meta, dict):
@@ -552,42 +733,51 @@ def build_curriculum_samples(
         meta.update(
             {
                 "curriculum_role": "parent_replay",
-                "parent_round_index": parent_round_index,
-                "parent_sample_id": original_id,
+                "curriculum_replayed_from_round_index": parent_round_index,
+                "curriculum_memory_sample_id": memory_id,
             }
         )
         rows.append(item)
     rng.shuffle(rows)
-    sample_ids = [str(row["sample_id"]) for row in rows]
-    if len(sample_ids) != len(set(sample_ids)):
-        raise ValueError("curriculum sample IDs must be unique")
+    _validate_unique_sample_ids(rows, "curriculum samples")
 
     destination = Path(output)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(f".{destination.name}.tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(
-                json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
-            )
-    temporary.replace(destination)
+    memory_destination = Path(memory_output)
+    _write_jsonl(destination, rows)
+    _write_jsonl(memory_destination, cumulative_memory)
+    selected_origin_counts: dict[str, int] = {}
+    for row in selected:
+        origin = str(row["meta"]["curriculum_origin_round_index"])
+        selected_origin_counts[origin] = selected_origin_counts.get(origin, 0) + 1
+    memory_origin_counts: dict[str, int] = {}
+    for row in cumulative_memory:
+        origin = str(row["meta"]["curriculum_origin_round_index"])
+        memory_origin_counts[origin] = memory_origin_counts.get(origin, 0) + 1
     manifest = {
-        "schema_version": 1,
-        "policy": "all_new_plus_parent_replay_without_replacement",
+        "schema_version": 2,
+        "policy": (
+            "all_new_plus_stratified_cumulative_replay_without_replacement"
+        ),
         "current_samples": _file_record(current_path),
         "replay_samples": _file_record(replay_path),
+        "replay_origin_rounds": list(replay_origins),
         "requested_replay_fraction": replay_fraction,
         "replay_seed": replay_seed,
         "parent_round_index": parent_round_index,
+        "current_round_index": current_round_index,
         "new_sample_count": len(current),
-        "available_replay_count": len(replay),
+        "available_replay_count": len(replay_memory),
         "desired_replay_count": desired_replay,
         "selected_replay_count": replay_count,
+        "selected_replay_origin_counts": selected_origin_counts,
         "output_sample_count": len(rows),
         "realized_replay_fraction": (
             replay_count / len(rows) if rows else 0.0
         ),
         "output": _file_record(destination),
+        "memory_sample_count": len(cumulative_memory),
+        "memory_origin_counts": memory_origin_counts,
+        "memory_output": _file_record(memory_destination),
     }
     manifest["manifest_fingerprint"] = payload_fingerprint(manifest)
     manifest_path = Path(manifest_output)

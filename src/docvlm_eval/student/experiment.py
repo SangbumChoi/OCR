@@ -1026,6 +1026,7 @@ def build_experiment_plan(
     continuation_dir = artifacts / "continuation"
     continuation_manifest = continuation_dir / "manifest.json"
     curriculum_samples = continuation_dir / "train_with_replay.jsonl"
+    replay_memory = continuation_dir / "replay_memory.jsonl"
     curriculum_samples_manifest = (
         continuation_dir / "train_with_replay.manifest.json"
     )
@@ -1264,9 +1265,15 @@ def build_experiment_plan(
                     str(resolved_blueprint_path),
                     "--output",
                     str(continuation_manifest),
+                    "--tokenizer-output",
+                    str(tokenizer_dir),
                 ),
                 (),
-                (Artifact(str(continuation_manifest)),),
+                (
+                    Artifact(str(continuation_manifest)),
+                    Artifact(str(tokenizer_dir / "tokenizer.json")),
+                    Artifact(str(tokenizer_dir / "tokenizer_config.json")),
+                ),
             )
         )
 
@@ -1853,12 +1860,15 @@ def build_experiment_plan(
                     str(continuation_contract.parent_round_index),
                     "--output",
                     str(curriculum_samples),
+                    "--memory-output",
+                    str(replay_memory),
                     "--manifest-output",
                     str(curriculum_samples_manifest),
                 ),
                 ("attest_continuation", "build_train_samples"),
                 (
                     Artifact(str(curriculum_samples)),
+                    Artifact(str(replay_memory)),
                     Artifact(str(curriculum_samples_manifest)),
                 ),
             )
@@ -2015,7 +2025,7 @@ def build_experiment_plan(
             if stage.name
             not in {"train_tokenizer", "initialize_student", "pretrain"}
         ]
-        active_tokenizer = Path(continuation_contract.tokenizer)
+        active_tokenizer = tokenizer_dir
         posttraining_samples = curriculum_samples
         sft_checkpoint = continuation_contract.checkpoint
         sft_dependencies = ("build_curriculum_samples",)

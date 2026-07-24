@@ -4,8 +4,8 @@
 failure-driven synthesis loop as an exact sequence of student-training rounds. Round zero runs the
 complete experiment, including tokenizer construction, initialization, and pretraining. Every
 later round preserves the parent tokenizer and full final student checkpoint, generates the
-validation-authorized failure batch, adds deterministic parent replay, and runs only SFT, RLVR,
-evaluation, and next-batch planning.
+validation-authorized failure batch, adds deterministic cumulative replay, and runs only SFT,
+RLVR, evaluation, and next-batch planning.
 
 ## Run
 
@@ -43,6 +43,8 @@ DAG, the continuation resolver verifies:
 - successful parent SFT/RLVR, evaluation, and next-batch planning stages;
 - the exact final student configuration, checkpoint files, tokenizer vocabulary, and tokenizer
   fingerprint;
+- a byte-identical tokenizer copy materialized inside every child root, so the following round
+  depends only on its immediate parent's attested artifacts;
 - an untampered validation-only, training-authorized synthesis plan whose source is the parent's
   exact validation `per_sample.jsonl`;
 - an exact round increment and an explicit `reset_per_stage` optimizer policy.
@@ -55,11 +57,19 @@ each initialize their own optimizer, as declared by the continuation policy.
 
 ## Replay and provenance
 
-Every new failure-driven sample is retained. Parent samples are selected without replacement using
-the configured replay seed; the requested fraction is capped by available parent data. Replay IDs
-are namespaced, rows are deterministically shuffled, and
-`artifacts/continuation/train_with_replay.manifest.json` records source and output hashes, requested
-and realized fractions, counts, and the parent round.
+Every new failure-driven sample is retained in
+`artifacts/continuation/replay_memory.jsonl`. Round one seeds this memory from the base train set;
+later rounds require the immediate parent's attested memory and append the new batch with stable
+origin-round lineage. Missing origins, duplicate IDs, altered lineage, or a memory file absent from
+the parent full-hash attestation fail before child synthesis.
+
+The active training set remains bounded by `replay_fraction`. Samples are selected without
+replacement in round-robin strata over all prior origin rounds, with deterministic within-stratum
+shuffling. This prevents the immediately previous failure batch from erasing the base distribution
+while keeping each SFT/RLVR round at the configured size. Replay IDs are namespaced, active rows are
+deterministically shuffled, and `train_with_replay.manifest.json` records source and output hashes,
+requested and realized fractions, selected counts by origin, cumulative counts by origin, and the
+parent round.
 
 `curriculum_summary.json` records each round's experiment fingerprint, full attestation hash,
 capability status, synthesis-plan fingerprint, stage count, and final root. A passing execution

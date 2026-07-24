@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge all new failure-driven samples with deterministic parent replay."""
+"""Build active curriculum samples and cumulative replay memory."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--replay-seed", type=int, required=True)
     parser.add_argument("--parent-round-index", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--memory-output", type=Path, required=True)
     parser.add_argument("--manifest-output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -28,6 +29,7 @@ def main() -> None:
         replay_seed=args.replay_seed,
         parent_round_index=args.parent_round_index,
         output=args.output,
+        memory_output=args.memory_output,
         manifest_output=args.manifest_output,
     )
     print(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))

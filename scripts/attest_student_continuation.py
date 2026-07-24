@@ -8,6 +8,7 @@ from pathlib import Path
 
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
 from docvlm_eval.student.continuation import (
+    materialize_continuation_tokenizer,
     resolve_continuation_contract,
     write_continuation_manifest,
 )
@@ -22,6 +23,7 @@ def main() -> None:
     parser.add_argument("--optimizer-policy", required=True)
     parser.add_argument("--blueprint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--tokenizer-output", type=Path, required=True)
     args = parser.parse_args()
 
     blueprint = load_blueprint(args.blueprint)
@@ -41,6 +43,7 @@ def main() -> None:
         blueprint=blueprint,
     )
     write_continuation_manifest(contract, args.output)
+    materialize_continuation_tokenizer(contract, args.tokenizer_output)
 
 
 if __name__ == "__main__":

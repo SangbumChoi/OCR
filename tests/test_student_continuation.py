@@ -260,11 +260,19 @@ def test_continuation_compiles_model_preserving_adaptation_dag(tmp_path):
     }.intersection(plan.stage_names)
     sft = next(stage for stage in plan.stages if stage.name == "sft")
     assert str(student_root) in sft.command
-    assert str(parent_root / "artifacts" / "tokenizer") in sft.command
+    assert str(child_root / "artifacts" / "tokenizer") in sft.command
     assert "build_curriculum_samples" in sft.dependencies
+    attest = next(
+        stage for stage in plan.stages if stage.name == "attest_continuation"
+    )
+    assert str(parent_root / "artifacts" / "tokenizer") not in attest.command
+    assert str(child_root / "artifacts" / "tokenizer") in attest.command
     contract = plan.input_fingerprints["continuation_contract"]
     assert contract["parent_experiment_fingerprint"] == parent_plan.fingerprint
     assert contract["optimizer_policy"] == "reset_per_stage"
+    assert contract["replay_source_kind"] == "base_train"
+    assert contract["replay_origin_rounds"] == [0]
+    assert contract["schema_version"] == 2
 
 
 def test_continuation_rejects_checkpoint_content_changed_after_attestation(
@@ -311,6 +319,7 @@ def test_curriculum_samples_keep_all_new_rows_and_deterministic_replay(
         encoding="utf-8",
     )
     output = tmp_path / "combined.jsonl"
+    memory = tmp_path / "memory.jsonl"
     manifest_path = tmp_path / "combined.manifest.json"
 
     manifest = build_curriculum_samples(
@@ -320,6 +329,7 @@ def test_curriculum_samples_keep_all_new_rows_and_deterministic_replay(
         replay_seed=13,
         parent_round_index=0,
         output=output,
+        memory_output=memory,
         manifest_output=manifest_path,
     )
     rows = [
@@ -330,6 +340,9 @@ def test_curriculum_samples_keep_all_new_rows_and_deterministic_replay(
     assert manifest["new_sample_count"] == 2
     assert manifest["selected_replay_count"] == 2
     assert manifest["realized_replay_fraction"] == 0.5
+    assert manifest["memory_sample_count"] == 7
+    assert manifest["memory_origin_counts"] == {"0": 5, "1": 2}
+    assert manifest["selected_replay_origin_counts"] == {"0": 2}
     assert {
         row["sample_id"]
         for row in rows
@@ -343,3 +356,69 @@ def test_curriculum_samples_keep_all_new_rows_and_deterministic_replay(
     assert json.loads(
         manifest_path.read_text(encoding="utf-8")
     ) == manifest
+
+    next_current = tmp_path / "next-current.jsonl"
+    next_current.write_text(
+        "\n".join(
+            json.dumps({"sample_id": f"next-{index}", "meta": {}})
+            for index in range(2)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    next_output = tmp_path / "next-combined.jsonl"
+    next_memory = tmp_path / "next-memory.jsonl"
+    next_manifest = build_curriculum_samples(
+        current_samples=next_current,
+        replay_samples=memory,
+        replay_fraction=0.5,
+        replay_seed=17,
+        parent_round_index=1,
+        output=next_output,
+        memory_output=next_memory,
+        manifest_output=tmp_path / "next-combined.manifest.json",
+    )
+    next_rows = [
+        json.loads(line)
+        for line in next_output.read_text(encoding="utf-8").splitlines()
+    ]
+    next_memory_rows = [
+        json.loads(line)
+        for line in next_memory.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert next_manifest["replay_origin_rounds"] == [0, 1]
+    assert next_manifest["selected_replay_origin_counts"] == {"0": 1, "1": 1}
+    assert next_manifest["memory_sample_count"] == 9
+    assert next_manifest["memory_origin_counts"] == {"0": 5, "1": 2, "2": 2}
+    assert {
+        row["meta"]["curriculum_origin_round_index"]
+        for row in next_rows
+        if row["meta"]["curriculum_role"] == "parent_replay"
+    } == {0, 1}
+    assert {
+        row["meta"]["curriculum_origin_round_index"]
+        for row in next_memory_rows
+    } == {0, 1, 2}
+
+    malformed_memory = tmp_path / "malformed-memory.jsonl"
+    malformed_rows = [
+        json.loads(line)
+        for line in memory.read_text(encoding="utf-8").splitlines()
+    ]
+    malformed_rows[0]["meta"]["curriculum_origin_round_index"] = 1
+    malformed_memory.write_text(
+        "\n".join(json.dumps(row) for row in malformed_rows) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="origin lineage"):
+        build_curriculum_samples(
+            current_samples=next_current,
+            replay_samples=malformed_memory,
+            replay_fraction=0.5,
+            replay_seed=17,
+            parent_round_index=1,
+            output=tmp_path / "rejected.jsonl",
+            memory_output=tmp_path / "rejected-memory.jsonl",
+            manifest_output=tmp_path / "rejected.manifest.json",
+        )

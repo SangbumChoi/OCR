@@ -44,7 +44,7 @@ def _round_record(round_index: int, plan, attestation: dict) -> dict:
     synthesis_plan = (
         root / "artifacts" / "synthetic" / "next_train_plan.json"
     )
-    return {
+    record = {
         "round_index": round_index,
         "experiment": plan.name,
         "root": str(root),
@@ -57,6 +57,27 @@ def _round_record(round_index: int, plan, attestation: dict) -> dict:
         "synthesis_plan_file_fingerprint": file_fingerprint(synthesis_plan),
         "stage_count": len(plan.stages),
     }
+    replay_manifest_path = (
+        root
+        / "artifacts"
+        / "continuation"
+        / "train_with_replay.manifest.json"
+    )
+    if replay_manifest_path.is_file():
+        replay = json.loads(replay_manifest_path.read_text(encoding="utf-8"))
+        record["replay"] = {
+            "manifest": str(replay_manifest_path),
+            "manifest_fingerprint": replay["manifest_fingerprint"],
+            "active_sample_count": replay["output_sample_count"],
+            "selected_replay_count": replay["selected_replay_count"],
+            "selected_replay_origin_counts": replay[
+                "selected_replay_origin_counts"
+            ],
+            "memory_sample_count": replay["memory_sample_count"],
+            "memory_origin_counts": replay["memory_origin_counts"],
+            "memory_fingerprint": replay["memory_output"]["fingerprint"],
+        }
+    return record
 
 
 def main() -> None:
@@ -157,8 +178,10 @@ def main() -> None:
         parent_root = round_root
 
     summary = {
-        "schema_version": 1,
-        "policy": "attested_failure_driven_curriculum",
+        "schema_version": 2,
+        "policy": (
+            "attested_failure_driven_curriculum_with_cumulative_replay"
+        ),
         "requested_rounds": args.rounds,
         "completed_rounds": len(round_records),
         "replay_fraction": args.replay_fraction,
