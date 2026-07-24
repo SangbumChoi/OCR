@@ -31,6 +31,18 @@ The full suite compares:
 - answer-correctness-only instead of decomposed grounded RLVR rewards;
 - no supervised replay anchor during RLVR.
 
+The diagnostic-only gradient-conflict suite uses the same compiler and paired-replicate contract:
+
+```bash
+python scripts/run_student_sweep.py \
+  --sweep configs/sub1b_gradient_conflict_audit.yaml \
+  --dry-run
+```
+
+Its loss-pair telemetry is aggregated separately by
+[`student_gradient_conflict_audit.md`](student_gradient_conflict_audit.md), because ordinary sweep
+comparison files contain held-out generation quality rather than optimizer-gradient diagnostics.
+
 Run the two-arm by two-replicate CPU contract:
 
 ```bash

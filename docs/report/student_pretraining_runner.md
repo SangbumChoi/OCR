@@ -242,6 +242,18 @@ zero-based optimizer update contract, including gradient accumulation, epoch-end
 and `max_steps`. Each training record includes `train/curriculum_stage`,
 `train/curriculum_progress`, and `train/loss_weight/<name>` values for audit and W&B ingestion.
 
+## Gradient-conflict diagnostics
+
+`training.pretraining.gradient_conflict_probe` optionally measures pairwise weighted-loss gradient
+cosines on final vision, connector, and language normalization anchors. The diagnostic forward
+restores every RNG stream, uses `torch.autograd.grad` without writing optimizer gradients, and
+records its extra forward and autograd traversals explicitly. Its configuration is included in the
+resume supervision contract.
+
+This is an anchor proxy, not a full-gradient claim. The three-arm by three-replicate design,
+trajectory-hash invariant, aggregation command, and PCGrad/GradNorm promotion gate are specified in
+[`student_gradient_conflict_audit.md`](student_gradient_conflict_audit.md).
+
 ## Validation-adaptive mixture
 
 `training.pretraining.input_pipeline.adaptive_mixture` optionally uses periodic group-specific
@@ -279,6 +291,7 @@ Each checkpoint contains:
   sample count;
 - tokenizer, curriculum, token-budget, and gradient-checkpointing contracts plus a
   `latest_checkpoint.txt` pointer;
+- the gradient-conflict probe schedule and anchor selection when configured;
 - adaptive mixture probabilities, EMA losses, pending update, and counters when enabled.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.

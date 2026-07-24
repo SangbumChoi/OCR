@@ -200,6 +200,57 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
         assert torch.equal(expected, resumed.state_dict()[name]), name
 
 
+def test_gradient_conflict_probe_preserves_training_trajectory(tmp_path):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.gradient_probe import (
+        GradientConflictProbeConfig,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    torch.manual_seed(59)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    control = copy.deepcopy(initial)
+    probed = copy.deepcopy(initial)
+    base_config = _config(tmp_path / "probe-control", max_steps=2)
+    probe_config = replace(
+        base_config,
+        output_dir=str(tmp_path / "probe-enabled"),
+        gradient_conflict_probe=GradientConflictProbeConfig(
+            enabled=True,
+            every_steps=1,
+        ),
+    )
+
+    train_student(control, _loader(), base_config)
+    train_student(probed, _loader(), probe_config)
+
+    for name, expected in control.state_dict().items():
+        assert torch.equal(expected, probed.state_dict()[name]), name
+    records = [
+        json.loads(line)
+        for line in (
+            tmp_path / "probe-enabled" / "metrics.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    probes = [
+        record
+        for record in records
+        if record["kind"] == "gradient_conflict"
+    ]
+    assert len(probes) == 2
+    first = probes[0]
+    pair = "autoregressive__orientation"
+    assert first[f"gradient_probe/overlap_elements/{pair}"] > 0
+    assert -1 <= first[f"gradient_probe/cosine/{pair}"] <= 1
+    assert first["gradient_probe/extra_forward_passes"] == 1
+    assert first["gradient_probe/extra_backward_passes"] >= 2
+
+
 def test_adaptive_mixture_resume_matches_uninterrupted_training(
     tmp_path,
     monkeypatch,
@@ -703,6 +754,8 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.curriculum.unit == "training_token_fraction"
     assert config.adaptive_mixture.enabled is False
     assert config.adaptive_mixture.step_size == 0.5
+    assert config.gradient_conflict_probe.enabled is False
+    assert config.gradient_conflict_probe.every_steps == 1000
 
 
 def test_pretrain_config_rejects_invalid_adaptive_mixture_contract(tmp_path):

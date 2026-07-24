@@ -215,6 +215,12 @@ training:
             region_text_contrastive: 0.10
             box_regression: 0.25
             orientation: 0.03
+    # Diagnostic-only. It restores RNG state and never writes optimizer
+    # gradients; enable it in the replicated conflict audit.
+    gradient_conflict_probe:
+      enabled: false
+      every_steps: 1000
+      components: [vision, connector, language]
 
   posttraining:
     sft:

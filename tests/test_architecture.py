@@ -136,6 +136,21 @@ def test_blueprint_rejects_invalid_adaptive_mixture_contract():
     )
 
 
+def test_blueprint_rejects_invalid_gradient_probe_contract():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    blueprint["training"]["pretraining"]["gradient_conflict_probe"] = {
+        "enabled": "yes",
+        "every_steps": 0,
+        "components": ["vision", "vision"],
+    }
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("gradient_conflict_probe.enabled" in error for error in errors)
+    assert any("gradient_conflict_probe.every_steps" in error for error in errors)
+    assert any("gradient_conflict_probe.components" in error for error in errors)
+
+
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1

@@ -9,6 +9,7 @@ import random
 import tempfile
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -22,6 +23,7 @@ from .adaptive_mixture import (
 from .data import student_model_inputs
 from .curriculum import CurriculumSchedule, planned_optimizer_steps
 from .compute import estimate_batch_training_flops_breakdown
+from .gradient_probe import GradientConflictProbeConfig
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .model import DocumentVLMStudent
 
@@ -73,6 +75,9 @@ class PretrainConfig:
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
     adaptive_mixture: AdaptiveMixtureConfig = field(
         default_factory=AdaptiveMixtureConfig
+    )
+    gradient_conflict_probe: GradientConflictProbeConfig = field(
+        default_factory=GradientConflictProbeConfig
     )
 
     def __post_init__(self) -> None:
@@ -154,6 +159,7 @@ class PretrainConfig:
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
         self.adaptive_mixture.validate()
+        self.gradient_conflict_probe.validate()
         if self.adaptive_mixture.enabled:
             if self.eval_every_steps <= 0:
                 raise ValueError(
@@ -251,6 +257,9 @@ class PretrainConfig:
             "adaptive_mixture": (
                 AdaptiveMixtureConfig.from_blueprint(blueprint)
             ),
+            "gradient_conflict_probe": (
+                GradientConflictProbeConfig.from_blueprint(blueprint)
+            ),
         }
         values.update(overrides)
         return cls(**values)
@@ -309,6 +318,7 @@ def pretraining_supervision_contract(
             for name, count in sorted(config.target_source_counts.items())
         },
         "adaptive_mixture": config.adaptive_mixture.to_dict(),
+        "gradient_conflict_probe": config.gradient_conflict_probe.to_dict(),
         "stages": profiles,
     }
 
@@ -614,6 +624,177 @@ def _resolve_adaptive_sampler(loader: Any) -> Any:
     raise ValueError(
         "adaptive mixture requires BalancedGroupBatchSampler"
     )
+
+
+def _gradient_probe_anchors(
+    student: DocumentVLMStudent,
+    components: tuple[str, ...],
+) -> dict[str, nn.Parameter]:
+    anchors: dict[str, nn.Parameter] = {}
+    if "vision" in components:
+        anchors["vision"] = student.vision.norm.weight
+    if "connector" in components:
+        anchors["connector"] = student.connector.layers[-1].norm2.weight
+    if "language" in components:
+        anchors["language"] = student.language.norm.weight
+    if any(not parameter.requires_grad for parameter in anchors.values()):
+        raise ValueError(
+            "gradient conflict probe anchors must remain trainable"
+        )
+    return anchors
+
+
+def _global_probe_loss_names(
+    local_names: list[str],
+    context: _DistributedContext,
+) -> list[str]:
+    if context.world_size == 1:
+        return local_names
+    import torch.distributed as dist
+
+    rank_names: list[list[str] | None] = [None] * context.world_size
+    dist.all_gather_object(rank_names, local_names)
+    return sorted(
+        {name for names in rank_names for name in (names or [])}
+    )
+
+
+def _gradient_conflict_statistics(
+    losses: dict[str, torch.Tensor],
+    loss_weights: dict[str, float],
+    anchors: dict[str, nn.Parameter],
+    context: _DistributedContext,
+) -> dict[str, float]:
+    local_names = sorted(
+        name
+        for name, loss in losses.items()
+        if float(loss_weights.get(name, 1.0)) > 0 and loss.requires_grad
+    )
+    global_names = _global_probe_loss_names(local_names, context)
+    gradients: dict[str, tuple[torch.Tensor | None, ...]] = {}
+    anchor_values = tuple(anchors.values())
+    for index, name in enumerate(local_names):
+        raw_gradients = torch.autograd.grad(
+            losses[name] * float(loss_weights.get(name, 1.0)),
+            anchor_values,
+            retain_graph=index + 1 < len(local_names),
+            allow_unused=True,
+        )
+        gradients[name] = tuple(
+            None if gradient is None else gradient.detach().float()
+            for gradient in raw_gradients
+        )
+
+    pairs = list(combinations(global_names, 2))
+    values: list[float] = []
+    for name in global_names:
+        values.append(
+            sum(
+                float(gradient.square().sum())
+                for gradient in gradients.get(name, ())
+                if gradient is not None
+            )
+        )
+    for left, right in pairs:
+        left_gradients = gradients.get(left, ())
+        right_gradients = gradients.get(right, ())
+        shared = [
+            (left_gradient, right_gradient)
+            for left_gradient, right_gradient in zip(
+                left_gradients,
+                right_gradients,
+            )
+            if left_gradient is not None and right_gradient is not None
+        ]
+        values.extend(
+            [
+                sum(float(left_gradient.mul(right_gradient).sum()) for left_gradient, right_gradient in shared),
+                sum(float(left_gradient.square().sum()) for left_gradient, _ in shared),
+                sum(float(right_gradient.square().sum()) for _, right_gradient in shared),
+                float(sum(left_gradient.numel() for left_gradient, _ in shared)),
+            ]
+        )
+    reduced = torch.tensor(
+        values,
+        dtype=torch.float64,
+        device=context.device,
+    )
+    if context.world_size > 1:
+        import torch.distributed as dist
+
+        dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
+    offset = 0
+    metrics: dict[str, float] = {
+        "gradient_probe/active_losses": float(len(global_names)),
+        "gradient_probe/extra_forward_passes": 1.0,
+        "gradient_probe/extra_backward_passes": float(len(global_names)),
+        **{
+            f"gradient_probe/anchor_elements/{name}": float(parameter.numel())
+            for name, parameter in sorted(anchors.items())
+        },
+    }
+    for name in global_names:
+        metrics[f"gradient_probe/norm/{name}"] = math.sqrt(
+            max(float(reduced[offset]), 0.0)
+        )
+        offset += 1
+    measured_cosines: list[float] = []
+    for left, right in pairs:
+        dot, left_squared, right_squared, overlap = (
+            float(value) for value in reduced[offset : offset + 4]
+        )
+        offset += 4
+        pair = f"{left}__{right}"
+        metrics[f"gradient_probe/overlap_elements/{pair}"] = overlap
+        denominator = math.sqrt(max(left_squared * right_squared, 0.0))
+        if overlap > 0 and denominator > 0:
+            cosine = max(-1.0, min(1.0, dot / denominator))
+            metrics[f"gradient_probe/cosine/{pair}"] = cosine
+            metrics[f"gradient_probe/conflict/{pair}"] = float(cosine < 0)
+            measured_cosines.append(cosine)
+    metrics["gradient_probe/measured_pairs"] = float(len(measured_cosines))
+    metrics["gradient_probe/negative_pair_fraction"] = (
+        sum(cosine < 0 for cosine in measured_cosines)
+        / len(measured_cosines)
+        if measured_cosines
+        else 0.0
+    )
+    metrics["gradient_probe/minimum_cosine"] = (
+        min(measured_cosines) if measured_cosines else 0.0
+    )
+    return metrics
+
+
+def _run_gradient_conflict_probe(
+    module: PretrainingModule,
+    batch: dict[str, Any],
+    teacher_signals: TeacherSignals | None,
+    loss_weights: dict[str, float],
+    config: GradientConflictProbeConfig,
+    context: _DistributedContext,
+    precision: str,
+) -> dict[str, float]:
+    python_state = random.getstate()
+    torch_state = torch.get_rng_state()
+    cuda_state = (
+        torch.cuda.get_rng_state_all()
+        if torch.cuda.is_available()
+        else None
+    )
+    try:
+        with _autocast_context(context.device, precision):
+            _, losses = module(batch, teacher_signals, loss_weights)
+        return _gradient_conflict_statistics(
+            losses,
+            loss_weights,
+            _gradient_probe_anchors(module.student, config.components),
+            context,
+        )
+    finally:
+        random.setstate(python_state)
+        torch.set_rng_state(torch_state)
+        if cuda_state is not None:
+            torch.cuda.set_rng_state_all(cuda_state)
 
 
 def _parameter_groups(module: nn.Module, weight_decay: float) -> list[dict[str, Any]]:
@@ -1196,6 +1377,7 @@ def train_student(
                 if context.world_size > 1 and not should_step
                 else nullcontext()
             )
+            gradient_probe_metrics = None
             with sync_context:
                 with _autocast_context(context.device, config.precision):
                     online_teacher_active = any(
@@ -1207,6 +1389,25 @@ def train_student(
                         if teacher is not None and online_teacher_active
                         else None
                     )
+                if (
+                    config.gradient_conflict_probe.enabled
+                    and accumulated_microbatches == 0
+                    and state.global_step
+                    % config.gradient_conflict_probe.every_steps
+                    == 0
+                ):
+                    gradient_probe_metrics = (
+                        _run_gradient_conflict_probe(
+                            module,
+                            batch,
+                            teacher_signals,
+                            active_loss_weights,
+                            config.gradient_conflict_probe,
+                            context,
+                            config.precision,
+                        )
+                    )
+                with _autocast_context(context.device, config.precision):
                     total, losses = wrapped(
                         batch,
                         teacher_signals,
@@ -1214,6 +1415,17 @@ def train_student(
                     )
                     scaled_loss = total / config.grad_accum_steps
                 scaler.scale(scaled_loss).backward()
+            if context.is_main and gradient_probe_metrics is not None:
+                _append_metric(
+                    output_dir,
+                    {
+                        "kind": "gradient_conflict",
+                        "train/global_step": state.global_step + 1,
+                        "train/epoch": epoch,
+                        "gradient_probe/batch_index": batch_index,
+                        **gradient_probe_metrics,
+                    },
+                )
             accumulated_microbatches = microbatch_number
             state.visual_attention_backend = (
                 module.student.last_visual_attention_backend

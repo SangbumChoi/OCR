@@ -187,6 +187,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
   useful mechanism and the failure risk in the sub-1B document regime.
+- **Audit multi-loss interference:**
+  [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) —
+  trajectory-preserving shared-trunk gradient telemetry, a three-arm by three-replicate anchor audit,
+  and a falsifiable gate before PCGrad or GradNorm is introduced.
 - **Read:** [`report/ablation_plan.md`](report/ablation_plan.md) — A1 spotting,
   A7 preprocessing, A5 LoRA placement are exactly the "fold the pipeline into the model" moves.
 
@@ -245,6 +249,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
    [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
+   [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) ·
    [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·

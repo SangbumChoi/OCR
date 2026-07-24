@@ -274,6 +274,11 @@ ablations rather than claimed capabilities. Native RLVR is currently single-proc
 supports bounded elementary symbolic equivalence, but deliberately rejects unbounded calculus and
 does not replace a full theorem prover.
 
+The multi-objective pretraining losses also have an executable, trajectory-preserving conflict
+probe. [`student_gradient_conflict_audit.md`](student_gradient_conflict_audit.md) measures weighted
+loss cosines on shared-trunk anchors across paired replicates and requires material evidence before
+PCGrad or GradNorm is added as an intervention.
+
 Final deployment acceptance joins those two evidence streams. `eval_student.py` verifies the
 benchmark's complete student configuration and canonical fingerprint, CUDA runtime, benchmark
 dose, resolved backend, numerical delta, loop-relative median latency, and loop-relative peak

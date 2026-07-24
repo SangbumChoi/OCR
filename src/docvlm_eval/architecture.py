@@ -506,6 +506,49 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "adaptive mixture cannot be combined with curriculum "
             "group-weight overrides"
         )
+    gradient_probe = blueprint["training"]["pretraining"].get(
+        "gradient_conflict_probe",
+        {},
+    ) or {}
+    if not isinstance(gradient_probe, dict):
+        errors.append(
+            "training.pretraining.gradient_conflict_probe must be a mapping"
+        )
+        gradient_probe = {}
+    if not isinstance(gradient_probe.get("enabled", False), bool):
+        errors.append(
+            "training.pretraining.gradient_conflict_probe.enabled "
+            "must be boolean"
+        )
+    every_steps = gradient_probe.get("every_steps", 1000)
+    if (
+        not isinstance(every_steps, int)
+        or isinstance(every_steps, bool)
+        or every_steps <= 0
+    ):
+        errors.append(
+            "training.pretraining.gradient_conflict_probe.every_steps "
+            "must be a positive integer"
+        )
+    probe_components = gradient_probe.get(
+        "components",
+        ["vision", "connector", "language"],
+    )
+    supported_probe_components = {"vision", "connector", "language"}
+    if (
+        not isinstance(probe_components, list)
+        or not probe_components
+        or any(
+            not isinstance(component, str)
+            or component not in supported_probe_components
+            for component in probe_components
+        )
+        or len(set(probe_components)) != len(probe_components)
+    ):
+        errors.append(
+            "training.pretraining.gradient_conflict_probe.components must be "
+            "a unique non-empty subset of vision, connector, language"
+        )
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
     if estimates["total"] >= maximum:

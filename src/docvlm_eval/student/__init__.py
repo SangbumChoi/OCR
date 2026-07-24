@@ -9,6 +9,7 @@ from .config import (
     student_config_fingerprint,
 )
 from .adaptive_mixture import AdaptiveMixtureConfig, AdaptiveMixtureController
+from .gradient_probe import GradientConflictProbeConfig
 from .data import (
     BalancedGroupBatchSampler,
     DeterministicDistributedBatchSampler,
@@ -61,6 +62,10 @@ from .sweep import (
     aggregate_sweep_results,
     apply_json_patch,
     compile_sweep_plan,
+)
+from .gradient_audit import (
+    aggregate_gradient_conflict_audit,
+    write_gradient_conflict_audit,
 )
 from .architecture_sweep import (
     ArchitectureComputeBudgets,
@@ -132,6 +137,7 @@ __all__ = [
     "FactorialRunner",
     "FactorialScale",
     "ForwardFlops",
+    "GradientConflictProbeConfig",
     "LanguageConfig",
     "HubComponentSpec",
     "MixtureComponent",
@@ -200,7 +206,9 @@ __all__ = [
     "wandb_metrics_for_split",
     "write_split_comparison",
     "write_gate_report",
+    "write_gradient_conflict_audit",
     "aggregate_sweep_results",
+    "aggregate_gradient_conflict_audit",
     "aggregate_factorial_results",
     "compile_factorial_plan",
     "visual_tokens_for_canvas",
