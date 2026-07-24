@@ -325,8 +325,9 @@ and feature alignment. See
 
 The second stage is also executable. It teaches a strict
 `{"answer","evidence","rationale"}` contract with exhaustive SFT, then optionally runs
-single-update GRPO with task-applicable exact, text, box, table, chart, formula, grounding, and
-abstention rewards:
+verifier-ranked DPO/IPO, single-update GRPO, or the sequential preference-to-GRPO path with an
+immutable SFT reference. Rewards cover task-applicable exact, text, box, table, chart, formula,
+grounding, and abstention signals:
 
 ```bash
 python scripts/posttrain_student.py sft \
@@ -342,9 +343,10 @@ python scripts/posttrain_student.py rlvr \
   --output outputs/student_rlvr/full_reward
 ```
 
-RL rollout reuses one encoded visual prefix per image. SFT supports `torchrun`; native RLVR is
-currently single-process and requires the full policy, frozen reference, and optimizer state on one
-device. See
+RL rollout reuses one encoded visual prefix per image. When GRPO follows DPO/IPO, the preference
+checkpoint starts the trainable policy while `--reference-checkpoint` pins the exact SFT model.
+SFT supports `torchrun`; native RLVR is currently single-process and requires the full policy,
+frozen reference, and optimizer state on one device. See
 [`docs/report/student_posttraining_runner.md`](docs/report/student_posttraining_runner.md).
 
 The complete native-student path is available as one validated, resumable experiment DAG:
@@ -358,7 +360,8 @@ python scripts/run_student_experiment.py \
 The full configuration is `configs/sub1b_experiment.yaml`. Both configurations connect independent
 hard-document train/heldout generation, leakage validation, weighted UDD mixing, cross-tokenizer
 teacher generation and quality gating, tokenizer and student creation, pretraining, SFT, RLVR, and
-split evaluation. The full DAG adds a separate validation split and converts matched
+split evaluation; preference optimization can optionally be inserted between SFT and RLVR. The full
+DAG adds a separate validation split and converts matched
 baseline-to-final learning progress plus residual structured failures into a content-addressed
 next-batch synthesis plan; only validation-derived plans may replace train generation in the
 following run. It also blocks initialization on target-GPU visual

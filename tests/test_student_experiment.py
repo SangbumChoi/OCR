@@ -367,7 +367,9 @@ def test_experiment_can_run_preference_stage_from_sft(tmp_path):
     )
 
 
-def test_experiment_rejects_simultaneous_preference_and_rlvr(tmp_path):
+def test_experiment_runs_preference_then_rlvr_with_frozen_sft_reference(
+    tmp_path,
+):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
             encoding="utf-8"
@@ -376,11 +378,26 @@ def test_experiment_rejects_simultaneous_preference_and_rlvr(tmp_path):
     raw["output_root"] = str(tmp_path / "output")
     raw["posttraining"]["preference"]["enabled"] = True
     raw["posttraining"]["preference"]["max_steps"] = 1
-    config = tmp_path / "invalid-preference-stages.yaml"
+    config = tmp_path / "sequential-posttraining.yaml"
     config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+    preference = next(
+        stage for stage in plan.stages if stage.name == "preference"
+    )
+    rlvr = next(stage for stage in plan.stages if stage.name == "rlvr")
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+
+    assert preference.dependencies == ("sft",)
+    assert rlvr.dependencies == ("preference",)
+    assert rlvr.command[rlvr.command.index("--checkpoint") + 1] == (
+        "@student:preference"
+    )
+    assert rlvr.command[
+        rlvr.command.index("--reference-checkpoint") + 1
+    ] == "@student:sft"
+    assert "@student:rlvr" in evaluate.command
 
 
 def test_experiment_rejects_ignored_disabled_rlvr_overrides(tmp_path):

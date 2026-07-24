@@ -5,7 +5,7 @@ failure-driven synthesis loop as an exact sequence of student-training rounds. R
 complete experiment, including tokenizer construction, initialization, and pretraining. Every
 later round preserves the parent tokenizer and full final student checkpoint, generates the
 validation-authorized failure batch, adds deterministic cumulative replay, and runs only SFT,
-RLVR, evaluation, and next-batch planning.
+optional preference optimization, RLVR, evaluation, and next-batch planning.
 
 ## Run
 
@@ -40,7 +40,7 @@ Each completed round receives a full-hash `evidence_attestation.json`. Before co
 DAG, the continuation resolver verifies:
 
 - the parent experiment plan, resolved spec, cumulative run summary, and attestation fingerprint;
-- successful parent SFT/RLVR, evaluation, and next-batch planning stages;
+- successful parent SFT, optional preference, RLVR, evaluation, and next-batch planning stages;
 - the exact final student configuration, checkpoint files, tokenizer vocabulary, and tokenizer
   fingerprint;
 - a byte-identical tokenizer copy materialized inside every child root, so the following round
@@ -52,8 +52,11 @@ DAG, the continuation resolver verifies:
 The child begins with `attest_continuation`. No synthesis or optimizer stage can run until the same
 contract is rechecked at execution time. The child omits data acquisition, teacher generation,
 tokenizer training, student initialization, and pretraining. This preserves learned model state
-without silently pretending to resume an optimizer schedule from a different stage. SFT and RLVR
-each initialize their own optimizer, as declared by the continuation policy.
+without silently pretending to resume an optimizer schedule from a different stage. SFT,
+preference optimization, and RLVR each initialize their own optimizer, as declared by the
+continuation policy. When both optional post-training stages are enabled, preference consumes the
+new SFT checkpoint, RLVR consumes the preference checkpoint as its policy start, and the same
+round's SFT checkpoint remains RLVR's frozen reference.
 
 The next-round spec also replaces the fresh-run
 `evaluation.baseline_checkpoint_stage` with `inherited`. The child then evaluates the parent's
@@ -77,7 +80,7 @@ the parent full-hash attestation fail before child synthesis.
 The active training set remains bounded by `replay_fraction`. Samples are selected without
 replacement in round-robin strata over all prior origin rounds, with deterministic within-stratum
 shuffling. This prevents the immediately previous failure batch from erasing the base distribution
-while keeping each SFT/RLVR round at the configured size. Replay IDs are namespaced, active rows are
+while keeping each post-training round at the configured size. Replay IDs are namespaced, active rows are
 deterministically shuffled, and `train_with_replay.manifest.json` records source and output hashes,
 requested and realized fractions, selected counts by origin, cumulative counts by origin, and the
 parent round.

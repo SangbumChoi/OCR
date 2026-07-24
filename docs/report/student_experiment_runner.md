@@ -43,9 +43,11 @@ capabilities; the compiler content-addresses that file and passes it to the RLVR
 Set `posttraining.rlvr.enabled: false` with all RLVR runtime overrides null to compile an SFT-only
 DAG. In that mode evaluation loads `@student:sft` directly. Non-null disabled-stage overrides fail
 before data generation so an intended RLVR treatment cannot disappear silently.
-Set `posttraining.preference.enabled: true` and disable RLVR to insert verifier-ranked DPO or IPO
-between SFT and evaluation. Preference optimization and RLVR are mutually exclusive in one
-experiment DAG.
+Set `posttraining.preference.enabled: true` to insert verifier-ranked DPO or IPO after SFT.
+Preference optimization may run alone or feed the trainable policy into RLVR. In the sequential
+case, RLVR still loads the exact SFT checkpoint as its frozen KL reference; the compiler does not
+replace that reference with the preference checkpoint. The policy-start and reference checkpoint
+content identities are bound independently in the RLVR checkpoint contract.
 
 The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the

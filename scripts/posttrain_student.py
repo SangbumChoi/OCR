@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -12,6 +11,7 @@ from pathlib import Path
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
 from docvlm_eval.benchmarks import load_jsonl
 from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
+from docvlm_eval.student.checkpoint import checkpoint_content_identity
 from docvlm_eval.student.model import DocumentVLMStudent
 from docvlm_eval.student.posttrain import (
     PreferenceConfig,
@@ -51,15 +51,8 @@ def _load_samples(args) -> list:
 
 
 def _checkpoint_id(checkpoint: Path) -> str:
-    digest = hashlib.sha256()
-    for name in ("student_config.json", "metadata.json"):
-        path = checkpoint / name
-        if path.exists():
-            digest.update(path.read_bytes())
-    model_path = checkpoint / "model.pt"
-    stat = model_path.stat()
-    digest.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode("ascii"))
-    return f"native:{digest.hexdigest()}"
+    identity = checkpoint_content_identity(checkpoint)
+    return f"native:{identity['content_fingerprint']}"
 
 
 def _device(args) -> str:
@@ -121,6 +114,14 @@ def main() -> None:
         required=True,
         help="Native checkpoint student/ directory.",
     )
+    parser.add_argument(
+        "--reference-checkpoint",
+        type=Path,
+        help=(
+            "Frozen SFT reference for RLVR. Required when --checkpoint is a "
+            "preference checkpoint."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume", help="Checkpoint path or 'latest'.")
     parser.add_argument("--max-steps", type=int)
@@ -166,6 +167,8 @@ def main() -> None:
     if args.stage != "rlvr" and replay_requested:
         raise SystemExit("replay options apply only to RLVR")
     if args.stage == "sft":
+        if args.reference_checkpoint is not None:
+            raise SystemExit("--reference-checkpoint applies only to RLVR")
         overrides = {
             "device": device,
             "resume_from": args.resume,
@@ -216,8 +219,28 @@ def main() -> None:
 
     if args.target_mode is not None or args.num_workers is not None:
         raise SystemExit("--target-mode and --num-workers apply only to SFT")
-    if not str(metadata.get("run_stage", "")).startswith("sft:"):
-        raise SystemExit(f"{args.stage.upper()} must start from an SFT checkpoint")
+    policy_stage = str(metadata.get("run_stage") or "")
+    if args.stage == "preference":
+        if args.reference_checkpoint is not None:
+            raise SystemExit("--reference-checkpoint applies only to RLVR")
+        if not policy_stage.startswith("sft:"):
+            raise SystemExit("PREFERENCE must start from an SFT checkpoint")
+    elif not (
+        policy_stage.startswith("sft:")
+        or policy_stage in {"preference:dpo", "preference:ipo"}
+    ):
+        raise SystemExit(
+            "RLVR must start from an SFT or preference checkpoint"
+        )
+    if (
+        args.stage == "rlvr"
+        and policy_stage.startswith("preference:")
+        and args.reference_checkpoint is None
+    ):
+        raise SystemExit(
+            "RLVR from a preference checkpoint requires "
+            "--reference-checkpoint pointing to its frozen SFT reference"
+        )
     overrides = {
         "device": device,
         "resume_from": args.resume,
@@ -225,14 +248,41 @@ def main() -> None:
     }
     if args.max_steps is not None:
         overrides["max_steps"] = args.max_steps
-    reference_id = _checkpoint_id(args.checkpoint)
+    reference_checkpoint = (
+        args.reference_checkpoint
+        if args.stage == "rlvr" and args.reference_checkpoint is not None
+        else args.checkpoint
+    )
+    reference_metadata = _checkpoint_metadata(reference_checkpoint)
+    reference_stage = str(reference_metadata.get("run_stage") or "")
+    if not reference_stage.startswith("sft:"):
+        raise SystemExit("the frozen post-training reference must be SFT")
+    reference_fingerprint = reference_metadata.get("tokenizer_fingerprint")
+    if (
+        reference_fingerprint is not None
+        and reference_fingerprint != tokenizer.fingerprint
+    ):
+        raise SystemExit(
+            "reference checkpoint tokenizer fingerprint does not match "
+            "--tokenizer"
+        )
+    reference_id = _checkpoint_id(reference_checkpoint)
+    if (
+        policy_stage.startswith("preference:")
+        and metadata.get("reference_id") != reference_id
+    ):
+        raise SystemExit(
+            "--reference-checkpoint does not match the SFT reference "
+            "recorded by the preference checkpoint"
+        )
+    policy_start_id = _checkpoint_id(args.checkpoint)
     dataset = StructuredPostTrainingDataset(samples, target_mode="evidence_linked")
     policy = DocumentVLMStudent.from_pretrained(
         args.checkpoint,
         map_location=device,
     )
     reference = DocumentVLMStudent.from_pretrained(
-        args.checkpoint,
+        reference_checkpoint,
         map_location=device,
     )
     reward_config = RewardConfig.from_blueprint(blueprint)
@@ -291,6 +341,8 @@ def main() -> None:
         blueprint,
         args.output,
         reference_id=reference_id,
+        policy_start_id=policy_start_id,
+        policy_start_stage=policy_stage,
         **overrides,
     )
     replay_dataset = (

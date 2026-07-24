@@ -8,10 +8,10 @@ stage for the native sub-1B document VLM. It supports:
 - exhaustive structured SFT with answer-only, free-rationale, and evidence-linked targets;
 - strict answer/evidence/rationale JSON generation;
 - verifier-ranked DPO or IPO from frozen SFT candidates;
-- single-update group-relative policy optimization from an SFT checkpoint;
+- single-update group-relative policy optimization from SFT or a DPO/IPO policy warm start;
 - periodic supervised multimodal replay during RLVR;
 - independently reported verifiable reward components;
-- atomic checkpoints and exact continuation with tokenizer and reference guards.
+- atomic checkpoints and exact continuation with tokenizer, policy-start, and reference guards.
 
 This is training infrastructure, not evidence that the default SFT, preference, or RLVR recipe improves
 held-out capability. Claims still require matched runs on template-, graph-, and source-held-out
@@ -124,6 +124,25 @@ python scripts/posttrain_student.py rlvr \
   --output outputs/student_rlvr/full_reward
 ```
 
+To test sequential preference optimization followed by RLVR, pass the preference checkpoint as the
+trainable policy and the exact SFT checkpoint as the frozen reference:
+
+```bash
+python scripts/posttrain_student.py rlvr \
+  --samples data/posttraining/rlvr.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_preference/dpo/checkpoints/step-00001000/student \
+  --reference-checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
+  --output outputs/student_rlvr/dpo_warm_start
+```
+
+`--reference-checkpoint` is required when `--checkpoint` has a `preference:dpo` or
+`preference:ipo` run stage. The preference checkpoint initializes only the trainable policy. The
+frozen KL reference remains the SFT model so the regularizer measures drift from the supervised
+anchor rather than from the immediately preceding preference update. The runner recomputes the SFT
+checkpoint's content identity and requires it to equal the immutable reference identity recorded by
+the preference checkpoint; a same-tokenizer but unrelated SFT checkpoint is rejected.
+
 For each selected prompt, the policy samples one group with top-p sampling. The default
 `group_standardized` estimator centers and standardizes rewards within that group. The executable
 `leave_one_out` alternative subtracts the mean reward of the other completions without dividing
@@ -222,9 +241,11 @@ scheduled replay anchor can still provide a supervised update.
 
 RLVR and preference checkpoints contain policy weights, optimizer and AMP scaler state,
 Python/Torch/CUDA RNG state, stage cursors, student FLOPs consumed, tokenizer fingerprint, and a
-frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, rationale
-verifier, objective contract, compute-budget contract, or activation-checkpointing contract. RLVR
-additionally guards the replay contract. SFT, preference optimization, and RLVR all use the same
+frozen-reference identifier. RLVR additionally records the incoming policy stage and exact
+config-and-weight content identities for both its policy start and frozen reference. Resume rejects
+a changed tokenizer, policy start, reference checkpoint, rationale verifier, objective contract,
+compute-budget contract, or activation-checkpointing contract. RLVR additionally guards the replay
+contract. SFT, preference optimization, and RLVR all use the same
 fail-closed optimizer factory as pretraining. Preference and RLVR checkpoints bind the requested
 optimizer controls to the realized implementation and bitsandbytes version; SFT inherits the
 pretraining checkpoint contract. Setting `max_steps: null`,

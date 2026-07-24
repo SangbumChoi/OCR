@@ -67,10 +67,10 @@ def _final_stage(spec: Mapping[str, Any]) -> str:
         raise ValueError("parent experiment has no posttraining mapping")
     preference = posttraining.get("preference")
     rlvr = posttraining.get("rlvr")
-    if isinstance(preference, Mapping) and bool(preference.get("enabled", False)):
-        return "preference"
     if isinstance(rlvr, Mapping) and bool(rlvr.get("enabled", True)):
         return "rlvr"
+    if isinstance(preference, Mapping) and bool(preference.get("enabled", False)):
+        return "preference"
     return "sft"
 
 

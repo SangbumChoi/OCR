@@ -413,6 +413,8 @@ class RLVRConfig:
     resume_from: str | None = None
     tokenizer_fingerprint: str | None = None
     reference_id: str = ""
+    policy_start_id: str | None = None
+    policy_start_stage: str = "sft"
 
     def __post_init__(self) -> None:
         if self.max_steps is not None and self.max_steps <= 0:
@@ -474,6 +476,16 @@ class RLVRConfig:
             )
         if not self.reference_id:
             raise ValueError("RLVR reference_id cannot be empty")
+        if self.policy_start_id is not None and not self.policy_start_id:
+            raise ValueError("RLVR policy_start_id cannot be empty")
+        if not (
+            self.policy_start_stage.startswith("sft:")
+            or self.policy_start_stage
+            in {"sft", "preference:dpo", "preference:ipo"}
+        ):
+            raise ValueError(
+                "RLVR policy start must be an SFT or preference checkpoint"
+            )
 
     @classmethod
     def from_blueprint(
@@ -482,6 +494,8 @@ class RLVRConfig:
         output_dir: str | Path,
         *,
         reference_id: str,
+        policy_start_id: str | None = None,
+        policy_start_stage: str = "sft",
         **overrides: Any,
     ) -> "RLVRConfig":
         raw = blueprint["training"]["posttraining"]["rlvr"]
@@ -540,6 +554,8 @@ class RLVRConfig:
             "log_every_steps": int(optimizer["log_every_steps"]),
             "seed": int(optimizer["seed"]),
             "reference_id": reference_id,
+            "policy_start_id": policy_start_id,
+            "policy_start_stage": policy_start_stage,
         }
         values.update(overrides)
         return cls(**values)
@@ -1184,6 +1200,13 @@ def _rlvr_objective_contract(
     }
 
 
+def _rlvr_policy_start_contract(config: RLVRConfig) -> dict[str, str]:
+    return {
+        "content_id": config.policy_start_id or config.reference_id,
+        "run_stage": config.policy_start_stage,
+    }
+
+
 def _save_rlvr_checkpoint(
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
@@ -1206,6 +1229,7 @@ def _save_rlvr_checkpoint(
             "trainer_state": asdict(state),
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "reference_id": config.reference_id,
+            "policy_start": _rlvr_policy_start_contract(config),
             "gradient_checkpointing": (
                 model.gradient_checkpointing_state
             ),
@@ -1274,6 +1298,8 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR tokenizer fingerprint mismatch")
     if metadata.get("reference_id") != config.reference_id:
         raise ValueError("RLVR frozen reference mismatch")
+    if metadata.get("policy_start") != _rlvr_policy_start_contract(config):
+        raise ValueError("RLVR policy-start checkpoint mismatch")
     if (
         metadata.get("gradient_checkpointing")
         != model.gradient_checkpointing_state
@@ -2051,6 +2077,9 @@ def train_grpo(
                 "rlvr/supervised_replay_applied": float(replay_applied),
                 "rlvr/supervised_replay_loss": float(replay_loss.detach()),
                 "rlvr/supervised_replay_tokens": float(replay_tokens),
+                "rlvr/preference_warm_start": float(
+                    config.policy_start_stage.startswith("preference:")
+                ),
             }
         )
         for name in reward_config.weights:

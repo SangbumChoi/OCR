@@ -40,7 +40,7 @@ def _attested_record(path, parent_root):
     }
 
 
-def _parent_run(tmp_path):
+def _parent_run(tmp_path, *, sequential_posttraining=False):
     parent_root = tmp_path / "round-000"
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
@@ -56,6 +56,9 @@ def _parent_run(tmp_path):
         "budget": 1,
         "seed": 91,
     }
+    if sequential_posttraining:
+        raw["posttraining"]["preference"]["enabled"] = True
+        raw["posttraining"]["preference"]["max_steps"] = 1
     config = tmp_path / "round-000.yaml"
     config.write_text(
         yaml.safe_dump(raw, sort_keys=False),
@@ -288,6 +291,45 @@ def test_continuation_compiles_model_preserving_adaptation_dag(tmp_path):
     assert evaluate.command[
         evaluate.command.index("--baseline-evaluation") + 1
     ] == str(child_root / "artifacts" / "evaluation_baseline")
+
+
+def test_continuation_preserves_sequential_preference_then_rlvr(tmp_path):
+    parent_root, _, student_root = _parent_run(
+        tmp_path,
+        sequential_posttraining=True,
+    )
+    child_root = tmp_path / "round-001"
+    spec = prepare_next_round_spec(
+        parent_root=parent_root,
+        output_root=child_root,
+        round_index=1,
+        replay_fraction=0.5,
+        replay_seed=20_001,
+    )
+    config = tmp_path / "round-001.yaml"
+    write_round_spec(spec, config)
+
+    plan = build_experiment_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+
+    contract = plan.input_fingerprints["continuation_contract"]
+    assert contract["checkpoint"] == str(student_root)
+    assert contract["final_stage"] == "rlvr"
+    preference = next(
+        stage for stage in plan.stages if stage.name == "preference"
+    )
+    rlvr = next(stage for stage in plan.stages if stage.name == "rlvr")
+    assert preference.dependencies == ("sft",)
+    assert rlvr.dependencies == ("preference",)
+    assert rlvr.command[rlvr.command.index("--checkpoint") + 1] == (
+        "@student:preference"
+    )
+    assert rlvr.command[
+        rlvr.command.index("--reference-checkpoint") + 1
+    ] == "@student:sft"
 
 
 def test_continuation_rejects_checkpoint_content_changed_after_attestation(

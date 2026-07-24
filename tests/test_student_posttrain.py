@@ -91,6 +91,8 @@ def _rl_config(
     replay_every=0,
     replay_coefficient=0.0,
     advantage_estimator="group_standardized",
+    policy_start_id=None,
+    policy_start_stage="sft",
 ):
     from docvlm_eval.student.posttrain import RLVRConfig
 
@@ -116,6 +118,8 @@ def _rl_config(
         resume_from=resume,
         tokenizer_fingerprint=_Tokenizer.fingerprint,
         reference_id="sft-reference-test",
+        policy_start_id=policy_start_id,
+        policy_start_stage=policy_start_stage,
     )
 
 
@@ -945,6 +949,85 @@ def test_rlvr_resume_rejects_changed_supervised_replay_contract(
                 "latest",
                 replay_every=1,
                 replay_coefficient=0.5,
+            ),
+            reward,
+        )
+
+
+def test_rlvr_resume_pins_preference_warm_start_identity(
+    tmp_path,
+    monkeypatch,
+):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import (
+        RewardConfig,
+        build_structured_target,
+    )
+
+    target = build_structured_target("42")
+
+    def fixed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [target, target],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        fixed_group,
+    )
+    policy = DocumentVLMStudent(StudentConfig.tiny())
+    reference = copy.deepcopy(policy)
+    reward = RewardConfig(weights={"answer_correctness": 1.0})
+    train_grpo(
+        policy,
+        reference,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(
+            tmp_path / "run",
+            1,
+            policy_start_id="preference-checkpoint-a",
+            policy_start_stage="preference:dpo",
+        ),
+        reward,
+    )
+
+    metadata = json.loads(
+        (
+            tmp_path
+            / "run"
+            / "checkpoints"
+            / "step-00000001"
+            / "student"
+            / "metadata.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert metadata["policy_start"] == {
+        "content_id": "preference-checkpoint-a",
+        "run_stage": "preference:dpo",
+    }
+    with pytest.raises(ValueError, match="policy-start checkpoint mismatch"):
+        train_grpo(
+            policy,
+            reference,
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            _rl_config(
+                tmp_path / "run",
+                2,
+                "latest",
+                policy_start_id="preference-checkpoint-b",
+                policy_start_stage="preference:dpo",
             ),
             reward,
         )

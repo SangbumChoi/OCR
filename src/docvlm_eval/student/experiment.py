@@ -781,10 +781,6 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 "disabled RLVR cannot set stage-specific overrides: "
                 f"{ignored}"
             )
-    if preference_enabled and rlvr_enabled:
-        raise ValueError(
-            "posttraining.preference and posttraining.rlvr are mutually exclusive"
-        )
     evaluation = _require_mapping(raw, "evaluation")
     _validate_wandb_options(evaluation, "evaluation")
     baseline_checkpoint_stage = evaluation.get("baseline_checkpoint_stage")
@@ -829,10 +825,10 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 "evaluation baseline requests the disabled RLVR stage"
             )
         final_checkpoint_stage = (
-            "preference"
-            if preference_enabled
-            else "rlvr"
+            "rlvr"
             if rlvr_enabled
+            else "preference"
+            if preference_enabled
             else "sft"
         )
         if (
@@ -2233,6 +2229,7 @@ def build_experiment_plan(
 
     rlvr = posttraining.get("rlvr") or {}
     if rlvr_enabled:
+        rlvr_policy_stage = "preference" if preference_enabled else "sft"
         rlvr_command = [
             python,
             script("posttrain_student.py"),
@@ -2244,6 +2241,8 @@ def build_experiment_plan(
             "--tokenizer",
             str(active_tokenizer),
             "--checkpoint",
+            f"@student:{rlvr_policy_stage}",
+            "--reference-checkpoint",
             "@student:sft",
             "--output",
             str(rlvr_dir),
@@ -2273,7 +2272,7 @@ def build_experiment_plan(
             ExperimentStage(
                 "rlvr",
                 tuple(rlvr_command),
-                ("sft",),
+                (rlvr_policy_stage,),
                 (Artifact(str(rlvr_dir / "latest_checkpoint.txt")),),
             )
         )

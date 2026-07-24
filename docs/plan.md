@@ -192,16 +192,16 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   three-seed confirmatory sweep on the LFM spotting arm.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
-  rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, single-update GRPO, periodic
-  supervised multimodal replay, bounded symbolic formula equivalence, exact checkpoint resume, and
-  train/heldout generation evaluation.
+  rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, optional preference-to-GRPO
+  sequencing with an immutable SFT reference, periodic supervised multimodal replay, bounded
+  symbolic formula equivalence, exact checkpoint resume, and train/heldout generation evaluation.
 - **Isolate post-training choices:**
   [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) — paired
   SFT-target, reward, advantage-estimator, compute-matched DPO-versus-GRPO, and matched
   DPO-versus-IPO comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
-  weighted UDD mixing, pretraining, SFT, RLVR, matched initial-versus-final
+  weighted UDD mixing, pretraining, SFT, optional preference optimization, RLVR, matched initial-versus-final
   train/validation/heldout evaluation, and next-batch synthesis planning.
 - **Continue failure-driven rounds:**
   [`report/student_curriculum_runner.md`](report/student_curriculum_runner.md) — full-hash parent
