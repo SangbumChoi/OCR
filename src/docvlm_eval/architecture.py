@@ -1026,10 +1026,13 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.posttraining.preference.objective must be dpo or ipo"
         )
-    if preference.get("preference_source") != "reference_verifier_ranked":
+    if preference.get("preference_source") not in {
+        "reference_verifier_ranked",
+        "gold_anchored_verifier_ranked",
+    }:
         errors.append(
             "training.posttraining.preference.preference_source must be "
-            "reference_verifier_ranked"
+            "reference_verifier_ranked or gold_anchored_verifier_ranked"
         )
     if preference.get("reference_policy") != "sft_checkpoint":
         errors.append(

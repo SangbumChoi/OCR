@@ -55,6 +55,10 @@ QUALITY_PROMOTION_CONTRACTS = {
         "heldout_score",
         {"L1-region", "multilingual"},
     ),
+    "sub1b_preference_source_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual"},
+    ),
     "sub1b_pretraining_loss_sweep.yaml": (
         "heldout_score",
         {"L1-region", "ocr-full", "reading-order"},
@@ -884,6 +888,10 @@ def test_preference_method_sweep_compiles_compute_matched_dpo_and_grpo(
         assert posttraining["preference"]["group_size"] == posttraining[
             "rlvr"
         ]["group_size"]
+        assert (
+            posttraining["preference"]["preference_source"]
+            == "reference_verifier_ranked"
+        )
         assert posttraining["preference"]["rollout"] == posttraining["rlvr"][
             "rollout"
         ]
@@ -948,6 +956,55 @@ def test_preference_objective_sweep_compiles_compute_matched_dpo_and_ipo(
         assert "preference" in variant.plan.stage_names
         assert "rlvr" not in variant.plan.stage_names
         assert "preference-objective-ablation" in variant.plan.raw_spec[
+            "evaluation"
+        ]["wandb_tags"]
+
+
+def test_preference_source_sweep_compiles_matched_bootstrap_arms(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_preference_source_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "preference-source-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "reference_only"
+    expected_sources = {
+        "reference_only": "reference_verifier_ranked",
+        "gold_anchored": "gold_anchored_verifier_ranked",
+    }
+    for variant in plan.variants:
+        preference = variant.plan.resolved_blueprint["training"][
+            "posttraining"
+        ]["preference"]
+        assert preference["preference_source"] == expected_sources[
+            variant.arm_id
+        ]
+        assert preference["objective"] == "dpo"
+        assert preference["optimizer"]["max_steps"] is None
+        assert preference["optimizer"]["stop_at_student_flops"] is True
+        assert (
+            preference["optimizer"]["total_student_flops"]
+            == 192_000_000_000_000_000
+        )
+        assert "preference" in variant.plan.stage_names
+        assert "rlvr" not in variant.plan.stage_names
+        assert "preference-source-ablation" in variant.plan.raw_spec[
             "evaluation"
         ]["wandb_tags"]
 

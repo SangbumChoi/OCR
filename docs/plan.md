@@ -198,7 +198,7 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Isolate post-training choices:**
   [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) — paired
   SFT-target, reward, advantage-estimator, compute-matched DPO-versus-GRPO, and matched
-  DPO-versus-IPO comparisons.
+  DPO-versus-IPO and gold-anchor-versus-reference-only preference-source comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, optional preference optimization, RLVR, matched initial-versus-final

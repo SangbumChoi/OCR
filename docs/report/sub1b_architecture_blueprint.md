@@ -240,10 +240,12 @@ with replacement. See
 
 Run verifier-ranked DPO, IPO, or GRPO from the SFT checkpoint, or test a sequential
 DPO/IPO-to-GRPO path. DPO and IPO rank frozen-reference candidates and update on a sufficiently
-separated best/worst pair; GRPO samples from the evolving policy and applies one group-relative
-update. In the sequential path, the preference checkpoint initializes the trainable GRPO policy
-while the exact SFT checkpoint remains its frozen KL reference. All default rewards are computed
-from authored or normalized ground truth:
+separated best/worst pair. The default candidate source replaces one sampled response with the
+exact collated SFT target so a near-random policy cannot collapse into an all-malformed, zero-update
+preference stage; the reference-only source remains an ablation. GRPO samples from the evolving
+policy and applies one group-relative update. In the sequential path, the preference checkpoint
+initializes the trainable GRPO policy while the exact SFT checkpoint remains its frozen KL
+reference. All default rewards are computed from authored or normalized ground truth:
 
 - answer exactness and normalized text similarity;
 - box IoU for evidence and spotting;

@@ -568,7 +568,7 @@ class PreferenceConfig:
     total_student_flops: int | None = None
     stop_at_student_flops: bool = False
     objective: str = "dpo"
-    preference_source: str = "reference_verifier_ranked"
+    preference_source: str = "gold_anchored_verifier_ranked"
     group_size: int = 8
     minimum_reward_margin: float = 0.05
     dpo_beta: float = 0.1
@@ -615,7 +615,10 @@ class PreferenceConfig:
             )
         if self.objective not in {"dpo", "ipo"}:
             raise ValueError("preference objective must be dpo or ipo")
-        if self.preference_source != "reference_verifier_ranked":
+        if self.preference_source not in {
+            "reference_verifier_ranked",
+            "gold_anchored_verifier_ranked",
+        }:
             raise ValueError("unsupported preference source")
         if self.group_size < 2 or self.max_new_tokens <= 0:
             raise ValueError(
@@ -915,6 +918,62 @@ def sample_completion_group(
         for index in range(group_size)
     ]
     return token_tensor, mask_tensor, texts
+
+
+def inject_gold_preference_candidate(
+    completion_ids: torch.Tensor,
+    completion_mask: torch.Tensor,
+    texts: Sequence[str],
+    batch: dict[str, Any],
+    tokenizer: Any,
+) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+    """Replace one sampled candidate with the exact collated SFT target."""
+
+    if (
+        completion_ids.ndim != 2
+        or completion_mask.shape != completion_ids.shape
+        or len(texts) != completion_ids.shape[0]
+    ):
+        raise ValueError("preference candidates have inconsistent shapes")
+    labels = batch.get("labels")
+    input_ids = batch.get("input_ids")
+    if (
+        not isinstance(labels, torch.Tensor)
+        or not isinstance(input_ids, torch.Tensor)
+        or labels.shape != input_ids.shape
+        or labels.shape[0] != 1
+    ):
+        raise ValueError("gold-anchored preference requires one collated target")
+    supervised = labels[0] != -100
+    gold_ids = input_ids[0][supervised].to(completion_ids.device)
+    if gold_ids.numel() == 0:
+        raise ValueError("gold-anchored preference target is empty")
+
+    width = max(int(completion_ids.shape[1]), int(gold_ids.numel()))
+    anchored_ids = torch.full(
+        (completion_ids.shape[0], width),
+        int(tokenizer.pad_token_id),
+        dtype=completion_ids.dtype,
+        device=completion_ids.device,
+    )
+    anchored_mask = torch.zeros(
+        (completion_ids.shape[0], width),
+        dtype=torch.bool,
+        device=completion_ids.device,
+    )
+    sampled_width = completion_ids.shape[1]
+    anchored_ids[:, :sampled_width] = completion_ids
+    anchored_mask[:, :sampled_width] = completion_mask.bool()
+    anchored_ids[0].fill_(int(tokenizer.pad_token_id))
+    anchored_mask[0].fill_(False)
+    anchored_ids[0, : gold_ids.numel()] = gold_ids
+    anchored_mask[0, : gold_ids.numel()] = True
+    anchored_texts = list(texts)
+    anchored_texts[0] = tokenizer.decode(
+        gold_ids.tolist(),
+        skip_special_tokens=True,
+    ).strip()
+    return anchored_ids, anchored_mask, anchored_texts
 
 
 def completion_log_probs(
@@ -1628,6 +1687,19 @@ def train_preference(
                 tokenizer,
                 config,
             )
+        gold_anchor_applied = (
+            config.preference_source == "gold_anchored_verifier_ranked"
+        )
+        if gold_anchor_applied:
+            completion_ids, completion_mask, texts = (
+                inject_gold_preference_candidate(
+                    completion_ids,
+                    completion_mask,
+                    texts,
+                    raw_batch,
+                    tokenizer,
+                )
+            )
         reward_results = [
             score_structured_response(
                 text,
@@ -1636,6 +1708,13 @@ def train_preference(
             )
             for text in texts
         ]
+        if (
+            gold_anchor_applied
+            and not reward_results[0].structurally_valid
+        ):
+            raise ValueError(
+                "collated gold preference anchor is not a valid structured response"
+            )
         rewards = torch.tensor(
             [result.total for result in reward_results],
             dtype=torch.float32,
@@ -1717,6 +1796,17 @@ def train_preference(
         valid_fraction = sum(
             result.structurally_valid for result in reward_results
         ) / len(reward_results)
+        sampled_results = (
+            reward_results[1:] if gold_anchor_applied else reward_results
+        )
+        sampled_rewards = torch.tensor(
+            [result.total for result in sampled_results],
+            dtype=torch.float32,
+            device=device,
+        )
+        sampled_valid_fraction = sum(
+            result.structurally_valid for result in sampled_results
+        ) / len(sampled_results)
         final_metrics = {
             f"preference/{name}": float(value.detach())
             for name, value in tensors.items()
@@ -1737,12 +1827,27 @@ def train_preference(
         final_metrics.update(
             {
                 "preference/accepted_pair": float(accepted),
+                "preference/gold_anchor_applied": float(
+                    gold_anchor_applied
+                ),
+                "preference/gold_anchor_reward": (
+                    float(rewards[0]) if gold_anchor_applied else 0.0
+                ),
                 "preference/verifier_reward_margin": verifier_margin,
                 "preference/reward_mean": float(rewards.mean()),
                 "preference/reward_std": float(
                     rewards.std(unbiased=False)
                 ),
+                "preference/sampled_reward_mean": float(
+                    sampled_rewards.mean()
+                ),
+                "preference/sampled_reward_std": float(
+                    sampled_rewards.std(unbiased=False)
+                ),
                 "preference/valid_structure_fraction": valid_fraction,
+                "preference/sampled_valid_structure_fraction": (
+                    sampled_valid_fraction
+                ),
                 "preference/gradient_norm": float(gradient_norm),
                 "preference/preference_step": float(state.preference_step),
                 "preference/optimizer_step": float(state.optimizer_step),

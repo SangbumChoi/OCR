@@ -99,18 +99,25 @@ python scripts/posttrain_student.py preference \
   --output outputs/student_preference/verifier_ranked
 ```
 
-The frozen SFT reference samples a candidate group, the structured verifier selects the
-highest- and lowest-reward responses, and the policy receives one direct preference update only
-when the reward margin passes the configured threshold. Candidate ties are logged as skipped pairs
-and consume rollout FLOPs without an optimizer step. Policy and reference pair scoring reuse one
-visual encoding across the chosen and rejected sequences.
+The frozen SFT reference samples a candidate group. By default,
+`gold_anchored_verifier_ranked` replaces one candidate with the exact token sequence that the
+collator used for evidence-linked SFT, then the structured verifier selects the highest- and
+lowest-reward responses. This supplies a valid chosen response even when a weak SFT model emits
+only malformed candidates. The policy receives one direct preference update only when the reward
+margin passes the configured threshold. A truncated or malformed collated anchor fails closed.
+Set `preference_source: reference_verifier_ranked` for the model-candidates-only control.
+Candidate ties are logged as skipped pairs and consume rollout FLOPs without an optimizer step.
+Policy and reference pair scoring reuse one visual encoding across the chosen and rejected
+sequences.
 
 The checkpointed objective contract covers objective, preference source, reward margin, DPO beta,
 IPO tau, sequence reduction, reward weights, and malformed-response reward. See
 [`student_preference_method_sweep.md`](student_preference_method_sweep.md) for the equation,
 compute-matched GRPO comparison, continuation guarantees, and interpretation boundary. The
 loss-only DPO-versus-IPO design is
-[`student_preference_objective_sweep.md`](student_preference_objective_sweep.md).
+[`student_preference_objective_sweep.md`](student_preference_objective_sweep.md). The matched
+candidate-source ablation is
+[`student_preference_source_sweep.md`](student_preference_source_sweep.md).
 
 ## Verifiable-reward GRPO
 

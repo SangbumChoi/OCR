@@ -75,6 +75,11 @@ For matched multi-run ablations, use
 patches, rejects changes to declared fixed controls, reuses this runner for every variant, and
 aggregates baseline deltas from the final train/heldout comparisons.
 
+The tiny CPU experiment keeps the production response contract rather than reducing it to a
+single supervised token. Its resolved text horizon is 768 tokens, enough for the complete hard
+table prompt and answer/evidence/rationale targets used by the smoke path. This is a contract test,
+not a throughput proxy for the 2,048-token production configuration.
+
 ## Configurations
 
 The full approximately 800M experiment is

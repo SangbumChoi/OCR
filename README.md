@@ -343,6 +343,11 @@ python scripts/posttrain_student.py rlvr \
   --output outputs/student_rlvr/full_reward
 ```
 
+Preference optimization defaults to a verifier-ranked candidate set with one exact collated SFT
+target. This prevents an early near-random model from finishing DPO/IPO with only tied malformed
+responses and zero optimizer updates; a reference-only candidate source remains available as a
+matched ablation.
+
 RL rollout reuses one encoded visual prefix per image. When GRPO follows DPO/IPO, the preference
 checkpoint starts the trainable policy while `--reference-checkpoint` pins the exact SFT model.
 SFT supports `torchrun`; native RLVR is currently single-process and requires the full policy,
@@ -418,10 +423,11 @@ anchors with bounded token-relation KL under the same native teacher, logit-KL w
 representation-loss weight, and three paired seed blocks. See
 [`docs/report/student_token_relation_distillation_sweep.md`](docs/report/student_token_relation_distillation_sweep.md).
 
-A nine-run SFT suite and twelve-run RLVR suite separate target and reward effects. The SFT suite
+A nine-run SFT suite and fifteen-run RLVR suite separate target and reward effects. The SFT suite
 compares answer-only, free-rationale, and evidence-linked checkpoints before RLVR. The RLVR suite
 fixes evidence-linked SFT and compares SFT-only, correctness-only, no-rationale, and full
-decomposed-reward arms. See
+decomposed-reward arms. Additional paired preference sweeps isolate method, objective, and
+gold-anchored versus reference-only candidate construction. See
 [`docs/report/student_posttraining_sweeps.md`](docs/report/student_posttraining_sweeps.md).
 
 The nine-run `configs/sub1b_sequence_teacher_sweep.yaml` compares gold-only, pinned LFM, and pinned

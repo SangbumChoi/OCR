@@ -164,6 +164,12 @@ strings.
 | preference | `preference/preference_step` | `preference/*`, `reward/*`, `reward_diagnostic/*` |
 | RLVR | `rlvr/rollout_step` | `rlvr/*`, `reward/*`, `reward_diagnostic/*` |
 
+Preference runs log `preference/gold_anchor_applied`, accepted and skipped pair counts, verifier
+margin, optimizer steps, and student FLOPs. The `preference/sampled_reward_*` and
+`preference/sampled_valid_structure_fraction` metrics exclude the authored anchor. Candidate-source
+comparisons must show these beside heldout quality so anchor validity or extra updates are not
+mistaken for better generalization.
+
 The end-to-end experiment reads stage-specific W&B fields from `pretraining`,
 `posttraining.sft`, `posttraining.preference`, and `posttraining.rlvr`. For example:
 

@@ -964,7 +964,7 @@ def _resolved_blueprint(
         }
         blueprint["tokenizer"]["vocab_size"] = tiny_config["language"]["vocab_size"]
         pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
-        pipeline["max_text_tokens"] = 128
+        pipeline["max_text_tokens"] = 768
         pipeline["max_image_long_side"] = tiny_config["vision"]["image_size"]
         pipeline["rotation_probability"] = 0.0
         distillation = blueprint["training"]["pretraining"]["distillation"]

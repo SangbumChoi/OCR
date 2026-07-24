@@ -338,7 +338,7 @@ training:
         general_multimodal_replay: 0.05
     preference:
       objective: dpo
-      preference_source: reference_verifier_ranked
+      preference_source: gold_anchored_verifier_ranked
       reference_policy: sft_checkpoint
       group_size: 8
       minimum_reward_margin: 0.05

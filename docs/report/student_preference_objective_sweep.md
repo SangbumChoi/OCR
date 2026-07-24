@@ -14,9 +14,10 @@ evaluation artifacts exist.
 
 Every arm starts from the same evidence-linked SFT checkpoint. For each prompt, the frozen SFT
 reference samples eight completions with matched top-p, temperature, completion horizon, and
-visual-prefix cache controls. The structured verifier chooses the highest-reward completion
-\(y_w\) and lowest-reward completion \(y_l\) only when their reward margin reaches the configured
-minimum.
+visual-prefix cache controls. The default `gold_anchored_verifier_ranked` source replaces one
+sampled completion with the exact collated SFT target, then applies the same structured verifier to
+all candidates. The verifier chooses the highest-reward completion \(y_w\) and lowest-reward
+completion \(y_l\) only when their reward margin reaches the configured minimum.
 
 Define the policy-minus-reference log-ratio margin:
 
@@ -45,7 +46,7 @@ minimum verifier margin of `0.05`.
 
 ## Controlled comparison
 
-Only `training.posttraining.preference.objective` changes between arms. Candidate pairs, verifier
+Only `training.posttraining.preference.objective` changes between arms. Candidate source, verifier
 weights, malformed-response reward, group size, rollout controls, optimizer, activation
 checkpointing, and the `192e15` algorithmic student-FLOP budget are matched within each replicate.
 Skipped pairs consume rollout compute but do not perform an optimizer step.

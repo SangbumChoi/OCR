@@ -447,6 +447,7 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert "visual_backend_benchmark" not in plan.stage_names
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["max_image_long_side"] == tiny.vision.image_size
+    assert pipeline["max_text_tokens"] == 768
     optimizer_sections = (
         plan.resolved_blueprint["training"]["pretraining"]["optimizer"],
         plan.resolved_blueprint["training"]["posttraining"]["sft"]["optimizer"],

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Five matched sweeps isolate the required post-training questions without conflating SFT targets,
+Six matched sweeps isolate the required post-training questions without conflating SFT targets,
 RLVR rewards, advantage estimators, and preference-learning methods:
 
 1. [`configs/sub1b_sft_target_sweep.yaml`](../../configs/sub1b_sft_target_sweep.yaml)
@@ -16,6 +16,8 @@ RLVR rewards, advantage estimators, and preference-learning methods:
    compares on-policy GRPO with verifier-ranked DPO under a fixed algorithmic student-FLOP budget.
 5. [`configs/sub1b_preference_objective_sweep.yaml`](../../configs/sub1b_preference_objective_sweep.yaml)
    compares DPO with IPO on identical verifier-ranked pairs and fixed compute.
+6. [`configs/sub1b_preference_source_sweep.yaml`](../../configs/sub1b_preference_source_sweep.yaml)
+   compares model-only candidates with one exact collated target per verifier-ranked group.
 
 Each design has three paired stochastic replicates. These configurations are executable experiment
 contracts, not evidence that one target, reward, or estimator is better. Heldout claims require
@@ -108,11 +110,19 @@ compute convention, skipped-pair accounting, and promotion rule.
 
 ## Preference-objective estimand
 
-The six-run objective sweep holds the frozen-reference candidate stream, verifier, rollout,
-optimizer, and compute budget fixed. It changes only the preference loss between DPO's
-log-sigmoid objective and IPO's finite log-ratio target. See
+The six-run objective sweep holds the gold-anchored candidate source, verifier, rollout, optimizer,
+and compute budget fixed. It changes only the preference loss between DPO's log-sigmoid objective
+and IPO's finite log-ratio target. See
 [`student_preference_objective_sweep.md`](student_preference_objective_sweep.md) for equations,
 exact-resume guards, and the interpretation boundary.
+
+## Preference-source estimand
+
+The six-run source sweep fixes DPO and changes only whether all candidates come from the frozen SFT
+reference or one sampled row is replaced by the exact collated structured target. Both arms still
+execute the same eight-member rollout, and the student-FLOP counter includes realized pair length.
+See [`student_preference_source_sweep.md`](student_preference_source_sweep.md) for the failure mode,
+compute contract, telemetry, and promotion rule.
 
 ## Paired controls and outputs
 
@@ -129,11 +139,12 @@ and deployment gates. W&B runs use separate groups:
 - `docvlm-sft-target-ablation`, tagged `sft-target-ablation`;
 - `docvlm-rlvr-reward-ablation`, tagged `rlvr-reward-ablation`;
 - `docvlm-rlvr-advantage-ablation`, tagged `rlvr-advantage-ablation`;
-- `docvlm-preference-method-ablation`, tagged `preference-method-ablation`.
-- `docvlm-preference-objective-ablation`, tagged `preference-objective-ablation`.
+- `docvlm-preference-method-ablation`, tagged `preference-method-ablation`;
+- `docvlm-preference-objective-ablation`, tagged `preference-objective-ablation`;
+- `docvlm-preference-source-ablation`, tagged `preference-source-ablation`.
 
-The baselines are `evidence_linked`, `full_reward`, `group_standardized`, `grpo`, and `dpo`,
-respectively.
+The baselines are `evidence_linked`, `full_reward`, `group_standardized`, `grpo`, `dpo`, and
+`reference_only`, respectively.
 Consequently, an arm-minus-baseline interval supports one policy only after checking per-family,
 per-language, grounding, reliability, and train-minus-heldout results.
 

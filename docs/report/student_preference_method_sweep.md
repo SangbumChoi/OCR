@@ -17,8 +17,9 @@ For each prompt, the frozen SFT reference samples eight completions with the sam
 temperature, completion horizon, and visual-prefix cache used by RLVR. The structured verifier
 scores every completion with the configured decomposed reward. The highest-reward completion is
 chosen and the lowest-reward completion is rejected only when their reward margin is at least
-`minimum_reward_margin`. Ties and insufficient margins consume rollout compute but do not perform
-an optimizer step.
+`minimum_reward_margin`. This method sweep explicitly fixes
+`preference_source: reference_verifier_ranked`; it does not use the production gold anchor. Ties
+and insufficient margins consume rollout compute but do not perform an optimizer step.
 
 For chosen response \(y_w\), rejected response \(y_l\), policy \(\pi_\theta\), and frozen SFT
 reference \(\pi_{\mathrm{ref}}\), the implemented loss is:
@@ -105,4 +106,6 @@ Promotion requires a paired heldout-score interval above zero without a worse tr
 gap, plus non-regressive grounding, multilingual, reliability, and structural-validity slices.
 Accepted-pair rate and skipped rollout compute must be reported beside quality; a DPO arm that
 rarely finds a verifier margin has not received the same number of parameter updates even when its
-student-FLOP budget is matched.
+student-FLOP budget is matched. The separate
+[`student_preference_source_sweep.md`](student_preference_source_sweep.md) tests whether replacing
+one sampled candidate with the exact collated target repairs that failure mode.

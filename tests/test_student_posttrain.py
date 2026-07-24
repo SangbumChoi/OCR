@@ -66,13 +66,13 @@ def _formula_dataset():
     )
 
 
-def _collator():
+def _collator(*, max_length=256):
     from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 
     return StudentCollator(
         _Tokenizer(),
         StudentCollatorConfig(
-            max_length=256,
+            max_length=max_length,
             max_image_long_side=32,
             patch_size=8,
             max_visual_tokens=16,
@@ -132,6 +132,7 @@ def _preference_config(
     dpo_beta=0.1,
     ipo_tau=0.1,
     margin=0.05,
+    source="reference_verifier_ranked",
 ):
     from docvlm_eval.student.posttrain import PreferenceConfig
 
@@ -139,6 +140,7 @@ def _preference_config(
         output_dir=str(output),
         max_steps=max_steps,
         objective=objective,
+        preference_source=source,
         group_size=2,
         minimum_reward_margin=margin,
         dpo_beta=dpo_beta,
@@ -188,7 +190,10 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
         )
         assert config.gradient_checkpointing_use_reentrant is False
     assert preference.objective == "dpo"
-    assert preference.preference_source == "reference_verifier_ranked"
+    assert (
+        preference.preference_source
+        == "gold_anchored_verifier_ranked"
+    )
     assert preference.sequence_reduction == "sum"
     assert rlvr.use_kv_cache is True
     assert rlvr.advantage_estimator == "group_standardized"
@@ -470,6 +475,67 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     assert result.final_metrics["preference/accepted_pair"] == 0
     for name, expected in initial.state_dict().items():
         assert torch.equal(expected, policy.state_dict()[name]), name
+
+
+def test_gold_anchored_dpo_bootstraps_from_tied_malformed_candidates(
+    tmp_path,
+    monkeypatch,
+):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_preference
+    from docvlm_eval.student.rewards import RewardConfig
+
+    def malformed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [5, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            ["not-json", "not-json"],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        malformed_group,
+    )
+    torch.manual_seed(47)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    policy = copy.deepcopy(initial)
+    result = train_preference(
+        policy,
+        copy.deepcopy(initial),
+        _dataset(),
+        _collator(max_length=512),
+        _Tokenizer(),
+        _preference_config(
+            tmp_path / "gold-anchored",
+            1,
+            source="gold_anchored_verifier_ranked",
+        ),
+        RewardConfig(weights={"answer_correctness": 1.0}),
+    )
+
+    assert result.preference_step == 1
+    assert result.optimizer_step == 1
+    assert result.accepted_pairs == 1
+    assert result.skipped_pairs == 0
+    assert result.final_metrics["preference/gold_anchor_applied"] == 1
+    assert result.final_metrics["preference/gold_anchor_reward"] == 1
+    assert result.final_metrics["preference/sampled_reward_mean"] == 0
+    assert (
+        result.final_metrics[
+            "preference/sampled_valid_structure_fraction"
+        ]
+        == 0
+    )
+    assert result.final_metrics["preference/verifier_reward_margin"] == 1
+    assert any(
+        not torch.equal(initial.state_dict()[name], value)
+        for name, value in policy.state_dict().items()
+    )
 
 
 @pytest.mark.parametrize("objective", ["dpo", "ipo"])
