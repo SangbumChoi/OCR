@@ -202,6 +202,53 @@ def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
         ]
 
 
+def test_adaptive_mixture_sweep_compiles_paired_validation_arms(tmp_path):
+    from docvlm_eval.student.pretrain import PretrainConfig
+
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_adaptive_mixture_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "adaptive-mixture-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "fixed_uniform"
+    expected_step_sizes = {
+        "fixed_uniform": None,
+        "adaptive_eta025": 0.25,
+        "adaptive_eta050": 0.5,
+    }
+    for variant in plan.variants:
+        experiment = variant.plan.raw_spec
+        training = PretrainConfig.from_blueprint(
+            variant.plan.resolved_blueprint,
+            tmp_path / variant.id,
+        )
+        assert experiment["synthetic"]["validation_count"] == 100
+        assert experiment["pretraining"]["eval_group_by"] == "task"
+        assert len(experiment["data"]["components"]) == 1
+        assert experiment["data"]["components"][0]["weight"] == 1.0
+        assert "synthetic_validation" in variant.plan.stage_names
+        assert "build_validation_udd" in variant.plan.stage_names
+        if expected_step_sizes[variant.arm_id] is None:
+            assert training.adaptive_mixture.enabled is False
+        else:
+            assert training.adaptive_mixture.enabled is True
+            assert training.adaptive_mixture.step_size == expected_step_sizes[
+                variant.arm_id
+            ]
+
+
 def test_sft_target_sweep_compiles_three_sft_only_targets(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_sft_target_sweep.yaml").read_text(

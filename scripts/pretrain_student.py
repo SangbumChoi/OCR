@@ -101,6 +101,14 @@ def main() -> None:
         default=ROOT / "data" / "udd" / "hf" / "_all",
     )
     source.add_argument("--repo")
+    parser.add_argument(
+        "--eval-src",
+        type=Path,
+        help=(
+            "Explicit validation UDD dataset. Every row is evaluated regardless "
+            "of its internal fold label."
+        ),
+    )
     parser.add_argument("--split", default="train")
     parser.add_argument("--tokenizer", type=Path, required=True)
     parser.add_argument("--student-checkpoint", type=Path)
@@ -132,7 +140,17 @@ def main() -> None:
     if errors:
         raise SystemExit("\n".join(f"ERROR: {error}" for error in errors))
     raw = _load_udd(args.src, args.repo, args.split)
-    if "fold" in raw.column_names:
+    if args.eval_src is not None:
+        train_rows = (
+            raw.filter(
+                lambda row: row["fold"] == "train",
+                desc="UDD train fold",
+            )
+            if "fold" in raw.column_names
+            else raw
+        )
+        heldout_rows = _load_udd(args.eval_src, None, args.split)
+    elif "fold" in raw.column_names:
         train_rows = raw.filter(lambda row: row["fold"] == "train", desc="UDD train fold")
         heldout_rows = raw.filter(
             lambda row: row["fold"] == "heldout",
@@ -217,6 +235,14 @@ def main() -> None:
         args.output,
         **overrides,
     )
+    balance_by = str(
+        blueprint["training"]["pretraining"]["input_pipeline"]["balance_by"]
+    )
+    if config.adaptive_mixture.enabled and args.eval_group_by != balance_by:
+        raise SystemExit(
+            "adaptive mixture requires --eval-group-by to match "
+            f"input_pipeline.balance_by ({balance_by!r})"
+        )
     sampler = BalancedGroupBatchSampler.from_blueprint(
         train_dataset,
         blueprint,

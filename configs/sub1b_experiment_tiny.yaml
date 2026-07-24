@@ -19,9 +19,11 @@ synthetic:
   cases: [hard_table]
   count: 1
   train_count: null
+  validation_count: null
   heldout_count: null
   difficulty_level: 2
   train_seed: 17
+  validation_seed: null
   heldout_seed: 17017
   no_degrade: true
   variant: clean

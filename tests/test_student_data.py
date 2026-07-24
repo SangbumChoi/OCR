@@ -412,6 +412,25 @@ def test_balanced_sampler_uses_explicit_group_weights_and_epoch_seed():
     assert second_epoch == [[0, 0, 0, 0]] * 3
 
 
+def test_balanced_sampler_replaces_epoch_level_group_weights():
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    sampler = BalancedGroupBatchSampler(
+        ["rare", "common"],
+        batch_size=2,
+        num_batches=3,
+        seed=11,
+    )
+
+    sampler.set_group_weights({"rare": 0.0, "common": 1.0})
+
+    assert list(sampler) == [[1, 1], [1, 1], [1, 1]]
+    with pytest.raises(ValueError, match="missing"):
+        sampler.set_group_weights({"rare": 1.0})
+    with pytest.raises(ValueError, match="finite"):
+        sampler.set_group_weights({"rare": float("nan"), "common": 1.0})
+
+
 def test_balanced_sampler_reads_the_blueprint_grouping_policy():
     from docvlm_eval.architecture import load_blueprint
     from docvlm_eval.student.data import BalancedGroupBatchSampler, UDDStudentDataset

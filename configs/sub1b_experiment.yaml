@@ -53,9 +53,11 @@ synthetic:
   cases: [hard_table, hard_chart, hard_investment, hard_science]
   count: 100
   train_count: null
+  validation_count: null
   heldout_count: null
   difficulty_level: 5
   train_seed: 7
+  validation_seed: null
   heldout_seed: 7007
   no_degrade: false
   variant: degraded

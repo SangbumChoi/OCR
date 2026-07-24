@@ -8,6 +8,7 @@ from .config import (
     VisionConfig,
     student_config_fingerprint,
 )
+from .adaptive_mixture import AdaptiveMixtureConfig, AdaptiveMixtureController
 from .data import (
     BalancedGroupBatchSampler,
     DeterministicDistributedBatchSampler,
@@ -112,6 +113,8 @@ from .rewards import (
 )
 
 __all__ = [
+    "AdaptiveMixtureConfig",
+    "AdaptiveMixtureController",
     "BalancedGroupBatchSampler",
     "ArchitectureComputeBudgets",
     "ArchitectureProfile",

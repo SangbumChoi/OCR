@@ -1,0 +1,120 @@
+# Heldout-from-optimization validation reweighting at matched data, compute, and seeds.
+
+schema_version: 1
+name: docvlm-adaptive-mixture
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-adaptive-mixture
+baseline: fixed_uniform
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/validation_count}
+  - {document: experiment, path: /synthetic/heldout_count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/validation_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /pretraining/eval_group_by}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+  - {document: blueprint, path: /training/pretraining/optimizer/epochs}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/validation_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/validation_seed, value: 3007}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /sequence_teacher/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/validation_seed, value: 3107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /sequence_teacher/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/validation_seed, value: 3207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /sequence_teacher/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: fixed_uniform
+    hypothesis: "Controls for the task-balanced synthetic corpus without validation feedback."
+    experiment_patches:
+      - {op: replace, path: /synthetic/validation_count, value: 100}
+      - {op: replace, path: /data/components/0/weight, value: 1.0}
+      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /pretraining/eval_group_by, value: task}
+      - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
+
+  - id: adaptive_eta025
+    hypothesis: "Tests conservative epoch-boundary task reweighting from validation loss."
+    experiment_patches:
+      - {op: replace, path: /synthetic/validation_count, value: 100}
+      - {op: replace, path: /data/components/0/weight, value: 1.0}
+      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /pretraining/eval_group_by, value: task}
+      - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/adaptive_mixture/enabled, value: true}
+      - {op: replace, path: /training/pretraining/input_pipeline/adaptive_mixture/step_size, value: 0.25}
+
+  - id: adaptive_eta050
+    hypothesis: "Tests stronger epoch-boundary task reweighting from validation loss."
+    experiment_patches:
+      - {op: replace, path: /synthetic/validation_count, value: 100}
+      - {op: replace, path: /data/components/0/weight, value: 1.0}
+      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /pretraining/eval_group_by, value: task}
+      - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/adaptive_mixture/enabled, value: true}
+      - {op: replace, path: /training/pretraining/input_pipeline/adaptive_mixture/step_size, value: 0.5}

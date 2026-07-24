@@ -242,6 +242,20 @@ zero-based optimizer update contract, including gradient accumulation, epoch-end
 and `max_steps`. Each training record includes `train/curriculum_stage`,
 `train/curriculum_progress`, and `train/loss_weight/<name>` values for audit and W&B ingestion.
 
+## Validation-adaptive mixture
+
+`training.pretraining.input_pipeline.adaptive_mixture` optionally uses periodic group-specific
+validation losses to change the next sampler epoch. The sampler and `--eval-group-by` dimensions
+must match exactly, periodic evaluation must be enabled, and curriculum stages may not also
+override group weights. Loss-only curricula remain compatible.
+
+The explicit `--eval-src` path is an optimizer-heldout validation dataset, not the final test
+artifact. Evaluation only updates a checkpointed EMA and pending flag. The probability vector
+changes at the next epoch boundary, preserving deterministic prefetching and exact mid-epoch
+resume. See
+[`student_adaptive_mixture.md`](student_adaptive_mixture.md) for the update rule, split contract,
+metrics, and the three-arm paired sweep.
+
 ## Exact resume
 
 Resume the latest atomic checkpoint:
@@ -264,7 +278,8 @@ Each checkpoint contains:
 - cumulative actual-shape student FLOPs, dense visual tokens, valid visual tokens, and visual
   sample count;
 - tokenizer, curriculum, token-budget, and gradient-checkpointing contracts plus a
-  `latest_checkpoint.txt` pointer.
+  `latest_checkpoint.txt` pointer;
+- adaptive mixture probabilities, EMA losses, pending update, and counters when enabled.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
 Combined with the deterministic balanced sampler and `persistent_workers=False`, an interrupted run

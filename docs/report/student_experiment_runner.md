@@ -71,8 +71,11 @@ The experiment YAML controls synthetic families, difficulty, independent split s
 degradation, data components and weights, tokenizer size, initialization arm and transfer sources,
 training limits, evaluation settings, and W&B metadata. `synthetic.train_count` and
 `synthetic.heldout_count` may override the legacy shared `synthetic.count`, allowing training-scale
-experiments to retain one fixed benchmark. The runner writes a resolved architecture blueprint whose
-`data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
+experiments to retain one fixed benchmark. Setting both `synthetic.validation_count` and
+`synthetic.validation_seed` adds a third leakage-checked root, converts it to UDD, and passes it to
+pretraining through `--eval-src`. This optimizer-heldout validation split can drive adaptive data
+mixing while the final heldout root remains untouched. The runner writes a resolved architecture
+blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
 
 `runtime.visual_backend_benchmark` compiles
 [`benchmark_student_visual_backend.py`](../../scripts/benchmark_student_visual_backend.py) as the

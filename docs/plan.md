@@ -136,6 +136,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   same-tokenizer online distillation, token-based learning-rate scheduling, deterministic
   sampler/loss curricula, mixed precision, `torchrun`, sample-weighted held-out evaluation, and
   exact checkpoint resume.
+- **Adapt the data mixture:**
+  [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) — a separate
+  optimizer-heldout validation split, EMA validation-loss feedback, epoch-boundary probability
+  updates, exact resume, and a three-arm by three-seed matched sweep.
 - **Isolate pretraining losses:**
   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
   fail-closed supervision provenance and paired leave-one-active-loss-out experiments.
@@ -241,6 +245,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
    [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
+   [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·

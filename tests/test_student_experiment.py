@@ -414,11 +414,59 @@ def test_experiment_supports_independent_train_and_heldout_synthetic_counts(
     assert heldout.command[heldout.command.index("--count") + 1] == "5"
 
 
+def test_experiment_builds_separate_pretraining_validation_split(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["synthetic"]["validation_count"] = 3
+    raw["synthetic"]["validation_seed"] = 3017
+    config = tmp_path / "experiment.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    validation = next(
+        stage for stage in plan.stages if stage.name == "synthetic_validation"
+    )
+    leakage = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "validate_synthetic_splits"
+    )
+    pretrain = next(stage for stage in plan.stages if stage.name == "pretrain")
+
+    assert validation.command[validation.command.index("--count") + 1] == "3"
+    assert validation.command[validation.command.index("--split-name") + 1] == (
+        "validation"
+    )
+    assert "synthetic_validation" in leakage.dependencies
+    assert "validation=" in " ".join(leakage.command)
+    assert "build_validation_udd" in pretrain.dependencies
+    assert "--eval-src" in pretrain.command
+
+
 def test_invalid_experiment_rejects_equal_split_seeds(tmp_path):
     raw = (ROOT / "configs" / "sub1b_experiment.yaml").read_text(encoding="utf-8")
     config = tmp_path / "invalid.yaml"
     config.write_text(raw.replace("heldout_seed: 7007", "heldout_seed: 7"), encoding="utf-8")
     with pytest.raises(ValueError, match="must differ"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
+def test_invalid_experiment_rejects_equal_validation_seed(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["synthetic"]["validation_count"] = 1
+    raw["synthetic"]["validation_seed"] = raw["synthetic"]["train_seed"]
+    config = tmp_path / "invalid.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="train, validation, and heldout"):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

@@ -123,6 +123,14 @@ training:
       contrastive: true
       balance_by: task
       group_weights: {}
+      # Heldout group losses can reweight the next sampler epoch. Disabled in
+      # the control recipe; the dedicated sweep enables it with task-group eval.
+      adaptive_mixture:
+        enabled: false
+        step_size: 0.5
+        ema_decay: 0.8
+        min_probability: 0.02
+        warmup_evaluations: 1
     distillation:
       temperature: 2.0
       logit_top_k: 128

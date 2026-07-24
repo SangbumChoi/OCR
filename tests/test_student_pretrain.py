@@ -66,6 +66,55 @@ def _loader(visual_sequence_mode="dense", batch_size=1):
     )
 
 
+def _adaptive_loader():
+    from PIL import Image
+    from torch.utils.data import DataLoader
+
+    from docvlm_eval.student.data import (
+        BalancedGroupBatchSampler,
+        StudentCollator,
+        StudentCollatorConfig,
+        StudentExample,
+    )
+
+    examples = [
+        StudentExample(
+            sample_id=f"adaptive-{index}",
+            source="smoke",
+            task="easy" if index % 2 == 0 else "hard",
+            prompt="Read the value.",
+            answer=str(index),
+            image=Image.new("RGB", (16, 16), "white"),
+            image_key=f"adaptive-image-{index}",
+        )
+        for index in range(4)
+    ]
+    collator = StudentCollator(
+        _Tokenizer(),
+        StudentCollatorConfig(
+            max_length=64,
+            max_image_long_side=32,
+            patch_size=8,
+            max_visual_tokens=16,
+            vocab_size=256,
+            rotation_probability=0.0,
+            contrastive=False,
+        ),
+    )
+    sampler = BalancedGroupBatchSampler(
+        [example.task for example in examples],
+        batch_size=1,
+        num_batches=4,
+        seed=29,
+    )
+    return DataLoader(
+        examples,
+        batch_sampler=sampler,
+        collate_fn=collator,
+        num_workers=0,
+    )
+
+
 def _config(output, max_steps, resume=None):
     from docvlm_eval.student.pretrain import PretrainConfig
 
@@ -149,6 +198,91 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
     assert state["batch_in_epoch"] == 0
     for name, expected in uninterrupted.state_dict().items():
         assert torch.equal(expected, resumed.state_dict()[name]), name
+
+
+def test_adaptive_mixture_resume_matches_uninterrupted_training(
+    tmp_path,
+    monkeypatch,
+):
+    from dataclasses import replace
+
+    import torch
+
+    import docvlm_eval.student.pretrain as pretrain_module
+    from docvlm_eval.student.adaptive_mixture import AdaptiveMixtureConfig
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    def fixed_eval(*args, **kwargs):
+        del args, kwargs
+        return {
+            "eval/easy/weighted_loss": 1.0,
+            "eval/hard/weighted_loss": 3.0,
+        }
+
+    monkeypatch.setattr(pretrain_module, "_evaluate", fixed_eval)
+    adaptive = AdaptiveMixtureConfig(
+        enabled=True,
+        step_size=0.5,
+        ema_decay=0.0,
+        min_probability=0.02,
+        warmup_evaluations=0,
+    )
+    eval_loaders = {"easy": [object()], "hard": [object()]}
+    torch.manual_seed(47)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    uninterrupted = copy.deepcopy(initial)
+    resumed = copy.deepcopy(initial)
+    full_config = replace(
+        _config(tmp_path / "adaptive-full", max_steps=8),
+        eval_every_steps=1,
+        adaptive_mixture=adaptive,
+    )
+    resume_config = replace(
+        full_config,
+        output_dir=str(tmp_path / "adaptive-resume"),
+    )
+
+    train_student(
+        uninterrupted,
+        _adaptive_loader(),
+        full_config,
+        eval_loaders=eval_loaders,
+    )
+    train_student(
+        resumed,
+        _adaptive_loader(),
+        replace(resume_config, max_steps=2),
+        eval_loaders=eval_loaders,
+    )
+    train_student(
+        resumed,
+        _adaptive_loader(),
+        replace(resume_config, resume_from="latest"),
+        eval_loaders=eval_loaders,
+    )
+
+    for name, expected in uninterrupted.state_dict().items():
+        assert torch.equal(expected, resumed.state_dict()[name]), name
+    full_state = torch.load(
+        tmp_path
+        / "adaptive-full"
+        / "checkpoints"
+        / "step-00000008"
+        / "training_state.pt",
+        weights_only=False,
+    )
+    resumed_state = torch.load(
+        tmp_path
+        / "adaptive-resume"
+        / "checkpoints"
+        / "step-00000008"
+        / "training_state.pt",
+        weights_only=False,
+    )
+    assert resumed_state["adaptive_mixture"] == full_state["adaptive_mixture"]
+    assert full_state["adaptive_mixture"]["weights"]["hard"] > 0.5
 
 
 def test_token_budget_repeats_epochs_until_the_declared_total(tmp_path):
@@ -567,6 +701,44 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     ]
     assert config.curriculum.fingerprint.startswith("sha256:")
     assert config.curriculum.unit == "training_token_fraction"
+    assert config.adaptive_mixture.enabled is False
+    assert config.adaptive_mixture.step_size == 0.5
+
+
+def test_pretrain_config_rejects_invalid_adaptive_mixture_contract(tmp_path):
+    from docvlm_eval.student.adaptive_mixture import AdaptiveMixtureConfig
+    from docvlm_eval.student.curriculum import (
+        CurriculumSchedule,
+        CurriculumStage,
+    )
+    from docvlm_eval.student.pretrain import PretrainConfig
+
+    enabled = AdaptiveMixtureConfig(enabled=True)
+    with pytest.raises(ValueError, match="periodic heldout"):
+        PretrainConfig(
+            output_dir=str(tmp_path),
+            warmup_tokens=0,
+            total_tokens=10,
+            eval_every_steps=0,
+            adaptive_mixture=enabled,
+        )
+    with pytest.raises(ValueError, match="curriculum group-weight"):
+        PretrainConfig(
+            output_dir=str(tmp_path),
+            warmup_tokens=0,
+            total_tokens=10,
+            eval_every_steps=1,
+            adaptive_mixture=enabled,
+            curriculum=CurriculumSchedule(
+                stages=(
+                    CurriculumStage(
+                        id="weighted",
+                        until_fraction=1.0,
+                        group_weights={"hard": 1.0},
+                    ),
+                )
+            ),
+        )
 
 
 def test_supervision_contract_rejects_silent_online_teacher_mismatch(tmp_path):

@@ -533,9 +533,17 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError("synthetic.enabled=false is not supported by the end-to-end schema")
     train_count = _synthetic_count(synthetic, "train")
     heldout_count = _synthetic_count(synthetic, "heldout")
+    validation_count_raw = synthetic.get("validation_count")
+    validation_count = (
+        None if validation_count_raw is None else int(validation_count_raw)
+    )
     difficulty = int(synthetic.get("difficulty_level", 0))
     train_seed = int(synthetic.get("train_seed", 0))
     heldout_seed = int(synthetic.get("heldout_seed", 0))
+    validation_seed_raw = synthetic.get("validation_seed")
+    validation_seed = (
+        None if validation_seed_raw is None else int(validation_seed_raw)
+    )
     cases = synthetic.get("cases")
     if min(train_count, heldout_count) <= 0 or not 1 <= difficulty <= 5:
         raise ValueError(
@@ -544,6 +552,20 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         )
     if train_seed == heldout_seed:
         raise ValueError("synthetic train_seed and heldout_seed must differ")
+    if validation_count is not None:
+        if validation_count <= 0 or validation_seed is None:
+            raise ValueError(
+                "synthetic validation_count requires a positive count and "
+                "validation_seed"
+            )
+        if len({train_seed, validation_seed, heldout_seed}) != 3:
+            raise ValueError(
+                "synthetic train, validation, and heldout seeds must differ"
+            )
+    elif validation_seed is not None:
+        raise ValueError(
+            "synthetic validation_seed requires validation_count"
+        )
     if not isinstance(cases, list) or not cases:
         raise ValueError("synthetic.cases must be a non-empty list")
     synth_config = _resolve_path(
@@ -813,11 +835,15 @@ def build_experiment_plan(
                 _resolve_path(repo_root, evaluation_spec[key])
             )
     synthetic_enabled = bool(synthetic.get("enabled", True))
+    validation_enabled = synthetic.get("validation_count") is not None
     artifacts = output_root / "artifacts"
     train_cases = artifacts / "synthetic" / "train"
+    validation_cases = artifacts / "synthetic" / "validation"
     heldout_cases = artifacts / "synthetic" / "heldout"
     synthetic_udd_root = artifacts / "data" / "synthetic_train"
     synthetic_udd = synthetic_udd_root / "hf"
+    validation_udd_root = artifacts / "data" / "synthetic_validation"
+    validation_udd = validation_udd_root / "hf"
     mixed_data = artifacts / "data" / "mixture"
     sample_dir = artifacts / "samples"
     train_samples = sample_dir / "train.jsonl"
@@ -1176,7 +1202,7 @@ def build_experiment_plan(
         ]
         if bool(synthetic.get("no_degrade", False)):
             common.append("--no-degrade")
-        for split, seed, count, output in (
+        split_specs = [
             (
                 "train",
                 synthetic["train_seed"],
@@ -1189,7 +1215,18 @@ def build_experiment_plan(
                 _synthetic_count(synthetic, "heldout"),
                 heldout_cases,
             ),
-        ):
+        ]
+        if validation_enabled:
+            split_specs.insert(
+                1,
+                (
+                    "validation",
+                    synthetic["validation_seed"],
+                    int(synthetic["validation_count"]),
+                    validation_cases,
+                ),
+            )
+        for split, seed, count, output in split_specs:
             stages.append(
                 ExperimentStage(
                     f"synthetic_{split}",
@@ -1213,20 +1250,32 @@ def build_experiment_plan(
                     ),
                 )
             )
+        validation_command = [
+            python,
+            script("validate_synth_splits.py"),
+            "--split",
+            f"train={train_cases}",
+        ]
+        validation_dependencies = ["synthetic_train"]
+        if validation_enabled:
+            validation_command.extend(
+                ["--split", f"validation={validation_cases}"]
+            )
+            validation_dependencies.append("synthetic_validation")
+        validation_command.extend(
+            [
+                "--split",
+                f"heldout={heldout_cases}",
+                "--output",
+                str(leakage_report),
+            ]
+        )
+        validation_dependencies.append("synthetic_heldout")
         stages.append(
             ExperimentStage(
                 "validate_synthetic_splits",
-                (
-                    python,
-                    script("validate_synth_splits.py"),
-                    "--split",
-                    f"train={train_cases}",
-                    "--split",
-                    f"heldout={heldout_cases}",
-                    "--output",
-                    str(leakage_report),
-                ),
-                ("synthetic_train", "synthetic_heldout"),
+                tuple(validation_command),
+                tuple(validation_dependencies),
                 (Artifact(str(leakage_report)),),
             )
         )
@@ -1280,6 +1329,24 @@ def build_experiment_plan(
                 ),
             ]
         )
+        if validation_enabled:
+            stages.append(
+                ExperimentStage(
+                    "build_validation_udd",
+                    (
+                        python,
+                        script("build_udd_synthetic.py"),
+                        "--root",
+                        str(validation_cases),
+                        "--out",
+                        str(validation_udd_root),
+                        "--variant",
+                        variant,
+                    ),
+                    ("validate_synthetic_splits",),
+                    (Artifact(str(validation_udd), "directory"),),
+                )
+            )
 
     for name, spec in hub_specs.items():
         output = acquired_paths[name]
@@ -1574,6 +1641,10 @@ def build_experiment_plan(
         "--eval-group-by",
         str(pretraining.get("eval_group_by") or "component"),
     ]
+    pretrain_dependencies = ["initialize_student"]
+    if validation_enabled:
+        pretrain_command.extend(["--eval-src", str(validation_udd)])
+        pretrain_dependencies.append("build_validation_udd")
     for key, flag in (
         ("epochs", "--epochs"),
         ("max_steps", "--max-steps"),
@@ -1594,7 +1665,7 @@ def build_experiment_plan(
         ExperimentStage(
             "pretrain",
             tuple(pretrain_command),
-            ("initialize_student",),
+            tuple(pretrain_dependencies),
             (Artifact(str(pretrain_dir / "latest_checkpoint.txt")),),
         )
     )

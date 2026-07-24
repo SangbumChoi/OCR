@@ -109,6 +109,33 @@ def test_packed_visual_sequences_reject_redundant_aspect_bucketing():
     assert any("false for packed visual sequences" in error for error in errors)
 
 
+def test_blueprint_rejects_invalid_adaptive_mixture_contract():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+    pipeline["adaptive_mixture"] = {
+        "enabled": True,
+        "step_size": float("nan"),
+        "ema_decay": 1.0,
+        "min_probability": -0.1,
+        "warmup_evaluations": 1.5,
+    }
+    blueprint["training"]["pretraining"]["optimizer"]["eval_every_steps"] = 0
+    blueprint["training"]["pretraining"]["curriculum"]["stages"][0][
+        "group_weights"
+    ] = {"vqa": 1.0}
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("step_size must be a finite number" in error for error in errors)
+    assert any("ema_decay must be within" in error for error in errors)
+    assert any("min_probability must be within" in error for error in errors)
+    assert any("warmup_evaluations" in error for error in errors)
+    assert any("positive pretraining eval_every_steps" in error for error in errors)
+    assert any(
+        "adaptive mixture cannot be combined" in error for error in errors
+    )
+
+
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1

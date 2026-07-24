@@ -10,7 +10,7 @@ import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .curriculum import CurriculumSchedule, planned_optimizer_steps
 
@@ -1072,6 +1072,34 @@ class BalancedGroupBatchSampler:
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = int(epoch)
+
+    def set_group_weights(
+        self,
+        group_weights: Mapping[str, float],
+    ) -> None:
+        """Replace epoch-level group weights without changing sampler topology."""
+        supplied = {
+            str(group): float(weight)
+            for group, weight in group_weights.items()
+        }
+        if set(supplied) != set(self.group_names):
+            missing = sorted(set(self.group_names) - set(supplied))
+            extra = sorted(set(supplied) - set(self.group_names))
+            raise ValueError(
+                "replacement weights must match sampler groups: "
+                f"missing={missing}, extra={extra}"
+            )
+        values = [supplied[group] for group in self.group_names]
+        if (
+            any(not math.isfinite(weight) or weight < 0 for weight in values)
+            or not any(values)
+        ):
+            raise ValueError(
+                "replacement group weights must be finite, non-negative, "
+                "and include a positive value"
+            )
+        self.base_weights = supplied
+        self.weights = values
 
     def __len__(self) -> int:
         return self.num_batches

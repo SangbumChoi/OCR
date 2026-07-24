@@ -15,6 +15,10 @@ from typing import Any, Iterable
 import torch
 import torch.nn as nn
 
+from .adaptive_mixture import (
+    AdaptiveMixtureConfig,
+    AdaptiveMixtureController,
+)
 from .data import student_model_inputs
 from .curriculum import CurriculumSchedule, planned_optimizer_steps
 from .compute import estimate_batch_training_flops_breakdown
@@ -67,6 +71,9 @@ class PretrainConfig:
     loss_weights: dict[str, float] = field(default_factory=dict)
     target_source_counts: dict[str, int] = field(default_factory=dict)
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
+    adaptive_mixture: AdaptiveMixtureConfig = field(
+        default_factory=AdaptiveMixtureConfig
+    )
 
     def __post_init__(self) -> None:
         if self.epochs is not None and self.epochs <= 0:
@@ -146,6 +153,20 @@ class PretrainConfig:
         if not self.run_stage.strip():
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
+        self.adaptive_mixture.validate()
+        if self.adaptive_mixture.enabled:
+            if self.eval_every_steps <= 0:
+                raise ValueError(
+                    "adaptive mixture requires periodic heldout evaluation"
+                )
+            if any(
+                stage.group_weights
+                for stage in self.curriculum.stages
+            ):
+                raise ValueError(
+                    "adaptive mixture cannot be combined with curriculum "
+                    "group-weight overrides"
+                )
         if (
             (self.stop_at_total_tokens or self.stop_at_student_flops)
             and self.curriculum.stages
@@ -227,6 +248,9 @@ class PretrainConfig:
                 for name, weight in blueprint["training"]["pretraining"]["losses"].items()
             },
             "curriculum": CurriculumSchedule.from_blueprint(blueprint),
+            "adaptive_mixture": (
+                AdaptiveMixtureConfig.from_blueprint(blueprint)
+            ),
         }
         values.update(overrides)
         return cls(**values)
@@ -284,6 +308,7 @@ def pretraining_supervision_contract(
             name: int(count)
             for name, count in sorted(config.target_source_counts.items())
         },
+        "adaptive_mixture": config.adaptive_mixture.to_dict(),
         "stages": profiles,
     }
 
@@ -575,6 +600,22 @@ def _set_loader_epoch(loader: Any, epoch: int, seed: int, rank: int) -> None:
             candidate.set_epoch(epoch)
 
 
+def _resolve_adaptive_sampler(loader: Any) -> Any:
+    for candidate in (
+        getattr(loader, "batch_sampler", None),
+        getattr(loader, "sampler", None),
+    ):
+        if (
+            hasattr(candidate, "group_names")
+            and hasattr(candidate, "base_weights")
+            and hasattr(candidate, "set_group_weights")
+        ):
+            return candidate
+    raise ValueError(
+        "adaptive mixture requires BalancedGroupBatchSampler"
+    )
+
+
 def _parameter_groups(module: nn.Module, weight_decay: float) -> list[dict[str, Any]]:
     decay: list[nn.Parameter] = []
     no_decay: list[nn.Parameter] = []
@@ -668,6 +709,7 @@ def _save_checkpoint(
     context: _DistributedContext,
     curriculum_total_steps: int,
     supervision_contract: dict[str, Any],
+    adaptive_controller: AdaptiveMixtureController | None,
 ) -> Path:
     output = Path(config.output_dir)
     checkpoints = output / "checkpoints"
@@ -721,6 +763,11 @@ def _save_checkpoint(
             else None
         ),
         "rng_states": rng_states,
+        "adaptive_mixture": (
+            adaptive_controller.state_dict()
+            if adaptive_controller is not None
+            else None
+        ),
     }
     torch.save(payload, temporary / "training_state.pt")
     (temporary / "trainer_state.json").write_text(
@@ -758,6 +805,7 @@ def _load_checkpoint(
     expected_curriculum_total_steps: int,
     expected_token_budget: dict[str, Any],
     expected_supervision_contract: dict[str, Any],
+    adaptive_controller: AdaptiveMixtureController | None,
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
     metadata = (
@@ -827,6 +875,18 @@ def _load_checkpoint(
         map_location=context.device,
         weights_only=False,
     )
+    saved_adaptive = payload.get("adaptive_mixture")
+    if adaptive_controller is None:
+        if saved_adaptive is not None:
+            raise ValueError(
+                "resume checkpoint contains unexpected adaptive mixture state"
+            )
+    else:
+        if saved_adaptive is None:
+            raise ValueError(
+                "resume checkpoint has no adaptive mixture state"
+            )
+        adaptive_controller.load_state_dict(saved_adaptive)
     optimizer.load_state_dict(payload["optimizer"])
     scaler.load_state_dict(payload["scaler"])
     if module.distillation_loss is not None:
@@ -912,6 +972,25 @@ def train_student(
     )
     if getattr(train_loader, "persistent_workers", False):
         raise ValueError("exact-resume augmentation requires persistent_workers=False")
+    adaptive_sampler = None
+    adaptive_controller = None
+    if config.adaptive_mixture.enabled:
+        adaptive_sampler = _resolve_adaptive_sampler(train_loader)
+        adaptive_controller = AdaptiveMixtureController(
+            config.adaptive_mixture,
+            adaptive_sampler.base_weights,
+        )
+        eval_groups = set((eval_loaders or {}).keys())
+        sampler_groups = set(adaptive_sampler.group_names)
+        if eval_groups != sampler_groups:
+            raise ValueError(
+                "adaptive mixture eval groups must match sampler groups: "
+                f"missing={sorted(sampler_groups - eval_groups)}, "
+                f"extra={sorted(eval_groups - sampler_groups)}"
+            )
+        adaptive_sampler.set_group_weights(
+            adaptive_controller.weights
+        )
     context = _distributed_context(config.device)
     random.seed(config.seed + context.rank)
     torch.manual_seed(config.seed + context.rank)
@@ -978,7 +1057,12 @@ def train_student(
             curriculum_horizon,
             _budget_contract(config),
             supervision_contract,
+            adaptive_controller,
         )
+        if adaptive_controller is not None:
+            adaptive_sampler.set_group_weights(
+                adaptive_controller.weights
+            )
         scheduler.step(_state_schedule_count(state, config))
 
     wrapped: nn.Module = module
@@ -1021,6 +1105,44 @@ def train_student(
     accumulated_samples = 0
     epoch = state.epoch
     while not stop and (config.epochs is None or epoch < config.epochs):
+        if (
+            adaptive_controller is not None
+            and state.batch_in_epoch == 0
+        ):
+            had_pending = adaptive_controller.pending
+            weights_changed = adaptive_controller.apply_pending()
+            adaptive_sampler.set_group_weights(
+                adaptive_controller.weights
+            )
+            if context.is_main and (
+                had_pending
+                or (state.global_step == 0 and epoch == 0)
+            ):
+                _append_metric(
+                    output_dir,
+                    {
+                        "kind": "adaptive_mixture",
+                        "train/global_step": state.global_step,
+                        "train/epoch": epoch,
+                        "adaptive/weights_changed": weights_changed,
+                        "adaptive/evaluations": (
+                            adaptive_controller.evaluations
+                        ),
+                        "adaptive/updates": adaptive_controller.updates,
+                        **{
+                            f"adaptive/group_weight/{group}": weight
+                            for group, weight in sorted(
+                                adaptive_controller.weights.items()
+                            )
+                        },
+                        **{
+                            f"adaptive/heldout_loss_ema/{group}": loss
+                            for group, loss in sorted(
+                                adaptive_controller.ema_losses.items()
+                            )
+                        },
+                    },
+                )
         _set_loader_epoch(train_loader, epoch, config.seed, context.rank)
         module.train()
         loader_length = len(train_loader)
@@ -1241,6 +1363,15 @@ def train_student(
                     },
                 }
             )
+            if adaptive_controller is not None:
+                means.update(
+                    {
+                        f"train/group_weight/{group}": weight
+                        for group, weight in sorted(
+                            adaptive_controller.weights.items()
+                        )
+                    }
+                )
             accumulated_token_counts = {
                 "supervised": 0,
                 "text": 0,
@@ -1280,12 +1411,37 @@ def train_student(
                     active_loss_weights,
                     config.precision,
                 )
+                if adaptive_controller is not None:
+                    adaptive_controller.observe(
+                        {
+                            group: final_metrics[
+                                f"eval/{group}/weighted_loss"
+                            ]
+                            for group in adaptive_controller.groups
+                        }
+                    )
                 if context.is_main:
                     _append_metric(
                         output_dir,
                         {
                             "kind": "eval",
                             "train/global_step": state.global_step,
+                            **(
+                                {
+                                    "adaptive/pending_update": True,
+                                    **{
+                                        (
+                                            "adaptive/heldout_loss/"
+                                            f"{group}"
+                                        ): final_metrics[
+                                            f"eval/{group}/weighted_loss"
+                                        ]
+                                        for group in adaptive_controller.groups
+                                    },
+                                }
+                                if adaptive_controller is not None
+                                else {}
+                            ),
                             **final_metrics,
                         },
                     )
@@ -1306,6 +1462,7 @@ def train_student(
                     context,
                     curriculum_horizon,
                     supervision_contract,
+                    adaptive_controller,
                 )
             reached_step_limit = (
                 config.max_steps is not None
@@ -1346,6 +1503,7 @@ def train_student(
             context,
             curriculum_horizon,
             supervision_contract,
+            adaptive_controller,
         )
     budget_tokens_seen = _state_token_count(state, config.token_unit)
     if (

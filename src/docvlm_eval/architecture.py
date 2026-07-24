@@ -271,6 +271,75 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "training.pretraining.input_pipeline.balance_by must be task, source, language, "
             "or component"
         )
+    adaptive_mixture = input_pipeline.get("adaptive_mixture", {}) or {}
+    if not isinstance(adaptive_mixture, dict):
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture must be a mapping"
+        )
+        adaptive_mixture = {}
+    adaptive_enabled_raw = adaptive_mixture.get("enabled", False)
+    if not isinstance(adaptive_enabled_raw, bool):
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture.enabled "
+            "must be boolean"
+        )
+    adaptive_enabled = (
+        adaptive_enabled_raw
+        if isinstance(adaptive_enabled_raw, bool)
+        else False
+    )
+
+    def adaptive_number(field: str, default: float) -> float:
+        raw_value = adaptive_mixture.get(field, default)
+        if isinstance(raw_value, bool):
+            errors.append(
+                "training.pretraining.input_pipeline.adaptive_mixture."
+                f"{field} must be a finite number"
+            )
+            return default
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            errors.append(
+                "training.pretraining.input_pipeline.adaptive_mixture."
+                f"{field} must be a finite number"
+            )
+            return default
+        if not math.isfinite(value):
+            errors.append(
+                "training.pretraining.input_pipeline.adaptive_mixture."
+                f"{field} must be a finite number"
+            )
+            return default
+        return value
+
+    if adaptive_number("step_size", 0.5) <= 0:
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture.step_size "
+            "must be positive"
+        )
+    ema_decay = adaptive_number("ema_decay", 0.8)
+    if not 0 <= ema_decay < 1:
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture.ema_decay "
+            "must be within [0, 1)"
+        )
+    min_probability = adaptive_number("min_probability", 0.02)
+    if not 0 <= min_probability < 1:
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture."
+            "min_probability must be within [0, 1)"
+        )
+    warmup_evaluations = adaptive_mixture.get("warmup_evaluations", 1)
+    if (
+        not isinstance(warmup_evaluations, int)
+        or isinstance(warmup_evaluations, bool)
+        or warmup_evaluations < 0
+    ):
+        errors.append(
+            "training.pretraining.input_pipeline.adaptive_mixture."
+            "warmup_evaluations must be a non-negative integer"
+        )
     distillation = blueprint["training"]["pretraining"].get("distillation", {})
     if float(distillation.get("temperature", 0.0)) <= 0:
         errors.append("training.pretraining.distillation.temperature must be positive")
@@ -342,6 +411,10 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 f"training.pretraining.optimizer.{field} must be non-negative"
             )
+    if adaptive_enabled and int(optimizer.get("eval_every_steps", 0)) <= 0:
+        errors.append(
+            "adaptive mixture requires a positive pretraining eval_every_steps"
+        )
     betas = optimizer.get("betas", ())
     if len(betas) != 2 or any(not 0 <= float(beta) < 1 for beta in betas):
         errors.append("training.pretraining.optimizer.betas must contain two values in [0, 1)")
@@ -425,6 +498,14 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 "training_compute_fraction curriculum cannot override "
                 "sampler group weights"
             )
+    if adaptive_enabled and any(
+        isinstance(stage, dict) and stage.get("group_weights")
+        for stage in curriculum.get("stages", [])
+    ):
+        errors.append(
+            "adaptive mixture cannot be combined with curriculum "
+            "group-weight overrides"
+        )
     budget = blueprint["budget"]
     maximum = int(budget["max_parameters"])
     if estimates["total"] >= maximum:
