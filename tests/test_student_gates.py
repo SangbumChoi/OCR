@@ -254,6 +254,12 @@ def _training_report(
                 "language",
             ],
             "gradient_checkpointing_use_reentrant": False,
+            "contrastive_memory": {
+                "enabled": True,
+                "size": 1024,
+                "min_negatives": 16,
+                "scope": "local_fifo",
+            },
         },
         "environment": {
             "device": "cuda:0",
@@ -277,6 +283,13 @@ def _training_report(
             "checkpoint_recompute": 900_000_000,
             "executed": 3_900_000_000,
         },
+        "measured_steps": [
+            {
+                "contrastive_memory_size": 1024,
+                "contrastive_negative_pairs": 1024,
+                "contrastive_additional_flops": 1,
+            }
+        ],
         "median_step_ms": 500.0,
         "p95_step_ms": 520.0,
         "steps_per_second": 2.0,
@@ -431,6 +444,21 @@ def test_training_feasibility_gate_fails_closed(report, violation):
     assert gate["status"] == "fail"
     if violation is not None:
         assert violation in gate["evidence"]["violations"]
+
+
+def test_training_feasibility_gate_requires_steady_contrastive_memory():
+    from docvlm_eval.student.gates import (
+        evaluate_training_feasibility_gate,
+    )
+
+    report = _training_report()
+    report["measured_steps"] = []
+
+    gate = evaluate_training_feasibility_gate(_blueprint(), report)
+
+    assert gate["status"] == "insufficient_evidence"
+    assert gate["evidence"]["contrastive_memory_size"] is None
+    assert gate["evidence"]["contrastive_negative_pairs"] is None
 
 
 def test_visual_efficiency_gate_rejects_fallback_and_regressions():

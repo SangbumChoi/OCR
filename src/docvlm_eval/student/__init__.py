@@ -90,6 +90,7 @@ from .compute import (
 )
 from .tokenizer import DocumentTokenizer
 from .pretrain import (
+    ContrastiveMemoryConfig,
     PretrainConfig,
     TrainingResult,
     pretraining_supervision_contract,
@@ -129,6 +130,7 @@ __all__ = [
     "CompiledVariant",
     "CurriculumSchedule",
     "CurriculumStage",
+    "ContrastiveMemoryConfig",
     "DocumentTokenizer",
     "DistillationConfig",
     "DistillationLoss",

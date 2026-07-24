@@ -159,6 +159,34 @@ def test_blueprint_rejects_invalid_gradient_probe_contract():
     assert any("gradient_conflict_probe.components" in error for error in errors)
 
 
+def test_blueprint_rejects_invalid_contrastive_memory_contract():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    blueprint["training"]["pretraining"]["contrastive_memory"] = {
+        "enabled": True,
+        "size": 0,
+        "min_negatives": 2,
+        "scope": "global",
+    }
+    blueprint["student"]["task_heads"]["region_text_contrastive"] = False
+    blueprint["training"]["pretraining"]["input_pipeline"][
+        "contrastive"
+    ] = False
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("contrastive_memory.size" in error for error in errors)
+    assert any("contrastive_memory.min_negatives" in error for error in errors)
+    assert any("contrastive_memory.scope" in error for error in errors)
+    assert any(
+        "requires the region-text contrastive head" in error
+        for error in errors
+    )
+    assert any(
+        "requires contrastive input batches" in error
+        for error in errors
+    )
+
+
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1

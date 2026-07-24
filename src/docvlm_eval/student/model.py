@@ -857,9 +857,13 @@ def _apply_rope(
 
 def _multi_positive_contrastive_loss(
     similarities: torch.Tensor,
-    group_ids: torch.Tensor,
+    query_ids: torch.Tensor,
+    key_ids: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    positive = group_ids[:, None] == group_ids[None, :]
+    key_ids = query_ids if key_ids is None else key_ids
+    positive = query_ids[:, None] == key_ids[None, :]
+    if not torch.all(positive.any(dim=-1)):
+        raise ValueError("every contrastive query must have at least one positive key")
     minimum = torch.finfo(similarities.dtype).min
     positive_score = torch.logsumexp(
         similarities.masked_fill(~positive, minimum),
@@ -871,9 +875,13 @@ def _multi_positive_contrastive_loss(
 
 def _multi_positive_siglip_loss(
     logits: torch.Tensor,
-    group_ids: torch.Tensor,
+    query_ids: torch.Tensor,
+    key_ids: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    positive = group_ids[:, None] == group_ids[None, :]
+    key_ids = query_ids if key_ids is None else key_ids
+    positive = query_ids[:, None] == key_ids[None, :]
+    if not torch.all(positive.any(dim=-1)):
+        raise ValueError("every contrastive query must have at least one positive key")
     signs = torch.where(positive, 1.0, -1.0).to(dtype=logits.dtype)
     return -F.logsigmoid(signs * logits).sum() / logits.shape[0]
 
@@ -1729,6 +1737,9 @@ class DocumentVLMStudent(nn.Module):
         orientation_labels: torch.Tensor | None = None,
         contrastive: bool = False,
         contrastive_ids: torch.Tensor | None = None,
+        contrastive_vision_keys: torch.Tensor | None = None,
+        contrastive_text_keys: torch.Tensor | None = None,
+        contrastive_key_ids: torch.Tensor | None = None,
         loss_weights: dict[str, float] | None = None,
         box_iou_loss_kind: str = "giou",
         feature_layers: dict[str, list[int] | tuple[int, ...]] | None = None,
@@ -1961,19 +1972,83 @@ class DocumentVLMStudent(nn.Module):
                 )
                 if group_ids.shape != (similarities.shape[0],):
                     raise ValueError("contrastive_ids must have shape [batch]")
+                memory_values = (
+                    contrastive_vision_keys,
+                    contrastive_text_keys,
+                    contrastive_key_ids,
+                )
+                if any(value is not None for value in memory_values):
+                    if any(value is None for value in memory_values):
+                        raise ValueError(
+                            "contrastive memory requires vision keys, text keys, and ids"
+                        )
+                    memory_vision = contrastive_vision_keys.to(
+                        device=similarities.device,
+                        dtype=vision_embeddings.dtype,
+                    )
+                    memory_text = contrastive_text_keys.to(
+                        device=similarities.device,
+                        dtype=text_projected.dtype,
+                    )
+                    memory_ids = contrastive_key_ids.to(
+                        device=similarities.device,
+                        dtype=group_ids.dtype,
+                    )
+                    expected_width = vision_embeddings.shape[1]
+                    if (
+                        memory_vision.ndim != 2
+                        or memory_text.ndim != 2
+                        or memory_vision.shape != memory_text.shape
+                        or memory_vision.shape[1] != expected_width
+                        or memory_ids.shape != (memory_vision.shape[0],)
+                    ):
+                        raise ValueError(
+                            "contrastive memory tensors have incompatible shapes"
+                        )
+                    key_ids = torch.cat((group_ids, memory_ids), dim=0)
+                    image_to_text = torch.cat(
+                        (
+                            similarities,
+                            (vision_embeddings @ memory_text.T) * scale,
+                        ),
+                        dim=1,
+                    )
+                    text_to_image = torch.cat(
+                        (
+                            similarities.T,
+                            (text_projected @ memory_vision.T) * scale,
+                        ),
+                        dim=1,
+                    )
+                else:
+                    key_ids = group_ids
+                    image_to_text = similarities
+                    text_to_image = similarities.T
                 if self.contrastive_objective == "siglip":
-                    losses["region_text_contrastive"] = (
+                    bias = self.contrastive_logit_bias
+                    losses["region_text_contrastive"] = 0.5 * (
                         _multi_positive_siglip_loss(
-                            similarities + self.contrastive_logit_bias,
+                            image_to_text + bias,
                             group_ids,
+                            key_ids,
+                        )
+                        + _multi_positive_siglip_loss(
+                            text_to_image + bias,
+                            group_ids,
+                            key_ids,
                         )
                     )
                 else:
                     losses["region_text_contrastive"] = 0.5 * (
-                        _multi_positive_contrastive_loss(similarities, group_ids)
-                        + _multi_positive_contrastive_loss(
-                            similarities.T,
+                        _multi_positive_contrastive_loss(
+                            image_to_text,
                             group_ids,
+                            key_ids,
+                        )
+                        + _multi_positive_contrastive_loss(
+                            text_to_image,
+                            group_ids,
+                            key_ids,
                         )
                     )
 

@@ -680,6 +680,64 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(f"training.pretraining.losses.{name} is not implemented")
         if float(weight) < 0:
             errors.append(f"training.pretraining.losses.{name} must be non-negative")
+    contrastive_memory = training["pretraining"].get(
+        "contrastive_memory",
+        {},
+    ) or {}
+    if not isinstance(contrastive_memory, dict):
+        errors.append(
+            "training.pretraining.contrastive_memory must be a mapping"
+        )
+        contrastive_memory = {}
+    memory_enabled = contrastive_memory.get("enabled", False)
+    if not isinstance(memory_enabled, bool):
+        errors.append(
+            "training.pretraining.contrastive_memory.enabled must be boolean"
+        )
+        memory_enabled = False
+    memory_size = contrastive_memory.get("size", 0)
+    if (
+        not isinstance(memory_size, int)
+        or isinstance(memory_size, bool)
+        or memory_size < 0
+        or (memory_enabled and memory_size <= 0)
+    ):
+        errors.append(
+            "training.pretraining.contrastive_memory.size must be "
+            "non-negative and positive when enabled"
+        )
+        memory_size = 0
+    min_negatives = contrastive_memory.get("min_negatives", 1)
+    if (
+        not isinstance(min_negatives, int)
+        or isinstance(min_negatives, bool)
+        or min_negatives <= 0
+        or (
+            memory_enabled
+            and isinstance(memory_size, int)
+            and min_negatives > memory_size
+        )
+    ):
+        errors.append(
+            "training.pretraining.contrastive_memory.min_negatives must be "
+            "positive and cannot exceed size"
+        )
+    if contrastive_memory.get("scope", "local_fifo") != "local_fifo":
+        errors.append(
+            "training.pretraining.contrastive_memory.scope must be local_fifo"
+        )
+    if memory_enabled and not task_heads.get(
+        "region_text_contrastive",
+        False,
+    ):
+        errors.append(
+            "enabled contrastive memory requires the region-text "
+            "contrastive head"
+        )
+    if memory_enabled and not input_pipeline.get("contrastive", False):
+        errors.append(
+            "enabled contrastive memory requires contrastive input batches"
+        )
     curriculum = training["pretraining"].get("curriculum", {})
     if not isinstance(curriculum, dict):
         errors.append("training.pretraining.curriculum must be a mapping")

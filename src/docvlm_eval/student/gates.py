@@ -1010,6 +1010,23 @@ def _training_feasibility(
     effective_memory = report.get("effective_peak_memory")
     optimizer_state = report.get("optimizer_state")
     training_flops = report.get("training_flops_per_microbatch")
+    expected_contrastive_memory = (
+        blueprint["training"]["pretraining"].get(
+            "contrastive_memory",
+            {
+                "enabled": False,
+                "size": 0,
+                "min_negatives": 1,
+                "scope": "local_fifo",
+            },
+        )
+    )
+    measured_records = report.get("measured_steps") or []
+    last_measured = (
+        measured_records[-1]
+        if isinstance(measured_records, list) and measured_records
+        else {}
+    )
     evidence = {
         "benchmark_schema_version": schema,
         "device": environment.get("device"),
@@ -1053,6 +1070,13 @@ def _training_feasibility(
         ),
         "optimizer_state": optimizer_state,
         "training_flops_per_microbatch": training_flops,
+        "contrastive_memory": benchmark.get("contrastive_memory"),
+        "contrastive_memory_size": last_measured.get(
+            "contrastive_memory_size"
+        ),
+        "contrastive_negative_pairs": last_measured.get(
+            "contrastive_negative_pairs"
+        ),
         "setup_memory": report.get("setup_memory"),
         "materialization_memory": report.get("materialization_memory"),
         "steady_state_memory": report.get("steady_state_memory"),
@@ -1105,6 +1129,16 @@ def _training_feasibility(
                 gate[
                     "required_gradient_checkpointing_use_reentrant"
                 ]
+            )
+            and benchmark.get("contrastive_memory")
+            == expected_contrastive_memory
+            and (
+                not bool(expected_contrastive_memory.get("enabled"))
+                or (
+                    int(last_measured["contrastive_memory_size"])
+                    == int(expected_contrastive_memory["size"])
+                    and int(last_measured["contrastive_negative_pairs"]) > 0
+                )
             )
         )
         numeric_evidence = (
@@ -1168,6 +1202,7 @@ def _training_feasibility(
                     "required_gradient_checkpointing_use_reentrant"
                 ]
             ),
+            "required_contrastive_memory": expected_contrastive_memory,
             "min_text_tokens": minimum_text,
             "min_visual_tokens_per_sample": minimum_visual,
             "min_warmup_steps": minimum_warmup,

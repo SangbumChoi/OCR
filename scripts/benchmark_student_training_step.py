@@ -16,6 +16,7 @@ from docvlm_eval.student.gates import (
     evaluate_training_feasibility_gate,
     write_gate_report,
 )
+from docvlm_eval.student.pretrain import ContrastiveMemoryConfig
 from docvlm_eval.student.training_benchmark import (
     TrainingBenchmarkConfig,
     run_training_feasibility_benchmark,
@@ -98,6 +99,15 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
             payload[
                 f"training_feasibility/{key}_flops_per_microbatch"
             ] = training_flops[key]
+    measured = report.get("measured_steps") or []
+    if measured:
+        for key in (
+            "contrastive_memory_size",
+            "contrastive_negative_pairs",
+            "contrastive_additional_flops",
+        ):
+            if measured[-1].get(key) is not None:
+                payload[f"training_feasibility/{key}"] = measured[-1][key]
     run.log(payload)
     run.summary["training_feasibility_report"] = report
     run.summary["training_feasibility_gate_status"] = report[
@@ -198,6 +208,9 @@ def main() -> None:
         max_grad_norm=float(optimizer["max_grad_norm"]),
         contrastive=bool(pipeline["contrastive"]),
         box_iou_loss=str(pretraining.get("box_iou_loss", "giou")),
+        contrastive_memory=ContrastiveMemoryConfig.from_blueprint(
+            blueprint
+        ),
     )
     report["deployment_gate"] = evaluate_training_feasibility_gate(
         blueprint,

@@ -142,7 +142,8 @@ def test_collator_masks_prompts_and_transforms_boxes_to_the_padded_canvas():
     assert batch["pixel_mask"].shape == (2, 32, 32)
     assert batch["pixel_mask"].sum(dim=(1, 2)).tolist() == [200, 200]
     assert batch["orientation_labels"].tolist() == [0, 0]
-    assert batch["contrastive_ids"].tolist() == [0, 0]
+    assert batch["contrastive_ids"][0] == batch["contrastive_ids"][1]
+    assert torch.all(batch["contrastive_ids"] >= 0)
     assert batch["box_target_mask"].tolist() == [False, True]
     assert torch.allclose(
         batch["box_targets"][1],

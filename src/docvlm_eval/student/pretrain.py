@@ -35,6 +35,52 @@ _ONLINE_TEACHER_LOSSES = frozenset(
 
 
 @dataclass(frozen=True)
+class ContrastiveMemoryConfig:
+    """Detached local FIFO keys that supply negatives across microbatches."""
+
+    enabled: bool = False
+    size: int = 0
+    min_negatives: int = 1
+    scope: str = "local_fifo"
+
+    def validate(self) -> None:
+        if self.size < 0:
+            raise ValueError("contrastive memory size must be non-negative")
+        if self.enabled and self.size <= 0:
+            raise ValueError("enabled contrastive memory requires a positive size")
+        if self.min_negatives < 1:
+            raise ValueError("contrastive memory min_negatives must be positive")
+        if self.enabled and self.min_negatives > self.size:
+            raise ValueError(
+                "contrastive memory min_negatives cannot exceed its size"
+            )
+        if self.scope != "local_fifo":
+            raise ValueError("contrastive memory scope must be local_fifo")
+
+    @classmethod
+    def from_blueprint(
+        cls,
+        blueprint: dict[str, Any],
+    ) -> "ContrastiveMemoryConfig":
+        raw = (
+            blueprint["training"]["pretraining"].get(
+                "contrastive_memory",
+                {},
+            )
+            or {}
+        )
+        return cls(
+            enabled=bool(raw.get("enabled", False)),
+            size=int(raw.get("size", 0)),
+            min_negatives=int(raw.get("min_negatives", 1)),
+            scope=str(raw.get("scope", "local_fifo")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class PretrainConfig:
     output_dir: str
     epochs: int | None = 1
@@ -80,6 +126,9 @@ class PretrainConfig:
     )
     gradient_conflict_probe: GradientConflictProbeConfig = field(
         default_factory=GradientConflictProbeConfig
+    )
+    contrastive_memory: ContrastiveMemoryConfig = field(
+        default_factory=ContrastiveMemoryConfig
     )
 
     def __post_init__(self) -> None:
@@ -166,6 +215,7 @@ class PretrainConfig:
         self.curriculum.validate()
         self.adaptive_mixture.validate()
         self.gradient_conflict_probe.validate()
+        self.contrastive_memory.validate()
         if self.adaptive_mixture.enabled:
             if self.eval_every_steps <= 0:
                 raise ValueError(
@@ -272,6 +322,9 @@ class PretrainConfig:
             "gradient_conflict_probe": (
                 GradientConflictProbeConfig.from_blueprint(blueprint)
             ),
+            "contrastive_memory": (
+                ContrastiveMemoryConfig.from_blueprint(blueprint)
+            ),
         }
         values.update(overrides)
         return cls(**values)
@@ -298,6 +351,7 @@ def pretraining_supervision_contract(
     else:
         profiles = [{"id": "base", "weights": dict(config.loss_weights)}]
     active_online: set[str] = set()
+    contrastive_stages = 0
     for profile in profiles:
         active = sorted(
             name
@@ -312,6 +366,15 @@ def pretraining_supervision_contract(
         profile["active_losses"] = active
         del profile["weights"]
         active_online.update(_ONLINE_TEACHER_LOSSES.intersection(active))
+        if "region_text_contrastive" in active:
+            contrastive_stages += 1
+            if (
+                config.contrastive_memory.enabled
+                and len(active) == 1
+            ):
+                raise ValueError(
+                    "contrastive-memory warmup requires another active loss"
+                )
     if active_online and not has_online_teacher:
         raise ValueError(
             "active online-teacher losses require a native teacher checkpoint: "
@@ -322,6 +385,11 @@ def pretraining_supervision_contract(
             "native teacher checkpoint provided but teacher_kl and "
             "hidden_feature_distillation are inactive"
         )
+    if config.contrastive_memory.enabled and contrastive_stages == 0:
+        raise ValueError(
+            "enabled contrastive memory requires an active "
+            "region_text_contrastive loss"
+        )
     return {
         "has_online_teacher": has_online_teacher,
         "online_teacher_losses": sorted(active_online),
@@ -331,6 +399,7 @@ def pretraining_supervision_contract(
         },
         "adaptive_mixture": config.adaptive_mixture.to_dict(),
         "gradient_conflict_probe": config.gradient_conflict_probe.to_dict(),
+        "contrastive_memory": config.contrastive_memory.to_dict(),
         "box_iou_loss": config.box_iou_loss,
         "stages": profiles,
     }
@@ -410,12 +479,116 @@ class TokenCosineScheduler:
         return lr
 
 
+class ContrastiveMemory:
+    """Fixed-capacity detached FIFO for local cross-microbatch negatives."""
+
+    def __init__(self, config: ContrastiveMemoryConfig):
+        config.validate()
+        self.config = config
+        self.vision: torch.Tensor | None = None
+        self.text: torch.Tensor | None = None
+        self.ids: torch.Tensor | None = None
+
+    def __len__(self) -> int:
+        return 0 if self.ids is None else int(self.ids.shape[0])
+
+    def tensors(
+        self,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
+        if self.vision is None or self.text is None or self.ids is None:
+            return None
+        return self.vision, self.text, self.ids
+
+    def usable_negative_pairs(self, query_ids: torch.Tensor) -> int:
+        if self.ids is None:
+            return 0
+        memory_ids = self.ids.to(device=query_ids.device)
+        negative_counts = (
+            query_ids[:, None] != memory_ids[None, :]
+        ).sum(dim=-1)
+        if int(negative_counts.min().item()) < self.config.min_negatives:
+            return 0
+        return int(negative_counts.sum().item())
+
+    @torch.no_grad()
+    def enqueue(
+        self,
+        vision: torch.Tensor,
+        text: torch.Tensor,
+        ids: torch.Tensor,
+    ) -> None:
+        if not self.config.enabled:
+            return
+        if (
+            vision.ndim != 2
+            or text.shape != vision.shape
+            or ids.shape != (vision.shape[0],)
+        ):
+            raise ValueError("contrastive memory enqueue shapes are incompatible")
+        detached_vision = vision.detach()
+        detached_text = text.detach()
+        detached_ids = ids.detach().to(device=vision.device, dtype=torch.long)
+        if self.vision is None:
+            combined_vision = detached_vision
+            combined_text = detached_text
+            combined_ids = detached_ids
+        else:
+            if self.vision.shape[1] != detached_vision.shape[1]:
+                raise ValueError("contrastive memory embedding width changed")
+            combined_vision = torch.cat((self.vision, detached_vision), dim=0)
+            combined_text = torch.cat((self.text, detached_text), dim=0)
+            combined_ids = torch.cat((self.ids, detached_ids), dim=0)
+        keep = min(self.config.size, int(combined_ids.shape[0]))
+        self.vision = combined_vision[-keep:]
+        self.text = combined_text[-keep:]
+        self.ids = combined_ids[-keep:]
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "config": self.config.to_dict(),
+            "vision": (
+                None if self.vision is None else self.vision.detach().cpu()
+            ),
+            "text": None if self.text is None else self.text.detach().cpu(),
+            "ids": None if self.ids is None else self.ids.detach().cpu(),
+        }
+
+    def load_state_dict(
+        self,
+        state: dict[str, Any],
+        *,
+        device: torch.device,
+    ) -> None:
+        if state.get("config") != self.config.to_dict():
+            raise ValueError(
+                "checkpoint contrastive-memory contract does not match"
+            )
+        tensors = (state.get("vision"), state.get("text"), state.get("ids"))
+        if all(value is None for value in tensors):
+            self.vision = self.text = self.ids = None
+            return
+        if any(value is None for value in tensors):
+            raise ValueError("checkpoint contrastive memory is incomplete")
+        vision, text, ids = tensors
+        if (
+            vision.ndim != 2
+            or text.shape != vision.shape
+            or ids.shape != (vision.shape[0],)
+            or vision.shape[0] > self.config.size
+        ):
+            raise ValueError("checkpoint contrastive memory has invalid shapes")
+        self.vision = vision.to(device)
+        self.text = text.to(device)
+        self.ids = ids.to(device=device, dtype=torch.long)
+
+
 class PretrainingModule(nn.Module):
     def __init__(
         self,
         student: DocumentVLMStudent,
         distillation_loss: DistillationLoss | None = None,
         box_iou_loss_kind: str = "giou",
+        contrastive_memory: ContrastiveMemoryConfig | None = None,
     ):
         super().__init__()
         self.student = student
@@ -425,12 +598,20 @@ class PretrainingModule(nn.Module):
                 f"box_iou_loss_kind must be one of {sorted(BOX_IOU_LOSSES)}"
             )
         self.box_iou_loss_kind = box_iou_loss_kind
+        self.contrastive_memory = ContrastiveMemory(
+            contrastive_memory or ContrastiveMemoryConfig()
+        )
+        self.last_contrastive_memory_size = 0
+        self.last_contrastive_negative_pairs = 0
+        self.last_contrastive_additional_flops = 0
 
     def forward(
         self,
         batch: dict[str, Any],
         teacher_signals: TeacherSignals | None,
         loss_weights: dict[str, float],
+        *,
+        update_contrastive_memory: bool = True,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         inputs = student_model_inputs(batch)
         if teacher_signals is not None:
@@ -440,8 +621,46 @@ class PretrainingModule(nn.Module):
                 self.distillation_loss.config.student_feature_layers
             )
         inputs["box_iou_loss_kind"] = self.box_iou_loss_kind
+        contrastive_active = (
+            self.contrastive_memory.config.enabled
+            and float(loss_weights.get("region_text_contrastive", 1.0)) > 0
+            and inputs.get("contrastive_ids") is not None
+        )
+        memory = self.contrastive_memory.tensors()
+        self.last_contrastive_negative_pairs = 0
+        self.last_contrastive_additional_flops = 0
+        if contrastive_active and memory is not None:
+            query_ids = inputs["contrastive_ids"]
+            negative_pairs = self.contrastive_memory.usable_negative_pairs(
+                query_ids
+            )
+            if negative_pairs > 0:
+                memory_vision, memory_text, memory_ids = memory
+                inputs["contrastive"] = True
+                inputs["contrastive_vision_keys"] = memory_vision
+                inputs["contrastive_text_keys"] = memory_text
+                inputs["contrastive_key_ids"] = memory_ids
+                self.last_contrastive_negative_pairs = negative_pairs
+                self.last_contrastive_additional_flops = (
+                    12
+                    * int(query_ids.shape[0])
+                    * len(self.contrastive_memory)
+                    * int(memory_vision.shape[1])
+                )
         output = self.student(**inputs)
         losses = dict(output.losses)
+        if (
+            contrastive_active
+            and update_contrastive_memory
+            and output.vision_embeddings is not None
+            and output.text_embeddings is not None
+        ):
+            self.contrastive_memory.enqueue(
+                output.vision_embeddings,
+                output.text_embeddings,
+                inputs["contrastive_ids"],
+            )
+        self.last_contrastive_memory_size = len(self.contrastive_memory)
         if teacher_signals is not None:
             losses.update(
                 self.distillation_loss(
@@ -803,7 +1022,12 @@ def _run_gradient_conflict_probe(
     )
     try:
         with _autocast_context(context.device, precision):
-            _, losses = module(batch, teacher_signals, loss_weights)
+            _, losses = module(
+                batch,
+                teacher_signals,
+                loss_weights,
+                update_contrastive_memory=False,
+            )
         return _gradient_conflict_statistics(
             losses,
             loss_weights,
@@ -920,14 +1144,25 @@ def _save_checkpoint(
         "python": random.getstate(),
         "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
     }
+    local_contrastive_memory = module.contrastive_memory.state_dict()
     rng_states: list[dict[str, Any] | None] | None
+    contrastive_memory_states: list[dict[str, Any] | None] | None
     if context.world_size > 1:
         import torch.distributed as dist
 
         rng_states = [None] * context.world_size if context.is_main else None
+        contrastive_memory_states = (
+            [None] * context.world_size if context.is_main else None
+        )
         dist.gather_object(local_rng_state, rng_states, dst=0)
+        dist.gather_object(
+            local_contrastive_memory,
+            contrastive_memory_states,
+            dst=0,
+        )
     else:
         rng_states = [local_rng_state]
+        contrastive_memory_states = [local_contrastive_memory]
     if not context.is_main:
         return target
 
@@ -964,6 +1199,7 @@ def _save_checkpoint(
             else None
         ),
         "rng_states": rng_states,
+        "contrastive_memory_states": contrastive_memory_states,
         "adaptive_mixture": (
             adaptive_controller.state_dict()
             if adaptive_controller is not None
@@ -1095,6 +1331,20 @@ def _load_checkpoint(
         if state is None:
             raise ValueError("checkpoint has no distillation projector state")
         module.distillation_loss.load_state_dict(state)
+    memory_states = payload.get("contrastive_memory_states")
+    if memory_states is None or len(memory_states) != context.world_size:
+        raise ValueError(
+            "checkpoint does not contain contrastive memory for every active rank"
+        )
+    rank_memory = memory_states[context.rank]
+    if rank_memory is None:
+        raise ValueError(
+            f"checkpoint has no contrastive memory for rank {context.rank}"
+        )
+    module.contrastive_memory.load_state_dict(
+        rank_memory,
+        device=context.device,
+    )
     rng_states = payload.get("rng_states")
     if rng_states is None or len(rng_states) != context.world_size:
         raise ValueError("checkpoint does not contain RNG state for every active rank")
@@ -1210,6 +1460,7 @@ def train_student(
         student,
         distillation_loss,
         config.box_iou_loss,
+        config.contrastive_memory,
     ).to(context.device)
     if teacher is not None:
         teacher.model.to(context.device)
@@ -1467,7 +1718,10 @@ def train_student(
                     else ()
                 ),
             )
-            accumulated_student_flops += batch_flops.algorithmic
+            accumulated_student_flops += (
+                batch_flops.algorithmic
+                + module.last_contrastive_additional_flops
+            )
             accumulated_checkpoint_recompute_flops += (
                 batch_flops.checkpoint_recompute
             )
@@ -1591,6 +1845,12 @@ def train_student(
                     ),
                     "train/curriculum_progress": curriculum_progress,
                     "train/box_iou_loss": config.box_iou_loss,
+                    "train/contrastive_memory_size": float(
+                        module.last_contrastive_memory_size
+                    ),
+                    "train/contrastive_negative_pairs": float(
+                        module.last_contrastive_negative_pairs
+                    ),
                     "train/visual_attention_backend": (
                         module.student.last_visual_attention_backend
                     ),

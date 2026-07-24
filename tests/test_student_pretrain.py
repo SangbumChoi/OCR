@@ -21,7 +21,12 @@ class _Tokenizer:
         return [3 + ord(character) % 240 for character in text]
 
 
-def _loader(visual_sequence_mode="dense", batch_size=1):
+def _loader(
+    visual_sequence_mode="dense",
+    batch_size=1,
+    *,
+    contrastive=False,
+):
     from PIL import Image
     from torch.utils.data import DataLoader
 
@@ -53,7 +58,7 @@ def _loader(visual_sequence_mode="dense", batch_size=1):
             vocab_size=256,
             rotation_probability=1.0,
             augmentation_seed=19,
-            contrastive=False,
+            contrastive=contrastive,
             visual_sequence_mode=visual_sequence_mode,
         ),
     )
@@ -200,6 +205,97 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
         assert torch.equal(expected, resumed.state_dict()[name]), name
 
 
+def test_contrastive_memory_batch_one_resume_matches_uninterrupted(tmp_path):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import (
+        ContrastiveMemoryConfig,
+        train_student,
+    )
+
+    torch.manual_seed(71)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    uninterrupted = copy.deepcopy(initial)
+    resumed = copy.deepcopy(initial)
+    memory = ContrastiveMemoryConfig(
+        enabled=True,
+        size=3,
+        min_negatives=1,
+    )
+    full_config = replace(
+        _config(tmp_path / "memory-full", max_steps=4),
+        loss_weights={
+            "autoregressive": 1.0,
+            "orientation": 0.1,
+            "box_regression": 0.2,
+            "region_text_contrastive": 0.1,
+        },
+        contrastive_memory=memory,
+    )
+    resume_config = replace(
+        full_config,
+        output_dir=str(tmp_path / "memory-resume"),
+    )
+
+    train_student(
+        uninterrupted,
+        _loader(contrastive=True),
+        full_config,
+    )
+    train_student(
+        resumed,
+        _loader(contrastive=True),
+        replace(resume_config, max_steps=2),
+    )
+    train_student(
+        resumed,
+        _loader(contrastive=True),
+        replace(resume_config, resume_from="latest"),
+    )
+
+    for name, expected in uninterrupted.state_dict().items():
+        assert torch.equal(expected, resumed.state_dict()[name]), name
+    full_state = torch.load(
+        tmp_path
+        / "memory-full"
+        / "checkpoints"
+        / "step-00000004"
+        / "training_state.pt",
+        weights_only=False,
+    )
+    resumed_state = torch.load(
+        tmp_path
+        / "memory-resume"
+        / "checkpoints"
+        / "step-00000004"
+        / "training_state.pt",
+        weights_only=False,
+    )
+    full_memory = full_state["contrastive_memory_states"][0]
+    resumed_memory = resumed_state["contrastive_memory_states"][0]
+    assert torch.equal(full_memory["ids"], resumed_memory["ids"])
+    assert torch.equal(full_memory["vision"], resumed_memory["vision"])
+    assert torch.equal(full_memory["text"], resumed_memory["text"])
+    records = [
+        json.loads(line)
+        for line in (
+            tmp_path / "memory-full" / "metrics.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    train_records = [record for record in records if record["kind"] == "train"]
+    assert train_records[0]["train/contrastive_negative_pairs"] == 0
+    assert train_records[1]["train/contrastive_negative_pairs"] > 0
+    first_step_flops = train_records[0]["train/student_flops_seen"]
+    second_step_flops = (
+        train_records[1]["train/student_flops_seen"] - first_step_flops
+    )
+    assert second_step_flops > first_step_flops
+
+
 def test_gradient_conflict_probe_preserves_training_trajectory(tmp_path):
     from dataclasses import replace
 
@@ -210,13 +306,28 @@ def test_gradient_conflict_probe_preserves_training_trajectory(tmp_path):
         GradientConflictProbeConfig,
     )
     from docvlm_eval.student.model import DocumentVLMStudent
-    from docvlm_eval.student.pretrain import train_student
+    from docvlm_eval.student.pretrain import (
+        ContrastiveMemoryConfig,
+        train_student,
+    )
 
     torch.manual_seed(59)
     initial = DocumentVLMStudent(StudentConfig.tiny())
     control = copy.deepcopy(initial)
     probed = copy.deepcopy(initial)
-    base_config = _config(tmp_path / "probe-control", max_steps=2)
+    base_config = replace(
+        _config(tmp_path / "probe-control", max_steps=2),
+        loss_weights={
+            "autoregressive": 1.0,
+            "orientation": 0.1,
+            "box_regression": 0.2,
+            "region_text_contrastive": 0.1,
+        },
+        contrastive_memory=ContrastiveMemoryConfig(
+            enabled=True,
+            size=4,
+        ),
+    )
     probe_config = replace(
         base_config,
         output_dir=str(tmp_path / "probe-enabled"),
@@ -226,8 +337,8 @@ def test_gradient_conflict_probe_preserves_training_trajectory(tmp_path):
         ),
     )
 
-    train_student(control, _loader(), base_config)
-    train_student(probed, _loader(), probe_config)
+    train_student(control, _loader(contrastive=True), base_config)
+    train_student(probed, _loader(contrastive=True), probe_config)
 
     for name, expected in control.state_dict().items():
         assert torch.equal(expected, probed.state_dict()[name]), name
@@ -757,6 +868,26 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.adaptive_mixture.step_size == 0.5
     assert config.gradient_conflict_probe.enabled is False
     assert config.gradient_conflict_probe.every_steps == 1000
+    assert config.contrastive_memory.enabled is True
+    assert config.contrastive_memory.size == 1024
+    assert config.contrastive_memory.min_negatives == 16
+    assert config.contrastive_memory.scope == "local_fifo"
+
+
+def test_pretrain_config_rejects_invalid_contrastive_memory_contract():
+    from docvlm_eval.student.pretrain import (
+        ContrastiveMemoryConfig,
+        PretrainConfig,
+    )
+
+    with pytest.raises(ValueError, match="positive size"):
+        PretrainConfig(
+            output_dir="unused",
+            contrastive_memory=ContrastiveMemoryConfig(
+                enabled=True,
+                size=0,
+            ),
+        )
 
 
 def test_pretrain_config_rejects_invalid_adaptive_mixture_contract(tmp_path):
@@ -821,6 +952,36 @@ def test_supervision_contract_rejects_silent_online_teacher_mismatch(tmp_path):
         )
 
 
+def test_supervision_contract_rejects_unusable_contrastive_memory(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.pretrain import (
+        ContrastiveMemoryConfig,
+        pretraining_supervision_contract,
+    )
+
+    base = replace(
+        _config(tmp_path, max_steps=1),
+        contrastive_memory=ContrastiveMemoryConfig(
+            enabled=True,
+            size=4,
+        ),
+    )
+    with pytest.raises(ValueError, match="requires an active"):
+        pretraining_supervision_contract(
+            base,
+            has_online_teacher=False,
+        )
+    with pytest.raises(ValueError, match="warmup requires another"):
+        pretraining_supervision_contract(
+            replace(
+                base,
+                loss_weights={"region_text_contrastive": 1.0},
+            ),
+            has_online_teacher=False,
+        )
+
+
 def test_checkpoint_records_resolved_supervision_contract(tmp_path):
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
@@ -846,6 +1007,7 @@ def test_checkpoint_records_resolved_supervision_contract(tmp_path):
     assert contract["has_online_teacher"] is False
     assert contract["online_teacher_losses"] == []
     assert contract["box_iou_loss"] == "giou"
+    assert contract["contrastive_memory"]["enabled"] is False
     assert contract["stages"][0]["active_losses"] == [
         "autoregressive",
         "box_regression",

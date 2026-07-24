@@ -59,6 +59,18 @@ def visual_model_inputs(batch: dict[str, Any]) -> dict[str, Any]:
     return {key: batch[key] for key in VISUAL_MODEL_INPUTS if key in batch}
 
 
+def stable_contrastive_id(example: "StudentExample") -> int:
+    """Return a stable signed-int64 ID for same-image positive matching."""
+
+    image_identity = example.image_key or example.sample_id
+    digest = hashlib.blake2b(
+        f"{example.source}\0{image_identity}".encode("utf-8"),
+        digest_size=8,
+        person=b"docvlm-id",
+    ).digest()
+    return int.from_bytes(digest, "big") & ((1 << 63) - 1)
+
+
 @dataclass(frozen=True)
 class StudentExample:
     """One image-text objective, optionally carrying a single evidence box."""
@@ -836,15 +848,8 @@ class StudentCollator:
             batch["pixel_values"] = pixel_values
             batch["pixel_mask"] = pixel_mask
             batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
-            image_ids: dict[str, int] = {}
             batch["contrastive_ids"] = torch.tensor(
-                [
-                    image_ids.setdefault(
-                        example.image_key or example.sample_id,
-                        len(image_ids),
-                    )
-                    for example in examples
-                ],
+                [stable_contrastive_id(example) for example in examples],
                 dtype=torch.long,
             )
         elif (
@@ -875,15 +880,8 @@ class StudentCollator:
                 self.config.packed_attention_backend
             )
             batch["orientation_labels"] = torch.tensor(orientations, dtype=torch.long)
-            image_ids: dict[str, int] = {}
             batch["contrastive_ids"] = torch.tensor(
-                [
-                    image_ids.setdefault(
-                        example.image_key or example.sample_id,
-                        len(image_ids),
-                    )
-                    for example in examples
-                ],
+                [stable_contrastive_id(example) for example in examples],
                 dtype=torch.long,
             )
         if any(box is not None for box in canvas_boxes):

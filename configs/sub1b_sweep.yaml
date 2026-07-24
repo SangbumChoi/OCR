@@ -130,6 +130,9 @@ variants:
     hypothesis: "Measures the contribution of contrastive, box, and orientation auxiliary losses."
     blueprint_patches:
       - op: replace
+        path: /training/pretraining/contrastive_memory/enabled
+        value: false
+      - op: replace
         path: /training/pretraining/losses/region_text_contrastive
         value: 0.0
       - op: replace

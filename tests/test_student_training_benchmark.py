@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from docvlm_eval.student.config import StudentConfig
+from docvlm_eval.student.pretrain import ContrastiveMemoryConfig
 from docvlm_eval.student.training_benchmark import (
     TrainingBenchmarkConfig,
     run_training_feasibility_benchmark,
@@ -43,11 +44,17 @@ def test_cpu_training_probe_executes_full_optimizer_step():
         max_grad_norm=1.0,
         contrastive=True,
         box_iou_loss="ciou",
+        contrastive_memory=ContrastiveMemoryConfig(
+            enabled=True,
+            size=2,
+            min_negatives=1,
+        ),
     )
 
     assert report["schema_version"] == 1
     assert report["scope"] == "full_student_multimodal_training_step"
     assert report["benchmark_config"]["box_iou_loss"] == "ciou"
+    assert report["benchmark_config"]["contrastive_memory"]["enabled"] is True
     assert report["status"] == "ok"
     assert report["resolved_visual_attention_backend"] == "loop"
     assert report["gradient_checkpointing"] == {
@@ -72,6 +79,10 @@ def test_cpu_training_probe_executes_full_optimizer_step():
     assert report["optimizer_state"]["tensor_bytes"] > 0
     assert report["optimizer_state"]["max_step"] == 1
     assert report["median_step_ms"] > 0
+    measured = report["measured_steps"][0]
+    assert measured["contrastive_memory_size"] == 2
+    assert measured["contrastive_negative_pairs"] == 2
+    assert measured["contrastive_additional_flops"] > 0
     assert report["effective_peak_memory"] is None
     json.dumps(report)
 

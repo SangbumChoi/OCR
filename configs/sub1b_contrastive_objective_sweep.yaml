@@ -50,6 +50,7 @@ matched_controls:
   - {document: blueprint, path: /training/pretraining/data_mix}
   - {document: blueprint, path: /training/pretraining/losses}
   - {document: blueprint, path: /training/pretraining/box_iou_loss}
+  - {document: blueprint, path: /training/pretraining/contrastive_memory}
   - {document: blueprint, path: /training/pretraining/curriculum}
   - {document: blueprint, path: /training/pretraining/optimizer}
   - {document: blueprint, path: /training/pretraining/optimizer/seed}

@@ -209,6 +209,9 @@ training_feasibility/optimizer_max_step
 training_feasibility/algorithmic_flops_per_microbatch
 training_feasibility/checkpoint_recompute_flops_per_microbatch
 training_feasibility/executed_flops_per_microbatch
+training_feasibility/contrastive_memory_size
+training_feasibility/contrastive_negative_pairs
+training_feasibility/contrastive_additional_flops
 ```
 
 Compare these runs only when `student_config_fingerprint`, patch grid, text-token dose,
@@ -217,6 +220,9 @@ that the benchmark returned, while `gate_pass=1` additionally proves the configu
 numerical, optimizer-step, and memory-headroom contract.
 The algorithmic count remains the compute-matching estimand; the executed count adds the estimated
 forward-block recomputation caused by the reported activation-checkpointing placement.
+The production benchmark pre-fills the configured contrastive FIFO to capacity before measured
+steps, so its negative-pair, latency, and peak-memory evidence represents steady state rather than
+an empty-queue first step.
 
 ## 7. Glossary — every term you'll see
 

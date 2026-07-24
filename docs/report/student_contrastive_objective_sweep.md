@@ -17,6 +17,11 @@ positive and negative pair terms and divides by local batch size. It therefore d
 softmax normalization over a global device batch. The initial temperature is `0.07`, the initial
 bias is `-10.0`, and the exponential logit scale is capped at `100` for numerical stability.
 
+Both objectives still require actual negative pairs. The production microbatch contains one image,
+so both arms use the same exact-resumable local FIFO described in
+[`student_contrastive_memory.md`](student_contrastive_memory.md). This objective sweep is meaningful
+only after `train/contrastive_negative_pairs` becomes nonzero.
+
 Both arms instantiate the same two scalar parameters. The softmax arm leaves the additive bias
 unused because a common bias cancels under softmax. This preserves exact parameter and student-FLOP
 matching while isolating the objective.
@@ -26,7 +31,7 @@ matching while isolating the objective.
 [`configs/sub1b_contrastive_objective_sweep.yaml`](../../configs/sub1b_contrastive_objective_sweep.yaml)
 defines three paired replicates for six runs. It fixes the student, datasets, initialization,
 augmentations, all other losses, curriculum, optimizer, and post-training. It also uses the fixed
-student-FLOP budget from the box-objective sweep.
+student-FLOP budget from the box-objective sweep and holds the contrastive-memory contract fixed.
 
 The primary decision metric is paired heldout quality across OCR, reading order, table, chart, and
 evidence-grounding axes. Also inspect `train/region_text_contrastive`,

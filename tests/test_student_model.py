@@ -79,6 +79,50 @@ def test_siglip_objective_trains_logit_scale_and_bias():
     assert model.contrastive_logit_bias.grad is not None
 
 
+def test_softmax_contrastive_memory_supplies_batch_one_negatives():
+    import torch
+    import torch.nn.functional as F
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(17)
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config)
+    input_ids = torch.randint(0, config.language.vocab_size, (1, 6))
+    pixels = torch.randn(1, 3, 32, 32)
+    width = config.task_heads.contrastive_width
+    memory_vision = F.normalize(torch.randn(1, width), dim=-1)
+    memory_text = F.normalize(torch.randn(1, width), dim=-1)
+
+    same_only = model(
+        input_ids=input_ids,
+        pixel_values=pixels,
+        contrastive=True,
+        contrastive_ids=torch.tensor([11]),
+        contrastive_vision_keys=memory_vision,
+        contrastive_text_keys=memory_text,
+        contrastive_key_ids=torch.tensor([11]),
+    )
+    with_negative = model(
+        input_ids=input_ids,
+        pixel_values=pixels,
+        contrastive=True,
+        contrastive_ids=torch.tensor([11]),
+        contrastive_vision_keys=memory_vision,
+        contrastive_text_keys=memory_text,
+        contrastive_key_ids=torch.tensor([29]),
+    )
+
+    assert float(
+        same_only.losses["region_text_contrastive"].detach()
+    ) == pytest.approx(0.0)
+    assert with_negative.losses["region_text_contrastive"] > 0
+    with_negative.loss.backward()
+    assert model.vision_projection.weight.grad is not None
+    assert model.text_projection.weight.grad is not None
+
+
 def test_average_pool_connector_matches_dense_and_packed_sequences():
     import torch
 

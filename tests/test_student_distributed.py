@@ -26,7 +26,11 @@ def _distributed_resume_worker(rank: int, world_size: int, port: int, root: str)
 
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
-    from docvlm_eval.student.pretrain import PretrainConfig, train_student
+    from docvlm_eval.student.pretrain import (
+        ContrastiveMemoryConfig,
+        PretrainConfig,
+        train_student,
+    )
 
     os.environ.update(
         {
@@ -37,14 +41,19 @@ def _distributed_resume_worker(rank: int, world_size: int, port: int, root: str)
             "MASTER_PORT": str(port),
         }
     )
-    batch = {
-        "input_ids": torch.tensor([[1, 7, 8, 2]], dtype=torch.long),
-        "attention_mask": torch.ones(1, 4, dtype=torch.long),
-        "labels": torch.tensor([[-100, -100, 8, 2]], dtype=torch.long),
-    }
+    def batch(index: int):
+        return {
+            "input_ids": torch.tensor([[1, 7, 8, 2]], dtype=torch.long),
+            "attention_mask": torch.ones(1, 4, dtype=torch.long),
+            "labels": torch.tensor([[-100, -100, 8, 2]], dtype=torch.long),
+            "pixel_values": torch.zeros(1, 3, 16, 16),
+            "pixel_mask": torch.ones(1, 16, 16, dtype=torch.bool),
+            "contrastive": False,
+            "contrastive_ids": torch.tensor([rank * 100 + index]),
+        }
 
     def loader():
-        return DataLoader([batch, batch], batch_size=None)
+        return DataLoader([batch(0), batch(1)], batch_size=None)
 
     def config(output: Path, max_steps: int, resume: str | None = None):
         return PretrainConfig(
@@ -64,7 +73,15 @@ def _distributed_resume_worker(rank: int, world_size: int, port: int, root: str)
             device="cpu",
             resume_from=resume,
             tokenizer_fingerprint="sha256:distributed-test",
-            loss_weights={"autoregressive": 1.0},
+            loss_weights={
+                "autoregressive": 1.0,
+                "region_text_contrastive": 0.1,
+            },
+            contrastive_memory=ContrastiveMemoryConfig(
+                enabled=True,
+                size=4,
+                min_negatives=1,
+            ),
         )
 
     model_config = StudentConfig.tiny()
@@ -97,6 +114,10 @@ def _distributed_resume_worker(rank: int, world_size: int, port: int, root: str)
         )
         assert len(payload["rng_states"]) == world_size
         assert all(state is not None for state in payload["rng_states"])
+        memory_states = payload["contrastive_memory_states"]
+        assert len(memory_states) == world_size
+        assert memory_states[0]["ids"].tolist() == [0, 1]
+        assert memory_states[1]["ids"].tolist() == [100, 101]
     dist.destroy_process_group()
 
 

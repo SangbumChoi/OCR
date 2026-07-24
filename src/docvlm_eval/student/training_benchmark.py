@@ -12,9 +12,10 @@ from typing import Any, Literal
 import torch
 
 from .config import StudentConfig, student_config_fingerprint
-from .compute import estimate_batch_training_flops_breakdown
+from .compute import TrainingFlops, estimate_batch_training_flops_breakdown
 from .model import DocumentVLMStudent
 from .pretrain import (
+    ContrastiveMemoryConfig,
     PretrainingModule,
     _autocast_context,
     _parameter_groups,
@@ -320,6 +321,13 @@ def _run_step(
         "grad_scale_before": scale_before,
         "grad_scale_after": float(scaler.get_scale()),
         "optimizer_state": after_state,
+        "contrastive_memory_size": module.last_contrastive_memory_size,
+        "contrastive_negative_pairs": (
+            module.last_contrastive_negative_pairs
+        ),
+        "contrastive_additional_flops": (
+            module.last_contrastive_additional_flops
+        ),
     }
 
 
@@ -335,10 +343,15 @@ def run_training_feasibility_benchmark(
     max_grad_norm: float,
     contrastive: bool,
     box_iou_loss: str = "giou",
+    contrastive_memory: ContrastiveMemoryConfig | None = None,
 ) -> dict[str, Any]:
     """Run real full-student micro-steps and retain evidence even on OOM."""
 
     config.validate(student_config)
+    resolved_memory = contrastive_memory or ContrastiveMemoryConfig()
+    resolved_memory.validate()
+    if resolved_memory.enabled and not contrastive:
+        raise ValueError("contrastive memory requires contrastive batches")
     device = _resolve_device(config.device)
     precision = _resolved_precision(config.precision, device)
     environment = _environment(device)
@@ -360,6 +373,9 @@ def run_training_feasibility_benchmark(
             "max_grad_norm": max_grad_norm,
             "contrastive": contrastive,
             "box_iou_loss": box_iou_loss,
+            "contrastive_memory": (
+                resolved_memory.to_dict()
+            ),
         },
         "environment": environment,
         "parameter_count": None,
@@ -403,8 +419,45 @@ def run_training_feasibility_benchmark(
         module = PretrainingModule(
             student,
             box_iou_loss_kind=box_iou_loss,
+            contrastive_memory=resolved_memory,
         ).to(device)
         module.train()
+        if module.contrastive_memory.config.enabled:
+            width = student_config.task_heads.contrastive_width
+            capacity = module.contrastive_memory.config.size
+            memory_dtype = {
+                "float16": torch.float16,
+                "bfloat16": torch.bfloat16,
+            }.get(precision, torch.float32)
+            memory_vision = torch.nn.functional.normalize(
+                torch.randn(
+                    capacity,
+                    width,
+                    device=device,
+                    dtype=memory_dtype,
+                ),
+                dim=-1,
+            )
+            memory_text = torch.nn.functional.normalize(
+                torch.randn(
+                    capacity,
+                    width,
+                    device=device,
+                    dtype=memory_dtype,
+                ),
+                dim=-1,
+            )
+            memory_ids = torch.arange(
+                1_000_000,
+                1_000_000 + capacity,
+                dtype=torch.long,
+                device=device,
+            )
+            module.contrastive_memory.enqueue(
+                memory_vision,
+                memory_text,
+                memory_ids,
+            )
         report["parameter_count"] = _unique_parameter_count(module)
         optimizer = torch.optim.AdamW(
             _parameter_groups(module, weight_decay),
@@ -430,6 +483,17 @@ def run_training_feasibility_benchmark(
                 else ()
             ),
         )
+        if module.contrastive_memory.config.enabled:
+            additional = (
+                12
+                * config.micro_batch_size
+                * len(module.contrastive_memory)
+                * student_config.task_heads.contrastive_width
+            )
+            training_flops = TrainingFlops(
+                algorithmic=training_flops.algorithmic + additional,
+                checkpoint_recompute=training_flops.checkpoint_recompute,
+            )
         report["training_flops_per_microbatch"] = (
             training_flops.to_dict()
         )

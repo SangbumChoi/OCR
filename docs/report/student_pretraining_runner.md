@@ -106,6 +106,11 @@ for compute matching. Changing checkpoint placement therefore does not silently 
 model optimization. The two additional counters expose the runtime compute cost of that memory
 choice, and all three counters resume exactly from checkpoint state.
 
+The algorithmic counter also charges cross-microbatch contrastive similarity matmuls. Production
+uses one image per microbatch, so a detached local FIFO supplies negatives without retaining prior
+activation graphs. Queue state is saved per rank, restored exactly, and included in the supervision
+contract. See [`student_contrastive_memory.md`](student_contrastive_memory.md).
+
 ## Fail-closed supervision
 
 The default DAG uses cross-tokenizer LFM outputs as quality-gated offline sequence targets.
@@ -120,7 +125,8 @@ gold/offline-teacher target counts, and the box IoU-family objective. Exact resu
 supervision contract. The paired leave-one-loss-out design is
 [`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); the matched softmax and
 SigLIP comparison is
-[`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md), while the GIoU,
+[`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md), the memory
+necessity test is [`student_contrastive_memory.md`](student_contrastive_memory.md), and the GIoU,
 DIoU, and CIoU comparison is
 [`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md).
 

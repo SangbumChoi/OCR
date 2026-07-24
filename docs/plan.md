@@ -146,6 +146,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Choose the contrastive objective:**
   [`report/student_contrastive_objective_sweep.md`](report/student_contrastive_objective_sweep.md) —
   paired fixed-compute SigLIP versus multi-positive softmax alignment.
+- **Supply real contrastive negatives:**
+  [`report/student_contrastive_memory.md`](report/student_contrastive_memory.md) — stable
+  same-image IDs, an exact-resumable per-rank FIFO for one-image microbatches, explicit negative
+  telemetry, compute accounting, and a two-arm by three-seed matched sweep.
 - **Choose the connector family:**
   [`report/student_connector_family_sweep.md`](report/student_connector_family_sweep.md) —
   compute-matched gated attention pooling versus an ordered average-pool projector.

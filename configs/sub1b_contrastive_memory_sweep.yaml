@@ -1,12 +1,31 @@
-# One-loss-at-a-time native pretraining ablations by three paired replicates.
+# Batch-only contrastive learning versus a local memory queue by three paired replicates.
 
 schema_version: 1
-name: docvlm-pretraining-loss-ablation
+name: docvlm-contrastive-memory-ablation
 base_experiment: configs/sub1b_experiment.yaml
-output_root: outputs/sweeps/docvlm-pretraining-loss-ablation
-baseline: full_objective
+output_root: outputs/sweeps/docvlm-contrastive-memory-ablation
+baseline: memory_1024
+
+shared_experiment_patches:
+  - {op: add, path: /evaluation/wandb_tags/-, value: pretraining-ablation}
+  - {op: add, path: /evaluation/wandb_tags/-, value: contrastive-memory-ablation}
+
+shared_blueprint_patches:
+  - {op: replace, path: /training/pretraining/optimizer/epochs, value: null}
+  - {op: replace, path: /training/pretraining/optimizer/max_steps, value: null}
+  - {op: replace, path: /training/pretraining/optimizer/stop_at_total_tokens, value: false}
+  - {op: replace, path: /training/pretraining/optimizer/warmup_student_flops, value: 828349158744834946}
+  - {op: replace, path: /training/pretraining/optimizer/total_student_flops, value: 165669831748966989312}
+  - {op: replace, path: /training/pretraining/optimizer/stop_at_student_flops, value: true}
+  - {op: replace, path: /training/pretraining/optimizer/schedule_unit, value: student_flops}
+  - {op: replace, path: /training/pretraining/curriculum/unit, value: training_compute_fraction}
 
 matched_controls:
+  - {document: blueprint, path: /student/vision}
+  - {document: blueprint, path: /student/language}
+  - {document: blueprint, path: /student/connector}
+  - {document: blueprint, path: /student/task_heads}
+  - {document: blueprint, path: /tokenizer}
   - {document: experiment, path: /initialization/seed}
   - {document: experiment, path: /synthetic/count}
   - {document: experiment, path: /synthetic/train_count}
@@ -14,21 +33,27 @@ matched_controls:
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
   - {document: experiment, path: /data/components}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
   - {document: experiment, path: /pretraining/max_steps}
-  - {document: experiment, path: /posttraining/sft/max_steps}
-  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /posttraining}
   - {document: experiment, path: /evaluation/max_samples}
   - {document: experiment, path: /evaluation/seed}
-  - {document: experiment, path: /sequence_teacher/seed}
-  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline}
   - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/distillation}
+  - {document: blueprint, path: /training/pretraining/data_mix}
+  - {document: blueprint, path: /training/pretraining/losses}
+  - {document: blueprint, path: /training/pretraining/box_iou_loss}
+  - {document: blueprint, path: /training/pretraining/curriculum}
+  - {document: blueprint, path: /training/pretraining/optimizer}
   - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/contrastive_memory/size}
+  - {document: blueprint, path: /training/pretraining/contrastive_memory/min_negatives}
+  - {document: blueprint, path: /training/pretraining/contrastive_memory/scope}
+  - {document: blueprint, path: /training/activation_checkpointing}
   - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
-  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
-  - {document: blueprint, path: /training/pretraining/optimizer/epochs}
-  - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
-  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/max_steps}
 
 replicate_controls:
   - {document: experiment, path: /initialization/seed}
@@ -86,42 +111,10 @@ replicates:
       - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
 
 variants:
-  - id: full_objective
-    hypothesis: "Reference offline sequence distillation plus every active native pretraining loss."
-    experiment_patches:
-      - {op: add, path: /evaluation/wandb_tags/-, value: loss-ablation}
+  - id: memory_1024
+    hypothesis: "A detached FIFO supplies effective cross-document negatives at production micro-batch size one and improves heldout document alignment."
 
-  - id: no_autoregressive
-    hypothesis: "Tests whether dense spatial objectives can bootstrap useful document representations without token cross-entropy."
-    experiment_patches:
-      - {op: add, path: /evaluation/wandb_tags/-, value: loss-ablation}
+  - id: batch_only
+    hypothesis: "Batch-only contrastive learning is sufficient despite the one-image production microbatch."
     blueprint_patches:
-      - {op: replace, path: /training/pretraining/losses/autoregressive, value: 0.0}
-
-  - id: no_region_text_contrastive
-    hypothesis: "Measures whether global region-text alignment improves heldout grounding and dense recognition."
-    experiment_patches:
-      - {op: add, path: /evaluation/wandb_tags/-, value: loss-ablation}
-    blueprint_patches:
-      - {op: replace, path: /training/pretraining/losses/region_text_contrastive, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/region_text_contrastive, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/region_text_contrastive, value: 0.0}
       - {op: replace, path: /training/pretraining/contrastive_memory/enabled, value: false}
-
-  - id: no_box_regression
-    hypothesis: "Measures the causal contribution of coordinate supervision to extraction and relational grounding."
-    experiment_patches:
-      - {op: add, path: /evaluation/wandb_tags/-, value: loss-ablation}
-    blueprint_patches:
-      - {op: replace, path: /training/pretraining/losses/box_regression, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/box_regression, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/box_regression, value: 0.0}
-
-  - id: no_orientation
-    hypothesis: "Measures whether explicit page orientation supervision improves reading order and rotation robustness."
-    experiment_patches:
-      - {op: add, path: /evaluation/wandb_tags/-, value: loss-ablation}
-    blueprint_patches:
-      - {op: replace, path: /training/pretraining/losses/orientation, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/0/loss_weights/orientation, value: 0.0}
-      - {op: replace, path: /training/pretraining/curriculum/stages/2/loss_weights/orientation, value: 0.0}

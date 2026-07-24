@@ -231,8 +231,54 @@ def test_contrastive_objective_sweep_compiles_paired_fixed_compute_arms(
         assert heads["contrastive_objective"] == variant.arm_id
         assert heads["contrastive_temperature"] == 0.07
         assert heads["contrastive_bias_init"] == -10.0
+        memory = variant.plan.resolved_blueprint["training"]["pretraining"][
+            "contrastive_memory"
+        ]
+        assert memory["enabled"] is True
+        assert memory["size"] == 1024
         assert variant.parameters["total"] == 799_919_884
         assert "contrastive-objective-ablation" in (
+            variant.plan.raw_spec["evaluation"]["wandb_tags"]
+        )
+
+
+def test_contrastive_memory_sweep_compiles_paired_fixed_compute_arms(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_contrastive_memory_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "contrastive-memory-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "memory_1024"
+    for variant in plan.variants:
+        memory = variant.plan.resolved_blueprint["training"]["pretraining"][
+            "contrastive_memory"
+        ]
+        assert memory["enabled"] is (variant.arm_id == "memory_1024")
+        assert memory["size"] == 1024
+        assert memory["min_negatives"] == 16
+        optimizer = variant.plan.resolved_blueprint["training"][
+            "pretraining"
+        ]["optimizer"]
+        assert optimizer["schedule_unit"] == "student_flops"
+        assert optimizer["stop_at_student_flops"] is True
+        assert "contrastive-memory-ablation" in (
             variant.plan.raw_spec["evaluation"]["wandb_tags"]
         )
 

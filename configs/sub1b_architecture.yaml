@@ -218,6 +218,13 @@ training:
             region_text_contrastive: 0.10
             box_regression: 0.25
             orientation: 0.03
+    # Production uses one image per microbatch. A detached per-rank FIFO makes
+    # SigLIP/InfoNCE see real negatives without increasing activation memory.
+    contrastive_memory:
+      enabled: true
+      size: 1024
+      min_negatives: 16
+      scope: local_fifo
     # Diagnostic-only. It restores RNG state and never writes optimizer
     # gradients; enable it in the replicated conflict audit.
     gradient_conflict_probe:

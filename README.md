@@ -268,6 +268,9 @@ python scripts/build_sub1b_student.py --device meta
 Exact-shape SigLIP/Llama-style blocks can be depth-mapped and copied; incompatible dimensions stay
 random and are reserved for feature/logit distillation. See
 [`docs/report/sub1b_architecture_blueprint.md`](docs/report/sub1b_architecture_blueprint.md).
+The one-image production microbatch uses an exact-resumable local contrastive memory so the
+alignment head sees real cross-document negatives; see
+[`docs/report/student_contrastive_memory.md`](docs/report/student_contrastive_memory.md).
 The default input path uses per-image packed patch sequences with stable 2D positions. Its paired
 dense adaptive, aspect-bucketed, and fixed-square controls and visual-padding efficiency
 measurements are documented in

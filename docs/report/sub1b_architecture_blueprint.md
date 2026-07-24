@@ -168,7 +168,11 @@ back to gold.
 
 The UDD collator removes two subtle leakage/error paths. Box predictions pool the hidden state at
 the end of the prompt, before any gold box tokens, and mixed QA views from the same image are
-multi-positive pairs rather than false negatives in the contrastive objective.
+multi-positive pairs rather than false negatives in the contrastive objective. Because production
+uses one image per microbatch, a detached per-rank FIFO supplies cross-microbatch negatives; stable
+source-plus-image IDs preserve same-image positives across queue entries. The exact-resumable
+contract and matched ablation are documented in
+[`student_contrastive_memory.md`](student_contrastive_memory.md).
 
 ## Step 2: post-training
 
