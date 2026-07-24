@@ -29,7 +29,7 @@ def test_blueprint_language_mixer_fields_are_backward_compatible():
     estimates, errors = validate_blueprint(blueprint)
 
     assert errors == []
-    assert estimates["total"] == 799_919_882
+    assert estimates["total"] == 799_919_884
 
 
 def test_blueprint_rejects_non_integer_attention_layer_indices():
@@ -75,6 +75,9 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     sequence_targets["min_score"] = -0.1
     sequence_targets["seed"] = -1
     blueprint["tokenizer"]["vocab_size"] = 32000
+    blueprint["student"]["task_heads"]["contrastive_objective"] = "cosine"
+    blueprint["student"]["task_heads"]["contrastive_temperature"] = 0.0
+    blueprint["student"]["task_heads"]["contrastive_bias_init"] = float("nan")
 
     _, errors = validate_blueprint(blueprint)
 
@@ -94,6 +97,9 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("sequence_targets.min_score" in error for error in errors)
     assert any("sequence_targets.seed" in error for error in errors)
     assert any("tokenizer.vocab_size must match" in error for error in errors)
+    assert any("contrastive_objective" in error for error in errors)
+    assert any("contrastive_temperature" in error for error in errors)
+    assert any("contrastive_bias_init" in error for error in errors)
 
 
 def test_packed_visual_sequences_reject_redundant_aspect_bucketing():

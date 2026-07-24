@@ -256,7 +256,7 @@ def _training_report(
             "device_name": "test-gpu",
             "device_total_memory_bytes": 40 * 1024**3,
         },
-        "parameter_count": 799_919_882,
+        "parameter_count": 799_919_884,
         "status": status,
         "error_type": "OutOfMemoryError" if status != "ok" else None,
         "error": "CUDA out of memory" if status != "ok" else None,

@@ -107,6 +107,7 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
         task_head_params += (
             vd * contrastive_width + contrastive_width
             + ld * contrastive_width + contrastive_width
+            + 2
         )
     if bool(heads.get("orientation")):
         task_head_params += vd * 4 + 4
@@ -618,6 +619,37 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "box_regression",
         "orientation",
     }
+    task_heads = blueprint["student"]["task_heads"]
+    contrastive_objective = task_heads.get(
+        "contrastive_objective",
+        "softmax",
+    )
+    if contrastive_objective not in {"softmax", "siglip"}:
+        errors.append(
+            "student.task_heads.contrastive_objective must be softmax or siglip"
+        )
+    contrastive_temperature = task_heads.get(
+        "contrastive_temperature",
+        0.07,
+    )
+    if (
+        not isinstance(contrastive_temperature, (int, float))
+        or isinstance(contrastive_temperature, bool)
+        or not math.isfinite(float(contrastive_temperature))
+        or float(contrastive_temperature) <= 0
+    ):
+        errors.append(
+            "student.task_heads.contrastive_temperature must be a positive finite number"
+        )
+    contrastive_bias_init = task_heads.get("contrastive_bias_init", -10.0)
+    if (
+        not isinstance(contrastive_bias_init, (int, float))
+        or isinstance(contrastive_bias_init, bool)
+        or not math.isfinite(float(contrastive_bias_init))
+    ):
+        errors.append(
+            "student.task_heads.contrastive_bias_init must be a finite number"
+        )
     box_iou_loss = training["pretraining"].get("box_iou_loss", "giou")
     if (
         not isinstance(box_iou_loss, str)

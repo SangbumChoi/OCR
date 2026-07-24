@@ -143,8 +143,11 @@ unless a native teacher checkpoint is explicitly configured. Losses are logged s
 necessary because a low total loss can hide a connector or vision tower receiving almost no useful
 gradient.
 
-The native model exposes autoregressive, symmetric contrastive, four-way orientation, and normalized
-box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
+The native model exposes autoregressive, selectable SigLIP or symmetric softmax contrastive,
+four-way orientation, and normalized box losses. The default pairwise SigLIP objective and its
+compute-matched softmax control are specified in
+[`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md). Boxes are
+parameterized as start plus non-negative extent, so `x2 >= x1` and
 `y2 >= y1` always hold; training combines smooth L1 with a selectable GIoU, DIoU, or CIoU term.
 GIoU remains the default until the compute-matched
 [`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md) provides heldout evidence. The

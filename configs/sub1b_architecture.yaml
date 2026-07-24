@@ -67,7 +67,9 @@ student:
     orientation: true
     box_regression: true
     contrastive_width: 256
+    contrastive_objective: siglip
     contrastive_temperature: 0.07
+    contrastive_bias_init: -10.0
 
 initialization_arms:
   - id: I0_random

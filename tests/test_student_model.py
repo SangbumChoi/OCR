@@ -51,6 +51,34 @@ def test_tiny_student_multimodal_forward_and_auxiliary_losses():
     assert output.loss is not None and torch.isfinite(output.loss)
 
 
+def test_siglip_objective_trains_logit_scale_and_bias():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(13)
+    config = StudentConfig.tiny()
+    config = replace(
+        config,
+        task_heads=replace(
+            config.task_heads,
+            contrastive_objective="siglip",
+        ),
+    )
+    model = DocumentVLMStudent(config)
+    output = model(
+        input_ids=torch.randint(0, config.language.vocab_size, (2, 6)),
+        pixel_values=torch.randn(2, 3, 32, 32),
+        contrastive=True,
+    )
+
+    assert output.loss is not None and torch.isfinite(output.loss)
+    output.loss.backward()
+    assert model.contrastive_logit_scale.grad is not None
+    assert model.contrastive_logit_bias.grad is not None
+
+
 def test_gradient_checkpointing_preserves_forward_and_backward(monkeypatch):
     import torch
 
@@ -623,7 +651,7 @@ def test_full_meta_model_matches_the_blueprint_estimator():
     actual = count_unique_parameters(model)
     estimated = estimate_parameters(blueprint)
     assert actual == estimated
-    assert actual["total"] == 799_919_882
+    assert actual["total"] == 799_919_884
     assert actual["total"] < 1_000_000_000
 
 

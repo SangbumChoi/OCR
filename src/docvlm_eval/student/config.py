@@ -63,7 +63,9 @@ class TaskHeadConfig:
     orientation: bool = True
     box_regression: bool = True
     contrastive_width: int = 256
+    contrastive_objective: str = "softmax"
     contrastive_temperature: float = 0.07
+    contrastive_bias_init: float = -10.0
 
 
 @dataclass(frozen=True)
@@ -192,6 +194,12 @@ class StudentConfig:
             errors.append(
                 "vision max_position_tokens must form a square two-dimensional grid"
             )
+        if self.task_heads.contrastive_objective not in {"softmax", "siglip"}:
+            errors.append(
+                "task-head contrastive objective must be softmax or siglip"
+            )
+        if self.task_heads.contrastive_temperature <= 0:
+            errors.append("task-head contrastive temperature must be positive")
         return errors
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -779,6 +780,15 @@ def _multi_positive_contrastive_loss(
     return (all_score - positive_score).mean()
 
 
+def _multi_positive_siglip_loss(
+    logits: torch.Tensor,
+    group_ids: torch.Tensor,
+) -> torch.Tensor:
+    positive = group_ids[:, None] == group_ids[None, :]
+    signs = torch.where(positive, 1.0, -1.0).to(dtype=logits.dtype)
+    return -F.logsigmoid(signs * logits).sum() / logits.shape[0]
+
+
 class RotaryEmbedding(nn.Module):
     def __init__(self, head_dim: int, base: float):
         super().__init__()
@@ -1459,7 +1469,17 @@ class DocumentVLMStudent(nn.Module):
         self.box_head = (
             nn.Linear(config.language.width, 4) if heads.box_regression else None
         )
-        self.contrastive_temperature = float(heads.contrastive_temperature)
+        self.contrastive_objective = heads.contrastive_objective
+        if heads.region_text_contrastive:
+            self.contrastive_logit_scale = nn.Parameter(
+                torch.tensor(math.log(1.0 / heads.contrastive_temperature))
+            )
+            self.contrastive_logit_bias = nn.Parameter(
+                torch.tensor(heads.contrastive_bias_init)
+            )
+        else:
+            self.register_parameter("contrastive_logit_scale", None)
+            self.register_parameter("contrastive_logit_bias", None)
         self.apply(self._init_weights)
         nn.init.normal_(self.connector.latents, std=0.02)
         nn.init.zeros_(self.vision.position_embedding)
@@ -1834,22 +1854,31 @@ class DocumentVLMStudent(nn.Module):
                     raise ValueError(
                         "contrastive loss was requested but contrastive heads are disabled"
                     )
-                similarities = (
-                    vision_embeddings @ text_projected.T
-                ) / self.contrastive_temperature
-                if contrastive_ids is None:
-                    targets = torch.arange(
+                if (
+                    self.contrastive_logit_scale is None
+                    or self.contrastive_logit_bias is None
+                ):
+                    raise RuntimeError("contrastive parameters are unavailable")
+                scale = self.contrastive_logit_scale.exp().clamp(max=100.0)
+                similarities = (vision_embeddings @ text_projected.T) * scale
+                group_ids = (
+                    torch.arange(
                         similarities.shape[0],
                         device=similarities.device,
                     )
-                    losses["region_text_contrastive"] = 0.5 * (
-                        F.cross_entropy(similarities, targets)
-                        + F.cross_entropy(similarities.T, targets)
+                    if contrastive_ids is None
+                    else contrastive_ids.to(device=similarities.device)
+                )
+                if group_ids.shape != (similarities.shape[0],):
+                    raise ValueError("contrastive_ids must have shape [batch]")
+                if self.contrastive_objective == "siglip":
+                    losses["region_text_contrastive"] = (
+                        _multi_positive_siglip_loss(
+                            similarities + self.contrastive_logit_bias,
+                            group_ids,
+                        )
                     )
                 else:
-                    group_ids = contrastive_ids.to(device=similarities.device)
-                    if group_ids.shape != (similarities.shape[0],):
-                        raise ValueError("contrastive_ids must have shape [batch]")
                     losses["region_text_contrastive"] = 0.5 * (
                         _multi_positive_contrastive_loss(similarities, group_ids)
                         + _multi_positive_contrastive_loss(
@@ -2207,6 +2236,12 @@ def count_unique_parameters(model: nn.Module) -> dict[str, int]:
         if module is not None
         for parameter in module.parameters()
     }
+    for parameter in (
+        model.contrastive_logit_scale,
+        model.contrastive_logit_bias,
+    ):
+        if parameter is not None:
+            head_parameters[id(parameter)] = parameter
     counts["task_heads"] = sum(parameter.numel() for parameter in head_parameters.values())
     counts["total"] = sum(parameter.numel() for parameter in model.parameters())
     return counts

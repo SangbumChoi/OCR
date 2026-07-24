@@ -393,6 +393,24 @@ def test_multi_positive_contrastive_does_not_make_same_image_views_negatives():
     assert different_images > 0
 
 
+def test_multi_positive_siglip_does_not_make_same_image_views_negatives():
+    import torch
+
+    from docvlm_eval.student.model import _multi_positive_siglip_loss
+
+    logits = torch.tensor([[4.0, 4.0], [4.0, 4.0]])
+    same_image = _multi_positive_siglip_loss(
+        logits,
+        torch.tensor([7, 7]),
+    )
+    different_images = _multi_positive_siglip_loss(
+        logits,
+        torch.tensor([7, 8]),
+    )
+
+    assert same_image < different_images
+
+
 def test_balanced_sampler_uses_explicit_group_weights_and_epoch_seed():
     from docvlm_eval.student.data import BalancedGroupBatchSampler
 

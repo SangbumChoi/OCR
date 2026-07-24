@@ -69,8 +69,8 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
     ]
     baseline = plan.variants[0]
     ablation = plan.variants[1]
-    assert baseline.parameters["total"] == 587_017
-    assert ablation.parameters["total"] == 587_017
+    assert baseline.parameters["total"] == 587_019
+    assert ablation.parameters["total"] == 587_019
     assert "generate_teacher_predictions" in baseline.plan.stage_names
     assert "generate_teacher_predictions" not in ablation.plan.stage_names
     assert Path(baseline.plan.root) != Path(ablation.plan.root)
@@ -200,6 +200,41 @@ def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
         assert "loss-ablation" in variant.plan.raw_spec["evaluation"][
             "wandb_tags"
         ]
+
+
+def test_contrastive_objective_sweep_compiles_paired_fixed_compute_arms(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_contrastive_objective_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "contrastive-objective-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "siglip"
+    for variant in plan.variants:
+        heads = variant.plan.resolved_blueprint["student"]["task_heads"]
+        assert heads["contrastive_objective"] == variant.arm_id
+        assert heads["contrastive_temperature"] == 0.07
+        assert heads["contrastive_bias_init"] == -10.0
+        assert variant.parameters["total"] == 799_919_884
+        assert "contrastive-objective-ablation" in (
+            variant.plan.raw_spec["evaluation"]["wandb_tags"]
+        )
 
 
 def test_box_iou_loss_sweep_compiles_paired_fixed_compute_arms(tmp_path):

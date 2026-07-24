@@ -118,8 +118,10 @@ Teacher inference is skipped in stages where its losses are both zero.
 Checkpoint metadata records stage-level active losses, online-teacher status, selected
 gold/offline-teacher target counts, and the box IoU-family objective. Exact resume requires the same
 supervision contract. The paired leave-one-loss-out design is
-[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); the matched GIoU, DIoU,
-and CIoU comparison is
+[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); the matched softmax and
+SigLIP comparison is
+[`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md), while the GIoU,
+DIoU, and CIoU comparison is
 [`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md).
 
 ## Teacher contract
