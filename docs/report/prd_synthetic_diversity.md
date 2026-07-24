@@ -121,7 +121,7 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
   minimum valid correlation was 0.269, fixing the conservative default at 0.25. Eleven Augraphy
   runtime failures in 255 candidates motivated bounded deterministic retries with accepted
   seed/attempt provenance.
-- **v3 (multi-page and cross-document tranches implemented):** a three-page procurement packet composes order,
+- **v3 (multi-page, cross-document, and composition curriculum implemented):** a three-page procurement packet composes order,
   receiving, and payment records with six-box cross-page reconciliation, quantity, and consistency
   targets. The renderer can preserve every PDF page in exact-offset vertical or compute-aware grid
   canvases; grid is the default for small-model resolution efficiency. A separate investment
@@ -129,8 +129,9 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
   source documents. Its executable graph supervises valuation, growth, claim discrepancy,
   source reliability, and next action with exact cross-document evidence. A programmatic scientific
   workflow adds directed topology, edge reading, path products, parallel-path aggregation, and
-  expected-count questions across three semantic-preserving layouts. Remaining v3 work is
-  curriculum scheduling of multi-page and multi-document compositions.
+  expected-count questions across three semantic-preserving layouts. Exact page/document counts
+  now survive the UDD bridge and drive a secondary, task-preserving optimizer-step curriculum from
+  single pages through multi-page packets to cross-document dossiers.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out
 generalization improves.
 

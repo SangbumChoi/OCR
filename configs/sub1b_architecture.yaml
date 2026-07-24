@@ -158,6 +158,28 @@ training:
       contrastive: true
       balance_by: task
       group_weights: {}
+      # Secondary sampling axis. Absolute optimizer-step boundaries make the
+      # ordering exact under DataLoader prefetch and checkpoint resume.
+      composition_curriculum:
+        stages:
+          - id: single_page_bootstrap
+            until_step: 100000
+            weights:
+              single_page: 1.00
+              multi_page: 0.10
+              cross_document: 0.00
+          - id: multi_page_bridge
+            until_step: 600000
+            weights:
+              single_page: 0.65
+              multi_page: 0.70
+              cross_document: 0.25
+          - id: cross_document_refinement
+            until_step: null
+            weights:
+              single_page: 0.45
+              multi_page: 0.80
+              cross_document: 1.00
       # Heldout group losses can reweight the next sampler epoch. Disabled in
       # the control recipe; the dedicated sweep enables it with task-group eval.
       adaptive_mixture:

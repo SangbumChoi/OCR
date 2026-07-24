@@ -133,6 +133,19 @@ DIoU, and CIoU comparison is
 bounded token relations are isolated in
 [`student_token_relation_distillation_sweep.md`](student_token_relation_distillation_sweep.md).
 
+## Composition curriculum
+
+The loss curriculum and the document-composition curriculum are separate contracts. The loss
+schedule follows realized token or compute progress; the sampler schedule uses absolute optimizer
+steps so worker prefetch cannot move a boundary. The latter changes only the conditional
+`single_page`/`multi_page`/`cross_document` distribution inside the already selected primary task.
+It therefore introduces long-range evidence gradually without replacing task balancing.
+
+Checkpoint metadata stores both fingerprints, and exact resume rejects a change to either. Training
+logs the active composition stage and all three tier weights. See
+[`student_composition_curriculum.md`](student_composition_curriculum.md) for the probability
+contract and matched ablation.
+
 ## Teacher contract
 
 The online path accepts a frozen native `DocumentVLMStudent` checkpoint:

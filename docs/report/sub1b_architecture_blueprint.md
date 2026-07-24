@@ -70,6 +70,12 @@ map. This lets the fixed architecture train cross-document retrieval and claim v
 without pretending to support a multi-image API; document-grid versus vertical-strip packing is a
 matched data ablation.
 
+Rendered page and source-document counts survive the UDD bridge as typed columns. A secondary
+sampler curriculum uses them to move from single-page perception through multi-page reconciliation
+to cross-document synthesis without replacing primary task balance. Absolute optimizer-step
+boundaries and a checkpointed fingerprint make the ordering exact under prefetch and resume; see
+[`student_composition_curriculum.md`](student_composition_curriculum.md).
+
 Programmatic process diagrams add sparse long-range topology to the same visual canvas. Exact
 stage and edge-label boxes supervise connector alignment, while executable path-product and
 parallel-path queries test whether the compact language stack can compose visually separated

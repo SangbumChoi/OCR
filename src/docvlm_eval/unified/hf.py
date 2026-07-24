@@ -43,11 +43,20 @@ def udd_features():
         "table_html": Value("string"),
         "language": Value("string"),
         "metric": Value("string"),
+        "page_count": Value("int32"),
+        "document_count": Value("int32"),
         # provenance / origin
         "hf_id": Value("string"),
         "split": Value("string"),
         "hf_config": Value("string"),
     })
+
+
+def _positive_composition_count(value: Any, name: str) -> int:
+    count = 1 if value is None else int(value)
+    if count < 1:
+        raise ValueError(f"{name} must be positive")
+    return count
 
 
 def _row_to_record(r: UnifiedSample) -> dict[str, Any]:
@@ -71,6 +80,14 @@ def _row_to_record(r: UnifiedSample) -> dict[str, Any]:
         "table_html": r.table_html or "",
         "language": r.language or "",
         "metric": r.metric or "anls",
+        "page_count": _positive_composition_count(
+            r.meta.get("page_count"),
+            "page_count",
+        ),
+        "document_count": _positive_composition_count(
+            r.meta.get("document_count"),
+            "document_count",
+        ),
         "hf_id": r.hf_id or "",
         "split": r.split or "",
         "hf_config": r.hf_config or "",
@@ -183,7 +200,9 @@ def dedupe_by_phash(ds):
     split. Rows without a phash pass through untouched."""
     from collections import defaultdict
 
-    phashes = ds["phash"]; widths = ds["image_width"]; heights = ds["image_height"]
+    phashes = ds["phash"]
+    widths = ds["image_width"]
+    heights = ds["image_height"]
     groups: dict[tuple, list[int]] = defaultdict(list)
     order: list[tuple] = []
     for i in range(len(ds)):
@@ -195,7 +214,8 @@ def dedupe_by_phash(ds):
     keep: list[int] = []
     merged: dict[int, tuple[list, list]] = {}   # survivor index -> (instructions, answers)
     n_dropped = 0
-    instrs = ds["instructions"]; answers = ds["answers"]
+    instrs = ds["instructions"]
+    answers = ds["answers"]
     for key in order:
         idxs = groups[key]
         keep.append(idxs[0])
@@ -209,7 +229,8 @@ def dedupe_by_phash(ds):
                 if q.strip() and q.strip() in seen_q:
                     continue
                 seen_q.add(q.strip())
-                qs.append(q); ans.append(list(a))
+                qs.append(q)
+                ans.append(list(a))
         merged[idxs[0]] = (qs, ans)
         n_dropped += len(idxs) - 1
 

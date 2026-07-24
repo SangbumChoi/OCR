@@ -181,6 +181,11 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Document-mark robustness** | none vs handwriting/stamp/seal mixtures | `RenderSpec.overlays`, grounded mark QA | `overlay_prob`, `overlay_types`, `overlay_max_count` |
 | **Multi-page composition** | vertical strip vs compute-aware page grid | page origins/sizes, `evidence_pages`, `page_count` | `multipage_mode` |
 | **Multi-document composition** | independent-source strip vs document grid | document IDs/origins/sizes, `evidence_documents`, `document_count` | `multidocument_mode` |
+
+`rendered_page_count` and `document_count` are also persisted as typed UDD columns. The native
+student maps them to `single_page`, `multi_page`, and `cross_document` tiers for the exact
+task-preserving schedule in
+[`student_composition_curriculum.md`](student_composition_curriculum.md).
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 | **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |

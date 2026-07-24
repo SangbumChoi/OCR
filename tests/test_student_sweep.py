@@ -37,6 +37,16 @@ QUALITY_PROMOTION_CONTRACTS = {
         "heldout_score",
         {"L1-region", "ocr-full", "reading-order"},
     ),
+    "sub1b_composition_curriculum_sweep.yaml": (
+        "heldout_score",
+        {
+            "H-comprehension",
+            "H-accounting",
+            "grounding",
+            "multilingual",
+            "ocr-full",
+        },
+    ),
     "sub1b_preference_method_sweep.yaml": (
         "heldout_score",
         {"L1-region", "multilingual"},
@@ -634,6 +644,44 @@ def test_adaptive_mixture_sweep_compiles_paired_validation_arms(tmp_path):
             assert training.adaptive_mixture.step_size == expected_step_sizes[
                 variant.arm_id
             ]
+
+
+def test_composition_curriculum_sweep_compiles_paired_arms(tmp_path):
+    from docvlm_eval.student.pretrain import PretrainConfig
+
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_composition_curriculum_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "composition-curriculum-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "static_final_mix"
+    for variant in plan.variants:
+        training = PretrainConfig.from_blueprint(
+            variant.plan.resolved_blueprint,
+            tmp_path / variant.id,
+        )
+        schedule = training.composition_curriculum
+        assert schedule.fingerprint is not None
+        assert (
+            len(schedule.stages) == 1
+            if variant.arm_id == "static_final_mix"
+            else len(schedule.stages) == 3
+        )
+        assert "composition-curriculum" in variant.plan.raw_spec[
+            "evaluation"
+        ]["wandb_tags"]
 
 
 def test_sft_target_sweep_compiles_three_sft_only_targets(tmp_path):

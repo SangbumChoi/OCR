@@ -75,6 +75,8 @@ def mixture_features():
             "table_html": Value("string"),
             "language": Value("string"),
             "metric": Value("string"),
+            "page_count": Value("int32"),
+            "document_count": Value("int32"),
             "fold": Value("string"),
             "mixture_component": Value("string"),
             "teacher_answers": Sequence(Value("string")),
@@ -124,6 +126,9 @@ def _normalize_dataset(dataset: Any, component: MixtureComponent):
     for name, default in _STRING_DEFAULTS.items():
         if name not in dataset.column_names:
             dataset = dataset.add_column(name, [default] * len(dataset))
+    for name in ("page_count", "document_count"):
+        if name not in dataset.column_names:
+            dataset = dataset.add_column(name, [1] * len(dataset))
     for name in ("teacher_answers", "teacher_scores"):
         if name not in dataset.column_names:
             dataset = dataset.add_column(name, [[] for _ in range(len(dataset))])
@@ -210,7 +215,7 @@ def build_weighted_mixture(
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     combined.save_to_disk(str(output_dir))
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "rows": len(combined),
         "components": records,
         "weights": {component.name: component.weight for component in components},

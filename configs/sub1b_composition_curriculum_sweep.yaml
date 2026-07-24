@@ -1,0 +1,155 @@
+# Staged document composition versus the final mixture from step zero.
+
+schema_version: 1
+name: docvlm-composition-curriculum
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-composition-curriculum
+baseline: static_final_mix
+
+promotion:
+  primary_metric: heldout_score
+  direction: maximize
+  minimum_effect: 0.005
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    H-comprehension: 0.0
+    H-accounting: 0.0
+    grounding: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+
+shared_experiment_patches:
+  - {op: add, path: /evaluation/wandb_tags/-, value: composition-curriculum}
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/cases}
+  - {document: experiment, path: /synthetic/count}
+  - {document: experiment, path: /synthetic/train_count}
+  - {document: experiment, path: /synthetic/heldout_count}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: blueprint, path: /student}
+  - {document: blueprint, path: /tokenizer}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/balance_by}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/group_weights}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/distillation}
+  - {document: blueprint, path: /training/pretraining/data_mix}
+  - {document: blueprint, path: /training/pretraining/losses}
+  - {document: blueprint, path: /training/pretraining/curriculum}
+  - {document: blueprint, path: /training/pretraining/optimizer}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /sequence_teacher/seed}
+  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /sequence_teacher/seed, value: 7}
+      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /sequence_teacher/seed, value: 107}
+      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /sequence_teacher/seed, value: 207}
+      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: static_final_mix
+    hypothesis: "The final composition mixture is sufficient without ordering."
+    blueprint_patches:
+      - op: replace
+        path: /training/pretraining/input_pipeline/composition_curriculum/stages
+        value:
+          - id: static_final_mix
+            until_step: null
+            weights:
+              single_page: 0.45
+              multi_page: 0.80
+              cross_document: 1.00
+
+  - id: staged_composition
+    hypothesis: "Single-page bootstrapping before packet and dossier synthesis improves heldout composition reasoning without weakening local reading."
+    blueprint_patches:
+      - op: replace
+        path: /training/pretraining/input_pipeline/composition_curriculum/stages
+        value:
+          - id: single_page_bootstrap
+            until_step: 100000
+            weights:
+              single_page: 1.00
+              multi_page: 0.10
+              cross_document: 0.00
+          - id: multi_page_bridge
+            until_step: 600000
+            weights:
+              single_page: 0.65
+              multi_page: 0.70
+              cross_document: 0.25
+          - id: cross_document_refinement
+            until_step: null
+            weights:
+              single_page: 0.45
+              multi_page: 0.80
+              cross_document: 1.00

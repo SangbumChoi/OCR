@@ -75,6 +75,7 @@ def test_build_mixture_preserves_rows_and_runtime_weights(tmp_path):
         output,
     )
     assert manifest["rows"] == 5
+    assert manifest["schema_version"] == 2
     assert manifest["weights"] == {
         "synthetic_documents": pytest.approx(0.7),
         "public_document_data": pytest.approx(0.3),
@@ -86,6 +87,8 @@ def test_build_mixture_preserves_rows_and_runtime_weights(tmp_path):
 
     mixed = load_from_disk(str(output))
     assert mixed["fold"] == ["train"] * 5
+    assert mixed["page_count"] == [1] * 5
+    assert mixed["document_count"] == [1] * 5
     assert mixed["mixture_component"] == [
         "synthetic_documents",
         "synthetic_documents",

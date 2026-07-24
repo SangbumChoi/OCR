@@ -31,7 +31,8 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
                       fields=[Field("menu.nm", "Coffee", Box(10, 20, 60, 40, False))],
                       answers=['{"menu.nm": "Coffee"}']),
         UnifiedSample(sample_id="docvqa_0_0", source="docvqa", task=Task.VQA, image_path=img,
-                      instruction="Total?", answers=["$5"]),
+                      instruction="Total?", answers=["$5"],
+                      meta={"page_count": 3, "document_count": 1}),
         UnifiedSample(sample_id="ocrvqa_0_0", source="ocrvqa", task=Task.VQA, image_path=img,
                       instruction="Author?", answers=["X"],
                       regions=[Region("word", Box(0.1, 0.2, 0.4, 0.25, True), "X")]),
@@ -45,6 +46,9 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
     assert f[0]["key"] == "menu.nm" and f[0]["bbox"][:4] == [10.0, 20.0, 60.0, 40.0]
     rg = json.loads(by["ocrvqa_0_0"]["regions_json"])
     assert rg[0]["bbox"][4] is True                      # normalized flag preserved
+    assert by["cord_0_0"]["page_count"] == 1
+    assert by["cord_0_0"]["document_count"] == 1
+    assert by["docvqa_0_0"]["page_count"] == 3
 
 
 def test_safety_check_roundtrip(tmp_path):

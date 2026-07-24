@@ -41,10 +41,19 @@ example is requested. It expands:
   ambiguous.
 
 Every expanded record retains task, source, language, mixture component, target source, sample ID,
-image identity, and UDD image geometry. The same image can therefore supply several tasks without
+image identity, UDD image geometry, page count, and document count. The same image can therefore supply several tasks without
 duplicating stored pixels. `BalancedGroupBatchSampler` can balance by task, source, language, or
-mixture component with explicit weights and deterministic epoch seeds. Under `torchrun`, it draws
+mixture component with explicit weights and deterministic epoch seeds. It can also expose
+composition as a direct balance key. Under `torchrun`, it draws
 one global batch and gives each rank a disjoint local slice.
+
+The default keeps task as the primary group and applies a second composition curriculum within
+each task. `single_page`, `multi_page`, and `cross_document` tiers come from the exact UDD
+`page_count` and `document_count` columns. Tier weights are normalized independently of QA-row
+count, so a dossier with many questions does not gain accidental sampling mass. Absolute
+optimizer-step boundaries keep the sequence invariant to worker prefetch and checkpoint resume;
+the full contract is in
+[`student_composition_curriculum.md`](student_composition_curriculum.md).
 
 The dense control can also group the global batch into log2 aspect-ratio buckets. It applies the
 same sample/epoch rotation hash as the collator before assigning a bucket, so a 90-degree augmented
@@ -139,7 +148,8 @@ The authoritative defaults are under `training.pretraining.input_pipeline` in
 - quarter-turn augmentation probability;
 - upscaling policy;
 - contrastive objective switch;
-- task/source/language balancing key and group weights;
+- task/source/language/component/composition balancing key and group weights;
+- task-preserving composition curriculum boundaries and tier weights;
 - cross-tokenizer teacher target probability, minimum quality score, and deterministic seed.
 
 `StudentCollatorConfig.from_blueprint()` binds these controls to the model's patch size, visual

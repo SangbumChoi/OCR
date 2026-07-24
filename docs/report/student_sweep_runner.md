@@ -233,10 +233,11 @@ then promotes at most `max_promotions`. `comparison.json` records the full contr
 calculation, per-arm evidence, selected variants, and whether the baseline was retained.
 `comparison.md` renders the same decision immediately below the descriptive ranking.
 
-The generic quality sweeps for adaptive mixture, box IoU, contrastive memory and objective,
-pretraining loss, sequence teacher, SFT target, preference method and objective, and RLVR reward
-and advantage all declare this contract with three paired replicates. Box IoU and SFT target use
-`axis.L1-region` as the primary endpoint; the other quality sweeps use aggregate heldout score.
+The generic quality sweeps for adaptive mixture, composition curriculum, box IoU, contrastive
+memory and objective, pretraining loss, sequence teacher, SFT target, preference method and
+objective, and RLVR reward and advantage all declare this contract with three paired replicates.
+Box IoU and SFT target use `axis.L1-region` as the primary endpoint; the other quality sweeps use
+aggregate heldout score.
 Connector family, visual canvas, architecture compute, and language-mixer compute remain outside
 this scalar path because their decision rule is quality-versus-efficiency Pareto selection. They
 declare `mode: pareto` instead of substituting an arbitrary weighted score.

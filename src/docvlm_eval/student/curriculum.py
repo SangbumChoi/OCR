@@ -20,6 +20,11 @@ _SUPPORTED_LOSSES = frozenset(
         "orientation",
     }
 )
+COMPOSITION_TIERS = (
+    "single_page",
+    "multi_page",
+    "cross_document",
+)
 
 
 @dataclass(frozen=True)
@@ -176,6 +181,167 @@ class CurriculumSchedule:
             weights.update(stage.loss_weights)
         return weights
 
+
+@dataclass(frozen=True)
+class CompositionCurriculumStage:
+    """Absolute-step composition weights for one sampler interval."""
+
+    id: str
+    until_step: int | None
+    weights: dict[str, float] = field(default_factory=dict)
+
+
+def _composition_until_step(raw: Any) -> int | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise ValueError(
+            "composition curriculum until_step must be an integer or null"
+        )
+    return raw
+
+
+def _composition_weight(raw: Any) -> float:
+    if (
+        not isinstance(raw, (int, float))
+        or isinstance(raw, bool)
+        or not math.isfinite(float(raw))
+    ):
+        raise ValueError(
+            "composition curriculum weights must be finite numbers"
+        )
+    return float(raw)
+
+
+def _composition_stage(
+    raw: dict[str, Any],
+) -> CompositionCurriculumStage:
+    weights = raw.get("weights")
+    if not isinstance(weights, dict):
+        raise ValueError(
+            "composition curriculum stage weights must be a mapping"
+        )
+    return CompositionCurriculumStage(
+        id=str(raw.get("id", "")),
+        until_step=_composition_until_step(raw.get("until_step")),
+        weights={
+            str(name): _composition_weight(weight)
+            for name, weight in weights.items()
+        },
+    )
+
+
+@dataclass(frozen=True)
+class CompositionCurriculumSchedule:
+    """Exact sampler schedule from single pages to composed documents."""
+
+    stages: tuple[CompositionCurriculumStage, ...] = ()
+
+    @classmethod
+    def from_blueprint(
+        cls,
+        blueprint: dict[str, Any],
+    ) -> "CompositionCurriculumSchedule":
+        raw = (
+            blueprint["training"]["pretraining"]
+            .get("input_pipeline", {})
+            .get("composition_curriculum")
+        )
+        if not raw:
+            return cls()
+        if not isinstance(raw, dict):
+            raise ValueError("composition curriculum must be a mapping")
+        raw_stages = raw.get("stages")
+        if not isinstance(raw_stages, list) or not raw_stages:
+            raise ValueError(
+                "composition curriculum stages must be a non-empty list"
+            )
+        if any(not isinstance(stage, dict) for stage in raw_stages):
+            raise ValueError(
+                "every composition curriculum stage must be a mapping"
+            )
+        stages = tuple(_composition_stage(stage) for stage in raw_stages)
+        schedule = cls(stages=stages)
+        schedule.validate()
+        return schedule
+
+    def validate(self) -> None:
+        if not self.stages:
+            return
+        ids: set[str] = set()
+        previous = 0
+        for index, stage in enumerate(self.stages):
+            if not stage.id or stage.id in ids:
+                raise ValueError(
+                    "composition curriculum stage ids must be non-empty and unique"
+                )
+            ids.add(stage.id)
+            is_final = index + 1 == len(self.stages)
+            if is_final:
+                if stage.until_step is not None:
+                    raise ValueError(
+                        "the final composition curriculum stage must have "
+                        "until_step=null"
+                    )
+            elif (
+                stage.until_step is None
+                or isinstance(stage.until_step, bool)
+                or stage.until_step <= previous
+            ):
+                raise ValueError(
+                    "composition curriculum until_step values must be "
+                    "strictly increasing positive integers"
+                )
+            if stage.until_step is not None:
+                previous = stage.until_step
+            if set(stage.weights) != set(COMPOSITION_TIERS):
+                raise ValueError(
+                    "composition curriculum weights must define exactly "
+                    f"{list(COMPOSITION_TIERS)}"
+                )
+            values = tuple(stage.weights.values())
+            if (
+                any(not math.isfinite(weight) or weight < 0 for weight in values)
+                or not any(values)
+            ):
+                raise ValueError(
+                    "composition curriculum weights must be finite, "
+                    "non-negative, and include a positive value"
+                )
+
+    def stage_for_step(
+        self,
+        step: int,
+    ) -> CompositionCurriculumStage | None:
+        if not self.stages:
+            return None
+        step = max(int(step), 0)
+        for stage in self.stages:
+            if stage.until_step is None or step < stage.until_step:
+                return stage
+        return self.stages[-1]
+
+    @property
+    def fingerprint(self) -> str | None:
+        if not self.stages:
+            return None
+        payload = {
+            "stages": [
+                {
+                    "id": stage.id,
+                    "until_step": stage.until_step,
+                    "weights": stage.weights,
+                }
+                for stage in self.stages
+            ]
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 def planned_optimizer_steps(
     *,

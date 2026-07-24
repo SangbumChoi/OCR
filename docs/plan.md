@@ -140,6 +140,11 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) — a separate
   optimizer-heldout validation split, EMA validation-loss feedback, epoch-boundary probability
   updates, exact resume, and a three-arm by three-seed matched sweep.
+- **Schedule document composition:**
+  [`report/student_composition_curriculum.md`](report/student_composition_curriculum.md) — exact
+  page/document count propagation and a task-preserving secondary sampler that progresses from
+  single pages through multi-page packets to cross-document dossiers, with a paired static-versus-
+  staged sweep.
 - **Isolate pretraining losses:**
   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
   fail-closed supervision provenance and paired leave-one-active-loss-out experiments.
@@ -297,6 +302,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) ·
    [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
+   [`report/student_composition_curriculum.md`](report/student_composition_curriculum.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
    [`report/student_contrastive_objective_sweep.md`](report/student_contrastive_objective_sweep.md) ·
    [`report/student_connector_family_sweep.md`](report/student_connector_family_sweep.md) ·

@@ -50,7 +50,14 @@ runtime:
 synthetic:
   enabled: true
   config: configs/synth_data.yaml
-  cases: [hard_table, hard_chart, hard_investment, hard_science]
+  cases:
+    - hard_table
+    - hard_chart
+    - hard_investment
+    - hard_science
+    - hard_diagram
+    - audit_packet
+    - investment_dossier
   count: 100
   train_count: null
   validation_count: null

@@ -12,7 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
-from .curriculum import CurriculumSchedule, planned_optimizer_steps
+from .curriculum import (
+    COMPOSITION_TIERS,
+    CompositionCurriculumSchedule,
+    CurriculumSchedule,
+    planned_optimizer_steps,
+)
 
 
 STUDENT_MODEL_INPUTS = frozenset(
@@ -100,6 +105,24 @@ class _ExampleRef:
     target_source: str
     sample_id: str
     aspect_ratio: float | None
+    composition: str
+
+
+def composition_tier(
+    page_count: int,
+    document_count: int,
+) -> str:
+    """Map exact page/document counts to one ordered composition tier."""
+
+    page_count = int(page_count)
+    document_count = int(document_count)
+    if page_count < 1 or document_count < 1:
+        raise ValueError("page_count and document_count must be positive")
+    if document_count > 1:
+        return "cross_document"
+    if page_count > 1:
+        return "multi_page"
+    return "single_page"
 
 
 def _parse_elements(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -151,6 +174,8 @@ def _metadata_view(dataset: Any) -> Any:
         "mixture_component",
         "image_width",
         "image_height",
+        "page_count",
+        "document_count",
     }
     columns = [name for name in dataset.column_names if name in wanted]
     return dataset.select_columns(columns)
@@ -236,6 +261,17 @@ class UDDStudentDataset:
                 if image_width > 0 and image_height > 0
                 else None
             )
+            page_count = (
+                1
+                if row.get("page_count") is None
+                else int(row["page_count"])
+            )
+            document_count = (
+                1
+                if row.get("document_count") is None
+                else int(row["document_count"])
+            )
+            composition = composition_tier(page_count, document_count)
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
             teacher_answers = list(row.get("teacher_answers") or [])
@@ -278,6 +314,7 @@ class UDDStudentDataset:
                             target_source,
                             qa_sample_id,
                             aspect_ratio,
+                            composition,
                         )
                     )
             elements = _parse_elements(row)
@@ -299,6 +336,7 @@ class UDDStudentDataset:
                             "gold",
                             f"{sample_id}:box{element_index}",
                             aspect_ratio,
+                            composition,
                         )
                     )
                     used += 1
@@ -338,6 +376,10 @@ class UDDStudentDataset:
     def aspect_ratios(self) -> list[float | None]:
         return [ref.aspect_ratio for ref in self._refs]
 
+    @property
+    def compositions(self) -> list[str]:
+        return [ref.composition for ref in self._refs]
+
     def groups(self, key: str) -> list[str]:
         if key == "task":
             return self.tasks
@@ -347,7 +389,12 @@ class UDDStudentDataset:
             return self.languages
         if key == "component":
             return self.components
-        raise ValueError("group key must be one of: task, source, language, component")
+        if key == "composition":
+            return self.compositions
+        raise ValueError(
+            "group key must be one of: task, source, language, component, "
+            "composition"
+        )
 
     def __getitem__(self, index: int) -> StudentExample:
         ref = self._refs[index]
@@ -910,6 +957,8 @@ class BalancedGroupBatchSampler:
         num_replicas: int = 1,
         rank: int = 0,
         curriculum: CurriculumSchedule | None = None,
+        compositions: Sequence[str] | None = None,
+        composition_curriculum: CompositionCurriculumSchedule | None = None,
         grad_accum_steps: int = 1,
         epochs: int = 1,
         max_steps: int | None = None,
@@ -937,6 +986,9 @@ class BalancedGroupBatchSampler:
         self.grad_accum_steps = int(grad_accum_steps)
         self.steps_per_epoch = math.ceil(self.num_batches / self.grad_accum_steps)
         self.curriculum = curriculum or CurriculumSchedule()
+        self.composition_curriculum = (
+            composition_curriculum or CompositionCurriculumSchedule()
+        )
         self.total_steps = planned_optimizer_steps(
             num_batches=self.num_batches,
             grad_accum_steps=self.grad_accum_steps,
@@ -947,6 +999,30 @@ class BalancedGroupBatchSampler:
         for index, group in enumerate(groups):
             self.indices.setdefault(str(group), []).append(index)
         self.group_names = sorted(self.indices)
+        if compositions is not None and len(compositions) != len(groups):
+            raise ValueError("compositions must align with sampler groups")
+        self.compositions = tuple(
+            str(value) for value in (
+                compositions
+                if compositions is not None
+                else ("single_page",) * len(groups)
+            )
+        )
+        unknown_compositions = set(self.compositions) - set(COMPOSITION_TIERS)
+        if unknown_compositions:
+            raise ValueError(
+                "unsupported composition tiers: "
+                f"{sorted(unknown_compositions)}"
+            )
+        self.composition_curriculum.validate()
+        self.composition_indices: dict[str, dict[str, list[int]]] = {}
+        for group, indices in self.indices.items():
+            for index in indices:
+                tier = self.compositions[index]
+                self.composition_indices.setdefault(group, {}).setdefault(
+                    tier,
+                    [],
+                ).append(index)
         supplied = group_weights or {}
         unknown = set(supplied) - set(self.group_names)
         if unknown:
@@ -1037,6 +1113,10 @@ class BalancedGroupBatchSampler:
                 else rank
             ),
             curriculum=CurriculumSchedule.from_blueprint(blueprint),
+            compositions=dataset.compositions,
+            composition_curriculum=(
+                CompositionCurriculumSchedule.from_blueprint(blueprint)
+            ),
             grad_accum_steps=(
                 int(optimizer["grad_accum_steps"])
                 if grad_accum_steps is None
@@ -1125,6 +1205,31 @@ class BalancedGroupBatchSampler:
                 buckets.setdefault(bucket, {}).setdefault(group, []).append(index)
         return buckets
 
+    def _composition_weights(self, step: int) -> tuple[str, dict[str, float]]:
+        stage = self.composition_curriculum.stage_for_step(step)
+        if stage is None:
+            return "base", {tier: 1.0 for tier in COMPOSITION_TIERS}
+        return stage.id, dict(stage.weights)
+
+    def _weighted_pool(
+        self,
+        group: str,
+        indices: Sequence[int],
+        composition_weights: Mapping[str, float],
+    ) -> tuple[list[int], list[float]]:
+        if not self.composition_curriculum.stages:
+            return list(indices), [1.0] * len(indices)
+        pool: list[int] = []
+        weights: list[float] = []
+        for index in indices:
+            tier = self.compositions[index]
+            tier_count = len(self.composition_indices[group][tier])
+            weight = float(composition_weights[tier]) / tier_count
+            if weight > 0:
+                pool.append(index)
+                weights.append(weight)
+        return pool, weights
+
     def __iter__(self) -> Iterator[list[int]]:
         rng = random.Random(self.seed + self.epoch)
         bucketed = self._bucketed_indices() if self.aspect_ratio_bucketing else {}
@@ -1147,6 +1252,26 @@ class BalancedGroupBatchSampler:
                     f"curriculum stage {stage.id!r} disables every sampler group"
                 )
             global_batch_size = self.batch_size * self.num_replicas
+            composition_stage, composition_weights = (
+                self._composition_weights(step)
+            )
+            group_pools = {
+                group: self._weighted_pool(
+                    group,
+                    self.indices[group],
+                    composition_weights,
+                )
+                for group in self.group_names
+            }
+            selected_weights = [
+                weight if group_pools[group][0] else 0.0
+                for group, weight in zip(self.group_names, selected_weights)
+            ]
+            if not any(selected_weights):
+                raise ValueError(
+                    "composition curriculum stage "
+                    f"{composition_stage!r} disables every available example"
+                )
             if bucketed:
                 bucket_names = sorted(bucketed, key=str)
                 bucket_masses = []
@@ -1154,18 +1279,35 @@ class BalancedGroupBatchSampler:
                     bucket_masses.append(
                         sum(
                             weight
-                            * len(bucketed[bucket].get(group, ()))
-                            / len(self.indices[group])
+                            * sum(
+                                self._weighted_pool(
+                                    group,
+                                    bucketed[bucket].get(group, ()),
+                                    composition_weights,
+                                )[1]
+                            )
+                            / sum(group_pools[group][1])
                             for group, weight in zip(
                                 self.group_names, selected_weights
                             )
+                            if weight > 0
                         )
                     )
                 bucket = rng.choices(bucket_names, weights=bucket_masses, k=1)[0]
                 conditional_weights = [
-                    weight
-                    * len(bucketed[bucket].get(group, ()))
-                    / len(self.indices[group])
+                    (
+                        weight
+                        * sum(
+                            self._weighted_pool(
+                                group,
+                                bucketed[bucket].get(group, ()),
+                                composition_weights,
+                            )[1]
+                        )
+                        / sum(group_pools[group][1])
+                        if weight > 0
+                        else 0.0
+                    )
                     for group, weight in zip(self.group_names, selected_weights)
                 ]
                 selected_groups = rng.choices(
@@ -1173,10 +1315,16 @@ class BalancedGroupBatchSampler:
                     weights=conditional_weights,
                     k=global_batch_size,
                 )
-                selected_indices = [
-                    rng.choice(bucketed[bucket][group])
-                    for group in selected_groups
-                ]
+                selected_indices = []
+                for group in selected_groups:
+                    pool, pool_weights = self._weighted_pool(
+                        group,
+                        bucketed[bucket][group],
+                        composition_weights,
+                    )
+                    selected_indices.append(
+                        rng.choices(pool, weights=pool_weights, k=1)[0]
+                    )
             else:
                 selected_groups = rng.choices(
                     self.group_names,
@@ -1184,7 +1332,12 @@ class BalancedGroupBatchSampler:
                     k=global_batch_size,
                 )
                 selected_indices = [
-                    rng.choice(self.indices[group]) for group in selected_groups
+                    rng.choices(
+                        group_pools[group][0],
+                        weights=group_pools[group][1],
+                        k=1,
+                    )[0]
+                    for group in selected_groups
                 ]
             start = self.rank * self.batch_size
             yield selected_indices[start : start + self.batch_size]

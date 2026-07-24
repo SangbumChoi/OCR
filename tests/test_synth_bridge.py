@@ -53,6 +53,34 @@ def test_bridge_carries_every_annotation():
     assert len(r.regions) == 1 and r.regions[0].label == "payee"
     assert r.source == "synthetic" and r.meta["synthetic"] is True
     assert r.meta["doc_type"] == "cheque" and r.split == "synthetic"
+    assert r.meta["page_count"] == 1
+    assert r.meta["document_count"] == 1
+
+
+def test_bridge_preserves_rendered_composition_counts():
+    r = docsample_to_unified(
+        _gt(
+            render={
+                "page_count": 7,
+                "rendered_page_count": 3,
+                "document_count": 2,
+            }
+        ),
+        image_path="/tmp/dossier.png",
+        image_size=(1000, 500),
+    )
+
+    assert r.meta["page_count"] == 3
+    assert r.meta["document_count"] == 2
+
+
+def test_bridge_rejects_invalid_composition_counts():
+    with pytest.raises(ValueError, match="composition counts must be positive"):
+        docsample_to_unified(
+            _gt(render={"rendered_page_count": 0}),
+            image_path="/tmp/invalid.png",
+            image_size=(1000, 500),
+        )
 
 
 def test_bridge_single_qa_stays_flat_and_legacy_mirror_works():

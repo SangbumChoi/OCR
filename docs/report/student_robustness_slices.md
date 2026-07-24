@@ -20,6 +20,12 @@ stores them in `Sample.meta`, so the labels survive JSONL serialization and can 
 model execution. Missing public-dataset metadata is represented as `unknown` or `und`; it is never
 silently treated as clean or English.
 
+The same exact page/document counts now enter pretraining as typed UDD columns. They define the
+three tiers in
+[`student_composition_curriculum.md`](student_composition_curriculum.md), so training and
+robustness evaluation share one provenance source rather than reconstructing complexity from case
+names.
+
 ## Evaluation artifacts
 
 Each split summary contains:

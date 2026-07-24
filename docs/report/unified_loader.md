@@ -119,7 +119,7 @@ instructions: list[str],            # ALL questions on this image (N >= 1)
 answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
 elements_json,                      # ALL localized elements, ONE datatype:
                                     #   [{key, value, bbox, kind: field|region}]
-full_text, table_html, language, metric, hf_id, split, hf_config,
+full_text, table_html, language, metric, page_count, document_count, hf_id, split, hf_config,
 n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
 
@@ -130,6 +130,8 @@ payload is likewise ONE datatype: `elements_json` carries both KIE fields and la
 the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
 invariants (`len(instructions) == len(answers) >= 1`, `key`/`value` required strings, box shape,
 kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
+`page_count` and `document_count` default to one for public sources and preserve exact synthetic
+composition counts for curriculum and robustness slicing.
 **POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
 no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
 A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is

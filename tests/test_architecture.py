@@ -109,7 +109,11 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     _, errors = validate_blueprint(blueprint)
 
     assert any("rotation_probability must be between" in error for error in errors)
-    assert any("balance_by must be task, source, language, or component" in error for error in errors)
+    assert any(
+        "balance_by must be task, source, language, component, or composition"
+        in error
+        for error in errors
+    )
     assert any("visual_canvas_mode" in error for error in errors)
     assert any("visual_sequence_mode" in error for error in errors)
     assert any("packed_attention_backend" in error for error in errors)
@@ -251,6 +255,24 @@ def test_blueprint_rejects_invalid_curriculum_contracts():
     assert any("until_fraction must increase" in error for error in errors)
     assert any("unsupported losses" in error for error in errors)
     assert any("final stage must end at 1.0" in error for error in errors)
+
+
+def test_blueprint_rejects_invalid_composition_curriculum():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    stages = blueprint["training"]["pretraining"]["input_pipeline"][
+        "composition_curriculum"
+    ]["stages"]
+    stages[1]["id"] = stages[0]["id"]
+    stages[1]["until_step"] = 10
+    stages[-1]["until_step"] = 700000
+    stages[0]["weights"].pop("multi_page")
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any(
+        "composition curriculum weights must define exactly" in error
+        for error in errors
+    )
 
 
 def test_blueprint_rejects_inconsistent_token_budget_contract():

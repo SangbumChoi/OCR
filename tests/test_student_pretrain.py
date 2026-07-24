@@ -26,11 +26,13 @@ def _loader(
     batch_size=1,
     *,
     contrastive=False,
+    composition_curriculum=None,
 ):
     from PIL import Image
     from torch.utils.data import DataLoader
 
     from docvlm_eval.student.data import (
+        BalancedGroupBatchSampler,
         StudentCollator,
         StudentCollatorConfig,
         StudentExample,
@@ -62,6 +64,25 @@ def _loader(
             visual_sequence_mode=visual_sequence_mode,
         ),
     )
+    if composition_curriculum is not None:
+        batch_sampler = BalancedGroupBatchSampler(
+            [example.task for example in examples],
+            batch_size=batch_size,
+            compositions=[
+                "single_page",
+                "multi_page",
+                "cross_document",
+                "single_page",
+            ],
+            composition_curriculum=composition_curriculum,
+            num_batches=max(len(examples) // batch_size, 1),
+        )
+        return DataLoader(
+            examples,
+            batch_sampler=batch_sampler,
+            collate_fn=collator,
+            num_workers=0,
+        )
     return DataLoader(
         examples,
         batch_size=batch_size,
@@ -992,6 +1013,14 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     ]
     assert config.curriculum.fingerprint.startswith("sha256:")
     assert config.curriculum.unit == "training_token_fraction"
+    assert [
+        stage.id for stage in config.composition_curriculum.stages
+    ] == [
+        "single_page_bootstrap",
+        "multi_page_bridge",
+        "cross_document_refinement",
+    ]
+    assert config.composition_curriculum.fingerprint.startswith("sha256:")
     assert config.adaptive_mixture.enabled is False
     assert config.adaptive_mixture.step_size == 0.5
     assert config.gradient_conflict_probe.enabled is False
@@ -1341,6 +1370,91 @@ def test_resume_rejects_a_changed_curriculum(tmp_path):
             replace(
                 _config(output, max_steps=2, resume="latest"),
                 curriculum=changed_schedule,
+            ),
+        )
+
+
+def test_resume_rejects_a_changed_composition_curriculum(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.curriculum import (
+        CompositionCurriculumSchedule,
+        CompositionCurriculumStage,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    def schedule(single_page):
+        return CompositionCurriculumSchedule(
+            stages=(
+                CompositionCurriculumStage(
+                    id="all",
+                    until_step=None,
+                    weights={
+                        "single_page": single_page,
+                        "multi_page": 1.0,
+                        "cross_document": 1.0,
+                    },
+                ),
+            )
+        )
+
+    output = tmp_path / "composition-curriculum-resume"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(composition_curriculum=schedule(1.0)),
+        replace(
+            _config(output, max_steps=1),
+            composition_curriculum=schedule(1.0),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="composition curriculum fingerprint"):
+        train_student(
+            model,
+            _loader(composition_curriculum=schedule(0.5)),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                composition_curriculum=schedule(0.5),
+            ),
+        )
+
+
+def test_training_rejects_a_mismatched_composition_sampler(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.curriculum import (
+        CompositionCurriculumSchedule,
+        CompositionCurriculumStage,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    def schedule(single_page):
+        return CompositionCurriculumSchedule(
+            stages=(
+                CompositionCurriculumStage(
+                    id="all",
+                    until_step=None,
+                    weights={
+                        "single_page": single_page,
+                        "multi_page": 1.0,
+                        "cross_document": 1.0,
+                    },
+                ),
+            )
+        )
+
+    with pytest.raises(ValueError, match="differs between training config"):
+        train_student(
+            DocumentVLMStudent(StudentConfig.tiny()),
+            _loader(composition_curriculum=schedule(0.5)),
+            replace(
+                _config(tmp_path / "mismatch", max_steps=1),
+                composition_curriculum=schedule(1.0),
             ),
         )
 

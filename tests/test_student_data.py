@@ -45,6 +45,8 @@ def _udd_rows():
             "language": "en",
             "image_width": 20,
             "image_height": 10,
+            "page_count": 3,
+            "document_count": 1,
         },
         {
             "image": Image.new("RGB", (8, 16), "black"),
@@ -57,6 +59,8 @@ def _udd_rows():
             "language": "ko",
             "image_width": 8,
             "image_height": 16,
+            "page_count": 3,
+            "document_count": 2,
         },
     ]
 
@@ -71,6 +75,12 @@ def test_udd_student_dataset_expands_qas_and_grounding_without_losing_groups():
     assert dataset.sources == ["docvqa", "docvqa", "docvqa", "synthdog_ko"]
     assert dataset.languages == ["en", "en", "en", "ko"]
     assert dataset.aspect_ratios == [2.0, 2.0, 2.0, 0.5]
+    assert dataset.compositions == [
+        "multi_page",
+        "multi_page",
+        "multi_page",
+        "cross_document",
+    ]
     assert dataset.sample_ids == [
         "doc-1:qa0",
         "doc-1:qa1",
@@ -83,6 +93,15 @@ def test_udd_student_dataset_expands_qas_and_grounding_without_losing_groups():
     assert dataset[2].box == (0.1, 0.2, 0.5, 0.6)
     assert dataset[2].box_normalized is True
     assert dataset[0].image_key == dataset[2].image_key
+
+
+def test_composition_tier_rejects_invalid_counts():
+    from docvlm_eval.student.data import composition_tier
+
+    with pytest.raises(ValueError, match="must be positive"):
+        composition_tier(0, 1)
+    with pytest.raises(ValueError, match="must be positive"):
+        composition_tier(1, -1)
 
 
 def test_collator_config_is_owned_by_the_machine_readable_blueprint():
@@ -641,6 +660,105 @@ def test_balanced_sampler_rejects_token_fraction_group_weights():
             batch_size=1,
             curriculum=schedule,
         )
+
+
+def test_composition_curriculum_changes_secondary_sampling_at_exact_steps():
+    from docvlm_eval.student.curriculum import (
+        CompositionCurriculumSchedule,
+        CompositionCurriculumStage,
+    )
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    schedule = CompositionCurriculumSchedule(
+        stages=(
+            CompositionCurriculumStage(
+                id="perception",
+                until_step=2,
+                weights={
+                    "single_page": 1.0,
+                    "multi_page": 0.0,
+                    "cross_document": 0.0,
+                },
+            ),
+            CompositionCurriculumStage(
+                id="synthesis",
+                until_step=None,
+                weights={
+                    "single_page": 0.0,
+                    "multi_page": 0.0,
+                    "cross_document": 1.0,
+                },
+            ),
+        )
+    )
+    compositions = [
+        "single_page",
+        "single_page",
+        "multi_page",
+        "multi_page",
+        "cross_document",
+        "cross_document",
+    ]
+    sampler = BalancedGroupBatchSampler(
+        ["vqa"] * len(compositions),
+        batch_size=1,
+        num_batches=4,
+        compositions=compositions,
+        composition_curriculum=schedule,
+        grad_accum_steps=1,
+    )
+
+    batches = list(sampler)
+    assert [compositions[batch[0]] for batch in batches] == [
+        "single_page",
+        "single_page",
+        "cross_document",
+        "cross_document",
+    ]
+
+
+def test_composition_curriculum_preserves_primary_group_sampling():
+    from collections import Counter
+
+    from docvlm_eval.student.curriculum import (
+        CompositionCurriculumSchedule,
+        CompositionCurriculumStage,
+    )
+    from docvlm_eval.student.data import BalancedGroupBatchSampler
+
+    schedule = CompositionCurriculumSchedule(
+        stages=(
+            CompositionCurriculumStage(
+                id="multi-only",
+                until_step=None,
+                weights={
+                    "single_page": 0.0,
+                    "multi_page": 1.0,
+                    "cross_document": 0.0,
+                },
+            ),
+        )
+    )
+    groups = ["localization", "localization", "vqa", "vqa"]
+    compositions = [
+        "single_page",
+        "multi_page",
+        "single_page",
+        "multi_page",
+    ]
+    sampler = BalancedGroupBatchSampler(
+        groups,
+        batch_size=1,
+        num_batches=400,
+        compositions=compositions,
+        composition_curriculum=schedule,
+        seed=19,
+    )
+
+    selected = [batch[0] for batch in sampler]
+    counts = Counter(groups[index] for index in selected)
+    assert {compositions[index] for index in selected} == {"multi_page"}
+    assert abs(counts["localization"] - counts["vqa"]) < 60
 
 
 def test_exhaustive_sampler_covers_every_example_once_on_one_rank():

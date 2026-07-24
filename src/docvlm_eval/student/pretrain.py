@@ -20,8 +20,12 @@ from .adaptive_mixture import (
     AdaptiveMixtureConfig,
     AdaptiveMixtureController,
 )
+from .curriculum import (
+    CompositionCurriculumSchedule,
+    CurriculumSchedule,
+    planned_optimizer_steps,
+)
 from .data import student_model_inputs
-from .curriculum import CurriculumSchedule, planned_optimizer_steps
 from .compute import estimate_batch_training_flops_breakdown
 from .gradient_probe import GradientConflictProbeConfig
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
@@ -125,6 +129,9 @@ class PretrainConfig:
     box_iou_loss: str = "giou"
     target_source_counts: dict[str, int] = field(default_factory=dict)
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
+    composition_curriculum: CompositionCurriculumSchedule = field(
+        default_factory=CompositionCurriculumSchedule
+    )
     adaptive_mixture: AdaptiveMixtureConfig = field(
         default_factory=AdaptiveMixtureConfig
     )
@@ -217,6 +224,7 @@ class PretrainConfig:
         if not self.run_stage.strip():
             raise ValueError("run_stage cannot be empty")
         self.curriculum.validate()
+        self.composition_curriculum.validate()
         self.adaptive_mixture.validate()
         self.gradient_conflict_probe.validate()
         self.contrastive_memory.validate()
@@ -320,6 +328,9 @@ class PretrainConfig:
                 )
             ),
             "curriculum": CurriculumSchedule.from_blueprint(blueprint),
+            "composition_curriculum": (
+                CompositionCurriculumSchedule.from_blueprint(blueprint)
+            ),
             "adaptive_mixture": (
                 AdaptiveMixtureConfig.from_blueprint(blueprint)
             ),
@@ -446,6 +457,9 @@ def pretraining_supervision_contract(
         "gradient_conflict_probe": config.gradient_conflict_probe.to_dict(),
         "contrastive_memory": config.contrastive_memory.to_dict(),
         "box_iou_loss": config.box_iou_loss,
+        "composition_curriculum_fingerprint": (
+            config.composition_curriculum.fingerprint
+        ),
         "stages": profiles,
     }
 
@@ -922,6 +936,18 @@ def _resolve_adaptive_sampler(loader: Any) -> Any:
     )
 
 
+def _resolve_composition_sampler(loader: Any) -> Any:
+    for candidate in (
+        getattr(loader, "batch_sampler", None),
+        getattr(loader, "sampler", None),
+    ):
+        if hasattr(candidate, "composition_curriculum"):
+            return candidate
+    raise ValueError(
+        "composition curriculum requires BalancedGroupBatchSampler"
+    )
+
+
 def _gradient_probe_anchors(
     student: DocumentVLMStudent,
     components: tuple[str, ...],
@@ -1238,6 +1264,9 @@ def _save_checkpoint(
                 module.student.gradient_checkpointing_state
             ),
             "curriculum_fingerprint": config.curriculum.fingerprint,
+            "composition_curriculum_fingerprint": (
+                config.composition_curriculum.fingerprint
+            ),
             "curriculum_total_steps": (
                 curriculum_total_steps if config.curriculum.stages else None
             ),
@@ -1296,6 +1325,7 @@ def _load_checkpoint(
     expected_run_stage: str,
     expected_gradient_checkpointing: dict[str, Any],
     expected_curriculum_fingerprint: str | None,
+    expected_composition_curriculum_fingerprint: str | None,
     expected_curriculum_total_steps: int,
     expected_token_budget: dict[str, Any],
     expected_supervision_contract: dict[str, Any],
@@ -1331,6 +1361,17 @@ def _load_checkpoint(
     if saved_curriculum != expected_curriculum_fingerprint:
         raise ValueError(
             "resume checkpoint curriculum fingerprint does not match the active schedule"
+        )
+    saved_composition_curriculum = metadata.get(
+        "composition_curriculum_fingerprint"
+    )
+    if (
+        saved_composition_curriculum
+        != expected_composition_curriculum_fingerprint
+    ):
+        raise ValueError(
+            "resume checkpoint composition curriculum fingerprint does not "
+            "match the active schedule"
         )
     saved_curriculum_steps = metadata.get("curriculum_total_steps")
     expected_steps = (
@@ -1501,6 +1542,16 @@ def train_student(
     )
     if getattr(train_loader, "persistent_workers", False):
         raise ValueError("exact-resume augmentation requires persistent_workers=False")
+    if config.composition_curriculum.stages:
+        composition_sampler = _resolve_composition_sampler(train_loader)
+        if (
+            composition_sampler.composition_curriculum.fingerprint
+            != config.composition_curriculum.fingerprint
+        ):
+            raise ValueError(
+                "composition curriculum differs between training config "
+                "and batch sampler"
+            )
     adaptive_sampler = None
     adaptive_controller = None
     if config.adaptive_mixture.enabled:
@@ -1588,6 +1639,7 @@ def train_student(
             config.run_stage,
             module.student.gradient_checkpointing_state,
             config.curriculum.fingerprint,
+            config.composition_curriculum.fingerprint,
             curriculum_horizon,
             _budget_contract(config),
             supervision_contract,
@@ -1892,6 +1944,11 @@ def train_student(
                 name: total_value / global_microbatches
                 for name, total_value in global_loss_sums.items()
             }
+            composition_stage = (
+                config.composition_curriculum.stage_for_step(
+                    max(state.global_step - 1, 0)
+                )
+            )
             means.update(
                 {
                     "train/learning_rate": learning_rate,
@@ -1936,6 +1993,11 @@ def train_student(
                         curriculum_stage.id if curriculum_stage is not None else "base"
                     ),
                     "train/curriculum_progress": curriculum_progress,
+                    "train/composition_curriculum_stage": (
+                        composition_stage.id
+                        if composition_stage is not None
+                        else "base"
+                    ),
                     "train/box_iou_loss": config.box_iou_loss,
                     "train/contrastive_memory_size": float(
                         module.last_contrastive_memory_size
@@ -1967,6 +2029,16 @@ def train_student(
                         f"train/loss_weight/{name}": weight
                         for name, weight in sorted(active_loss_weights.items())
                     },
+                    **(
+                        {
+                            f"train/composition_weight/{name}": weight
+                            for name, weight in sorted(
+                                composition_stage.weights.items()
+                            )
+                        }
+                        if composition_stage is not None
+                        else {}
+                    ),
                 }
             )
             if adaptive_controller is not None:

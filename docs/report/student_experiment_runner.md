@@ -80,6 +80,11 @@ pretraining through `--eval-src`. This optimizer-heldout validation split can dr
 mixing while the final heldout root remains untouched. The runner writes a resolved architecture
 blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions match the experiment.
 
+The production synthetic list includes five single-page hard families plus `audit_packet` and
+`investment_dossier`. Those composed families supply the exact multi-page and cross-document tiers
+used by the native composition curriculum. A reduced smoke list remains valid: unavailable tiers
+are renormalized inside each primary task rather than replaced with invented examples.
+
 `runtime.visual_backend_benchmark` compiles
 [`benchmark_student_visual_backend.py`](../../scripts/benchmark_student_visual_backend.py) as the
 first artifact-checked stage. Its sequence lengths, backends, warmup, measured iterations, mode,

@@ -77,8 +77,23 @@ def docsample_to_unified(gt: Any, image_path: str, image_size: tuple[int, int],
 
     task = (Task.TABLE if table_html and not qas else
             Task.KIE if fields and not qas else Task.VQA)
-    langs = [l for l in (gt.get("languages") or []) if l]
+    langs = [
+        language
+        for language in (gt.get("languages") or [])
+        if language
+    ]
     single = qas[0] if len(qas) == 1 else None
+    render = gt.get("render") or {}
+    raw_page_count = render.get("rendered_page_count")
+    if raw_page_count is None:
+        raw_page_count = render.get("page_count")
+    page_count = 1 if raw_page_count is None else int(raw_page_count)
+    raw_document_count = render.get("document_count")
+    document_count = (
+        1 if raw_document_count is None else int(raw_document_count)
+    )
+    if page_count < 1 or document_count < 1:
+        raise ValueError("synthetic composition counts must be positive")
     return UnifiedSample(
         sample_id=sample_id or f"synthetic_{_s(gt.get('doc_id')) or 'case'}_0",
         source="synthetic", task=task,
@@ -93,4 +108,6 @@ def docsample_to_unified(gt: Any, image_path: str, image_size: tuple[int, int],
               "stressors": list(gt.get("stressors") or []),
               "domain": _s(gt.get("domain")) or None,
               "acquisition": _s(gt.get("acquisition")) or None,
+              "page_count": page_count,
+              "document_count": document_count,
               "synthetic": True})

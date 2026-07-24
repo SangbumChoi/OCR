@@ -273,10 +273,25 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.input_pipeline.rotation_probability must be between 0 and 1"
         )
-    if input_pipeline.get("balance_by") not in {"task", "source", "language", "component"}:
+    if input_pipeline.get("balance_by") not in {
+        "task",
+        "source",
+        "language",
+        "component",
+        "composition",
+    }:
         errors.append(
-            "training.pretraining.input_pipeline.balance_by must be task, source, language, "
-            "or component"
+            "training.pretraining.input_pipeline.balance_by must be task, "
+            "source, language, component, or composition"
+        )
+    try:
+        from .student.curriculum import CompositionCurriculumSchedule
+
+        CompositionCurriculumSchedule.from_blueprint(blueprint)
+    except ValueError as error:
+        errors.append(
+            "training.pretraining.input_pipeline.composition_curriculum "
+            f"is invalid: {error}"
         )
     adaptive_mixture = input_pipeline.get("adaptive_mixture", {}) or {}
     if not isinstance(adaptive_mixture, dict):
