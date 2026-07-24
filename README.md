@@ -352,8 +352,9 @@ image dimensions, and source distributions are recorded before mixing. See
 [`docs/report/student_data_acquisition.md`](docs/report/student_data_acquisition.md).
 
 Pinned SigLIP and Qwen checkpoints can now enter the same DAG as selective initialization sources.
-Their revisions and cached files are validated before transfer, and the five-arm matched suite is
-`configs/sub1b_initialization_sweep.yaml`. See
+Their revisions and cached files are validated before transfer. The five-arm baseline suite is
+`configs/sub1b_initialization_sweep.yaml`; the focused exact-versus-structured SwiGLU test is
+`configs/sub1b_structured_mlp_transfer_sweep.yaml`. See
 [`docs/report/student_initialization_runner.md`](docs/report/student_initialization_runner.md).
 
 The 45-run `configs/sub1b_initialization_data_scale.yaml` factorial crosses those five arms with

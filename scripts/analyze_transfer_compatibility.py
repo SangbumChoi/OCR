@@ -36,6 +36,11 @@ def main() -> None:
         choices=["vision", "language"],
     )
     parser.add_argument("--fraction", type=float, required=True)
+    parser.add_argument(
+        "--shape-policy",
+        default="exact",
+        choices=["exact", "structured_mlp"],
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -92,6 +97,7 @@ def main() -> None:
         source,
         {args.component: args.fraction},
         family=spec.family,
+        shape_policy=args.shape_policy,
     ).to_dict()
     parameter_counts = count_unique_parameters(student)
     student_parameters = parameter_counts["total"]
@@ -104,6 +110,7 @@ def main() -> None:
         "family": spec.family,
         "component": args.component,
         "fraction": args.fraction,
+        "shape_policy": args.shape_policy,
         "source_tensors": len(source_shapes),
         "source_shape_fingerprint": (
             "sha256:"

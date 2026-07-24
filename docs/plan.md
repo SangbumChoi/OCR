@@ -165,7 +165,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   representation-loss weight.
 - **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
   — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
-  transfer, and the matched random/vision/language/dual/selective suite.
+  transfer, joint-salience SwiGLU reduction, and matched baseline and structured-transfer suites.
+- **Test structured initialization:**
+  [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md)
+  — exact-shape selective transfer versus a shared-channel reduction of wider teacher MLPs.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, single-update GRPO, periodic
@@ -277,6 +280,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_box_iou_loss_sweep.md`](report/student_box_iou_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_token_relation_distillation_sweep.md`](report/student_token_relation_distillation_sweep.md) ·
+   [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·

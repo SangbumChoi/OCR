@@ -583,6 +583,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         if not arm_id or arm_id in arm_ids:
             errors.append(f"initialization arm id is empty or duplicated: {arm_id!r}")
         arm_ids.add(arm_id)
+        shape_policy = arm.get("shape_policy", "exact")
+        if shape_policy not in {"exact", "structured_mlp"}:
+            errors.append(
+                f"{arm_id}.shape_policy must be exact or structured_mlp"
+            )
         for key in ("vision_transfer", "language_transfer", "connector_transfer"):
             value = float(arm.get(key, -1.0))
             if not 0.0 <= value <= 1.0:

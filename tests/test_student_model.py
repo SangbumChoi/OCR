@@ -989,6 +989,119 @@ def test_selective_transfer_reports_shape_mismatch_without_cropping():
     assert any(item["target"] == key for item in report.skipped_shape)
 
 
+def test_structured_mlp_transfer_uses_one_joint_channel_selection():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        language=replace(base.language, layers=1, mlp_width=2),
+    )
+    student = DocumentVLMStudent(config)
+    hidden = config.language.width
+    gate = torch.zeros(4, hidden)
+    up = torch.zeros(4, hidden)
+    down = torch.zeros(hidden, 4)
+    gate[1].fill_(5.0)
+    up[3].fill_(7.0)
+    down[:, 2].fill_(0.1)
+    source = {
+        "language.blocks.0.mlp.gate_proj.weight": gate,
+        "language.blocks.0.mlp.up_proj.weight": up,
+        "language.blocks.0.mlp.down_proj.weight": down,
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        shape_policy="structured_mlp",
+    )
+
+    assert torch.equal(
+        student.language.blocks[0].mlp.gate_proj.weight,
+        gate[[1, 3]],
+    )
+    assert torch.equal(
+        student.language.blocks[0].mlp.up_proj.weight,
+        up[[1, 3]],
+    )
+    assert torch.equal(
+        student.language.blocks[0].mlp.down_proj.weight,
+        down[:, [1, 3]],
+    )
+    assert report.structured_tensors == 3
+    assert report.structured_parameters == 3 * hidden * 2
+    assert len(report.structured_groups) == 1
+    group = report.structured_groups[0]
+    assert group["selection"] == "joint_l2_salience"
+    assert group["source_channels"] == 4
+    assert group["target_channels"] == 2
+    assert group["channel_index_fingerprint"].startswith("sha256:")
+
+
+def test_structured_mlp_transfer_fails_closed_for_incomplete_group():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        language=replace(base.language, mlp_width=2),
+    )
+    student = DocumentVLMStudent(config)
+    original = student.language.blocks[0].mlp.gate_proj.weight.detach().clone()
+    source = {
+        "language.blocks.0.mlp.gate_proj.weight": torch.ones(
+            4,
+            config.language.width,
+        ),
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        shape_policy="structured_mlp",
+    )
+
+    assert torch.equal(
+        student.language.blocks[0].mlp.gate_proj.weight,
+        original,
+    )
+    assert report.structured_tensors == 0
+    assert report.structured_groups == []
+    assert any(
+        item["target"] == "language.blocks.0.mlp.gate_proj.weight"
+        for item in report.skipped_shape
+    )
+
+
+def test_selective_transfer_rejects_unknown_shape_policy():
+    import pytest
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+
+    with pytest.raises(ValueError, match="shape_policy"):
+        selective_transfer(
+            student,
+            {},
+            {"language": 1.0},
+            shape_policy="crop",
+        )
+
+
 def test_meta_selective_transfer_counts_copied_target_shapes_exactly():
     import torch
 
@@ -1141,6 +1254,78 @@ def test_student_builder_records_the_realized_component_transfer_dose(tmp_path):
     assert report["target_component_parameters"] > 0
     assert report["realized_component_parameter_fraction"] >= 0.8
     assert report["minimum_component_parameter_fraction"] == 0.8
+
+
+def test_student_builder_routes_structured_mlp_arm_and_records_groups(tmp_path):
+    import json
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny(vocab_size=260))
+    state = {
+        key: value.clone()
+        for key, value in model.state_dict().items()
+    }
+    for index in range(model.config.language.layers):
+        prefix = f"language.blocks.{index}.mlp"
+        for projection in ("gate_proj", "up_proj"):
+            key = f"{prefix}.{projection}.weight"
+            state[key] = torch.cat(
+                [state[key], torch.ones(4, state[key].shape[1])],
+                dim=0,
+            )
+        key = f"{prefix}.down_proj.weight"
+        state[key] = torch.cat(
+            [state[key], torch.ones(state[key].shape[0], 4)],
+            dim=1,
+        )
+    checkpoint = tmp_path / "structured.pt"
+    torch.save(state, checkpoint)
+    output = tmp_path / "student"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_sub1b_student.py"),
+            "--tiny",
+            "--tiny-vocab-size",
+            "260",
+            "--device",
+            "cpu",
+            "--init-arm",
+            "I5_structured_mlp",
+            "--vision-source",
+            str(checkpoint),
+            "--vision-family",
+            "student",
+            "--language-source",
+            str(checkpoint),
+            "--language-family",
+            "student",
+            "--save",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metadata = json.loads(
+        (output / "metadata.json").read_text(encoding="utf-8")
+    )
+    language_report = next(
+        report
+        for report in metadata["transfer_reports"]
+        if report["component"] == "language"
+    )
+    assert language_report["shape_policy"] == "structured_mlp"
+    assert language_report["structured_tensors"] == 3
+    assert language_report["structured_parameters"] > 0
+    assert len(language_report["structured_groups"]) == 1
 
 
 def test_student_builder_skips_sources_for_inactive_components(tmp_path):

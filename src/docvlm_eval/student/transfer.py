@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
@@ -11,14 +12,23 @@ import torch.nn as nn
 
 
 _BLOCK = re.compile(r"^(vision|language)\.blocks\.(\d+)\.(.+)$")
+_MLP_WEIGHT = re.compile(
+    r"^language\.blocks\.(\d+)\.mlp\."
+    r"(gate_proj|up_proj|down_proj)\.weight$"
+)
+_SHAPE_POLICIES = {"exact", "structured_mlp"}
 
 
 @dataclass
 class TransferReport:
     family: str
     fractions: dict[str, float]
+    shape_policy: str
     copied_tensors: int = 0
     copied_parameters: int = 0
+    structured_tensors: int = 0
+    structured_parameters: int = 0
+    structured_groups: list[dict[str, Any]] = field(default_factory=list)
     token_rows_copied: int = 0
     skipped_by_policy: int = 0
     skipped_shape: list[dict[str, Any]] = field(default_factory=list)
@@ -168,6 +178,118 @@ def _depth_map(target_index: int, target_count: int, source_count: int) -> int:
     return round(target_index * (source_count - 1) / (target_count - 1))
 
 
+def _axis_squared_l2(tensor: torch.Tensor, axis: int) -> torch.Tensor:
+    """Compute channel salience in bounded-memory chunks."""
+    channels = tensor.shape[axis]
+    score = torch.empty(channels, dtype=torch.float32, device=tensor.device)
+    for start in range(0, channels, 1024):
+        length = min(1024, channels - start)
+        chunk = tensor.narrow(axis, start, length).detach().float()
+        reduce_axis = 1 if axis == 0 else 0
+        score[start : start + length] = chunk.square().sum(dim=reduce_axis)
+    return score
+
+
+def _structured_mlp_group(
+    target_prefix: str,
+    source_prefix: str,
+    target: Mapping[str, torch.Tensor],
+    source: Mapping[str, torch.Tensor],
+) -> tuple[dict[str, torch.Tensor], dict[str, Any]] | None:
+    projections = ("gate_proj", "up_proj", "down_proj")
+    target_keys = {
+        projection: f"{target_prefix}.{projection}.weight"
+        for projection in projections
+    }
+    source_keys = {
+        projection: f"{source_prefix}.{projection}.weight"
+        for projection in projections
+    }
+    if any(key not in target for key in target_keys.values()) or any(
+        key not in source for key in source_keys.values()
+    ):
+        return None
+    target_gate = target[target_keys["gate_proj"]]
+    target_up = target[target_keys["up_proj"]]
+    target_down = target[target_keys["down_proj"]]
+    source_gate = source[source_keys["gate_proj"]]
+    source_up = source[source_keys["up_proj"]]
+    source_down = source[source_keys["down_proj"]]
+    tensors = (
+        target_gate,
+        target_up,
+        target_down,
+        source_gate,
+        source_up,
+        source_down,
+    )
+    if any(tensor.ndim != 2 for tensor in tensors):
+        return None
+    target_channels, target_hidden = target_gate.shape
+    source_channels, source_hidden = source_gate.shape
+    if (
+        target_up.shape != target_gate.shape
+        or source_up.shape != source_gate.shape
+        or target_down.shape != (target_hidden, target_channels)
+        or source_down.shape != (source_hidden, source_channels)
+        or target_hidden != source_hidden
+        or source_channels <= target_channels
+    ):
+        return None
+
+    is_shape_only = any(tensor.device.type == "meta" for tensor in tensors)
+    if is_shape_only:
+        reduced = {
+            key: torch.empty_like(target[key])
+            for key in target_keys.values()
+        }
+        selection = "shape_only_compatibility"
+        fingerprint = None
+        preview: list[int] = []
+    else:
+        score = _axis_squared_l2(source_gate, 0)
+        score.add_(_axis_squared_l2(source_up, 0))
+        score.add_(_axis_squared_l2(source_down, 1))
+        indices = (
+            torch.argsort(
+                score.detach().cpu(),
+                descending=True,
+                stable=True,
+            )[:target_channels]
+            .sort()
+            .values.to(source_gate.device)
+        )
+        reduced = {
+            target_keys["gate_proj"]: source_gate.index_select(0, indices),
+            target_keys["up_proj"]: source_up.index_select(0, indices),
+            target_keys["down_proj"]: source_down.index_select(1, indices),
+        }
+        index_list = [int(value) for value in indices.detach().cpu().tolist()]
+        fingerprint = (
+            "sha256:"
+            + hashlib.sha256(
+                ",".join(str(value) for value in index_list).encode("ascii")
+            ).hexdigest()
+        )
+        preview = (
+            index_list
+            if len(index_list) <= 16
+            else index_list[:8] + index_list[-8:]
+        )
+        selection = "joint_l2_salience"
+
+    return reduced, {
+        "target_prefix": target_prefix,
+        "source_prefix": source_prefix,
+        "source_channels": source_channels,
+        "target_channels": target_channels,
+        "hidden_width": target_hidden,
+        "selection": selection,
+        "channel_index_fingerprint": fingerprint,
+        "channel_index_preview": preview,
+    }
+
+
 @torch.no_grad()
 def selective_transfer(
     student: nn.Module,
@@ -177,19 +299,28 @@ def selective_transfer(
     family: str = "student",
     token_map: Mapping[int, int] | None = None,
     copy_token_embeddings: bool | None = None,
+    shape_policy: str = "exact",
 ) -> TransferReport:
-    """Copy exact-shape tensors under component and depth-fraction controls.
+    """Copy policy-compatible tensors under component and depth controls.
 
-    Width-mismatched tensors are reported and left random. They must be learned by distillation;
-    this function deliberately does not crop or interpolate hidden dimensions.
+    The structured MLP policy only reduces a complete SwiGLU group with a shared
+    salience-selected intermediate-channel map. Other width mismatches remain random.
     """
+    if shape_policy not in _SHAPE_POLICIES:
+        raise ValueError(
+            f"shape_policy must be one of {sorted(_SHAPE_POLICIES)}"
+        )
     normalized_fractions = {
         component: float(fractions.get(component, 0.0))
         for component in ("vision", "language", "connector")
     }
     if any(not 0.0 <= value <= 1.0 for value in normalized_fractions.values()):
         raise ValueError("transfer fractions must be between zero and one")
-    report = TransferReport(family=family, fractions=normalized_fractions)
+    report = TransferReport(
+        family=family,
+        fractions=normalized_fractions,
+        shape_policy=shape_policy,
+    )
     source = canonicalize_source_state(source, family)
     target = student.state_dict()
     if copy_token_embeddings is None:
@@ -209,6 +340,11 @@ def selective_transfer(
         for component in ("vision", "language")
     }
     copied_storages: set[Any] = set()
+    structured_cache: dict[
+        tuple[str, str],
+        tuple[dict[str, torch.Tensor], dict[str, Any]] | None,
+    ] = {}
+    recorded_structured_groups: set[tuple[str, str]] = set()
 
     for target_key, target_tensor in target.items():
         component = target_key.split(".", 1)[0]
@@ -289,20 +425,46 @@ def selective_transfer(
         if source_tensor is None:
             report.missing_source.append(source_key)
             continue
+        structured = False
         if tuple(source_tensor.shape) != tuple(target_tensor.shape):
-            report.skipped_shape.append(
-                {
-                    "target": target_key,
-                    "source": source_key,
-                    "target_shape": list(target_tensor.shape),
-                    "source_shape": list(source_tensor.shape),
-                }
-            )
-            continue
+            mlp_match = _MLP_WEIGHT.match(target_key)
+            if shape_policy == "structured_mlp" and mlp_match:
+                target_index = int(mlp_match.group(1))
+                source_index = int(source_key.split(".")[2])
+                target_prefix = f"language.blocks.{target_index}.mlp"
+                source_prefix = f"language.blocks.{source_index}.mlp"
+                group_key = (target_prefix, source_prefix)
+                if group_key not in structured_cache:
+                    structured_cache[group_key] = _structured_mlp_group(
+                        target_prefix,
+                        source_prefix,
+                        target,
+                        source,
+                    )
+                group = structured_cache[group_key]
+                if group is not None and target_key in group[0]:
+                    source_tensor = group[0][target_key]
+                    structured = True
+                    if group_key not in recorded_structured_groups:
+                        report.structured_groups.append(group[1])
+                        recorded_structured_groups.add(group_key)
+            if not structured:
+                report.skipped_shape.append(
+                    {
+                        "target": target_key,
+                        "source": source_key,
+                        "target_shape": list(target_tensor.shape),
+                        "source_shape": list(source_tensor.shape),
+                    }
+                )
+                continue
         target_tensor.copy_(
             source_tensor.to(device=target_tensor.device, dtype=target_tensor.dtype)
         )
         report.copied_tensors += 1
+        if structured:
+            report.structured_tensors += 1
+            report.structured_parameters += target_tensor.numel()
         storage_key = (
             ("meta", target_key)
             if target_tensor.device.type == "meta"

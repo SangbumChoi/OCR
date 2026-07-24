@@ -131,7 +131,7 @@ Initialization sources may be local paths or immutable Hub mappings. Hub snapsho
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
 across paired sweeps. See
 [`student_initialization_runner.md`](student_initialization_runner.md) for the source schema,
-compatibility analyzer, and five-arm initialization suite.
+compatibility analyzer, five-arm baseline initialization suite, and structured-MLP comparison.
 
 Set `evaluation.baseline_evaluation` to an evaluation root produced by
 `scripts/eval_student.py`, and set `evaluation.monolingual_control_evaluation` to the corresponding

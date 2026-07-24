@@ -106,6 +106,7 @@ def main() -> None:
                 load_checkpoint_state(active_sources["vision"]),
                 {"vision": arm["vision_transfer"]},
                 family=args.vision_family,
+                shape_policy=str(arm.get("shape_policy", "exact")),
             ).to_dict()
         )
     if active_sources["language"]:
@@ -120,6 +121,7 @@ def main() -> None:
                 {"language": arm["language_transfer"]},
                 family=args.language_family,
                 token_map=token_map,
+                shape_policy=str(arm.get("shape_policy", "exact")),
             ).to_dict()
         )
     minimum_fractions = arm["minimum_component_parameter_fraction"]

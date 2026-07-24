@@ -54,6 +54,7 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     blueprint["initialization_arms"][2][
         "minimum_component_parameter_fraction"
     ] = {}
+    blueprint["initialization_arms"][3]["shape_policy"] = "crop"
 
     _, errors = validate_blueprint(blueprint)
 
@@ -67,6 +68,7 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
         "requires a minimum parameter fraction" in error
         for error in errors
     )
+    assert any("shape_policy must be" in error for error in errors)
 
 
 def test_blueprint_rejects_invalid_input_pipeline_controls():
