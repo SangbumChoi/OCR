@@ -135,6 +135,18 @@ python scripts/validate_synth_splits.py \
 See [`docs/report/hard_synthetic_pipeline.md`](docs/report/hard_synthetic_pipeline.md) for the
 curriculum, semantic fingerprints, leakage policy, and structured SFT/RLVR evidence contract.
 
+The LFM spotting track also has a parameter-matched confirmatory LoRA placement experiment:
+
+```bash
+python scripts/run_lora_placement_sweep.py --dry-run
+# after the six GPU jobs:
+python scripts/analyze_lora_placement_sweep.py
+```
+
+It compares vision-only adaptation with the exact vision+connector target union over three paired
+seeds. See
+[`docs/report/student_lora_placement_interaction.md`](docs/report/student_lora_placement_interaction.md).
+
 ---
 
 ## Quick start

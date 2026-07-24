@@ -94,7 +94,8 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
         sizes = [n for n in sizes if n <= n_pub] or [n_pub]   # can't subsample beyond available rows
         print(f"[A0 public] train source = {public} ({n_pub} rows); sizes={sizes}; "
               f"validation = synthetic (seed {args.a0_test_seed}, {n_test} samples)")
-    total = len(args.models) * len(sizes); done = 0
+    total = len(args.models) * len(sizes)
+    done = 0
     for model in args.models:
         hf = HF_ID[model]
         rec = {"epochs": args.a0_epochs, "test_seed": args.a0_test_seed,
@@ -116,6 +117,11 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
                 epochs=args.a0_epochs, max_steps=None,
                 output_dir=f"outputs/{model}/A0_n{n}",
+                lora_r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                learning_rate=args.lr,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}A0-{model}-n{n}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
@@ -139,7 +145,14 @@ def main() -> None:
     p.add_argument("--arm", required=True,
                    help="'baseline' (eval only), 'A0' (memorization-vs-size prerequisite sweep), or a "
                         "configs/synth_data.yaml ablation id (e.g. A1_spotting_on, A4_ko_en)")
-    p.add_argument("--placement", default="all", help="A5 LoRA group: vision|connector|llm_attn|llm_mlp|all")
+    p.add_argument(
+        "--placement",
+        default="all",
+        help=(
+            "A5 LoRA group: vision|connector|vision_connector|"
+            "llm_attn|llm_mlp|all"
+        ),
+    )
     # PUBLIC-DATA path: train on a prebuilt benchmark jsonl (scripts/build_benchmark_trainset.py) and
     # validate on the SYNTHETIC suite. Use --arm public for a single run, or --arm A0 for the scale sweep.
     p.add_argument("--train-jsonl", default=None,
@@ -187,7 +200,22 @@ def main() -> None:
     # --- A6 HPO knobs (threaded into LoraVLMConfig; defaults = the config's defaults) ---
     p.add_argument("--lora-r", type=int, default=16, help="A6: LoRA rank")
     p.add_argument("--lora-alpha", type=int, default=32, help="A6: LoRA alpha (convention: 2*r)")
+    p.add_argument(
+        "--lora-budget-reference",
+        default=None,
+        help=(
+            "match adapter trainable parameters to this placement at --lora-r; "
+            "for the confirmatory A5 test use 'vision'"
+        ),
+    )
     p.add_argument("--lr", type=float, default=1e-4, help="A6: learning rate")
+    p.add_argument("--seed", type=int, default=7, help="LoRA optimizer/data-loader seed")
+    p.add_argument(
+        "--data-seed",
+        type=int,
+        default=7,
+        help="synthetic training-set seed; vary only across paired replicates",
+    )
     # --- throughput / OOM controls ---
     p.add_argument("--batch-size", type=int, default=2,
                    help="micro-batch (images/forward). LFM at 768px uses ~5GB on a T4 -> bs=2 fits; "
@@ -224,7 +252,8 @@ def main() -> None:
                  f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
 
     try:
-        import peft, accelerate  # noqa: F401  (the [finetune] extra; missing on a bare install)
+        import accelerate  # noqa: F401  (the [finetune] extra)
+        import peft  # noqa: F401  (the [finetune] extra)
     except ModuleNotFoundError as e:
         sys.exit(f"[run_ablation] missing fine-tuning dependency '{e.name}'. "
                  f"Run: pip install -e '.[models,finetune]'")
@@ -277,7 +306,8 @@ def main() -> None:
             out[pb] = d
         return out
 
-    total = len(args.models); done = 0
+    total = len(args.models)
+    done = 0
     for model in args.models:
         done += 1
         hf = HF_ID[model]
@@ -305,22 +335,37 @@ def main() -> None:
             if args.before_after:      # BASE model on the full suite BEFORE any training
                 print("    [before] scoring the un-tuned base on the full suite")
                 probes_before = eval_all(hf, save_preds_dir=str(arm_dir / "preds_before"))
-            out, _ = train_lora_vlm(LoraVLMConfig(
+            out, training_eval = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                max_steps=args.steps, output_dir=f"outputs/{model}/public_{args.placement}_{args._mils}",
+                max_steps=args.steps,
+                output_dir=(
+                    f"outputs/{model}/public_{args.placement}_"
+                    f"{args._mils}_s{args.seed}"
+                ),
                 lora_r=args.lora_r, lora_alpha=args.lora_alpha, learning_rate=args.lr,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
-                wandb_run=f"{args.wandb_run_prefix}public-{model}-{args.placement}-img{args._mils}",
+                wandb_run=(
+                    f"{args.wandb_run_prefix}public-{model}-{args.placement}-"
+                    f"img{args._mils}-s{args.seed}"
+                ),
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl)] + ([("heldout", heldout_jsonl)] if heldout_jsonl else []))
             probes_after = eval_all(hf, adapter=out,
                                     save_preds_dir=str(arm_dir / "preds_after")
                                     if args.before_after else None)
+            budget_path = Path(out) / "lora_budget.json"
+            budget = json.loads(budget_path.read_text(encoding="utf-8"))
             payload = {"control": {"count": n_train, "steps": args.steps, "placement": args.placement,
                                    "lora_r": args.lora_r, "lora_alpha": args.lora_alpha, "lr": args.lr,
+                                   "seed": args.seed,
+                                   "lora_budget_reference": args.lora_budget_reference,
+                                   "lora_budget": budget,
                                    "max_image_long_side": args._mils, "train_source": args.train_jsonl},
-                       "probes": probes_after}
+                       "probes": probes_after,
+                       "training_eval": training_eval}
             if probes_before is not None:
                 payload["probes_before"] = probes_before
                 payload["delta"] = _deltas(probes_before, probes_after)
@@ -328,11 +373,16 @@ def main() -> None:
                 hd = payload["delta"].get("heldout", {})
                 print(f"    [before/after] heldout Δscore={hd.get('score', 0):+.2f}  "
                       f"by-axis={hd.get('by_axis')}")
-            _record(model, args.record_key or f"public:{args.placement}", payload)
+            _record(
+                model,
+                args.record_key or f"public:{args.placement}",
+                payload,
+            )
         else:
             # 1) data for this arm (count = the fixed #images control)
             subprocess.run([sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
-                            "--ablation", args.arm, "--count", str(args.count)], cwd=ROOT, check=True)
+                            "--ablation", args.arm, "--count", str(args.count),
+                            "--seed", str(args.data_seed)], cwd=ROOT, check=True)
             subprocess.run([sys.executable, "scripts/build_realistic_benchmark.py"], cwd=ROOT, check=True)
             train_jsonl = str(ROOT / PROBES["realistic"])
             is_a1 = args.arm.startswith("A1_") or args.arm.startswith("A3_spot")
@@ -340,23 +390,43 @@ def main() -> None:
             if heldout_jsonl:
                 eval_specs.append(("heldout", heldout_jsonl))
             # 2) LoRA fine-tune (steps = the fixed iteration control); per-epoch loss/train-score -> W&B
-            out, _ = train_lora_vlm(LoraVLMConfig(
+            out, training_eval = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                max_steps=args.steps, output_dir=f"outputs/{model}/{args.arm}_{args.placement}",
+                max_steps=args.steps,
+                output_dir=(
+                    f"outputs/{model}/{args.arm}_{args.placement}_s{args.seed}"
+                ),
+                lora_r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
-                wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}",
+                wandb_run=(
+                    f"{args.wandb_run_prefix}{args.arm}-{model}-"
+                    f"{args.placement}-s{args.seed}"
+                ),
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples,
                 grounding_repeat=args.grounding_repeat if is_a1 else 1,
                 grounding_target=args.grounding_target if is_a1 else "pixel"),
                 eval_specs=eval_specs)
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
+            budget_path = Path(out) / "lora_budget.json"
+            budget = json.loads(budget_path.read_text(encoding="utf-8"))
             payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement,
+                                   "seed": args.seed, "data_seed": args.data_seed,
+                                   "lora_budget_reference": args.lora_budget_reference,
+                                   "lora_budget": budget,
                                    "grounding_repeat": args.grounding_repeat if is_a1 else 1,
                                    "grounding_target": args.grounding_target if is_a1 else "pixel",
                                    "heldout_seed": args.heldout_seed},
-                       "probes": eval_all(hf, adapter=out)}
-            _record(model, f"{args.arm}:{args.placement}", payload)
+                       "probes": eval_all(hf, adapter=out),
+                       "training_eval": training_eval}
+            _record(
+                model,
+                args.record_key or f"{args.arm}:{args.placement}",
+                payload,
+            )
         cap = payload["probes"].get("capability", {})
         print(f"    capability score={cap.get('score')}  by_axis={cap.get('by_answer_type')}")
     print(f"[done] -> {RESULTS}")

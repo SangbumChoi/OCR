@@ -172,6 +172,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Test source-aligned attention:**
   [`report/student_attention_geometry_transfer_factorial.md`](report/student_attention_geometry_transfer_factorial.md)
   — strict semantic transfer gates and a paired 2x2 geometry-by-transfer interaction.
+- **Test the spotting module interaction:**
+  [`report/student_lora_placement_interaction.md`](report/student_lora_placement_interaction.md)
+  — an exact vision+connector target union, fail-closed LoRA parameter matching, and a paired
+  three-seed confirmatory sweep on the LFM spotting arm.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, single-update GRPO, periodic
@@ -285,6 +289,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_token_relation_distillation_sweep.md`](report/student_token_relation_distillation_sweep.md) ·
    [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md) ·
    [`report/student_attention_geometry_transfer_factorial.md`](report/student_attention_geometry_transfer_factorial.md) ·
+   [`report/student_lora_placement_interaction.md`](report/student_lora_placement_interaction.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·

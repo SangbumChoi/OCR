@@ -393,7 +393,10 @@ spotting*.
 - *H2 (tentative).* The grounding pathway *appears* to run through the **vision encoder** more than the
   connector (vision > connector on every grounding row, starkly on `L1-locate`). This is consistent
   with the A5 prior "spatial/grounding ← vision (+connector)", but two arms at small scale can't yet
-  rule out the connector contributing when combined.
+  rule out the connector contributing when combined. The parameter-matched confirmatory protocol is
+  now executable as
+  [`student_lora_placement_interaction.md`](student_lora_placement_interaction.md): it compares
+  vision-only with the exact vision+connector target union over three paired seeds.
 - *H3 (tentative).* The lift *appears* **cheap to recognition**: `kie` is identical (0.986) across
   placements, so adding box targets did not visibly erode "what". A real cost may only show at scale.
   Note `kie` is *already high to begin with* — KIE-style "read this field's value" is close to what
@@ -406,7 +409,8 @@ spotting*.
   an easier target; scale + a region-heavy run would disambiguate.
 - *Caveat on magnitude.* Absolute spot-IoU is still low (≤ ~0.14 held-out) and the train/held-out
   ordering is noisy, so treat these as *direction*, not achieved performance. The next step is more
-  images/epochs and a vision **+** connector arm to test H2 directly.
+  images/steps in the six-run, adapter-budget-matched vision **+** connector sweep. Its existence is
+  an experiment contract, not evidence that the connector interaction is positive.
 
 These are framed as conjectures on purpose: with the current brief runs we can observe *direction*,
 not magnitude. We flag this so the report does not overclaim.

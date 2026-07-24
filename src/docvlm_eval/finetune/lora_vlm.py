@@ -11,11 +11,18 @@ and intentionally small (peft + a plain torch loop). Used by ``scripts/run_ablat
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable
 
 # capability -> module bucket (mirrors the hypotheses in research_novelty.md / ablation_plan.md)
-PLACEMENT_GROUPS = ("vision", "connector", "llm_attn", "llm_mlp", "all")
+PLACEMENT_GROUPS = (
+    "vision",
+    "connector",
+    "vision_connector",
+    "llm_attn",
+    "llm_mlp",
+    "all",
+)
 
 _VISION_PAT = re.compile(r"vis(ual|ion)|patch|siglip|navit|aimv2", re.I)
 _CONNECTOR_PAT = re.compile(r"merger|projector|connector|mlp1|multi_modal|abstractor|resampler", re.I)
@@ -67,6 +74,8 @@ def resolve_lora_targets(
             targets.append(name)
         elif group == "connector" and bkt == "connector":
             targets.append(name)
+        elif group == "vision_connector" and bkt in {"vision", "connector"}:
+            targets.append(name)
         elif (
             group == "llm_attn"
             and bkt == "llm"
@@ -81,6 +90,94 @@ def resolve_lora_targets(
         ):
             targets.append(name)
     return sorted(set(targets))
+
+
+def lora_parameter_coefficient(
+    named_modules: Iterable[tuple[str, Any]],
+    targets: Iterable[str],
+) -> int:
+    """Return LoRA trainable parameters per rank for selected Linear modules."""
+    modules = dict(named_modules)
+    coefficient = 0
+    for name in targets:
+        module = modules.get(name)
+        in_features = getattr(module, "in_features", None)
+        out_features = getattr(module, "out_features", None)
+        if (
+            not isinstance(in_features, int)
+            or not isinstance(out_features, int)
+            or in_features <= 0
+            or out_features <= 0
+        ):
+            raise ValueError(
+                f"LoRA target {name!r} does not expose positive "
+                "in_features/out_features"
+            )
+        coefficient += in_features + out_features
+    if coefficient <= 0:
+        raise ValueError("LoRA parameter coefficient requires at least one target")
+    return coefficient
+
+
+def resolve_lora_budget(
+    named_modules: Iterable[tuple[str, Any]],
+    placement: str,
+    *,
+    requested_rank: int,
+    requested_alpha: int,
+    reference_placement: str | None = None,
+    is_linear: Callable[[Any], bool] | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    """Resolve targets and optionally match their adapter size to a reference placement."""
+    if requested_rank <= 0 or requested_alpha <= 0:
+        raise ValueError("LoRA rank and alpha must be positive")
+    named_modules = list(named_modules)
+    targets = resolve_lora_targets(
+        named_modules,
+        placement,
+        is_linear=is_linear,
+    )
+    if not targets:
+        return targets, {}
+    coefficient = lora_parameter_coefficient(named_modules, targets)
+    reference_targets = (
+        targets
+        if reference_placement is None
+        else resolve_lora_targets(
+            named_modules,
+            reference_placement,
+            is_linear=is_linear,
+        )
+    )
+    if not reference_targets:
+        raise ValueError(
+            f"reference placement {reference_placement!r} has no LoRA targets"
+        )
+    reference_coefficient = lora_parameter_coefficient(
+        named_modules,
+        reference_targets,
+    )
+    target_budget = reference_coefficient * requested_rank
+    effective_rank = max(1, round(target_budget / coefficient))
+    alpha_ratio = requested_alpha / requested_rank
+    effective_alpha = max(1, round(alpha_ratio * effective_rank))
+    actual_parameters = coefficient * effective_rank
+    relative_error = abs(actual_parameters - target_budget) / target_budget
+    return targets, {
+        "placement": placement,
+        "reference_placement": reference_placement or placement,
+        "target_count": len(targets),
+        "reference_target_count": len(reference_targets),
+        "requested_rank": requested_rank,
+        "effective_rank": effective_rank,
+        "requested_alpha": requested_alpha,
+        "effective_alpha": effective_alpha,
+        "parameters_per_rank": coefficient,
+        "reference_parameters_per_rank": reference_coefficient,
+        "target_trainable_parameters": target_budget,
+        "actual_trainable_parameters": actual_parameters,
+        "relative_budget_error": relative_error,
+    }
 
 
 def _linear_module_summary(named_modules: Iterable[tuple[str, Any]]) -> str:
@@ -101,6 +198,8 @@ class LoraVLMConfig:
     placement: str = "all"                 # A5 group -> resolve_lora_targets
     lora_r: int = 16
     lora_alpha: int = 32
+    lora_budget_reference_placement: str | None = None
+    lora_budget_max_relative_error: float = 0.05
     lora_dropout: float = 0.05
     learning_rate: float = 1e-4
     epochs: int = 1
@@ -327,21 +426,68 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                                         trust_remote_code=True).to(device)
 
     named_modules = list(model.named_modules())
-    targets = resolve_lora_targets(named_modules, cfg.placement)
+    targets, budget_report = resolve_lora_budget(
+        named_modules,
+        cfg.placement,
+        requested_rank=cfg.lora_r,
+        requested_alpha=cfg.lora_alpha,
+        reference_placement=cfg.lora_budget_reference_placement,
+    )
     if not targets:
         summary = _linear_module_summary(named_modules)
         raise RuntimeError(
             f"no LoRA targets for placement={cfg.placement!r} on {cfg.model_id}; {summary}. "
             "Confirm that the Colab checkout is current and inspect the model's module names."
         )
+    cfg = replace(
+        cfg,
+        lora_r=budget_report["effective_rank"],
+        lora_alpha=budget_report["effective_alpha"],
+    )
+    if (
+        budget_report["relative_budget_error"]
+        > cfg.lora_budget_max_relative_error
+    ):
+        raise RuntimeError(
+            "integer LoRA rank cannot satisfy the requested adapter budget: "
+            f"relative error {budget_report['relative_budget_error']:.2%} > "
+            f"{cfg.lora_budget_max_relative_error:.2%}; increase the reference "
+            "rank or relax lora_budget_max_relative_error"
+        )
     print(
         f"[lora_vlm.train] placement={cfg.placement} resolved {len(targets)} targets; "
+        f"rank={cfg.lora_r} alpha={cfg.lora_alpha} "
+        f"adapter_params={budget_report['actual_trainable_parameters']:,} "
+        f"budget_error={budget_report['relative_budget_error']:.2%}; "
         f"sample={targets[:8]}",
         flush=True,
     )
     model = get_peft_model(model, LoraConfig(
         r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
         bias="none", target_modules=targets, task_type="CAUSAL_LM"))
+    budget_report["realized_trainable_parameters"] = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    )
+    budget_report["realized_relative_budget_error"] = (
+        abs(
+            budget_report["realized_trainable_parameters"]
+            - budget_report["target_trainable_parameters"]
+        )
+        / budget_report["target_trainable_parameters"]
+    )
+    if (
+        cfg.lora_budget_reference_placement is not None
+        and budget_report["realized_relative_budget_error"]
+        > cfg.lora_budget_max_relative_error
+    ):
+        raise RuntimeError(
+            "realized PEFT trainable parameters violate the adapter budget: "
+            f"relative error "
+            f"{budget_report['realized_relative_budget_error']:.2%} > "
+            f"{cfg.lora_budget_max_relative_error:.2%}"
+        )
     model.print_trainable_parameters()
     if cfg.grad_checkpointing:                 # big activation-memory saver (the main OOM lever)
         if hasattr(model, "config"):
@@ -402,6 +548,7 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     run = _wandb_init(cfg)
     if run:        # distinct namespaces so define_metric globs don't collide: loss vs step, eval vs epoch
         import wandb
+        run.config.update({"lora_budget": budget_report}, allow_val_change=True)
         wandb.define_metric("train/global_step")
         wandb.define_metric("epoch")
         wandb.define_metric("train/loss", step_metric="train/global_step")
@@ -465,6 +612,10 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         out_dir.mkdir(parents=True, exist_ok=True)
         model.save_pretrained(out_dir)
         proc.save_pretrained(out_dir)
+        (out_dir / "lora_budget.json").write_text(
+            json.dumps(budget_report, indent=2),
+            encoding="utf-8",
+        )
     finally:
         if run:                                            # always close, even on OOM/crash, so the
             run.finish()                                   # next sweep size's wandb.init() is clean

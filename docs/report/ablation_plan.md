@@ -127,7 +127,7 @@ should step the headline metric up at each addition (`scripts/plot_ablation.py` 
 | **A2 Reasoning supervision**                      | Does CoT/rationale in the target help integrative reasoning, or is answer-only as good?                                           | target = `rationale → answer` vs `answer`                                 | same data                   | content-reasoning (sum/cmp); InfoVQA               | rationale teaches multi-region procedure → reasoning↑                                      |
 | **A3 Spotting+Reasoning vs combined-direct**      | Is it the *act of adding* these signals that helps, or does the plain task combination already capture it?                        | {answer} vs {+spot} vs {+reason} vs {+spot+reason}                        | same data/steps             | composite + per-axis                       | the structured signals beat plain combination; spot & reason are complementary             |
 | **A4 Multilingual mixing & language correlation** | Does training several languages in one mix beat single-language? Which language *pairs* transfer?                                 | train sets: {en}, {en+es}, {en+ja}, {ko+en}, {en+zh}, {all}               | equal total samples         | per-language NED (custom_eval)             | related scripts transfer (en↔es, ko↔en); distant scripts (en↔ja) help less or interfere    |
-| **A5 LoRA placement**                             | Which modules to adapt to inject which capability — **vision encoder** vs **connector/projector** vs **LLM-attn** vs **LLM-MLP**? | LoRA target_modules set                                                   | rank/alpha/lr fixed         | per-axis (spatial→vision?, reasoning→LLM?) | spatial/recognition gains come from vision+connector; reasoning/language from LLM attn+mlp |
+| **A5 LoRA placement**                             | Which modules to adapt to inject which capability — **vision encoder** vs **connector/projector** vs their **union** vs **LLM-attn** vs **LLM-MLP**? | LoRA target_modules set                                                   | rank/alpha/lr fixed for discovery; trainable parameters matched for the confirmatory union test | per-axis (spatial→vision?, reasoning→LLM?) | spatial/recognition gains come from vision+connector; reasoning/language from LLM attn+mlp |
 | **A6 Hyperparameter optimization**                | Best rank `r`, `alpha`, lr, epochs for the chosen placement?                                                                      | r∈{8,16,32,64}, α, lr, epochs                                             | placement fixed (A5 winner) | composite + overfit gap                    | moderate r (16–32) best; too-high r overfits the small data                                |
 | **A7 Preprocessing / resize logic**               | How does the image-resizing/tiling logic affect small-text & layout?                                                              | dynamic tiling (n_max) vs fixed resize; max-resolution; aspect-ratio keep | model/data fixed            | InfoVQA, OCRBench, small-text NED          | higher-res dynamic tiling → InfoVQA/OCRBench↑ (small text legible)                         |
 
@@ -259,6 +259,7 @@ filter) — bucket support and recipes are measured in
 # baseline (eval only), then the A1 spotting curriculum on the default LFM base:
 python scripts/run_ablation.py --arm baseline
 python scripts/run_ablation.py --arm A1_spotting_on --placement connector --heldout-seed 999
+python scripts/run_lora_placement_sweep.py --dry-run
 ```
 `run_ablation.py` generates the arm's data → LoRA-fine-tunes (`docvlm_eval.finetune.lora_vlm`,
 placement resolved by introspection) → evaluates on the probe suite → appends to
@@ -271,6 +272,10 @@ placement resolved by introspection) → evaluates on the probe suite → append
   (binds to `docvlm_eval.synth.dto.GenConfig`); one file = one dataset variant.
 - `configs/ablations.yaml` — declarative ablation registry (two bases, factor, control, metric, gap).
 - `scripts/run_ablation.py` — gen → LoRA train → eval → record (per model, per arm).
+- `scripts/run_lora_placement_sweep.py` — six-job paired vision versus vision+connector
+  confirmatory sweep with a fail-closed adapter-parameter budget.
+- `scripts/analyze_lora_placement_sweep.py` — paired bootstrap aggregation and promotion gates for
+  the completed confirmatory sweep.
 - `docvlm_eval.finetune.lora_vlm` — model-agnostic LoRA (chat-template) + the A5 placement resolver.
 - `scripts/plot_ablation.py` — staircase + Δ bars + transfer heatmap from the results JSON.
 - Every variant is scored by the **same** eval pipeline, so the staircase is apples-to-apples.

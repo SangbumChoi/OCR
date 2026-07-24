@@ -1,0 +1,37 @@
+# Confirm whether connector adaptation adds grounding value beyond vision adaptation.
+
+schema_version: 1
+name: lora-vision-connector-confirmatory
+model: lfm2_5-vl-1.6b
+arm: A1_spotting_on
+placements: [vision, vision_connector]
+
+controls:
+  count: 200
+  steps: 600
+  heldout_seed: 999
+  grounding_repeat: 8
+  grounding_target: norm
+  max_image_long_side: 768
+  batch_size: 2
+  lora_rank: 16
+  lora_alpha: 32
+  lora_budget_reference: vision
+  learning_rate: 0.0001
+  eval_max_samples: 128
+
+replicates:
+  - {id: seed_0, optimizer_seed: 7, data_seed: 7}
+  - {id: seed_1, optimizer_seed: 107, data_seed: 107}
+  - {id: seed_2, optimizer_seed: 207, data_seed: 207}
+
+wandb:
+  project: docvlm-ablation
+  run_prefix: confirmatory-
+
+analysis:
+  primary_metrics: [grounding, L1-locate]
+  guard_metrics: [kie, ocr-full, multilingual, reading-order]
+  guard_noninferiority: -0.01
+  max_budget_error: 0.05
+  require_all_primary_replicates_nonnegative: true

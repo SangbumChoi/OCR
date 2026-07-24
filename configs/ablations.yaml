@@ -96,8 +96,9 @@ ablations:
     question: "Which modules to LoRA-adapt for which capability?"
     # groups are resolved at runtime by introspecting the loaded model (no per-model hardcoding):
     #   docvlm_eval.finetune.lora_vlm.resolve_lora_targets(model, group)
-    factor: "target group: vision | connector | llm_attn | llm_mlp | all"
-    control: "rank/alpha/lr/steps fixed"
+    factor: "target group: vision | connector | vision_connector | llm_attn | llm_mlp | all"
+    control: "rank/alpha/lr/steps fixed for discovery; vision vs vision_connector is repeated with
+              matched LoRA trainable parameters in configs/lora_vision_connector_sweep.yaml"
     metrics: [per_axis]
     hypothesis: "spatial/grounding <- vision+connector ; reasoning & language <- llm_attn+mlp"
 
