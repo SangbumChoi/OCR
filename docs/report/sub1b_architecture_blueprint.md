@@ -263,7 +263,9 @@ retention. The same matched portrait/landscape patches also run through dense ad
 square controls; packed deployment must outperform the adaptive control as well as its portable
 loop. Three seed-deterministic order rotations produce same-round paired speed and memory ratios;
 deployment requires both a median gain and no regressive round. Missing, legacy, or CPU-only
-timing cannot pass; evidence from a different architecture fails.
+timing cannot pass; evidence from a different architecture fails. The production experiment makes
+this gate a blocking first stage, so a fallback or efficiency regression cannot consume the much
+larger pretraining budget.
 
 ## Evidence basis
 

@@ -328,7 +328,11 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     visual_benchmark = runtime.get("visual_backend_benchmark") or {}
     if not isinstance(visual_benchmark, dict):
         raise ValueError("runtime.visual_backend_benchmark must be a mapping")
-    for option in ("enabled", "require_flex"):
+    for option in (
+        "enabled",
+        "require_flex",
+        "require_deployment_gate",
+    ):
         if option in visual_benchmark and not isinstance(
             visual_benchmark[option], bool
         ):
@@ -952,6 +956,10 @@ def build_experiment_plan(
         )
         if bool(visual_benchmark.get("require_flex", False)):
             command.append("--require-flex")
+        if bool(
+            visual_benchmark.get("require_deployment_gate", False)
+        ):
+            command.append("--require-deployment-gate")
         for key, flag in (
             ("wandb_project", "--wandb-project"),
             ("wandb_entity", "--wandb-entity"),

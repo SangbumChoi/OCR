@@ -407,6 +407,12 @@ def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
         benchmark_enabled = variant.arm_id == "packed"
         assert (
             variant.plan.raw_spec["runtime"]["visual_backend_benchmark"][
+                "require_deployment_gate"
+            ]
+            is False
+        )
+        assert (
+            variant.plan.raw_spec["runtime"]["visual_backend_benchmark"][
                 "enabled"
             ]
             is benchmark_enabled

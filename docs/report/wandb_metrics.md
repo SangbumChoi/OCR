@@ -136,6 +136,7 @@ The target-GPU runner described in
 visual_benchmark/visual_tokens
 visual_benchmark/batch_size
 visual_benchmark/rounds
+visual_benchmark/deployment_gate_pass
 visual_benchmark/<requested_backend>/success
 visual_benchmark/<requested_backend>/resolved_flex
 visual_benchmark/<requested_backend>/median_ms

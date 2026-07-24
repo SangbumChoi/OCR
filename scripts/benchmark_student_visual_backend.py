@@ -8,8 +8,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import torch
+
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
 from docvlm_eval.student.config import StudentConfig
+from docvlm_eval.student.gates import evaluate_visual_efficiency_gate
 from docvlm_eval.student.visual_benchmark import (
     VisualBenchmarkConfig,
     run_visual_backend_benchmark,
@@ -72,6 +75,9 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
         "visual_benchmark/visual_tokens": report["visual_tokens"],
         "visual_benchmark/batch_size": report["batch_size"],
         "visual_benchmark/rounds": report["benchmark_config"]["rounds"],
+        "visual_benchmark/deployment_gate_pass": float(
+            report["deployment_gate"]["status"] == "pass"
+        ),
     }
     for record in report["results"]:
         backend = record["requested_backend"]
@@ -107,6 +113,9 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
         )
     run.log(payload)
     run.summary["visual_backend_report"] = report
+    run.summary["visual_backend_gate_status"] = report[
+        "deployment_gate"
+    ]["status"]
     run.finish()
 
 
@@ -163,6 +172,11 @@ def main() -> None:
         action="store_true",
         help="Exit nonzero unless every requested auto/flex run resolves to FlexAttention.",
     )
+    parser.add_argument(
+        "--require-deployment-gate",
+        action="store_true",
+        help="Exit nonzero unless the complete visual_efficiency gate passes.",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--wandb-project")
     parser.add_argument("--wandb-entity")
@@ -172,6 +186,16 @@ def main() -> None:
     args = parser.parse_args()
     if args.sequence_lengths is None and args.patch_grids is None:
         args.patch_grids = ((40, 63), (63, 40))
+    if args.require_deployment_gate and (
+        not torch.cuda.is_available()
+        or (
+            args.device != "auto"
+            and torch.device(args.device).type != "cuda"
+        )
+    ):
+        raise SystemExit(
+            "--require-deployment-gate requires an available CUDA device"
+        )
 
     blueprint = load_blueprint(args.config)
     _, errors = validate_blueprint(blueprint)
@@ -199,6 +223,10 @@ def main() -> None:
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
 
+    report["deployment_gate"] = evaluate_visual_efficiency_gate(
+        blueprint,
+        report,
+    )
     rendered = json.dumps(report, indent=2, sort_keys=True)
     print(rendered)
     if args.output is not None:
@@ -206,6 +234,15 @@ def main() -> None:
         args.output.write_text(rendered + "\n", encoding="utf-8")
         print(f"[visual-benchmark] wrote {args.output}")
     _wandb_log(args, report)
+    if (
+        args.require_deployment_gate
+        and report["deployment_gate"]["status"] != "pass"
+    ):
+        raise SystemExit(
+            "visual efficiency deployment gate "
+            f"{report['deployment_gate']['status']}: "
+            f"{report['deployment_gate']['reason']}"
+        )
     if not report["gates"]["passed"]:
         raise SystemExit(
             "FlexAttention gate failed: every requested auto/flex run must resolve to flex"

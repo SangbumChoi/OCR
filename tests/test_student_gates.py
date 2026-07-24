@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -419,6 +421,39 @@ def test_visual_efficiency_gate_rejects_any_regressive_round():
         "round_speedup",
         "dense_adaptive_round_speedup",
     ]
+
+
+def test_visual_preflight_evaluator_returns_the_standalone_gate():
+    from docvlm_eval.student.gates import (
+        evaluate_visual_efficiency_gate,
+    )
+
+    gate = evaluate_visual_efficiency_gate(
+        _blueprint(),
+        _visual_report(),
+    )
+
+    assert gate["id"] == "visual_efficiency"
+    assert gate["status"] == "pass"
+    assert gate["evidence"]["rounds"] == 3
+
+
+def test_visual_preflight_evaluator_requires_declared_gate():
+    from copy import deepcopy
+
+    from docvlm_eval.student.gates import (
+        evaluate_visual_efficiency_gate,
+    )
+
+    blueprint = deepcopy(_blueprint())
+    blueprint["evaluation_gates"] = [
+        gate
+        for gate in blueprint["evaluation_gates"]
+        if gate["id"] != "visual_efficiency"
+    ]
+
+    with pytest.raises(ValueError, match="no visual_efficiency gate"):
+        evaluate_visual_efficiency_gate(blueprint, _visual_report())
 
 
 def test_visual_efficiency_gate_does_not_approve_dense_execution():

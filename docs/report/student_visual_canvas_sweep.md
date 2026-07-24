@@ -81,6 +81,7 @@ python scripts/benchmark_student_visual_backend.py \
   --rounds 3 \
   --device cuda \
   --require-flex \
+  --require-deployment-gate \
   --output outputs/visual_backend_a100_bf16.json \
   --wandb-project docvlm-ablation \
   --wandb-group visual-backend-gate
@@ -94,6 +95,9 @@ absolute delta from `loop`, PyTorch/CUDA/device metadata, paired speed and memor
 fingerprint of the complete student configuration. A seed-shuffled backend order is cyclically
 rotated across three rounds so one policy cannot always occupy the first or last measurement slot.
 Ratios pair candidate and control measurements from the same round.
+The JSON also embeds the recomputed `visual_efficiency` gate. With
+`--require-deployment-gate`, the command writes the JSON and W&B summary first, then exits nonzero
+for `fail` or `insufficient_evidence`; downstream training cannot silently proceed.
 
 The two patch grids are a matched portrait/landscape pair. Every policy receives the same random
 patch content and canonical 64-by-64 position IDs. `dense_adaptive` pads both documents to the
@@ -115,7 +119,9 @@ multilingual retention, and reliability rather than an unattached benchmark.
 This matched-policy runner is enabled once per packed sweep replicate and includes both dense
 controls in that report. Dense training arms disable redundant preflights and receive
 `insufficient_evidence` for their own packed deployment gate rather than being approved using a
-different execution path.
+different execution path. The research sweep records but does not block on the packed deployment
+gate, because completing all paired quality arms is the purpose of that experiment; the production
+experiment keeps the same gate blocking.
 
 ## Matched experiment
 

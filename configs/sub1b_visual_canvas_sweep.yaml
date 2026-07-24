@@ -25,6 +25,7 @@ matched_controls:
   - {document: experiment, path: /evaluation/seed}
   - {document: experiment, path: /sequence_teacher/seed}
   - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /runtime/visual_backend_benchmark/require_deployment_gate}
   - {document: blueprint, path: /student/vision/patch_size}
   - {document: blueprint, path: /student/vision/max_position_tokens}
   - {document: blueprint, path: /student/connector/latent_tokens}
@@ -99,6 +100,7 @@ variants:
   - id: packed
     hypothesis: "Per-image packed patch sequences remove cross-example visual padding while preserving exact dense outputs."
     experiment_patches:
+      - {op: replace, path: /runtime/visual_backend_benchmark/require_deployment_gate, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:packed}
       - {op: add, path: /evaluation/wandb_tags/-, value: packed-attention:auto}
@@ -108,6 +110,7 @@ variants:
     hypothesis: "Rotation-aware aspect buckets preserve task weights while minimizing dense visual padding in multi-sample batches."
     experiment_patches:
       - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
+      - {op: replace, path: /runtime/visual_backend_benchmark/require_deployment_gate, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
@@ -124,6 +127,7 @@ variants:
     hypothesis: "Adaptive canvases without shape buckets isolate the sampler's incremental efficiency effect."
     experiment_patches:
       - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
+      - {op: replace, path: /runtime/visual_backend_benchmark/require_deployment_gate, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:batch-adaptive}
@@ -140,6 +144,7 @@ variants:
     hypothesis: "A fixed square canvas controls for stable shape at the cost of dense padding."
     experiment_patches:
       - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
+      - {op: replace, path: /runtime/visual_backend_benchmark/require_deployment_gate, value: false}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-canvas-ablation}
       - {op: add, path: /evaluation/wandb_tags/-, value: visual-sequence:dense}
       - {op: add, path: /evaluation/wandb_tags/-, value: canvas:fixed-square}

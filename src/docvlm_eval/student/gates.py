@@ -792,6 +792,32 @@ def _visual_efficiency(
     )
 
 
+def evaluate_visual_efficiency_gate(
+    blueprint: Mapping[str, Any],
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Evaluate only the target-device visual preflight gate."""
+
+    gates = blueprint.get("evaluation_gates")
+    if (
+        not isinstance(gates, Sequence)
+        or isinstance(gates, (str, bytes))
+    ):
+        raise ValueError("blueprint evaluation_gates must be a sequence")
+    gate = next(
+        (
+            item
+            for item in gates
+            if isinstance(item, Mapping)
+            and item.get("id") == "visual_efficiency"
+        ),
+        None,
+    )
+    if gate is None:
+        raise ValueError("blueprint has no visual_efficiency gate")
+    return _visual_efficiency(gate, blueprint, report)
+
+
 def evaluate_deployment_gates(
     blueprint: Mapping[str, Any],
     parameter_counts: Mapping[str, int],
@@ -849,8 +875,7 @@ def evaluate_deployment_gates(
                 baseline_comparison is not None,
             )
         elif gate_id == "visual_efficiency":
-            result = _visual_efficiency(
-                gate,
+            result = evaluate_visual_efficiency_gate(
                 blueprint,
                 visual_backend_report,
             )

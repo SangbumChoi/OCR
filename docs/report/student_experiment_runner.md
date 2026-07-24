@@ -94,6 +94,22 @@ report, legacy or short benchmark, or missing dense control is `insufficient_evi
 mismatched architecture, fallback, execution error, numerical violation, or runtime regression
 is `fail`.
 
+Run only the authoritative target-GPU preflight before committing to a full training job:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment.yaml \
+  --no-resume \
+  --to-stage visual_backend_benchmark
+```
+
+The production experiment enables `runtime.visual_backend_benchmark.require_deployment_gate`.
+This first stage therefore writes the benchmark, embedded gate decision, experiment state, logs,
+and optional W&B evidence, then stops nonzero unless the complete CUDA parity, backend, dose,
+paired-speed, and worst-memory contract passes. `--no-resume` forces a fresh measurement instead
+of accepting an older successful state. Blocking mode rejects a non-CUDA runtime before allocating
+the benchmark model.
+
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
 across paired sweeps. See

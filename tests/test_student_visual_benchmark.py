@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-import os
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 import torch
@@ -11,6 +14,9 @@ from docvlm_eval.student.visual_benchmark import (
     VisualBenchmarkConfig,
     run_visual_backend_benchmark,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(**overrides):
@@ -143,6 +149,24 @@ def test_rejects_dense_policy_without_patch_grids():
 def test_rejects_both_sequence_lengths_and_patch_grids():
     with pytest.raises(ValueError, match="only one"):
         _run(patch_grids=((1, 3), (1, 5)))
+
+
+def test_blocking_deployment_preflight_rejects_cpu_before_benchmark():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "benchmark_student_visual_backend.py"),
+            "--require-deployment-gate",
+            "--device",
+            "cpu",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "requires an available CUDA device" in completed.stderr
 
 
 @pytest.mark.skipif(

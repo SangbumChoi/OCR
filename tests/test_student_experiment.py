@@ -108,6 +108,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "dense_fixed_square",
     )
     assert "--require-flex" not in visual_benchmark.command
+    assert "--require-deployment-gate" in visual_benchmark.command
     assert visual_benchmark.command[
         visual_benchmark.command.index("--rounds") + 1
     ] == "3"
@@ -218,6 +219,10 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
             "sequence_lengths exceed the resolved visual position grid",
         ),
         ({"require_flex": "yes"}, "require_flex must be a boolean"),
+        (
+            {"require_deployment_gate": "yes"},
+            "require_deployment_gate must be a boolean",
+        ),
         (
             {"backends": ["loop", "dense_adaptive"]},
             "dense policies require patch_grids",

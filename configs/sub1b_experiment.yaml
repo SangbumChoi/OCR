@@ -20,8 +20,10 @@ runtime:
     precision: auto
     seed: 7
     parity_atol: null
-    # Set true on the target CUDA runtime to block training on silent fallback.
+    # Optional redundant early check; the deployment gate below also requires FlexAttention.
     require_flex: false
+    # Block initialization unless parity, speed, and memory deployment thresholds pass.
+    require_deployment_gate: true
     wandb_project: null
     wandb_entity: null
     wandb_run: null
