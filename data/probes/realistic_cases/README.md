@@ -16,8 +16,8 @@ HTML/CSS  (+ Faker, seeded -> deterministic)
    │  WeasyPrint
    ▼
   PDF
-   │  PyMuPDF:  page.get_pixmap(DPI)     -> raster
-   │            page.search_for(field)   -> exact pixel box  (scaled by DPI/72)
+   │  PyMuPDF:  each page.get_pixmap(DPI) -> first / vertical / grid canvas
+   │            each page.search_for(field) -> exact offset pixel box
    ▼
   PNG + boxes
    │  evidence-safe handwriting / stamp / seal marks + grounded QA
@@ -91,7 +91,7 @@ controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`ba
 `ablation_overrides`), so each ablation arm is one `--ablation` flag:
 
 ```bash
-python scripts/make_realistic_cases.py --count 500                       # 18 * 500 = 9000 labelled docs
+python scripts/make_realistic_cases.py --count 500                       # 19 * 500 = 9500 labelled docs
 python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
@@ -99,6 +99,7 @@ python scripts/make_realistic_cases.py --ablation D_perspective_on       # force
 python scripts/make_realistic_cases.py --hard-layout compact-v1          # diagnose one hard layout
 python scripts/make_realistic_cases.py --ablation D_overlays_on           # force document marks
 python scripts/make_realistic_cases.py --overlay-prob 1 --overlay-type stamp seal
+python scripts/make_realistic_cases.py --only audit_packet --multipage-mode grid
 ```
 
 The four hard families select from `classic-v1`, `compact-v1`, and `report-v1`. Their graph
@@ -113,13 +114,18 @@ evidence box. Every mark has exact render provenance and a grounded recognition 
 answers include its visible text. The final clean/degraded pixel gates therefore reject illegible
 or destroyed marks instead of treating them as uncontrolled decoration.
 
+The `audit_packet` case preserves three PDF pages in one page-aware image. `grid` is the default
+small-model packing; `vertical` is the reading-order control. Every page origin and size is
+recorded, and cross-page QAs identify which pages supply their evidence.
+
 Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a
 **backward-compatible superset** of the legacy flat schema. Alongside the flat keys (`type ·
 fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
 carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
 (`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
 `render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`layout_family`/
-`layout_fingerprint`/`overlay_seed`/`overlay_fingerprint`/`overlays`/
+`layout_fingerprint`/`page_mode`/`page_origins_px`/`page_sizes_px`/
+`overlay_seed`/`overlay_fingerprint`/`overlays`/
 `evidence_quality`), `degradation`
 (`preset`/`seed`/`attempts`/`evidence_quality`), `gen_config`, and an
 `ablation_support` flag-set. See [`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md)
@@ -146,6 +152,7 @@ inside the image, redacted values never leak, `to_dict` stays back-compatible, e
 | `website`        | website / desktop screenshot | web layout · reflow · icons/links · spotting | NED + spotting          |
 | `mobile_app`     | mobile app / phone screenshot| mobile layout · vertical reflow · read-order | NED + read-order        |
 | `pdf_paper`      | PDF research paper (2-col) | multi-column · read-order · figure · header/footer | read-order + NED + TEDS |
+| `audit_packet`   | procurement audit packet | multi-page · reconciliation · cross-page grounding | relaxed acc + evidence IoU |
 
 The last three are **digital-native media surfaces** (not paper). Same WeasyPrint pipeline, only
 the `@page` size changes — desktop `1280px`, phone `390×844`, paper `A4` (multi-page with running
@@ -163,7 +170,7 @@ absent from an ID card).
 
 ```bash
 pip install -e ".[synth]"          # weasyprint + pymupdf + faker + augraphy
-python scripts/make_realistic_cases.py                  # all 18 cases (clean + degraded)
+python scripts/make_realistic_cases.py                  # all 19 cases (clean + degraded)
 python scripts/make_realistic_cases.py --only id_card cheque
 python scripts/make_realistic_cases.py --no-degrade     # clean only (fast)
 ```

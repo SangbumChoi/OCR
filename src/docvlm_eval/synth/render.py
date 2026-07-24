@@ -12,6 +12,7 @@ core test suite runs without the [synth] extra.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Iterable
@@ -22,12 +23,23 @@ from PIL import Image
 
 @dataclass
 class RenderResult:
-    """A rendered page plus the open PDF doc (kept so boxes can be queried)."""
+    """A rendered page canvas plus the open PDF doc so boxes remain queryable."""
 
     image: Image.Image
     dpi: int
+    page_mode: str = "first"
+    page_gap_px: int = 0
     _doc: object = field(repr=False, default=None)
     _page0: object = field(repr=False, default=None)
+    _pages: tuple[object, ...] = field(repr=False, default_factory=tuple)
+    _page_origins_px: tuple[tuple[int, int], ...] = field(
+        repr=False,
+        default_factory=tuple,
+    )
+    _page_sizes_px: tuple[tuple[int, int], ...] = field(
+        repr=False,
+        default_factory=tuple,
+    )
     _fallback_boxes: dict[str, list[list[int]]] = field(
         repr=False,
         default_factory=dict,
@@ -41,13 +53,34 @@ class RenderResult:
     def page_count(self) -> int:
         return self._doc.page_count if self._doc else 1
 
+    @property
+    def page_origins_px(self) -> tuple[tuple[int, int], ...]:
+        return self._page_origins_px
+
+    @property
+    def page_sizes_px(self) -> tuple[tuple[int, int], ...]:
+        return self._page_sizes_px
+
     def native_search_boxes(self, text: str) -> list[list[int]]:
         """Return boxes from the PDF text layer without any fallback."""
-        if not self._page0 or not text:
+        if not self._pages or not text:
             return []
         z = self.zoom
-        return [[round(r.x0 * z), round(r.y0 * z), round(r.x1 * z), round(r.y1 * z)]
-                for r in self._page0.search_for(text)]
+        boxes: list[list[int]] = []
+        for page, (offset_x, offset_y) in zip(
+            self._pages,
+            self._page_origins_px,
+        ):
+            boxes.extend(
+                [
+                    round(rect.x0 * z) + offset_x,
+                    round(rect.y0 * z) + offset_y,
+                    round(rect.x1 * z) + offset_x,
+                    round(rect.y1 * z) + offset_y,
+                ]
+                for rect in page.search_for(text)
+            )
+        return boxes
 
     def search_boxes(self, text: str) -> list[list[int]]:
         """Return all pixel boxes for text, preferring an installed exact fallback."""
@@ -63,10 +96,13 @@ class RenderResult:
     def full_text(self) -> str:
         """The page's complete text in reading order (PyMuPDF) — the exact rendered text, so a
         correct-by-construction full-document OCR target (no hand-assembly)."""
-        if not self._page0:
+        if not self._pages:
             return ""
-        raw = self._page0.get_text("text") or ""
-        return "\n".join(ln.strip() for ln in raw.splitlines() if ln.strip())
+        lines: list[str] = []
+        for page in self._pages:
+            raw = page.get_text("text") or ""
+            lines.extend(ln.strip() for ln in raw.splitlines() if ln.strip())
+        return "\n".join(lines)
 
     def close(self) -> None:
         if self._doc:
@@ -74,17 +110,124 @@ class RenderResult:
             self._doc = None
 
 
-def render_html(html: str, css: str = "", dpi: int = 150, base_url: str = ".") -> RenderResult:
-    """HTML/CSS -> RenderResult (page-0 raster at `dpi` + queryable PDF). Caller must close()."""
+def render_html(
+    html: str,
+    css: str = "",
+    dpi: int = 150,
+    base_url: str = ".",
+    *,
+    page_mode: str = "first",
+) -> RenderResult:
+    """Render page 0 or an all-page vertical/grid canvas with exact offsets."""
     import fitz  # PyMuPDF
     from weasyprint import HTML
 
+    if page_mode not in {"first", "vertical", "grid"}:
+        raise ValueError("page_mode must be first, vertical, or grid")
     pdf = HTML(string=f"<style>{css}</style>{html}", base_url=str(base_url)).write_pdf()
     doc = fitz.open(stream=pdf, filetype="pdf")
-    page = doc[0]
-    pix = page.get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), alpha=False)
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    return RenderResult(image=img, dpi=dpi, _doc=doc, _page0=page)
+    active_pages = tuple(
+        doc[index]
+        for index in (
+            range(doc.page_count)
+            if page_mode in {"vertical", "grid"}
+            else range(min(1, doc.page_count))
+        )
+    )
+    pixmaps = [
+        page.get_pixmap(
+            matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0),
+            alpha=False,
+        )
+        for page in active_pages
+    ]
+    images = [
+        Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        for pix in pixmaps
+    ]
+    if page_mode == "first":
+        image = images[0]
+        origins = ((0, 0),)
+        gap = 0
+    elif page_mode == "vertical":
+        gap = max(8, round(dpi * 0.12))
+        canvas_width = max(page.width for page in images)
+        canvas_height = sum(page.height for page in images) + gap * (
+            len(images) - 1
+        )
+        image = Image.new("RGB", (canvas_width, canvas_height), (218, 221, 225))
+        origins_list: list[tuple[int, int]] = []
+        offset_y = 0
+        for page_image in images:
+            offset_x = (canvas_width - page_image.width) // 2
+            origins_list.append((offset_x, offset_y))
+            image.paste(page_image, (offset_x, offset_y))
+            offset_y += page_image.height + gap
+        origins = tuple(origins_list)
+    else:
+        gap = max(8, round(dpi * 0.12))
+        columns = math.ceil(math.sqrt(len(images)))
+        rows = math.ceil(len(images) / columns)
+        column_widths = [
+            max(
+                (
+                    images[index].width
+                    for index in range(column, len(images), columns)
+                ),
+                default=0,
+            )
+            for column in range(columns)
+        ]
+        row_heights = [
+            max(
+                (
+                    images[index].height
+                    for index in range(row * columns, min((row + 1) * columns, len(images)))
+                ),
+                default=0,
+            )
+            for row in range(rows)
+        ]
+        column_starts = [
+            sum(column_widths[:column]) + gap * column
+            for column in range(columns)
+        ]
+        row_starts = [
+            sum(row_heights[:row]) + gap * row
+            for row in range(rows)
+        ]
+        image = Image.new(
+            "RGB",
+            (
+                sum(column_widths) + gap * (columns - 1),
+                sum(row_heights) + gap * (rows - 1),
+            ),
+            (218, 221, 225),
+        )
+        origins_list = []
+        for index, page_image in enumerate(images):
+            column = index % columns
+            row = index // columns
+            offset_x = column_starts[column] + (
+                column_widths[column] - page_image.width
+            ) // 2
+            offset_y = row_starts[row] + (
+                row_heights[row] - page_image.height
+            ) // 2
+            origins_list.append((offset_x, offset_y))
+            image.paste(page_image, (offset_x, offset_y))
+        origins = tuple(origins_list)
+    return RenderResult(
+        image=image,
+        dpi=dpi,
+        page_mode=page_mode,
+        page_gap_px=gap,
+        _doc=doc,
+        _page0=active_pages[0],
+        _pages=active_pages,
+        _page_origins_px=origins,
+        _page_sizes_px=tuple(page.size for page in images),
+    )
 
 
 def _probe_color(index: int) -> tuple[int, int, int]:
@@ -225,6 +368,7 @@ def _run_color_probe(
         css,
         dpi=rr.dpi,
         base_url=base_url,
+        page_mode=rr.page_mode,
     )
     try:
         return _extract_probe_boxes(rr.image, probe.image, colors)

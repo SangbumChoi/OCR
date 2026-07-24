@@ -62,6 +62,10 @@ The ViT's 4,096-position budget corresponds to a maximum square canvas of 64 by 
 canvas, and supplies a pixel mask; padded patches are excluded from ViT self-attention, resampler
 cross-attention, and pooled vision features.
 
+Multi-page synthetic packets use an exact-offset page grid before entering that canvas. This keeps
+the one-image model contract while spending the fixed 4,096-position budget more evenly across
+pages than a very tall strip; vertical versus grid composition remains an explicit data ablation.
+
 ### Why this split
 
 The measured repository results show that small models often read a local value but fail grounding

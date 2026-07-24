@@ -38,6 +38,7 @@ ROBUSTNESS_AXES = (
     "evidence_count",
     "degradation",
     "overlay",
+    "page_count",
 )
 
 
@@ -149,6 +150,7 @@ def _canonical_robustness_slices(
             or "unknown"
         ),
         "overlay": overlay,
+        "page_count": str(meta.get("page_count") or "unknown"),
     }
 
 

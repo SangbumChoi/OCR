@@ -242,6 +242,36 @@ def test_document_overlay_config_and_render_provenance():
     assert render.overlays[0]["kind"] == "stamp"
 
 
+def test_multipage_render_provenance_round_trips():
+    assert GenConfig().multipage_mode == "grid"
+    GenConfig(multipage_mode="vertical")
+    with pytest.raises(ValueError, match="multipage_mode"):
+        GenConfig(multipage_mode="pages")
+
+    flat = {
+        "type": "packet",
+        "render": {
+            "dpi": 96,
+            "size_px": [400, 1220],
+            "page_count": 3,
+            "rendered_page_count": 3,
+            "page_mode": "vertical",
+            "page_gap_px": 12,
+            "page_origins_px": [[0, 0], [0, 412], [0, 824]],
+            "page_sizes_px": [[400, 400], [400, 400], [400, 396]],
+        },
+    }
+
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.page_count == 3
+    assert render.rendered_page_count == 3
+    assert render.page_mode == "vertical"
+    assert render.page_gap_px == 12
+    assert render.page_origins_px[2] == [0, 824]
+    assert render.page_sizes_px[0] == [400, 400]
+
+
 def test_evidence_pixel_gate_config_validation():
     config = GenConfig()
     assert config.validate_evidence_pixels is True

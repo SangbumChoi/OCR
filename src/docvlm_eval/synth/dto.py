@@ -124,6 +124,11 @@ class RenderSpec:
     size_px: list[int] = field(default_factory=lambda: [0, 0])
     page_size: str = "A5"
     page_count: int = 1
+    rendered_page_count: int = 1
+    page_mode: str = "first"
+    page_gap_px: int = 0
+    page_origins_px: list[list[int]] = field(default_factory=list)
+    page_sizes_px: list[list[int]] = field(default_factory=list)
     target_long_side: int | None = None  # A7: longest side the image was resized to (None = native)
     keep_aspect: bool = True             # A7
     tiling: dict[str, Any] | None = None  # A7: {"n_max": int, ...} when dynamic tiling was simulated
@@ -219,6 +224,7 @@ class GenConfig:
     overlay_prob: float = 0.35
     overlay_types: list[str] = field(default_factory=lambda: list(OVERLAY_TYPES))
     overlay_max_count: int = 2
+    multipage_mode: str = "grid"
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -300,6 +306,8 @@ class GenConfig:
             raise ValueError(f"unknown document overlay types: {unknown_overlays}")
         if self.overlay_max_count < 1:
             raise ValueError("overlay_max_count must be positive")
+        if self.multipage_mode not in {"vertical", "grid"}:
+            raise ValueError("multipage_mode must be vertical or grid")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -439,6 +447,18 @@ class DocSample:
             dpi=rj.get("dpi"), size_px=list(rj.get("size_px") or [0, 0]),
             page_size=getattr(builder, "page", rj.get("page_size", "A5")) if builder else rj.get("page_size", "A5"),
             page_count=rj.get("page_count", 1),
+            rendered_page_count=rj.get(
+                "rendered_page_count",
+                len(rj.get("page_origins_px") or []) or 1,
+            ),
+            page_mode=rj.get("page_mode", "first"),
+            page_gap_px=rj.get("page_gap_px", 0),
+            page_origins_px=[
+                list(origin) for origin in (rj.get("page_origins_px") or [])
+            ],
+            page_sizes_px=[
+                list(size) for size in (rj.get("page_sizes_px") or [])
+            ],
             target_long_side=(gen_config.target_long_side if gen_config else None),
             keep_aspect=(gen_config.keep_aspect if gen_config else True),
             tiling=({"n_max": gen_config.tiling_n_max} if gen_config and gen_config.tiling_n_max else None),

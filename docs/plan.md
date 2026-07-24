@@ -251,6 +251,8 @@ added factor lifting the score a step, ending well above the baseline.
   paired hard documents share their selected layout.
   Evidence-safe handwriting, stamp, and seal marks add grounded recognition targets before
   perspective and degradation; their explicit metadata forms a matched robustness slice.
+  A three-page audit packet supplies exact cross-page reconciliation, with configurable vertical
+  or compute-aware grid composition and page-count robustness reporting.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)

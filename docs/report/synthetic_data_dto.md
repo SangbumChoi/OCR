@@ -33,7 +33,8 @@ data scale used by the downstream ablations ([`ablation_plan.md`](ablation_plan.
 
 The generator's premise (`src/docvlm_eval/synth/`): **render the document from a single source so
 the image and its labels can never drift.** We author HTML/CSS, render it to a **digital-native
-PDF** (WeasyPrint), rasterise page 0 (PyMuPDF), and read text positions **straight out of the PDF**.
+PDF** (WeasyPrint), rasterise the selected page composition (PyMuPDF), and read text positions
+**straight out of every rendered PDF page**.
 If its text layer misses a required CJK, RTL, letter-spaced, or wrapped span, an optional
 layout-neutral color-probe render recovers the occurrence-aware pixel box. Faker (seeded) fills
 realistic field content.
@@ -74,6 +75,8 @@ DocSample
 ├─ difficulty: level, reasoning hops, distractors, density, cross-region flag, skills
 ├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
+│                      rendered_page_count, page_mode, page_gap_px,
+│                      page_origins_px, page_sizes_px,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
 │                      layout_family, layout_fingerprint, box_resolver,
 │                      overlay_seed, overlay_fingerprint, overlays,
@@ -118,6 +121,11 @@ The legacy QA mirror preserves that box, so `case_to_samples()` carries it into 
 instead of silently reducing the task to answer-only supervision. `overlay_seed` and
 `overlay_fingerprint` support exact resume and corpus auditing.
 
+Multi-page PDF records distinguish the source `page_count` from `rendered_page_count`. Vertical and
+grid modes store each page's canvas origin and pixel size, so text-search boxes, overlays, resize,
+and evidence-page attribution share one coordinate contract. Cross-page samples carry the sorted
+`evidence_pages` list and a `cross_page_evidence` flag into training and evaluation metadata.
+
 Every hard document also contains a locale-matched absent-field question. The converted sample
 sets `abstain_expected: true`, includes the localized absence form among valid answers, and feeds
 the same locale forms to the calibrated-abstention reward. This makes the hallucination slice part
@@ -161,6 +169,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
 | **Hard-layout diversity** | classic vs compact vs report structure | `RenderSpec.layout_family`, `layout_fingerprint` | `hard_layout_families` |
 | **Document-mark robustness** | none vs handwriting/stamp/seal mixtures | `RenderSpec.overlays`, grounded mark QA | `overlay_prob`, `overlay_types`, `overlay_max_count` |
+| **Multi-page composition** | vertical strip vs compute-aware page grid | page origins/sizes, `evidence_pages`, `page_count` | `multipage_mode` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 | **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |

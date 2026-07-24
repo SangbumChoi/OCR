@@ -121,11 +121,45 @@ def _intersects(
     )
 
 
+def _page_regions(
+    ground_truth: Mapping[str, Any],
+    *,
+    width: int,
+    height: int,
+) -> list[tuple[int, int, int, int]]:
+    render = ground_truth.get("render") or {}
+    origins = render.get("page_origins_px") or []
+    sizes = render.get("page_sizes_px") or []
+    regions = [
+        (
+            int(origin[0]),
+            int(origin[1]),
+            int(origin[0]) + int(size[0]),
+            int(origin[1]) + int(size[1]),
+        )
+        for origin, size in zip(origins, sizes)
+        if len(origin) >= 2 and len(size) >= 2
+    ]
+    return regions or [(0, 0, width, height)]
+
+
 def _font(size: int, *, italic: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     names = (
-        ("DejaVuSans-Oblique.ttf", "LiberationSans-Italic.ttf")
+        (
+            "DejaVuSans-BoldOblique.ttf",
+            "LiberationSans-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
+        )
         if italic
-        else ("DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf")
+        else (
+            "DejaVuSans-Bold.ttf",
+            "LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        )
     )
     for name in names:
         try:
@@ -133,6 +167,16 @@ def _font(size: int, *, italic: bool = False) -> ImageFont.FreeTypeFont | ImageF
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def _rotate_trim(patch: Image.Image, angle: float) -> Image.Image:
+    rotated = patch.rotate(
+        angle,
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
+    )
+    bounds = rotated.getchannel("A").getbbox()
+    return rotated.crop(bounds) if bounds else rotated
 
 
 def _text_metrics(
@@ -168,11 +212,7 @@ def _make_handwriting(
     y = min(patch.height - 1, pad + text_height + 1)
     draw.line((pad, y, pad + text_width, y), fill=(25, 48, 105, opacity - 35))
     angle = rng.uniform(-11.0, 8.0)
-    return (
-        patch.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True),
-        angle,
-        opacity,
-    )
+    return _rotate_trim(patch, angle), angle, opacity
 
 
 def _make_stamp(
@@ -197,11 +237,7 @@ def _make_stamp(
     )
     draw.text((pad_x - left, pad_y - top), text, font=font, fill=color)
     angle = rng.uniform(-9.0, 9.0)
-    return (
-        patch.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True),
-        angle,
-        opacity,
-    )
+    return _rotate_trim(patch, angle), angle, opacity
 
 
 def _make_seal(
@@ -239,11 +275,7 @@ def _make_seal(
         fill=color,
     )
     angle = rng.uniform(-7.0, 7.0)
-    return (
-        patch.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True),
-        angle,
-        opacity,
-    )
+    return _rotate_trim(patch, angle), angle, opacity
 
 
 def _make_mark(
@@ -274,6 +306,7 @@ def _place_mark(
     image: Image.Image,
     patch: Image.Image,
     protected: list[tuple[int, int, int, int]],
+    page_regions: list[tuple[int, int, int, int]],
     rng: random.Random,
 ) -> tuple[Image.Image, list[int]] | None:
     width, height = image.size
@@ -299,6 +332,14 @@ def _place_mark(
     ]
     for x, y in [*fixed, *random_positions]:
         box = (x, y, x + patch_width, y + patch_height)
+        if not any(
+            region[0] <= box[0]
+            and region[1] <= box[1]
+            and box[2] <= region[2]
+            and box[3] <= region[3]
+            for region in page_regions
+        ):
+            continue
         if any(_intersects(box, occupied) for occupied in protected):
             continue
         candidates.append((_ink_fraction(gray, box), box))
@@ -347,11 +388,18 @@ def apply_document_overlays(
     selected = rng.sample(list(overlay_types), count)
     width, height = image.size
     protected = _protected_boxes(output_gt, width=width, height=height)
+    page_regions = _page_regions(output_gt, width=width, height=height)
     output_image = image
     marks: list[OverlayMark] = []
     for kind in selected:
         patch, text, angle, opacity = _make_mark(kind, min(width, height), rng)
-        placed = _place_mark(output_image, patch, protected, rng)
+        placed = _place_mark(
+            output_image,
+            patch,
+            protected,
+            page_regions,
+            rng,
+        )
         if placed is None:
             continue
         output_image, bbox = placed

@@ -163,3 +163,41 @@ def test_each_overlay_fits_a_short_meter_canvas(kind):
     assert [mark["kind"] for mark in result["render"]["overlays"]] == [kind]
     record = DocSample.from_builder_gt(result).to_dict()
     assert audit_render_evidence(output, record)["status"] == "passed"
+
+
+def test_overlay_stays_inside_one_page_of_a_vertical_canvas():
+    image = Image.new("RGB", (300, 630), (218, 221, 225))
+    ImageDraw.Draw(image).rectangle((0, 0, 299, 299), fill="white")
+    ImageDraw.Draw(image).rectangle((0, 330, 299, 629), fill="white")
+    ground_truth = {
+        "type": "packet",
+        "stressors": [],
+        "anchor_metric": "exact",
+        "fields": {},
+        "qa": [],
+        "render": {
+            "dpi": 96,
+            "size_px": [300, 630],
+            "page_count": 2,
+            "rendered_page_count": 2,
+            "page_mode": "vertical",
+            "page_gap_px": 30,
+            "page_origins_px": [[0, 0], [0, 330]],
+            "page_sizes_px": [[300, 300], [300, 300]],
+        },
+    }
+
+    _output, result = apply_document_overlays(
+        image,
+        ground_truth,
+        seed=37,
+        probability=1.0,
+        overlay_types=["seal"],
+        max_count=1,
+    )
+    box = result["render"]["overlays"][0]["bbox"]
+
+    assert (
+        0 <= box[1] < box[3] <= 300
+        or 330 <= box[1] < box[3] <= 630
+    )

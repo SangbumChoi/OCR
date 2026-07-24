@@ -114,6 +114,25 @@ OCR targets append the mark text so the visible raster and transcript do not dis
 signature. Spotting-off projection removes mark and QA boxes while retaining coordinate-free mark
 provenance. Clean and degraded evidence gates audit the mark QA boxes exactly like authored text.
 
+## Multi-page composition
+
+`RenderResult` no longer has to silently reduce a PDF to page 0. Its explicit `page_mode` is
+`first`, `vertical`, or `grid`. The all-page modes rasterize every PDF page, compose them over a
+gray gutter, offset every PDF text-search box into the shared canvas, and concatenate full-text
+targets in page order. `RenderSpec` records PDF and rendered page counts, page origins, page sizes,
+gutter width, and composition mode. Resize scales those values with every supervision box.
+
+The `audit_packet` family is a three-page procurement program: purchase order, receiving
+inspection, and payment authorization. Its reconciliation target requires six evidence boxes
+across all three pages; quantity and consistency targets span pages 1–2 and 1–3. The page-aware
+sample bridge records `evidence_pages`, `cross_page_evidence`, and `page_count`, and native-student
+evaluation exposes `page_count` as a matched robustness axis.
+
+`multipage_mode` controls `vertical` versus `grid`; `D_multipage_vertical/grid` and
+`--multipage-mode` provide matched controls. Grid is the small-model default. For three A5 pages
+at a 896px long-side budget, it raises effective page width from about 209px to 313px versus one
+vertical strip, while retaining exact page identity and ordering.
+
 ## Grounded post-training
 
 Hard questions can cite multiple evidence cells. `QAItem.evidence_keys` is resolved after rendering
@@ -211,9 +230,15 @@ A separate 24-document degraded CLI smoke passed all clean/degraded gates; each 
 counterfactual pair shared its layout. A high-value compact-chart regression also verifies that
 normalized bars and labels remain inside the landscape page.
 
-A forced-overlay smoke covered all 18 document families and produced all three mark types while
+A forced-overlay smoke covered all 19 document families and produced all three mark types while
 every clean evidence audit passed. A second 24-document hard-family smoke combined overlays,
 degradation, and sampled perspective: all clean and degraded gates passed, every pair shared its
 mark-type signature, and the mix contained 14 seals, 12 handwritten notes, and 6 stamps. Across
-256 base seeds and all 18 families, the default 0.35 probability selected 1,596 of 4,608 decisions
-(34.64%); conditional type counts were balanced at 788 stamps, 808 handwritten notes, and 777 seals.
+256 base seeds and all 19 families, the default 0.35 probability selected 1,691 of 4,864 decisions
+(34.77%); conditional type counts were balanced at 831 stamps, 857 handwritten notes, and 824 seals.
+
+A three-variant grid smoke produced 1,768x2,500 three-page packets with degradation and document
+marks. Every clean/degraded audit passed; the minimum observed structure correlation was 0.817.
+All reconciliation and consistency samples carried evidence pages `[0,1,2]`, and quantity samples
+carried `[0,1]`. A vertical 875x3,759 control and a resized 543x768 grid render also passed exact
+box and page-provenance checks.

@@ -151,7 +151,20 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
                 q["rationale"] = (re.sub(r"\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\]",
                                          f"[{nb[0]}, {nb[1]}, {nb[2]}, {nb[3]}]", q["rationale"], count=1)
                                   ).replace(f"{w}x{h}px", f"{nw}x{nh}px")
-    gt.setdefault("render", {})["size_px"] = list(new)
+    render = gt.setdefault("render", {})
+    render["size_px"] = list(new)
+    if render.get("page_origins_px"):
+        render["page_origins_px"] = [
+            [round(origin[0] * sx), round(origin[1] * sy)]
+            for origin in render["page_origins_px"]
+        ]
+    if render.get("page_sizes_px"):
+        render["page_sizes_px"] = [
+            [round(size[0] * sx), round(size[1] * sy)]
+            for size in render["page_sizes_px"]
+        ]
+    if render.get("page_gap_px"):
+        render["page_gap_px"] = round(render["page_gap_px"] * sy)
     return img
 
 
@@ -451,6 +464,15 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                         ),
                         "marks": out.get("render", {}).get("overlays", []),
                     } if out.get("render", {}).get("overlays") else None,
+                    "pages": {
+                        "pdf_count": out.get("render", {}).get("page_count", 1),
+                        "rendered_count": out.get("render", {}).get(
+                            "rendered_page_count",
+                            1,
+                        ),
+                        "mode": out.get("render", {}).get("page_mode", "first"),
+                        "gap_px": out.get("render", {}).get("page_gap_px", 0),
+                    },
                     "geometry": {
                         "kind": out.get("render", {}).get("geometry", {}).get("kind"),
                         "seed": out.get("render", {}).get("geometry", {}).get("seed"),
@@ -951,6 +973,158 @@ def case_pdf_paper(do_degrade):
     emit("pdf_paper", b, "scan", do_degrade)
 
 
+def case_audit_packet(do_degrade):
+    """Three-page procurement packet with exact cross-page reconciliation."""
+    purchase_order = f"PO-{fake.random_int(10000, 99999)}"
+    vendor = fake.company()
+    ordered = fake.random_int(80, 160)
+    received = ordered - fake.random_int(1, 6)
+    damaged = fake.random_int(1, min(3, received))
+    accepted = received - damaged
+    unit_price = fake.random_int(1250, 7800) / 100
+    shipping = fake.random_int(1200, 6500) / 100
+    discount = fake.random_int(500, 3000) / 100
+    claimed_total = ordered * unit_price + shipping - discount
+    net_payable = accepted * unit_price + shipping - discount
+    quantity_shortfall = ordered - accepted
+
+    def money(value):
+        return f"${value:,.2f}"
+
+    css = """
+    @page{ size:A5; margin:14mm 13mm;}
+    body{ font-size:10px;}
+    .sheet{ min-height:175mm; break-after:page; position:relative;}
+    .sheet:last-child{ break-after:auto;}
+    .packet-head{ border-bottom:3px solid #315f86; margin-bottom:12px; padding-bottom:8px;}
+    .packet-head h2{ color:#315f86;}
+    .meta{ color:#555; font-size:9px;}
+    .section{ border:1px solid #aab4bd; padding:10px; margin:12px 0;}
+    .warning{ border-left:5px solid #a14a35; background:#faf1ee; padding:9px;}
+    .approval{ border:2px solid #315f86; padding:10px; margin-top:14px;}
+    .page-label{ position:absolute; bottom:0; right:0; color:#777; font-size:8px;}
+    """
+    b = DocBuilder(
+        "three-page procurement audit packet",
+        [
+            "multi-page",
+            "cross-page-reasoning",
+            "reconciliation",
+            "evidence-grounding",
+        ],
+        "relaxed accuracy + evidence IoU",
+        page="A5",
+        css=css,
+        page_mode=CFG.multipage_mode,
+    )
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("PURCHASE ORDER", level=2)
+    b.line(f"Vendor: {esc(vendor)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Purchase order", purchase_order, key="purchase_order", spot=True)
+    b.field("Quantity ordered", str(ordered), key="ordered_quantity", spot=True)
+    b.field("Unit price", money(unit_price), key="unit_price", spot=True)
+    b.raw("</div>")
+    b.line("Terms: pay only for accepted units after receiving inspection.")
+    b.raw("<span class=page-label>Page 1 of 3 — Order</span></section>")
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("RECEIVING INSPECTION", level=2)
+    b.line(f"Reference: {esc(purchase_order)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Quantity received", str(received), key="received_quantity", spot=True)
+    b.field("Units rejected as damaged", str(damaged), key="damaged_quantity", spot=True)
+    b.field("Units accepted", str(accepted), key="accepted_quantity", spot=True)
+    b.raw("</div><div class=warning>")
+    b.line("Rejected units are not payable and must be excluded from authorization.")
+    b.raw("</div><span class=page-label>Page 2 of 3 — Receiving</span></section>")
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("PAYMENT AUTHORIZATION", level=2)
+    b.line(f"Reference: {esc(purchase_order)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Shipping charge", money(shipping), key="shipping", spot=True)
+    b.field("Contract discount", money(discount), key="discount", spot=True)
+    b.field(
+        "Vendor claimed total",
+        money(claimed_total),
+        key="claimed_total",
+        spot=True,
+    )
+    b.raw("</div><div class=approval>")
+    b.line("Controller must reconcile the order and receiving inspection before payment.")
+    b.raw("</div><span class=page-label>Page 3 of 3 — Authorization</span></section>")
+
+    b.task(
+        "Reconcile the order, receiving inspection, and authorization across all three pages."
+    )
+    b.qa(
+        "What is the correct net amount payable after excluding rejected or missing units?",
+        [money(net_payable), f"{net_payable:.2f}", f"{net_payable:,.2f}"],
+        metric="relaxed_acc",
+        answer_type="H-cross-page-reconciliation",
+        rationale=(
+            f"Accepted quantity is {received} - {damaged} = {accepted}. "
+            f"Net payable is {accepted} x {money(unit_price)} + {money(shipping)} "
+            f"- {money(discount)} = {money(net_payable)}."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "unit_price",
+            "received_quantity",
+            "damaged_quantity",
+            "shipping",
+            "discount",
+        ],
+    )
+    b.qa(
+        "How many ordered units are not payable after receiving inspection?",
+        str(quantity_shortfall),
+        metric="exact",
+        answer_type="H-cross-page-quantity",
+        rationale=(
+            f"Ordered {ordered}; accepted {received} - {damaged} = {accepted}; "
+            f"shortfall is {ordered} - {accepted} = {quantity_shortfall}."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "received_quantity",
+            "damaged_quantity",
+        ],
+    )
+    b.qa(
+        "Does the vendor claimed total correctly account for the receiving inspection?",
+        ["no", "it overstates the payable amount"],
+        metric="anls",
+        answer_type="H-cross-page-consistency",
+        rationale=(
+            f"The claim prices all {ordered} ordered units, but only {accepted} units "
+            "were accepted, so the claim overstates the payable amount."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "received_quantity",
+            "damaged_quantity",
+            "claimed_total",
+        ],
+    )
+    b.probe(
+        "abstain",
+        "What bank account should receive the payment?",
+        "not present — abstain",
+    )
+    b.want_fulltext()
+    emit(
+        "audit_packet",
+        b,
+        "scan",
+        do_degrade,
+        domain="finance",
+        acquisition="scan",
+    )
+
+
 # ============================================================ non-HTML special case
 def case_lcd(do_degrade):
     digits = fake.numerify("0####")
@@ -1028,7 +1202,8 @@ CASES = {
     "redacted": case_redacted, "bank_statement": case_bank_statement, "rtl_arabic": case_rtl_arabic,
     "webtoon": case_webtoon, "prescription": case_prescription, "cheque": case_cheque,
     "ancient": case_ancient, "website": case_website, "mobile_app": case_mobile_app,
-    "pdf_paper": case_pdf_paper, "lcd_7seg": case_lcd,
+    "pdf_paper": case_pdf_paper, "audit_packet": case_audit_packet,
+    "lcd_7seg": case_lcd,
     "hard_table": case_hard_table, "hard_chart": case_hard_chart,
     "hard_investment": case_hard_investment, "hard_science": case_hard_science,
 }
@@ -1085,6 +1260,12 @@ def main():
         default=None,
         help="enabled document overlay types (overrides config)",
     )
+    ap.add_argument(
+        "--multipage-mode",
+        choices=["vertical", "grid"],
+        default=None,
+        help="multi-page raster composition (overrides config)",
+    )
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
@@ -1113,6 +1294,8 @@ def main():
         CFG.overlay_prob = args.overlay_prob
     if args.overlay_type is not None:
         CFG.overlay_types = list(args.overlay_type)
+    if args.multipage_mode is not None:
+        CFG.multipage_mode = args.multipage_mode
     if args.split_name is not None:
         CFG.split_name = args.split_name
     if args.no_degrade:
@@ -1153,7 +1336,8 @@ def main():
           f"degraded_gate={CFG.validate_degraded_evidence} "
           f"perspective_p={CFG.perspective_prob} "
           f"hard_layouts={CFG.hard_layout_families} "
-          f"overlay_p={CFG.overlay_prob} overlay_types={CFG.overlay_types}")
+          f"overlay_p={CFG.overlay_prob} overlay_types={CFG.overlay_types} "
+          f"multipage_mode={CFG.multipage_mode}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

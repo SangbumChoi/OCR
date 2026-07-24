@@ -88,6 +88,12 @@ rotation and resize, regardless of visual execution mode. The same document ther
 identical box targets across batch compositions. The transformed numbers supervise both the
 generated box string and the box head.
 
+Synthetic multi-page packets are composed before this resize. The default page grid packs three
+portrait pages into two columns instead of one tall strip, preserving about 313px rather than
+209px of effective page width at the 896px long-side limit. Exact page origins remain in sample
+metadata, so cross-page evidence is auditable even though the student consumes one image tensor.
+Vertical composition remains a matched data ablation.
+
 Dense `pixel_mask` is pooled into a patch mask. Invalid patches are excluded from ViT
 self-attention, resampler cross-attention, and vision pooling. Packed inputs carry only valid patch
 slots. Both modes use a fixed two-dimensional 64-by-64 position grid rather than the flattened

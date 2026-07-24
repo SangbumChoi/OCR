@@ -49,6 +49,7 @@ class DocBuilder:
     margin: str = "12mm"
     language: str = "en"
     layout_family: str | None = None
+    page_mode: str = "first"
 
     def __post_init__(self):
         self._html: list[str] = []
@@ -316,7 +317,7 @@ class DocBuilder:
     ) -> tuple[Image.Image, dict]:
         html = "".join(self._html)
         css = self._full_css()
-        rr = render_html(html, css, dpi=dpi)
+        rr = render_html(html, css, dpi=dpi, page_mode=self.page_mode)
         try:
             if color_probe_fallback:
                 required_occurrences: dict[str, int] = {}
@@ -368,6 +369,15 @@ class DocBuilder:
                 "dpi": dpi,
                 "size_px": list(rr.image.size),
                 "page_count": rr.page_count,
+                "rendered_page_count": len(rr.page_origins_px),
+                "page_mode": rr.page_mode,
+                "page_gap_px": rr.page_gap_px,
+                "page_origins_px": [
+                    list(origin) for origin in rr.page_origins_px
+                ],
+                "page_sizes_px": [
+                    list(size) for size in rr.page_sizes_px
+                ],
                 "box_resolver": (
                     "pdf_text_then_color_probe"
                     if color_probe_fallback
