@@ -173,6 +173,35 @@ def test_perspective_config_and_render_provenance():
     assert DocSample.from_builder_gt(flat).render.geometry == geometry
 
 
+def test_hard_layout_config_and_render_provenance():
+    config = GenConfig()
+    assert config.hard_layout_families == [
+        "classic-v1",
+        "compact-v1",
+        "report-v1",
+    ]
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        GenConfig(hard_layout_families=[])
+    with pytest.raises(ValueError, match="unknown hard layout"):
+        GenConfig(hard_layout_families=["unknown"])
+    GenConfig(split_group_by="layout")
+
+    flat = {
+        "type": "hard chart",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "layout_family": "compact-v1",
+            "layout_fingerprint": "abc123",
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.layout_family == "compact-v1"
+    assert render.layout_fingerprint == "abc123"
+
+
 def test_evidence_pixel_gate_config_validation():
     config = GenConfig()
     assert config.validate_evidence_pixels is True

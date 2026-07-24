@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
+from .hard_layout import hard_layout_spec
 from .hard_locale import hard_text
 from .latent import (
     DifficultySpec,
@@ -30,6 +31,7 @@ class HardCase:
     domain: str
     acquisition: str
     degradation_preset: str
+    layout_family: str
 
 
 def _difficulty(
@@ -58,12 +60,16 @@ def _attach(builder: DocBuilder, graph: LatentDocumentGraph, difficulty: Difficu
     )
     builder.difficulty = difficulty.to_dict()
     builder.semantic_graph["difficulty"] = difficulty.to_dict()
+    builder.semantic_graph.setdefault("metadata", {})["layout_family"] = (
+        builder.layout_family
+    )
 
 
 def hard_table_case(
     rng: random.Random,
     level: int = 4,
     language: str = "en",
+    layout_family: str = "classic-v1",
 ) -> HardCase:
     """Dense regional operating table with multi-cell arithmetic and cross-region comparison."""
 
@@ -209,44 +215,76 @@ def hard_table_case(
         },
         language=language,
     )
+    layout = hard_layout_spec("hard_table", layout_family)
     b = DocBuilder(
         "dense operating table",
         ["dense-table", "cross-region", "distractors", "multi-step arithmetic"],
         "TEDS + relaxed accuracy",
-        page="A4",
-        css=".summary{border:1px solid #666;padding:8px;margin-top:12px}.num{text-align:right}",
+        page=layout.page,
+        css=layout.css,
         language=language,
+        layout_family=layout.family,
     )
-    b.title(text("table_title"))
-    b.field(
-        text("table_budget"),
-        f"${budget:,}",
-        key="budget",
-        spot=True,
-        cls="summary",
-    )
-    b.table(
-        [
-            text("table_h_region"),
-            text("table_h_revenue"),
-            text("table_h_cost"),
-            text("table_h_units"),
-        ],
-        rows,
-        key="operations",
-        spot_cells=spot_cells,
-        region=text("table_region"),
-    )
+    headers = [
+        text("table_h_region"),
+        text("table_h_revenue"),
+        text("table_h_cost"),
+        text("table_h_units"),
+    ]
+
+    def add_budget() -> None:
+        b.field(
+            text("table_budget"),
+            f"${budget:,}",
+            key="budget",
+            spot=True,
+            cls="summary",
+        )
+
+    def add_table() -> None:
+        b.table(
+            headers,
+            rows,
+            key="operations",
+            spot_cells=spot_cells,
+            region=text("table_region"),
+        )
+
+    if layout.family == "classic-v1":
+        b.title(text("table_title"))
+        add_budget()
+        add_table()
+    elif layout.family == "compact-v1":
+        b.raw("<section class=hard-header>")
+        b.title(text("table_title"))
+        add_budget()
+        b.raw("</section>")
+        add_table()
+    else:
+        b.raw("<header class=hard-header>")
+        b.title(text("table_title"))
+        b.raw("</header><section class=data-section>")
+        add_table()
+        b.raw("</section>")
+        add_budget()
     b.task(text("table_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))
-    return HardCase("hard_table", b, "operations", "pdf-native", "scan")
+    return HardCase(
+        "hard_table",
+        b,
+        "operations",
+        "pdf-native",
+        "scan",
+        layout.family,
+    )
 
 
 def hard_chart_case(
     rng: random.Random,
     level: int = 4,
     language: str = "en",
+    layout_family: str = "classic-v1",
 ) -> HardCase:
     """Programmatic bar chart with exact numeric labels and temporal reasoning."""
 
@@ -315,39 +353,69 @@ def hard_chart_case(
         queries=queries[:level],
         language=language,
     )
+    layout = hard_layout_spec("hard_chart", layout_family)
     b = DocBuilder(
         "labelled temporal bar chart",
         ["chart", "small-labels", "temporal-reasoning", "visual-comparison"],
         "relaxed accuracy",
-        page="A5",
-        css=(
-            ".chart{height:250px;display:flex;align-items:flex-end;gap:12px;border-left:2px solid #333;"
-            "border-bottom:2px solid #333;padding:14px 10px 0}.col{flex:1;text-align:center}.bar{"
-            "background:#2f6c9e;color:white;display:flex;align-items:flex-start;justify-content:center;"
-            "padding-top:4px;font-weight:bold}.year{font-size:9px;margin-top:5px}.note{font-size:9px}"
-        ),
+        page=layout.page,
+        css=layout.css,
         language=language,
+        layout_family=layout.family,
     )
-    b.title(text("chart_title"))
-    b.line(text("chart_note"), cls="note")
-    b.raw("<div class=chart>")
-    for index, (year, value) in enumerate(zip(years, values)):
-        b.raw(
-            f"<div class=col><div class=bar style='height:{value * 2.4}px'>{value}</div>"
-            f"<div class=year>{year}</div></div>"
-        )
-        b.spot(f"bar_{index}", str(value))
-    b.raw("</div>")
+    chart_height = {
+        "classic-v1": 220,
+        "compact-v1": 150,
+        "report-v1": 260,
+    }[layout.family]
+    max_value = max(values)
+
+    def add_chart() -> None:
+        b.raw("<div class=chart>")
+        for index, (year, value) in enumerate(zip(years, values)):
+            bar_height = max(18, round(value / max_value * chart_height))
+            b.raw(
+                f"<div class=col><div class=bar style='height:{bar_height}px'>{value}</div>"
+                f"<div class=year>{year}</div></div>"
+            )
+            b.spot(f"bar_{index}", str(value))
+        b.raw("</div>")
+
+    if layout.family == "classic-v1":
+        b.title(text("chart_title"))
+        b.line(text("chart_note"), cls="note")
+        add_chart()
+    elif layout.family == "compact-v1":
+        b.raw("<section class=chart-shell><header class=chart-copy>")
+        b.title(text("chart_title"))
+        b.line(text("chart_note"), cls="note")
+        b.raw("</header>")
+        add_chart()
+        b.raw("</section>")
+    else:
+        b.title(text("chart_title"))
+        b.raw("<section class=chart-card>")
+        add_chart()
+        b.line(text("chart_note"), cls="note")
+        b.raw("</section>")
     b.task(text("chart_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))
-    return HardCase("hard_chart", b, "analytics", "pdf-native", "photo")
+    return HardCase(
+        "hard_chart",
+        b,
+        "analytics",
+        "pdf-native",
+        "photo",
+        layout.family,
+    )
 
 
 def hard_investment_case(
     rng: random.Random,
     level: int = 5,
     language: str = "en",
+    layout_family: str = "classic-v1",
 ) -> HardCase:
     """Multi-path beneficial-ownership document with exact look-through reasoning."""
 
@@ -438,37 +506,66 @@ def hard_investment_case(
         [companies[1], companies[3], f"{bd * 100:.0f}%"],
         [companies[2], companies[3], f"{cd * 100:.0f}%"],
     ]
+    layout = hard_layout_spec("hard_investment", layout_family)
     b = DocBuilder(
         "beneficial ownership disclosure",
         ["investment-relations", "multi-hop", "entity-resolution", "multiple-paths"],
         "relaxed accuracy",
-        page="A5",
-        css=".legal{font-size:9px;color:#444;border-top:1px solid #999;margin-top:14px;padding-top:8px}",
+        page=layout.page,
+        css=layout.css,
         language=language,
+        layout_family=layout.family,
     )
-    b.title(text("investment_title"))
-    b.table(
-        [
-            text("investment_h_investor"),
-            text("investment_h_holding"),
-            text("investment_h_ownership"),
-        ],
-        rows,
-        key="holding",
-        spot_cells=[(index, 2) for index in range(4)],
-        region=text("investment_region"),
-    )
-    b.line(text("investment_legal"), cls="legal")
+    headers = [
+        text("investment_h_investor"),
+        text("investment_h_holding"),
+        text("investment_h_ownership"),
+    ]
+
+    def add_table() -> None:
+        b.table(
+            headers,
+            rows,
+            key="holding",
+            spot_cells=[(index, 2) for index in range(4)],
+            region=text("investment_region"),
+        )
+
+    if layout.family == "classic-v1":
+        b.title(text("investment_title"))
+        add_table()
+        b.line(text("investment_legal"), cls="legal")
+    elif layout.family == "compact-v1":
+        b.title(text("investment_title"))
+        b.raw("<section class=disclosure-grid><div>")
+        add_table()
+        b.raw("</div>")
+        b.line(text("investment_legal"), cls="legal")
+        b.raw("</section>")
+    else:
+        b.line(text("investment_legal"), cls="legal")
+        b.title(text("investment_title"))
+        b.raw("<section class=ownership-card>")
+        add_table()
+        b.raw("</section>")
     b.task(text("investment_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))
-    return HardCase("hard_investment", b, "finance", "pdf-native", "scan")
+    return HardCase(
+        "hard_investment",
+        b,
+        "finance",
+        "pdf-native",
+        "scan",
+        layout.family,
+    )
 
 
 def hard_science_case(
     rng: random.Random,
     level: int = 5,
     language: str = "en",
+    layout_family: str = "classic-v1",
 ) -> HardCase:
     """Two-column research result with control-relative effect and best-condition selection."""
 
@@ -558,45 +655,72 @@ def hard_science_case(
         metadata={"control_node": "mean_0", "reported_uncertainty": "standard error"},
         language=language,
     )
+    layout = hard_layout_spec("hard_science", layout_family)
     b = DocBuilder(
         "scientific research paper",
         ["two-column-paper", "scientific-table", "effect-size", "claim-verification"],
         "relaxed accuracy",
-        page="A4",
-        css=(
-            ".authors{font-size:9px;text-align:center}.abstract{columns:2;column-gap:18px;"
-            "font-size:9px;text-align:justify}.equation{text-align:center;font-family:serif;"
-            "margin:12px}.caption{font-size:8px;color:#444}"
-        ),
+        page=layout.page,
+        css=layout.css,
         language=language,
+        layout_family=layout.family,
     )
-    b.title(text("science_title"), level=2)
-    b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
-    b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
-    b.line(text("science_equation"), cls="equation")
-    b.table(
-        [
-            text("science_h_condition"),
-            text("science_h_mean"),
-            text("science_h_se"),
-            text("science_h_n"),
-        ],
-        rows,
-        key="results",
-        spot_cells=spots,
-        region=text("science_region"),
-    )
-    b.line(text("science_caption"), cls="caption")
+    headers = [
+        text("science_h_condition"),
+        text("science_h_mean"),
+        text("science_h_se"),
+        text("science_h_n"),
+    ]
+
+    def add_table() -> None:
+        b.table(
+            headers,
+            rows,
+            key="results",
+            spot_cells=spots,
+            region=text("science_region"),
+        )
+
+    if layout.family == "classic-v1":
+        b.title(text("science_title"), level=2)
+        b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
+        b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
+        b.line(text("science_equation"), cls="equation")
+        add_table()
+        b.line(text("science_caption"), cls="caption")
+    elif layout.family == "compact-v1":
+        b.raw("<section class=paper-grid><div class=paper-intro>")
+        b.title(text("science_title"), level=2)
+        b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
+        b.raw(f"<div class=abstract>{text('science_abstract')}</div></div>")
+        b.raw("<div class=paper-results>")
+        b.line(text("science_equation"), cls="equation")
+        add_table()
+        b.line(text("science_caption"), cls="caption")
+        b.raw("</div></section>")
+    else:
+        b.title(text("science_title"), level=2)
+        b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
+        b.raw("<section class=results-card>")
+        add_table()
+        b.line(text("science_caption"), cls="caption")
+        b.raw("</section>")
+        b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
+        b.line(text("science_equation"), cls="equation")
     b.task(text("science_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))
-    return HardCase("hard_science", b, "science", "pdf-native", "scan")
+    return HardCase(
+        "hard_science",
+        b,
+        "science",
+        "pdf-native",
+        "scan",
+        layout.family,
+    )
 
 
-HARD_CASE_FACTORIES: dict[
-    str,
-    Callable[[random.Random, int, str], HardCase],
-] = {
+HARD_CASE_FACTORIES: dict[str, Callable[..., HardCase]] = {
     "hard_table": hard_table_case,
     "hard_chart": hard_chart_case,
     "hard_investment": hard_investment_case,

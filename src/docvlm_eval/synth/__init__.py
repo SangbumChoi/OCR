@@ -33,6 +33,7 @@ from .patterns import DocBuilder, esc
 from .latent import (
     DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
 )
+from .hard_layout import HARD_LAYOUT_FAMILIES, HardLayoutSpec, hard_layout_spec, layout_fingerprint
 from .render import RenderResult, render_html, resolve_boxes
 from .quality import (
     EvidenceQualityError, audit_degraded_evidence, audit_render_evidence, collect_evidence_boxes,
@@ -57,6 +58,7 @@ __all__ = [
     # executable semantic graphs and leakage-safe splitting
     "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
     "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
+    "HARD_LAYOUT_FAMILIES", "HardLayoutSpec", "hard_layout_spec", "layout_fingerprint",
     "apply_supervision_toggles",
     "EvidenceQualityError", "audit_render_evidence", "audit_degraded_evidence",
     "collect_evidence_boxes", "redact_evidence_quality_report",

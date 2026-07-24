@@ -29,6 +29,7 @@ documents.
 | accent / brand colour | per-doc accent for headings/totals/links | `jitter` |
 | typography | per-doc font family (sans/serif/mono mix) | `jitter`, `fonts` |
 | layout geometry | per-doc margin + table row-count + field-count variety | `jitter` |
+| hard-document structure | three semantic-preserving layouts per hard family | `hard_layout_families`, `--hard-layout` |
 | resolution / optics | DPI + resize + tiling | `dpi`, `target_long_side`, `tiling_n_max` |
 | script / language | locale-aware content (en/es/ko/ja/zh/ar) | `languages`, `language_weights` |
 
@@ -104,12 +105,14 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
 - **v2a (implemented):** executable semantic graphs; difficulty levels 1–5; graph-authored hard
   table, chart, investment, and scientific-paper families; multi-box evidence for SFT/RLVR; content
   and template fingerprints; deterministic split assignment and a cross-split leakage validator.
-- **v2b (multilingual projection and photographed geometry implemented):** the four executable hard families now render
-  English, Spanish, Korean, Japanese, and Simplified Chinese titles, tables, body text, questions,
-  text answers, and rationales from one validated locale catalog. Photo-style cases can now warp
-  the post-resize raster and every spatial target through the same deterministic homography;
-  counterfactual pairs share the warp, while `--no-degrade` stays pristine. Remaining v2b work is
-  2–3 layout templates per case and handwriting/stamp/seal overlays.
+- **v2b (multilingual projection, photographed geometry, and hard-layout diversity implemented):**
+  the four executable hard families now render English, Spanish, Korean, Japanese, and Simplified
+  Chinese titles, tables, body text, questions, text answers, and rationales from one validated
+  locale catalog. Each family has classic, compact, and report layouts that preserve the latent
+  graph and answers while changing page geometry, section order, and spatial grouping.
+  Photo-style cases can warp the post-resize raster and every spatial target through the same
+  deterministic homography; counterfactual pairs share both layout and warp, while `--no-degrade`
+  stays pristine. Remaining v2b work is handwriting/stamp/seal overlays.
 - **v2c (degradation evidence gate implemented):** final-resolution clean boxes are checked against
   local background pixels; each degraded candidate must preserve both visibility and padded-crop
   structure. A 17-family by 5-preset by 3-seed calibration observed 1,018 valid box crops; the

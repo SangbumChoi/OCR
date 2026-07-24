@@ -75,7 +75,8 @@ DocSample
 ├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
-│                      box_resolver, color_probe_fallback_count, geometry, evidence_quality)
+│                      layout_family, layout_fingerprint, box_resolver,
+│                      color_probe_fallback_count, geometry, evidence_quality)
 ├─ degradation:  Degradation(preset, severity, seed, attempts, geometry_preserved,
 │                            evidence_quality)
 ├─ gen_config:   the GenConfig that produced this sample (provenance)
@@ -103,6 +104,12 @@ retains a reasoning pair only when both roles exist and their gold answers diffe
 stable pair plus graph-query ID in `counterfactual_group`, allowing evaluation to test value
 sensitivity instead of template memorization. Counts above one must be even so no authored pair is
 silently orphaned.
+
+Hard families also select one of three structural layouts from `hard_layout_families`. The layout
+draw uses pair-level deterministic provenance, so factual/edited members share visual structure
+without coupling the content RNG. `template_fingerprint` tracks the semantic operation topology;
+`RenderSpec.layout_fingerprint` tracks visual structure. This permits `split_group_by: layout` and
+the validator's strict `--require-layout-isolation` gate without conflating pixels with semantics.
 
 Every hard document also contains a locale-matched absent-field question. The converted sample
 sets `abstain_expected: true`, includes the localized absence form among valid answers, and feeds
@@ -145,6 +152,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **A7 preprocessing** | resolution / tiling / aspect; small-text legibility | `RenderSpec.*`, `Field.is_small` | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
+| **Hard-layout diversity** | classic vs compact vs report structure | `RenderSpec.layout_family`, `layout_fingerprint` | `hard_layout_families` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 | **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |

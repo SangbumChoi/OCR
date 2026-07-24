@@ -95,14 +95,22 @@ python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 co
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
 python scripts/make_realistic_cases.py --ablation D_perspective_on       # force photo perspective
+python scripts/make_realistic_cases.py --hard-layout compact-v1          # diagnose one hard layout
 ```
+
+The four hard families select from `classic-v1`, `compact-v1`, and `report-v1`. Their graph
+programs and answers remain unchanged across layouts while page geometry, section order, and
+spatial grouping vary. `render.layout_family` and `render.layout_fingerprint` record this visual
+provenance separately from semantic template fingerprints; adjacent counterfactual variants share
+one layout.
 
 Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a
 **backward-compatible superset** of the legacy flat schema. Alongside the flat keys (`type ·
 fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
 carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
 (`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
-`render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`evidence_quality`), `degradation`
+`render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`layout_family`/
+`layout_fingerprint`/`evidence_quality`), `degradation`
 (`preset`/`seed`/`attempts`/`evidence_quality`), `gen_config`, and an
 `ablation_support` flag-set. See [`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md)
 for the DTO and the factor→config mapping. Tests in

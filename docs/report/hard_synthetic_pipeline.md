@@ -61,6 +61,7 @@ Each `gt.json` records:
 - the complete `semantic_graph`;
 - resolved query answers, rationales, and evidence keys;
 - content and template fingerprints;
+- the visual layout family and layout fingerprint;
 - a machine-readable `difficulty` profile;
 - explicit split provenance and a deterministic suggested split.
 - the spatial resolver contract and number of color-probe fallbacks used.
@@ -81,6 +82,22 @@ levels add aggregation or relational paths. Level 5 enables multi-path or cross-
 and the largest distractor budget. The profile records reasoning hops, distractor count, visual
 density, cross-region status, and required skills, so curriculum sampling does not infer
 difficulty from task names.
+
+## Semantic-preserving layouts
+
+Every hard family has three structural renderings: `classic-v1`, `compact-v1`, and `report-v1`.
+They change page orientation or size, section order, and grouping into columns, sidebars, or report
+panels. They do not change latent values, graph operations, answers, evidence keys, or semantic
+fingerprints. Layout selection uses a separate deterministic stream, so enabling layout diversity
+does not perturb authored content. Adjacent factual/edited counterfactual variants deliberately
+share one layout.
+
+`semantic_graph.template_fingerprint` identifies the language-independent operation topology.
+`render.layout_fingerprint` separately identifies the visual structure and is derived from the
+document family plus layout family. This separation supports both value generalization under a
+known visual form and strict visual-layout holdout. The enabled set is controlled by
+`hard_layout_families`; `--hard-layout` forces one family for diagnosis. The
+`D_hard_layout_classic` and `D_hard_layout_diverse` config arms provide matched ablations.
 
 ## Grounded post-training
 
@@ -121,6 +138,12 @@ python scripts/validate_synth_splits.py \
   --split train=data/generated/hard_train_l1 \
   --split heldout=data/generated/hard_heldout_l5 \
   --output docs/results/hard_split_audit.json
+
+# Strict visual-layout holdout
+python scripts/validate_synth_splits.py \
+  --split train=data/generated/hard_train_layouts \
+  --split heldout=data/generated/hard_heldout_layout \
+  --require-layout-isolation
 ```
 
 Generation itself is fail-closed before any sample files are written. The clean pixel gate is configured
@@ -143,7 +166,9 @@ The split validator rejects the same semantic content fingerprint across splits 
 template overlap. `--require-template-isolation` additionally rejects the same graph program
 topology across splits, which is useful for a strict template-generalization evaluation. Template
 overlap is otherwise allowed so the standard heldout set can measure new values under known
-programs, separately from the stricter topology holdout.
+programs, separately from the stricter topology holdout. `split_group_by: layout` assigns all
+records with one layout fingerprint to the same split, and `--require-layout-isolation` rejects
+cross-split visual-layout overlap. Missing layout provenance fails closed when that gate is enabled.
 
 ## Verified smoke path
 
@@ -163,3 +188,10 @@ box remained inside its raster and all clean/degraded evidence audits passed. A 
 counterfactual pair shared its seed, destination corners, and homography while retaining distinct
 content fingerprints. Across 256 base seeds, the default 0.35 probability selected 335 of 1,024
 eligible document decisions (32.71%); non-photo families never received geometry.
+
+A 12-cell family-by-layout render covered every hard family in all three layouts at 96 DPI. Every
+render stayed on one page, produced a distinct raster within its family, and passed required-box
+visibility auditing while retaining identical content and template fingerprints across layouts.
+A separate 24-document degraded CLI smoke passed all clean/degraded gates; each adjacent
+counterfactual pair shared its layout. A high-value compact-chart regression also verifies that
+normalized bars and labels remain inside the landscape page.

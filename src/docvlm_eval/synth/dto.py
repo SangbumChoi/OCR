@@ -34,6 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
+from .hard_layout import HARD_LAYOUT_FAMILIES
+
 # --- language -> writing system, used to label scripts for the A4 transfer matrix ----------
 _SCRIPT_BY_LANG = {
     "en": "latin", "es": "latin", "fr": "latin", "de": "latin", "pt": "latin", "it": "latin",
@@ -125,6 +127,8 @@ class RenderSpec:
     fonts: list[str] = field(default_factory=list)
     box_resolver: str = "pdf_text"
     color_probe_fallback_count: int = 0
+    layout_family: str | None = None
+    layout_fingerprint: str | None = None
     geometry: dict[str, Any] | None = None
 
     @property
@@ -228,6 +232,9 @@ class GenConfig:
 
     # --- hard-document curriculum and split provenance ---
     difficulty_level: int = 4
+    hard_layout_families: list[str] = field(
+        default_factory=lambda: list(HARD_LAYOUT_FAMILIES)
+    )
     split_name: str = "synthetic"
     split_seed: int = 7
     split_group_by: str = "content"
@@ -242,8 +249,17 @@ class GenConfig:
             raise ValueError("difficulty_level must be within [1, 5]")
         if self.split_name not in {"synthetic", "train", "validation", "heldout"}:
             raise ValueError("split_name must be synthetic, train, validation, or heldout")
-        if self.split_group_by not in {"content", "template", "document"}:
-            raise ValueError("split_group_by must be content, template, or document")
+        if self.split_group_by not in {"content", "template", "layout", "document"}:
+            raise ValueError(
+                "split_group_by must be content, template, layout, or document"
+            )
+        if not self.hard_layout_families:
+            raise ValueError("hard_layout_families cannot be empty")
+        unknown_layouts = sorted(
+            set(self.hard_layout_families) - set(HARD_LAYOUT_FAMILIES)
+        )
+        if unknown_layouts:
+            raise ValueError(f"unknown hard layout families: {unknown_layouts}")
         if not isinstance(self.color_probe_fallback, bool):
             raise ValueError("color_probe_fallback must be boolean")
         if not isinstance(self.validate_evidence_pixels, bool):
@@ -412,6 +428,8 @@ class DocSample:
             color_probe_fallback_count=int(
                 rj.get("color_probe_fallback_count", 0)
             ),
+            layout_family=rj.get("layout_family"),
+            layout_fingerprint=rj.get("layout_fingerprint"),
             geometry=rj.get("geometry"),
         )
         langs = sorted({f.language for f in fields} | {gt.get("fields", {}).get("language", "en")}

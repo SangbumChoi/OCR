@@ -41,6 +41,7 @@ from docvlm_eval.synth import (  # noqa: E402
 )
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
 from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
+from docvlm_eval.synth.hard_layout import HARD_LAYOUT_FAMILIES  # noqa: E402
 from docvlm_eval.synth.hard_locale import validate_hard_document_language  # noqa: E402
 from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
 from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
@@ -202,6 +203,14 @@ def _paired_variant(key: str) -> str | None:
     if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
         return f"pair-{counterfactual_index // 2:04d}"
     return CURRENT_VARIANT
+
+
+def _hard_layout_family(key: str) -> str:
+    """Select a layout without consuming the document-content RNG stream."""
+    rng = random.Random(
+        f"{CFG.seed}:{key}:{_paired_variant(key)}:{CURRENT_LANG}:hard-layout"
+    )
+    return rng.choice(CFG.hard_layout_families)
 
 
 # --- content randomisers (avoid constant-content templates -> true duplicates -> memorization) ---
@@ -402,6 +411,12 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                     "content_fingerprint": (out.get("semantic_graph") or {}).get(
                         "content_fingerprint"),
                     "counterfactual": out.get("counterfactual"),
+                    "layout": {
+                        "family": out.get("render", {}).get("layout_family"),
+                        "fingerprint": out.get("render", {}).get(
+                            "layout_fingerprint"
+                        ),
+                    } if out.get("render", {}).get("layout_family") else None,
                     "geometry": {
                         "kind": out.get("render", {}).get("geometry", {}).get("kind"),
                         "seed": out.get("render", {}).get("geometry", {}).get("seed"),
@@ -946,6 +961,7 @@ def _emit_hard_case(key: str, do_degrade: bool) -> None:
         random.Random(random.randrange(2**31)),
         CFG.difficulty_level,
         CURRENT_LANG,
+        layout_family=_hard_layout_family(key),
     )
     emit(
         case.key,
@@ -1016,6 +1032,12 @@ def main():
         default=None,
         help="photo-style perspective probability in [0,1] (overrides config)",
     )
+    ap.add_argument(
+        "--hard-layout",
+        choices=HARD_LAYOUT_FAMILIES,
+        default=None,
+        help="force one hard-document layout family (overrides config)",
+    )
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
@@ -1036,6 +1058,8 @@ def main():
         if not 0 <= args.perspective_prob <= 1:
             raise ValueError("perspective probability must be within [0, 1]")
         CFG.perspective_prob = args.perspective_prob
+    if args.hard_layout is not None:
+        CFG.hard_layout_families = [args.hard_layout]
     if args.split_name is not None:
         CFG.split_name = args.split_name
     if args.no_degrade:
@@ -1074,7 +1098,8 @@ def main():
           f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
           f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels} "
           f"degraded_gate={CFG.validate_degraded_evidence} "
-          f"perspective_p={CFG.perspective_prob}")
+          f"perspective_p={CFG.perspective_prob} "
+          f"hard_layouts={CFG.hard_layout_families}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

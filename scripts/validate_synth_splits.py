@@ -38,6 +38,11 @@ def main() -> None:
         action="store_true",
         help="also reject the same graph-program template across splits",
     )
+    parser.add_argument(
+        "--require-layout-isolation",
+        action="store_true",
+        help="also require and isolate visual layout families across splits",
+    )
     parser.add_argument("--output", help="optional JSON report path")
     args = parser.parse_args()
 
@@ -56,6 +61,7 @@ def main() -> None:
     report = validate_split_leakage(
         records,
         require_template_isolation=args.require_template_isolation,
+        require_layout_isolation=args.require_layout_isolation,
     )
     report["roots"] = roots
     report["records"] = len(records)

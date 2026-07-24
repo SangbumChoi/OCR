@@ -246,6 +246,9 @@ added factor lifting the score a step, ending well above the baseline.
   recovery when a complex-script or wrapped span is absent from the PDF text search results.
   Photo-style cases can apply a deterministic same-frame perspective homography to pixels and all
   boxes, with paired hard documents sharing geometry and explicit off/on ablation arms.
+  Each hard family also has three semantic-preserving structural layouts; separate visual
+  fingerprints support layout-grouped splits and a strict cross-split layout-isolation gate while
+  paired hard documents share their selected layout.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)

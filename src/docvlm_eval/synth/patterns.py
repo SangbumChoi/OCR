@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+from .hard_layout import layout_fingerprint
 from .hard_locale import HARD_DOCUMENT_LANGUAGES, hard_text
 from .render import (
     prepare_color_probe_fallback,
@@ -47,6 +48,7 @@ class DocBuilder:
     page: str = "A5"            # CSS @page size token, e.g. "A5", "A4", "90mm 58mm", "1280px 900px"
     margin: str = "12mm"
     language: str = "en"
+    layout_family: str | None = None
 
     def __post_init__(self):
         self._html: list[str] = []
@@ -362,25 +364,32 @@ class DocBuilder:
                                      "languages": [self.language]})
                 else:
                     print(f"  [warn] full_text empty for {self.doc_type} — skipped")
+            render = {
+                "dpi": dpi,
+                "size_px": list(rr.image.size),
+                "page_count": rr.page_count,
+                "box_resolver": (
+                    "pdf_text_then_color_probe"
+                    if color_probe_fallback
+                    else "pdf_text"
+                ),
+                "color_probe_fallback_count": len(
+                    rr.color_probe_fallbacks
+                ),
+            }
+            if self.layout_family is not None:
+                render["layout_family"] = self.layout_family
+                render["layout_fingerprint"] = layout_fingerprint(
+                    self.doc_type,
+                    self.layout_family,
+                )
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),
                 "anchor_metric": self.anchor_metric,
                 "fields": dict(self.fields),
                 "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
-                "render": {
-                    "dpi": dpi,
-                    "size_px": list(rr.image.size),
-                    "page_count": rr.page_count,
-                    "box_resolver": (
-                        "pdf_text_then_color_probe"
-                        if color_probe_fallback
-                        else "pdf_text"
-                    ),
-                    "color_probe_fallback_count": len(
-                        rr.color_probe_fallbacks
-                    ),
-                },
+                "render": render,
             }
             if spotting:
                 gt["spotting"] = spotting

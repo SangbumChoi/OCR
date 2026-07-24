@@ -67,9 +67,10 @@ base:
 
   # --- executable hard-document curriculum and leakage-safe split provenance ---
   difficulty_level: 4       # 1=direct reading, 5=multi-hop/cross-region with distractors
+  hard_layout_families: [classic-v1, compact-v1, report-v1]
   split_name: synthetic     # set train/validation/heldout when materializing a named split
   split_seed: 7             # deterministic suggested split assignment for semantic fingerprints
-  split_group_by: content   # content | template | document
+  split_group_by: content   # content | template | layout | document
 
 # ----------------------------------------------------------------------------------------------
 # Ablation overrides — applied on top of `base` (deep-merged) when --ablation <id> is passed.
@@ -138,6 +139,8 @@ ablation_overrides:
   D_hard_level_1:   {difficulty_level: 1}
   D_hard_level_3:   {difficulty_level: 3}
   D_hard_level_5:   {difficulty_level: 5}
+  D_hard_layout_classic: {hard_layout_families: [classic-v1]}
+  D_hard_layout_diverse: {hard_layout_families: [classic-v1, compact-v1, report-v1]}
   D_color_probe_off: {color_probe_fallback: false}
   D_color_probe_on:  {color_probe_fallback: true}
   D_perspective_off: {perspective_prob: 0.0}

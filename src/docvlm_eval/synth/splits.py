@@ -18,8 +18,10 @@ class SplitPolicy:
     group_by: str = "content"
 
     def __post_init__(self) -> None:
-        if self.group_by not in {"content", "template", "document"}:
-            raise ValueError("group_by must be content, template, or document")
+        if self.group_by not in {"content", "template", "layout", "document"}:
+            raise ValueError(
+                "group_by must be content, template, layout, or document"
+            )
         values = (self.train, self.validation, self.heldout)
         if any(value < 0 for value in values):
             raise ValueError("split ratios cannot be negative")
@@ -31,6 +33,7 @@ class SplitPolicy:
         keys = {
             "content": graph.get("content_fingerprint"),
             "template": graph.get("template_fingerprint"),
+            "layout": (record.get("render") or {}).get("layout_fingerprint"),
             "document": record.get("doc_id"),
         }
         group = keys[self.group_by]
@@ -49,11 +52,14 @@ def validate_split_leakage(
     records: Iterable[dict[str, Any]],
     *,
     require_template_isolation: bool = False,
+    require_layout_isolation: bool = False,
 ) -> dict[str, Any]:
-    """Raise on duplicated semantic content across splits and report template overlap."""
+    """Raise on semantic leakage and report program-template and visual-layout overlap."""
 
     seen_content: dict[str, str] = {}
     seen_template: dict[str, set[str]] = {}
+    seen_layout: dict[str, set[str]] = {}
+    missing_layout = 0
     counts = {"train": 0, "validation": 0, "heldout": 0}
     for record in records:
         split = str(record.get("split") or "")
@@ -72,22 +78,45 @@ def validate_split_leakage(
             )
         seen_content[content] = split
         seen_template.setdefault(template, set()).add(split)
+        layout = (record.get("render") or {}).get("layout_fingerprint")
+        if layout:
+            seen_layout.setdefault(str(layout), set()).add(split)
+        else:
+            missing_layout += 1
         counts[split] += 1
 
-    overlaps = {
+    template_overlaps = {
         fingerprint: sorted(splits)
         for fingerprint, splits in seen_template.items()
         if len(splits) > 1
     }
-    if require_template_isolation and overlaps:
-        first, splits = next(iter(overlaps.items()))
+    layout_overlaps = {
+        fingerprint: sorted(splits)
+        for fingerprint, splits in seen_layout.items()
+        if len(splits) > 1
+    }
+    if require_template_isolation and template_overlaps:
+        first, splits = next(iter(template_overlaps.items()))
         raise ValueError(
             f"template leakage: fingerprint {first[:12]} appears in {', '.join(splits)}"
+        )
+    if require_layout_isolation and missing_layout:
+        raise ValueError(
+            f"layout isolation requires layout fingerprints; {missing_layout} record(s) are missing"
+        )
+    if require_layout_isolation and layout_overlaps:
+        first, splits = next(iter(layout_overlaps.items()))
+        raise ValueError(
+            f"layout leakage: fingerprint {first[:12]} appears in {', '.join(splits)}"
         )
     return {
         "counts": counts,
         "unique_content": len(seen_content),
         "unique_templates": len(seen_template),
-        "template_overlap_count": len(overlaps),
-        "template_overlaps": overlaps,
+        "template_overlap_count": len(template_overlaps),
+        "template_overlaps": template_overlaps,
+        "unique_layouts": len(seen_layout),
+        "missing_layout_fingerprints": missing_layout,
+        "layout_overlap_count": len(layout_overlaps),
+        "layout_overlaps": layout_overlaps,
     }

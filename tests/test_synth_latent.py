@@ -126,3 +126,40 @@ def test_split_validator_reports_template_overlap_separately():
     assert report["template_overlap_count"] == 1
     with pytest.raises(ValueError, match="template leakage"):
         validate_split_leakage(records, require_template_isolation=True)
+
+
+def test_layout_split_policy_and_leakage_gate():
+    fingerprint = "layout-a"
+    first = {
+        "doc_id": "a",
+        "semantic_graph": _simple_graph(3).to_dict(),
+        "render": {"layout_fingerprint": fingerprint},
+    }
+    second = {
+        "doc_id": "b",
+        "semantic_graph": _simple_graph(9).to_dict(),
+        "render": {"layout_fingerprint": fingerprint},
+    }
+    policy = SplitPolicy(seed=11, group_by="layout")
+
+    assert policy.assign(first) == policy.assign(second)
+
+    records = [
+        {**first, "split": "train"},
+        {**second, "split": "heldout"},
+    ]
+    report = validate_split_leakage(records)
+    assert report["unique_layouts"] == 1
+    assert report["layout_overlap_count"] == 1
+    with pytest.raises(ValueError, match="layout leakage"):
+        validate_split_leakage(records, require_layout_isolation=True)
+
+
+def test_layout_isolation_requires_layout_provenance():
+    record = {
+        "split": "train",
+        "semantic_graph": _simple_graph(3).to_dict(),
+    }
+
+    with pytest.raises(ValueError, match="missing"):
+        validate_split_leakage([record], require_layout_isolation=True)
