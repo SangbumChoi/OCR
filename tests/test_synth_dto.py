@@ -202,6 +202,46 @@ def test_hard_layout_config_and_render_provenance():
     assert render.layout_fingerprint == "abc123"
 
 
+def test_document_overlay_config_and_render_provenance():
+    config = GenConfig()
+    assert config.overlay_prob == 0.35
+    assert config.overlay_types == ["handwriting", "stamp", "seal"]
+    assert config.overlay_max_count == 2
+
+    with pytest.raises(ValueError, match="overlay_prob"):
+        GenConfig(overlay_prob=1.1)
+    with pytest.raises(ValueError, match="cannot be empty"):
+        GenConfig(overlay_types=[])
+    with pytest.raises(ValueError, match="unknown document overlay"):
+        GenConfig(overlay_types=["watermark"])
+    with pytest.raises(ValueError, match="overlay_max_count"):
+        GenConfig(overlay_max_count=0)
+
+    flat = {
+        "type": "marked document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "overlay_seed": 17,
+            "overlay_fingerprint": "abc123",
+            "overlays": [
+                {
+                    "kind": "stamp",
+                    "text": "APPROVED",
+                    "bbox": [10, 20, 90, 50],
+                    "angle_degrees": 2.5,
+                    "opacity": 150,
+                }
+            ],
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.overlay_seed == 17
+    assert render.overlay_fingerprint == "abc123"
+    assert render.overlays[0]["kind"] == "stamp"
+
+
 def test_evidence_pixel_gate_config_validation():
     config = GenConfig()
     assert config.validate_evidence_pixels is True

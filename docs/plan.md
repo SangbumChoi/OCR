@@ -249,6 +249,8 @@ added factor lifting the score a step, ending well above the baseline.
   Each hard family also has three semantic-preserving structural layouts; separate visual
   fingerprints support layout-grouped splits and a strict cross-split layout-isolation gate while
   paired hard documents share their selected layout.
+  Evidence-safe handwriting, stamp, and seal marks add grounded recognition targets before
+  perspective and degradation; their explicit metadata forms a matched robustness slice.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)

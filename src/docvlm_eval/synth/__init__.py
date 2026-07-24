@@ -1,7 +1,8 @@
 """Synthetic document generation with built-in ground truth.
 
-Render HTML/CSS (single source of truth) -> raster + exact GT boxes, optionally transform pixels
-and boxes through one homography, then apply photometric degradation in that coordinate frame.
+Render HTML/CSS (single source of truth) -> raster + exact GT boxes, optionally author grounded
+document marks, transform pixels and boxes through one homography, then apply photometric
+degradation in that coordinate frame.
 Heavy deps (weasyprint, pymupdf, augraphy, faker) live in the ``[synth]`` extra and are imported
 lazily.
 
@@ -34,6 +35,10 @@ from .latent import (
     DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
 )
 from .hard_layout import HARD_LAYOUT_FAMILIES, HardLayoutSpec, hard_layout_spec, layout_fingerprint
+from .overlays import (
+    OVERLAY_TYPES, OverlayMark, apply_document_overlays, derive_overlay_seed,
+    overlay_fingerprint,
+)
 from .render import RenderResult, render_html, resolve_boxes
 from .quality import (
     EvidenceQualityError, audit_degraded_evidence, audit_render_evidence, collect_evidence_boxes,
@@ -59,6 +64,8 @@ __all__ = [
     "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
     "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
     "HARD_LAYOUT_FAMILIES", "HardLayoutSpec", "hard_layout_spec", "layout_fingerprint",
+    "OVERLAY_TYPES", "OverlayMark", "apply_document_overlays", "derive_overlay_seed",
+    "overlay_fingerprint",
     "apply_supervision_toggles",
     "EvidenceQualityError", "audit_render_evidence", "audit_degraded_evidence",
     "collect_evidence_boxes", "redact_evidence_quality_report",

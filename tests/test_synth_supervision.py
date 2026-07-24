@@ -7,6 +7,11 @@ from docvlm_eval.synth.supervision import apply_supervision_toggles
 def _ground_truth():
     return {
         "spotting": {"cell": [1, 2, 3, 4]},
+        "render": {
+            "overlays": [
+                {"kind": "seal", "text": "VALID", "bbox": [5, 5, 9, 9]}
+            ]
+        },
         "qa": [
             {
                 "question": "Where?",
@@ -55,6 +60,7 @@ def test_spotting_off_removes_all_box_supervision_paths():
     assert all(query["metric"] != "grounding" for query in gt["qa"])
     assert all("box" not in query and "evidence_keys" not in query for query in gt["qa"])
     assert "evidence_keys" not in gt["semantic_graph"]["queries"][0]["resolved"]
+    assert "bbox" not in gt["render"]["overlays"][0]
 
 
 def test_rationale_off_redacts_legacy_and_graph_views():

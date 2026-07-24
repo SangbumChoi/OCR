@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .overlays import overlay_fingerprint
+
 
 class GeometryAugmentationError(ValueError):
     """Raised when a geometric augmentation cannot preserve a valid coordinate frame."""
@@ -159,6 +161,20 @@ def transform_ground_truth(
                 for box in query["evidence_bboxes"]
             ]
             transformed_count += len(query["evidence_bboxes"])
+
+    for overlay in (transformed.get("render") or {}).get("overlays") or []:
+        if isinstance(overlay, dict) and overlay.get("bbox"):
+            overlay["bbox"] = transform_box(
+                overlay["bbox"],
+                homography,
+                width=width,
+                height=height,
+            )
+    overlays = (transformed.get("render") or {}).get("overlays") or []
+    if overlays:
+        transformed["render"]["overlay_fingerprint"] = overlay_fingerprint(
+            overlays
+        )
 
     return transformed, transformed_count
 

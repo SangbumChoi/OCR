@@ -99,6 +99,21 @@ known visual form and strict visual-layout holdout. The enabled set is controlle
 `hard_layout_families`; `--hard-layout` forces one family for diagnosis. The
 `D_hard_layout_classic` and `D_hard_layout_diverse` config arms provide matched ablations.
 
+## Authored document marks
+
+Handwritten margin notes, rectangular approval stamps, and circular validity seals are applied
+after resize and before optional perspective. A deterministic low-ink placement search rejects
+every candidate intersecting an expanded authored evidence box. Perspective then transforms both
+the raster mark and its provenance box in the same homography. Each accepted mark adds a language
+label, a grounded recognition QA, a stressor tag, and exact render provenance. Full-page
+OCR targets append the mark text so the visible raster and transcript do not disagree.
+
+`overlay_prob`, `overlay_types`, and `overlay_max_count` control the mixture.
+`D_overlays_off/on` provide probability-zero and probability-one arms, while `--overlay-prob` and
+`--overlay-type` support CLI diagnosis. Counterfactual pairs share the overlay seed and mark-type
+signature. Spotting-off projection removes mark and QA boxes while retaining coordinate-free mark
+provenance. Clean and degraded evidence gates audit the mark QA boxes exactly like authored text.
+
 ## Grounded post-training
 
 Hard questions can cite multiple evidence cells. `QAItem.evidence_keys` is resolved after rendering
@@ -195,3 +210,10 @@ visibility auditing while retaining identical content and template fingerprints 
 A separate 24-document degraded CLI smoke passed all clean/degraded gates; each adjacent
 counterfactual pair shared its layout. A high-value compact-chart regression also verifies that
 normalized bars and labels remain inside the landscape page.
+
+A forced-overlay smoke covered all 18 document families and produced all three mark types while
+every clean evidence audit passed. A second 24-document hard-family smoke combined overlays,
+degradation, and sampled perspective: all clean and degraded gates passed, every pair shared its
+mark-type signature, and the mix contained 14 seals, 12 handwritten notes, and 6 stamps. Across
+256 base seeds and all 18 families, the default 0.35 probability selected 1,596 of 4,608 decisions
+(34.64%); conditional type counts were balanced at 788 stamps, 808 handwritten notes, and 777 seals.

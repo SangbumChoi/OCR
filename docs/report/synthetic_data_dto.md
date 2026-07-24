@@ -42,7 +42,7 @@ Matching the real-world *and* image distribution is done on three axes, all conf
 
 | Real-world axis | How we match it | Knob |
 | --- | --- | --- |
-| **Acquisition modality** (the taxonomy's PDF-native / scan / phone-photo / screenshot split) | deterministic same-frame perspective for photo-style cases, then a photometric Augraphy preset: `scan`/`photo`/`fax`/`historical`/`screenshot` | `perspective_*`, `degrade_prob`, `degrade_presets`, `degrade_severity` |
+| **Acquisition modality** (the taxonomy's PDF-native / scan / phone-photo / screenshot split) | evidence-safe authored marks, deterministic same-frame perspective for photo-style cases, then a photometric Augraphy preset: `scan`/`photo`/`fax`/`historical`/`screenshot` | `overlay_*`, `perspective_*`, `degrade_prob`, `degrade_presets`, `degrade_severity` |
 | **Resolution / capture optics** | rasterise at a chosen DPI; optionally resize the longest side and (de)preserve aspect to mimic a model's preprocessor; record a small-text slice | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Language / script mix** | choose each document's language from a weighted mix; generate content in that Faker locale; record language + writing system | `languages`, `language_weights` |
 | **Spatial-label resolver** | PDF text positions first; model-free color-probe render only for required misses | `color_probe_fallback` |
@@ -76,6 +76,7 @@ DocSample
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
 │                      layout_family, layout_fingerprint, box_resolver,
+│                      overlay_seed, overlay_fingerprint, overlays,
 │                      color_probe_fallback_count, geometry, evidence_quality)
 ├─ degradation:  Degradation(preset, severity, seed, attempts, geometry_preserved,
 │                            evidence_quality)
@@ -110,6 +111,12 @@ draw uses pair-level deterministic provenance, so factual/edited members share v
 without coupling the content RNG. `template_fingerprint` tracks the semantic operation topology;
 `RenderSpec.layout_fingerprint` tracks visual structure. This permits `split_group_by: layout` and
 the validator's strict `--require-layout-isolation` gate without conflating pixels with semantics.
+
+Authored handwriting, stamp, and seal marks are stored under `RenderSpec.overlays` with mark type,
+text, final box, angle, and opacity. Each mark also emits an answer-box-linked recognition QA.
+The legacy QA mirror preserves that box, so `case_to_samples()` carries it into `Sample.meta`
+instead of silently reducing the task to answer-only supervision. `overlay_seed` and
+`overlay_fingerprint` support exact resume and corpus auditing.
 
 Every hard document also contains a locale-matched absent-field question. The converted sample
 sets `abstain_expected: true`, includes the localized absence form among valid answers, and feeds
@@ -153,6 +160,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
 | **Hard-layout diversity** | classic vs compact vs report structure | `RenderSpec.layout_family`, `layout_fingerprint` | `hard_layout_families` |
+| **Document-mark robustness** | none vs handwriting/stamp/seal mixtures | `RenderSpec.overlays`, grounded mark QA | `overlay_prob`, `overlay_types`, `overlay_max_count` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 | **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |

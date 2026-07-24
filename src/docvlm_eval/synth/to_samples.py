@@ -75,6 +75,7 @@ def case_to_samples(
         or gt.get("type")
         or "unknown"
     )
+    overlays = (gt.get("render") or {}).get("overlays") or []
     base_meta = {
         "case": prefix,
         "doc_type": gt.get("type"),
@@ -88,11 +89,22 @@ def case_to_samples(
         "difficulty": gt.get("difficulty"),
         "template_family": (gt.get("semantic_graph") or {}).get("template_family"),
         "counterfactual": gt.get("counterfactual"),
+        "overlay_types": [
+            str(mark.get("kind"))
+            for mark in overlays
+            if isinstance(mark, dict) and mark.get("kind")
+        ],
+        "overlay_count": len(overlays),
+        "overlay_fingerprint": (gt.get("render") or {}).get(
+            "overlay_fingerprint"
+        ),
     }
 
     for i, qa in enumerate(gt.get("qa", [])):
         boxes = qa.get("evidence_bboxes") or []
         evidence_count = len(boxes or qa.get("evidence_keys") or [])
+        if qa.get("box") and not evidence_count:
+            evidence_count = 1
         meta = {
             **base_meta,
             "qa_key": qa.get("key"),

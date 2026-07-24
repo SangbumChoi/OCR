@@ -11,6 +11,7 @@ from docvlm_eval.synth.geometry import (
     warp_perspective,
 )
 from docvlm_eval.synth.quality import audit_render_evidence
+from docvlm_eval.synth.overlays import overlay_fingerprint
 
 
 def test_perspective_seed_is_stable_and_variant_specific():
@@ -48,6 +49,12 @@ def test_transform_ground_truth_updates_all_legacy_spatial_views():
     )
     gt = {
         "spotting": {"total": [10, 12, 30, 32]},
+        "render": {
+            "overlay_fingerprint": "source",
+            "overlays": [
+                {"kind": "stamp", "text": "APPROVED", "bbox": [60, 40, 80, 55]}
+            ]
+        },
         "qa": [
             {
                 "key": "total",
@@ -73,6 +80,10 @@ def test_transform_ground_truth_updates_all_legacy_spatial_views():
     assert transformed["qa"][0]["answers"] == ["15,15,35,35;100,80"]
     assert "[15, 15, 35, 35]" in transformed["qa"][0]["rationale"]
     assert transformed["qa"][0]["evidence_bboxes"] == [[45, 23, 55, 33]]
+    assert transformed["render"]["overlays"][0]["bbox"] == [65, 43, 85, 58]
+    assert transformed["render"]["overlay_fingerprint"] == overlay_fingerprint(
+        transformed["render"]["overlays"]
+    )
     assert gt["spotting"]["total"] == [10, 12, 30, 32]
     assert count == 3
 

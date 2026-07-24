@@ -1,7 +1,8 @@
 # Canonical robustness-slice evaluation
 
 Headline accuracy can hide a gain confined to one template, language, easy single-region
-question, or clean rendering. Native-student evaluation therefore assigns every sample four
+question, clean rendering, or an authored document mark. Native-student evaluation therefore
+assigns every sample five
 canonical labels:
 
 | Axis | Canonical source |
@@ -10,6 +11,7 @@ canonical labels:
 | `language` | question language, then document language |
 | `evidence_count` | number of gold evidence boxes required by the question |
 | `degradation` | `clean` or the rendered degradation preset |
+| `overlay` | `none`, one mark type, or a sorted `+`-joined handwriting/stamp/seal mixture |
 
 The labels are stored in each evaluation row under `robustness_slices`. Synthetic conversion also
 stores them in `Sample.meta`, so the labels survive JSONL serialization and can be audited before
@@ -39,6 +41,8 @@ eval_by_slice/evidence_count/<value>/train
 eval_by_slice/evidence_count/<value>/heldout
 eval_by_slice/degradation/<value>/train
 eval_by_slice/degradation/<value>/heldout
+eval_by_slice/overlay/<value>/train
+eval_by_slice/overlay/<value>/heldout
 ```
 
 Selecting the two metrics with the same `<axis>/<value>` suffix produces a directly matched panel.

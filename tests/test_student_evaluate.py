@@ -54,6 +54,7 @@ def _dataset():
                     "document_family": "chart",
                     "evidence_count": 2,
                     "degradation": "scan",
+                    "overlay_types": ["stamp"],
                 },
             ),
             Sample(
@@ -69,6 +70,7 @@ def _dataset():
                     "document_family": "receipt",
                     "evidence_count": 1,
                     "degradation": "clean",
+                    "overlay_types": [],
                 },
             ),
         ]
@@ -162,6 +164,8 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         == 1.0
     )
     assert result.summary["by_robustness_axis"]["evidence_count"]["1"]["score"] == 0.0
+    assert result.summary["by_robustness_axis"]["overlay"]["stamp"]["score"] == 1.0
+    assert result.summary["by_robustness_axis"]["overlay"]["none"]["score"] == 0.0
     assert result.summary["robustness_coverage"]["complete"] is True
     assert result.summary["reward_components"]["answer_correctness"] == {
         "n": 1,
@@ -173,6 +177,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         "language": "en",
         "evidence_count": "2",
         "degradation": "scan",
+        "overlay": "stamp",
     }
     assert result.per_sample[0]["confidence"] is None
     assert (tmp_path / "summary.json").exists()

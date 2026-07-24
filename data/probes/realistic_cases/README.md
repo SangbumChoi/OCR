@@ -20,6 +20,7 @@ HTML/CSS  (+ Faker, seeded -> deterministic)
    │            page.search_for(field)   -> exact pixel box  (scaled by DPI/72)
    ▼
   PNG + boxes
+   │  evidence-safe handwriting / stamp / seal marks + grounded QA
    │  photo only: perspective homography transforms pixels + every box
    ▼
   clean.png ── Augraphy (photometric: scan / photo / fax / historical) ──> degraded.png
@@ -37,8 +38,8 @@ Backend and quality failures use bounded deterministic retries. Each accepted ca
 robustness-retention metric directly.
 Spotting-off ablations still run the same private checks but persist only coordinate-free summaries.
 `index.json` mirrors each sample's clean/degraded status, accepted attempt count, minimum structure
-correlation, and coordinate-free perspective provenance for corpus-level filtering without opening
-every GT record.
+correlation, coordinate-free perspective provenance, and document-mark provenance for corpus-level
+filtering without opening every GT record.
 
 ## GT patterns — declare a value once, get the label for free
 
@@ -96,6 +97,8 @@ python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
 python scripts/make_realistic_cases.py --ablation D_perspective_on       # force photo perspective
 python scripts/make_realistic_cases.py --hard-layout compact-v1          # diagnose one hard layout
+python scripts/make_realistic_cases.py --ablation D_overlays_on           # force document marks
+python scripts/make_realistic_cases.py --overlay-prob 1 --overlay-type stamp seal
 ```
 
 The four hard families select from `classic-v1`, `compact-v1`, and `report-v1`. Their graph
@@ -104,13 +107,20 @@ spatial grouping vary. `render.layout_family` and `render.layout_fingerprint` re
 provenance separately from semantic template fingerprints; adjacent counterfactual variants share
 one layout.
 
+Handwritten notes, approval stamps, and validity seals are authored before perspective and
+photometric degradation. Placement minimizes existing ink and cannot intersect any authored
+evidence box. Every mark has exact render provenance and a grounded recognition QA; full-page OCR
+answers include its visible text. The final clean/degraded pixel gates therefore reject illegible
+or destroyed marks instead of treating them as uncontrolled decoration.
+
 Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a
 **backward-compatible superset** of the legacy flat schema. Alongside the flat keys (`type ·
 fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
 carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
 (`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
 `render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`layout_family`/
-`layout_fingerprint`/`evidence_quality`), `degradation`
+`layout_fingerprint`/`overlay_seed`/`overlay_fingerprint`/`overlays`/
+`evidence_quality`), `degradation`
 (`preset`/`seed`/`attempts`/`evidence_quality`), `gen_config`, and an
 `ablation_support` flag-set. See [`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md)
 for the DTO and the factor→config mapping. Tests in

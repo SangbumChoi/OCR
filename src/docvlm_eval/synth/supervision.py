@@ -25,6 +25,9 @@ def apply_supervision_toggles(gt: dict[str, Any], cfg: Any) -> None:
             query.pop("evidence_keys", None)
         for query in (gt.get("semantic_graph") or {}).get("queries", []):
             (query.get("resolved") or {}).pop("evidence_keys", None)
+        for overlay in (gt.get("render") or {}).get("overlays") or []:
+            if isinstance(overlay, dict):
+                overlay.pop("bbox", None)
 
     if not cfg.emit_rationale:
         for query in gt.get("qa", []):

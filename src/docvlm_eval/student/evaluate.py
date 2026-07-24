@@ -37,6 +37,7 @@ ROBUSTNESS_AXES = (
     "language",
     "evidence_count",
     "degradation",
+    "overlay",
 )
 
 
@@ -124,6 +125,13 @@ def _canonical_robustness_slices(
     degradation = meta.get("degradation")
     if isinstance(degradation, dict):
         degradation = degradation.get("preset")
+    overlay_types = meta.get("overlay_types")
+    if isinstance(overlay_types, (list, tuple, set)):
+        overlay = "+".join(
+            sorted({str(value) for value in overlay_types if value})
+        ) or "none"
+    else:
+        overlay = "unknown"
     return {
         "document_family": str(
             meta.get("document_family")
@@ -140,6 +148,7 @@ def _canonical_robustness_slices(
             or meta.get("render_variant")
             or "unknown"
         ),
+        "overlay": overlay,
     }
 
 

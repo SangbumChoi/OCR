@@ -21,6 +21,8 @@ variant. The data-side ablation factors map onto the DTO as:
   * **A7 preprocessing** -> :class:`RenderSpec` (``dpi``, ``target_long_side``, ``keep_aspect``,
                             ``tiling``) plus :attr:`Field.font_px` / :attr:`Field.is_small` so a
                             *small-text* slice exists; driven by the render knobs in ``GenConfig``.
+  * **Document marks**   -> grounded handwriting/stamp/seal QAs plus
+                            :attr:`RenderSpec.overlays`; driven by ``GenConfig.overlay_*``.
 
 (A5 LoRA-placement and A6 HPO are *training-side* — they consume this GT but need no generator knob.)
 
@@ -35,6 +37,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 
 from .hard_layout import HARD_LAYOUT_FAMILIES
+from .overlays import OVERLAY_TYPES
 
 # --- language -> writing system, used to label scripts for the A4 transfer matrix ----------
 _SCRIPT_BY_LANG = {
@@ -129,6 +132,9 @@ class RenderSpec:
     color_probe_fallback_count: int = 0
     layout_family: str | None = None
     layout_fingerprint: str | None = None
+    overlay_seed: int | None = None
+    overlay_fingerprint: str | None = None
+    overlays: list[dict[str, Any]] = field(default_factory=list)
     geometry: dict[str, Any] | None = None
 
     @property
@@ -210,6 +216,9 @@ class GenConfig:
     perspective_prob: float = 0.35
     perspective_max_inset_fraction: float = 0.08
     perspective_min_area_ratio: float = 0.70
+    overlay_prob: float = 0.35
+    overlay_types: list[str] = field(default_factory=lambda: list(OVERLAY_TYPES))
+    overlay_max_count: int = 2
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -282,6 +291,15 @@ class GenConfig:
             raise ValueError("perspective_max_inset_fraction must be within (0, 0.5)")
         if not 0 < self.perspective_min_area_ratio <= 1:
             raise ValueError("perspective_min_area_ratio must be within (0, 1]")
+        if not 0 <= self.overlay_prob <= 1:
+            raise ValueError("overlay_prob must be within [0, 1]")
+        if not self.overlay_types:
+            raise ValueError("overlay_types cannot be empty")
+        unknown_overlays = sorted(set(self.overlay_types) - set(OVERLAY_TYPES))
+        if unknown_overlays:
+            raise ValueError(f"unknown document overlay types: {unknown_overlays}")
+        if self.overlay_max_count < 1:
+            raise ValueError("overlay_max_count must be positive")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -430,6 +448,9 @@ class DocSample:
             ),
             layout_family=rj.get("layout_family"),
             layout_fingerprint=rj.get("layout_fingerprint"),
+            overlay_seed=rj.get("overlay_seed"),
+            overlay_fingerprint=rj.get("overlay_fingerprint"),
+            overlays=list(rj.get("overlays") or []),
             geometry=rj.get("geometry"),
         )
         langs = sorted({f.language for f in fields} | {gt.get("fields", {}).get("language", "en")}
@@ -489,6 +510,7 @@ class DocSample:
         if self.qa:
             d["qa"] = [{"key": q.key, "question": q.question, "answers": q.answers,
                         "metric": q.metric, "answer_type": q.answer_type,
+                        **({"box": q.answer_bbox.to_list()} if q.answer_bbox else {}),
                         **({"evidence_keys": q.evidence_keys} if q.evidence_keys else {}),
                         **({"evidence_bboxes": [b.to_list() for b in q.evidence_bboxes]}
                            if q.evidence_bboxes else {}),

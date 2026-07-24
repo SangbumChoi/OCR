@@ -33,8 +33,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import (  # noqa: E402
     DocBuilder,
+    OVERLAY_TYPES,
+    apply_document_overlays,
     degrade_with_retries,
     derive_degradation_seed,
+    derive_overlay_seed,
     derive_perspective_seed,
     esc,
     warp_perspective,
@@ -93,17 +96,26 @@ def _validate_counterfactual_records() -> None:
         languages = {str(record["language"]) for record in pair}
         templates = {str(record["template_fingerprint"]) for record in pair}
         contents = {str(record["content_fingerprint"]) for record in pair}
+        overlay_kinds = {
+            tuple(
+                mark["kind"]
+                for mark in (record.get("overlays") or {}).get("marks", [])
+            )
+            for record in pair
+        }
         if (
             len(pair) != 2
             or roles != {"factual", "edited"}
             or len(languages) != 1
             or len(templates) != 1
             or len(contents) != 2
+            or len(overlay_kinds) != 1
         ):
             raise ValueError(
                 f"invalid counterfactual pair {pair_id!r}: "
                 f"roles={sorted(roles)}, languages={sorted(languages)}, "
-                f"templates={len(templates)}, contents={len(contents)}"
+                f"templates={len(templates)}, contents={len(contents)}, "
+                f"overlay_signatures={len(overlay_kinds)}"
             )
 
 
@@ -270,6 +282,21 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     else:
         img = builder_or_img
     img = _resize_with_boxes(img, gt)
+    overlay_seed = derive_overlay_seed(
+        CFG.seed,
+        key,
+        _paired_variant(key),
+        CURRENT_LANG,
+    )
+    img, gt = apply_document_overlays(
+        img,
+        gt,
+        seed=overlay_seed,
+        probability=CFG.overlay_prob,
+        overlay_types=CFG.overlay_types,
+        max_count=CFG.overlay_max_count,
+        language=CURRENT_LANG,
+    )
     photo_style = preset == "photo" or acquisition == "photo"
     geometry_seed = derive_perspective_seed(
         CFG.seed,
@@ -417,6 +444,13 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                             "layout_fingerprint"
                         ),
                     } if out.get("render", {}).get("layout_family") else None,
+                    "overlays": {
+                        "seed": out.get("render", {}).get("overlay_seed"),
+                        "fingerprint": out.get("render", {}).get(
+                            "overlay_fingerprint"
+                        ),
+                        "marks": out.get("render", {}).get("overlays", []),
+                    } if out.get("render", {}).get("overlays") else None,
                     "geometry": {
                         "kind": out.get("render", {}).get("geometry", {}).get("kind"),
                         "seed": out.get("render", {}).get("geometry", {}).get("seed"),
@@ -1038,6 +1072,19 @@ def main():
         default=None,
         help="force one hard-document layout family (overrides config)",
     )
+    ap.add_argument(
+        "--overlay-prob",
+        type=float,
+        default=None,
+        help="document handwriting/stamp/seal probability in [0,1] (overrides config)",
+    )
+    ap.add_argument(
+        "--overlay-type",
+        nargs="+",
+        choices=OVERLAY_TYPES,
+        default=None,
+        help="enabled document overlay types (overrides config)",
+    )
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
@@ -1060,6 +1107,12 @@ def main():
         CFG.perspective_prob = args.perspective_prob
     if args.hard_layout is not None:
         CFG.hard_layout_families = [args.hard_layout]
+    if args.overlay_prob is not None:
+        if not 0 <= args.overlay_prob <= 1:
+            raise ValueError("overlay probability must be within [0, 1]")
+        CFG.overlay_prob = args.overlay_prob
+    if args.overlay_type is not None:
+        CFG.overlay_types = list(args.overlay_type)
     if args.split_name is not None:
         CFG.split_name = args.split_name
     if args.no_degrade:
@@ -1099,7 +1152,8 @@ def main():
           f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels} "
           f"degraded_gate={CFG.validate_degraded_evidence} "
           f"perspective_p={CFG.perspective_prob} "
-          f"hard_layouts={CFG.hard_layout_families}")
+          f"hard_layouts={CFG.hard_layout_families} "
+          f"overlay_p={CFG.overlay_prob} overlay_types={CFG.overlay_types}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).
