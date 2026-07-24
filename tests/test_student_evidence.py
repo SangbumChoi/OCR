@@ -16,6 +16,7 @@ from docvlm_eval.student.experiment import (
     ExperimentStage,
     build_experiment_plan,
 )
+from docvlm_eval.student.model import build_initialization_lineage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,15 @@ def _parameter_attestation(total: int = 587_019) -> dict:
     }
 
 
+def _initialization_lineage() -> dict:
+    return build_initialization_lineage(
+        initialization_arm="I0_random",
+        initialization_seed=5,
+        transfer_reports=[],
+        architecture_fingerprint="sha256:test-architecture",
+    )
+
+
 def _evidence_plan(
     tmp_path: Path,
     *,
@@ -69,6 +79,7 @@ def _evidence_plan(
                 "parameter_counts": {"total": 587_019},
                 "parameter_attestation": _parameter_attestation(),
                 "transfer_reports": [],
+                "initialization_lineage": _initialization_lineage(),
             },
         )
         stages.append(
@@ -99,6 +110,7 @@ def _evidence_plan(
                     "pretraining" if stage_name == "pretrain" else stage_name
                 ),
                 "parameter_attestation": _parameter_attestation(),
+                "initialization_lineage": _initialization_lineage(),
             },
         )
         pointer = root / "artifacts" / stage_name / "latest_checkpoint.txt"
@@ -298,3 +310,34 @@ def test_attestation_rejects_missing_runtime_parameter_measurement(tmp_path):
     assert attestation["contract_status"] == "fail"
     assert budget["status"] == "fail"
     assert budget["evidence"]["source"] == "missing_runtime_attestation"
+
+
+def test_attestation_rejects_training_lineage_drift(tmp_path):
+    plan = _evidence_plan(tmp_path)
+    metadata = (
+        Path(plan.root)
+        / "artifacts"
+        / "sft"
+        / "checkpoints"
+        / "step-00000001"
+        / "student"
+        / "metadata.json"
+    )
+    payload = json.loads(metadata.read_text(encoding="utf-8"))
+    payload["initialization_lineage"] = build_initialization_lineage(
+        initialization_arm="I0_random",
+        initialization_seed=99,
+        transfer_reports=[],
+        architecture_fingerprint="sha256:test-architecture",
+    )
+    _write_json(metadata, payload)
+
+    attestation = build_experiment_attestation(plan, repo_root=ROOT)
+    lineage_check = next(
+        check
+        for check in attestation["contract_checks"]
+        if check["id"] == "sft_initialization_lineage"
+    )
+
+    assert attestation["contract_status"] == "fail"
+    assert lineage_check["status"] == "fail"

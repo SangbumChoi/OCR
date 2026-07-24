@@ -2343,11 +2343,43 @@ class DocumentVLMStudent(nn.Module):
         metadata: dict[str, Any] | None = None,
     ) -> None:
         metadata_payload = dict(metadata or {})
-        if "parameter_attestation" in metadata_payload:
+        reserved = {
+            "initialization_lineage",
+            "parameter_attestation",
+        } & metadata_payload.keys()
+        if reserved:
             raise ValueError(
-                "parameter_attestation is reserved for runtime measurement"
+                f"{sorted(reserved)} are reserved for runtime attestation"
             )
-        metadata_payload["parameter_attestation"] = parameter_attestation(self)
+        attestation = parameter_attestation(self)
+        lineage = _lineage_from_initialization_metadata(
+            metadata_payload,
+            architecture_fingerprint=attestation[
+                "architecture_fingerprint"
+            ],
+        )
+        inherited_lineage = getattr(self, "_initialization_lineage", None)
+        if inherited_lineage is not None:
+            inherited_lineage = validate_initialization_lineage(
+                inherited_lineage,
+                expected_architecture_fingerprint=attestation[
+                    "architecture_fingerprint"
+                ],
+            )
+            if (
+                lineage is not None
+                and lineage["fingerprint"]
+                != inherited_lineage["fingerprint"]
+            ):
+                raise ValueError(
+                    "checkpoint initialization metadata conflicts with "
+                    "the model's inherited lineage"
+                )
+            lineage = inherited_lineage
+        if lineage is not None:
+            metadata_payload["initialization_lineage"] = lineage
+            self._initialization_lineage = lineage
+        metadata_payload["parameter_attestation"] = attestation
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
         (output / "student_config.json").write_text(
@@ -2379,12 +2411,40 @@ class DocumentVLMStudent(nn.Module):
             weights_only=True,
         )
         model.load_state_dict(state)
+        metadata: dict[str, Any] = {}
         metadata_path = checkpoint / "metadata.json"
         if metadata_path.is_file():
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             recorded = metadata.get("parameter_attestation")
             if recorded is not None:
                 validate_parameter_attestation(model, recorded)
+        lineage = metadata.get("initialization_lineage")
+        derived_lineage = _lineage_from_initialization_metadata(
+            metadata,
+            architecture_fingerprint=_parameter_architecture_fingerprint(
+                model
+            ),
+        )
+        if lineage is not None:
+            lineage = validate_initialization_lineage(
+                lineage,
+                expected_architecture_fingerprint=(
+                    _parameter_architecture_fingerprint(model)
+                ),
+            )
+            if (
+                derived_lineage is not None
+                and derived_lineage["fingerprint"]
+                != lineage["fingerprint"]
+            ):
+                raise ValueError(
+                    "checkpoint initialization metadata does not match "
+                    "its recorded lineage"
+                )
+        else:
+            lineage = derived_lineage
+        if lineage is not None:
+            model._initialization_lineage = lineage
         return model
 
 
@@ -2439,6 +2499,169 @@ def _parameter_architecture_fingerprint(model: nn.Module) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+_INITIALIZATION_FIELDS = (
+    "initialization_arm",
+    "initialization_seed",
+    "transfer_reports",
+)
+
+
+def _canonical_json_fingerprint(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def build_initialization_lineage(
+    *,
+    initialization_arm: str,
+    initialization_seed: int,
+    transfer_reports: list[dict[str, Any]],
+    architecture_fingerprint: str,
+) -> dict[str, Any]:
+    """Build an immutable, content-addressed initialization provenance record."""
+
+    if not isinstance(initialization_arm, str) or not initialization_arm:
+        raise ValueError("initialization arm cannot be empty")
+    if isinstance(initialization_seed, bool) or not isinstance(
+        initialization_seed,
+        int,
+    ):
+        raise ValueError("initialization seed must be an integer")
+    if not isinstance(transfer_reports, list):
+        raise ValueError("transfer reports must be a list")
+    if (
+        not isinstance(architecture_fingerprint, str)
+        or not architecture_fingerprint.startswith("sha256:")
+    ):
+        raise ValueError("initialization architecture fingerprint is invalid")
+    try:
+        canonical_reports = json.loads(
+            json.dumps(
+                transfer_reports,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "transfer reports must contain JSON-compatible values"
+        ) from error
+    from .transfer import validate_transfer_report_attestation
+
+    for report in canonical_reports:
+        validate_transfer_report_attestation(report)
+    body = {
+        "schema_version": 1,
+        "initialization_arm": initialization_arm,
+        "initialization_seed": initialization_seed,
+        "architecture_fingerprint": architecture_fingerprint,
+        "transfer_reports": canonical_reports,
+    }
+    return {
+        **body,
+        "fingerprint": _canonical_json_fingerprint(body),
+    }
+
+
+def validate_initialization_lineage(
+    lineage: Any,
+    *,
+    expected_architecture_fingerprint: str | None = None,
+) -> dict[str, Any]:
+    """Validate an initialization lineage and return its canonical value."""
+
+    if not isinstance(lineage, dict):
+        raise ValueError("checkpoint initialization_lineage must be a mapping")
+    required = {
+        "schema_version",
+        "initialization_arm",
+        "initialization_seed",
+        "architecture_fingerprint",
+        "transfer_reports",
+        "fingerprint",
+    }
+    if set(lineage) != required:
+        raise ValueError(
+            "checkpoint initialization_lineage fields are incomplete"
+        )
+    rebuilt = build_initialization_lineage(
+        initialization_arm=lineage["initialization_arm"],
+        initialization_seed=lineage["initialization_seed"],
+        transfer_reports=lineage["transfer_reports"],
+        architecture_fingerprint=lineage["architecture_fingerprint"],
+    )
+    if lineage["schema_version"] != 1:
+        raise ValueError("unsupported initialization_lineage schema")
+    if lineage["fingerprint"] != rebuilt["fingerprint"]:
+        raise ValueError("checkpoint initialization_lineage fingerprint mismatch")
+    if (
+        expected_architecture_fingerprint is not None
+        and rebuilt["architecture_fingerprint"]
+        != expected_architecture_fingerprint
+    ):
+        raise ValueError(
+            "checkpoint initialization_lineage architecture mismatch"
+        )
+    return rebuilt
+
+
+def _lineage_from_initialization_metadata(
+    metadata: dict[str, Any],
+    *,
+    architecture_fingerprint: str,
+) -> dict[str, Any] | None:
+    present = [field for field in _INITIALIZATION_FIELDS if field in metadata]
+    if not present:
+        return None
+    if len(present) != len(_INITIALIZATION_FIELDS):
+        raise ValueError(
+            "initialization metadata must include arm, seed, and transfer reports"
+        )
+    return build_initialization_lineage(
+        initialization_arm=metadata["initialization_arm"],
+        initialization_seed=metadata["initialization_seed"],
+        transfer_reports=metadata["transfer_reports"],
+        architecture_fingerprint=architecture_fingerprint,
+    )
+
+
+def validate_checkpoint_initialization_lineage(
+    model: nn.Module,
+    metadata: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Reject resume checkpoints that do not share the model's starting lineage."""
+
+    expected = getattr(model, "_initialization_lineage", None)
+    observed = metadata.get("initialization_lineage")
+    if expected is None and observed is None:
+        return None
+    if expected is None or observed is None:
+        raise ValueError(
+            "resume checkpoint initialization lineage is missing"
+        )
+    architecture_fingerprint = _parameter_architecture_fingerprint(model)
+    expected = validate_initialization_lineage(
+        expected,
+        expected_architecture_fingerprint=architecture_fingerprint,
+    )
+    observed = validate_initialization_lineage(
+        observed,
+        expected_architecture_fingerprint=architecture_fingerprint,
+    )
+    if expected["fingerprint"] != observed["fingerprint"]:
+        raise ValueError(
+            "resume checkpoint initialization lineage does not match "
+            "the active model"
+        )
+    return observed
 
 
 def parameter_attestation(

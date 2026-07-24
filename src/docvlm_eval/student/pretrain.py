@@ -30,7 +30,10 @@ from .compute import estimate_batch_training_flops_breakdown
 from .gradient_probe import GradientConflictProbeConfig
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .losses import BOX_IOU_LOSSES
-from .model import DocumentVLMStudent
+from .model import (
+    DocumentVLMStudent,
+    validate_checkpoint_initialization_lineage,
+)
 
 
 _ONLINE_TEACHER_LOSSES = frozenset(
@@ -1337,6 +1340,7 @@ def _load_checkpoint(
         if metadata_path.exists()
         else {}
     )
+    validate_checkpoint_initialization_lineage(module.student, metadata)
     saved_fingerprint = metadata.get("tokenizer_fingerprint")
     if (
         expected_tokenizer_fingerprint is not None

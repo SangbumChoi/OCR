@@ -11,9 +11,9 @@ Every attestation reports:
 - `contract_status`: whether the current code and experiment configuration match every completed
   stage signature, all declared artifacts still exist, every evidence file matches its digest, the
   runtime model is below one billion parameters, every native checkpoint preserves the same
-  parameter count and tensor-shape fingerprint, optimization advanced in pretraining and each
-  configured post-training stage, evaluation used the final checkpoint, and both train and
-  heldout generation produced samples;
+  parameter count, tensor-shape fingerprint, and initialization-lineage fingerprint, optimization
+  advanced in pretraining and each configured post-training stage, evaluation used the final
+  checkpoint, and both train and heldout generation produced samples;
 - `capability_status`: the independent result from `artifacts/evaluation/gates.json`, including
   matched-reference quality, multilingual retention, reliability, target-device visual efficiency,
   and full-student training feasibility;
@@ -41,6 +41,29 @@ stale metadata. Experiment attestation uses the latest runtime record and requir
 for every configured training checkpoint. A continuation may use its inherited pretraining, SFT,
 preference, or RLVR checkpoint, but a resolved-blueprint estimate alone can no longer pass the
 execution contract.
+
+## Initialization lineage evidence
+
+The initial native checkpoint records a content-addressed `initialization_lineage`. Its immutable
+body contains the initialization arm and seed, the runtime architecture fingerprint, and every
+selective-transfer report. Each nonempty transfer report contains:
+
+- SHA-256 fingerprints of the canonical source and target tensor topologies;
+- one ordered source-to-target record per copied tensor, including shapes, dtypes, copy method,
+  and copied parameter count;
+- a token-row or structured-channel selection fingerprint whenever copying is not exact;
+- a SHA-256 over the complete ordered mapping manifest.
+
+The experiment plan separately content-addresses local source checkpoints, token maps, or pinned
+Hub acquisition manifests. Together, those input records and the transfer mapping identify which
+source artifact topology populated each student tensor without hashing multi-gigabyte values a
+second time during initialization.
+
+Native checkpoint loading validates the lineage and every nested transfer mapping. Subsequent
+pretraining, SFT, preference, and RLVR saves inherit the same lineage automatically. Exact resume
+rejects a checkpoint with a missing or different lineage. Experiment attestation requires the
+initial record and every configured training checkpoint to carry the same fingerprint, so a final
+model cannot silently lose or replace its initialization provenance.
 
 ## Create and verify
 

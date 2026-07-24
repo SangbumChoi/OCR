@@ -82,10 +82,13 @@ It ranks channels by the joint squared L2 norm of gate rows, up rows, and down c
 the selected channels in source order, and applies that same index set to all three weights.
 Incomplete groups, hidden-width mismatches, and source-smaller-than-target groups remain random.
 The LFM2 adapter covers attention, gated short convolution, norms, and SwiGLU projections for
-hybrid students. Metadata records copied keys and parameters,
-missing source keys, and shape mismatches in `artifacts/initial/metadata.json`. A non-random arm
-fails if any required component copies zero parameters. It also checks the realized copied
-parameters against a component-relative floor declared by the arm:
+hybrid students. Metadata records copied keys and parameters, missing source keys, and shape
+mismatches in `artifacts/initial/metadata.json`. It also records canonical source and target
+topology SHA-256 values and an ordered mapping manifest with source key, target key, shape, dtype,
+copy method, and copied parameter count for every transferred tensor. Exact, token-row, and
+structured-MLP mappings are distinguishable; the latter two carry selection fingerprints. A
+non-random arm fails if any required component copies zero parameters. It also checks the realized
+copied parameters against a component-relative floor declared by the arm:
 
 | Arm | Minimum vision dose | Minimum language dose |
 | --- | ---: | ---: |
@@ -108,6 +111,12 @@ thing.
 Every materialized structured group records its source and target widths, selection method,
 channel-index SHA-256, and a bounded index preview. Header-only compatibility analysis records
 `shape_only_compatibility` instead of pretending that salience can be known without weights.
+
+Saving the initialized model validates every mapping and seals the arm, seed, runtime architecture
+fingerprint, and complete transfer reports into `initialization_lineage`. The lineage is copied
+unchanged into pretraining, SFT, preference, and RLVR checkpoints. Native load rejects a modified
+lineage or mapping fingerprint, exact resume rejects lineage drift, and experiment evidence
+requires one matching fingerprint from initialization through the final configured training stage.
 
 `I6_strict_structured` adds a semantic attention gate. It reads hidden width, query heads, KV
 heads, head dimension, and RoPE base from the checkpoint config. Missing geometry fails closed;

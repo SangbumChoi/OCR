@@ -115,9 +115,17 @@ tests connector transfer.
 
 The implementation depth-maps a selected fraction of student blocks onto a deeper compatible
 teacher and copies only exact-shape tensors. It includes canonical name adapters for native student,
-Hugging Face SigLIP, and Llama-style checkpoints. Every run records copied keys, copied parameter
-count, missing source keys, and shape mismatches. There is intentionally no hidden-width cropping or
-interpolation: incompatible LFM or other teachers provide logits/features during distillation.
+Hugging Face SigLIP, Llama-style, and LFM2 checkpoints. Every run records source and target topology
+fingerprints, an ordered canonical source-to-target mapping for every copied tensor, copied
+parameter count, missing source keys, and shape mismatches. Token-row and structured-channel
+reductions also record their selection fingerprint. There is intentionally no arbitrary
+hidden-width cropping or interpolation: unsupported width mismatches remain random and may instead
+provide logits or features during distillation.
+
+The initial checkpoint seals the arm, seed, runtime architecture fingerprint, and transfer reports
+into one `initialization_lineage` SHA-256. Native pretraining, SFT, preference, and RLVR checkpoints
+inherit it automatically, and resume fails when it is absent or differs. The experiment evidence
+attestation independently requires the same lineage through the final checkpoint.
 
 Example selective initialization:
 

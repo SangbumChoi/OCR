@@ -19,6 +19,13 @@ Random initialization is reproducible: `initialization.seed` is validated, passe
 construction before parameter allocation, included in the stage signature, and written into the
 initial checkpoint metadata.
 
+All initialization arms also emit a fingerprinted `initialization_lineage`. For transferred arms,
+it contains canonical source/target topology hashes and the exact source-to-target tensor mapping;
+local source checkpoints, pinned Hub manifests, and token maps remain separately content-addressed
+experiment inputs. Native checkpoint I/O propagates the lineage through pretraining and every
+post-training stage, while exact resume and final evidence attestation reject missing or changed
+lineage.
+
 External generation inputs are content-addressed. The plan records the byte count and SHA-256 of
 `synthetic.config`; changing that YAML invalidates the experiment fingerprint and every dependent
 stage instead of incorrectly resuming old documents. Configured sequence-teacher prediction files,
@@ -43,7 +50,8 @@ The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`,
 actual runtime count embedded in the latest native checkpoint. A continuation without an
 initialization stage therefore proves its size from the inherited training checkpoint rather than
 substituting a blueprint estimate. Initialization, pretraining, SFT, preference, and RLVR
-checkpoints must report the same tensor-shape fingerprint and parameter decomposition.
+checkpoints must report the same tensor-shape fingerprint, parameter decomposition, and
+initialization-lineage fingerprint.
 Generalization, grounding, counterfactual reasoning, and reliability
 require a matched reference-checkpoint evaluation, while multilingual retention requires a
 per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight JSON

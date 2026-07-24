@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
@@ -31,6 +32,8 @@ class TransferReport:
     source_attention_geometry: dict[str, int | float] | None = None
     target_attention_geometry: dict[str, int | float] | None = None
     attention_geometry_compatible: bool | None = None
+    source_topology_fingerprint: str = ""
+    target_topology_fingerprint: str = ""
     copied_tensors: int = 0
     copied_parameters: int = 0
     structured_tensors: int = 0
@@ -42,9 +45,129 @@ class TransferReport:
     skipped_semantic: list[dict[str, Any]] = field(default_factory=list)
     missing_source: list[str] = field(default_factory=list)
     copied_keys: list[str] = field(default_factory=list)
+    tensor_mappings: list[dict[str, Any]] = field(default_factory=list)
+    mapping_fingerprint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _json_fingerprint(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def _topology_fingerprint(
+    state: Mapping[str, torch.Tensor],
+) -> str:
+    topology = [
+        {
+            "key": key,
+            "shape": list(tensor.shape),
+            "dtype": str(tensor.dtype).removeprefix("torch."),
+        }
+        for key, tensor in sorted(state.items())
+    ]
+    return _json_fingerprint(topology)
+
+
+def _tensor_mapping(
+    *,
+    target_key: str,
+    source_key: str,
+    method: str,
+    target_tensor: torch.Tensor,
+    source_tensor: torch.Tensor,
+    copied_parameters: int,
+    selection_fingerprint: str | None = None,
+) -> dict[str, Any]:
+    mapping: dict[str, Any] = {
+        "target": target_key,
+        "source": source_key,
+        "method": method,
+        "target_shape": list(target_tensor.shape),
+        "source_shape": list(source_tensor.shape),
+        "target_dtype": str(target_tensor.dtype).removeprefix("torch."),
+        "source_dtype": str(source_tensor.dtype).removeprefix("torch."),
+        "copied_parameters": int(copied_parameters),
+    }
+    if selection_fingerprint is not None:
+        mapping["selection_fingerprint"] = selection_fingerprint
+    return mapping
+
+
+def validate_transfer_report_attestation(
+    report: Any,
+) -> dict[str, Any]:
+    """Validate the topology and source-to-target manifest of a transfer report."""
+
+    if not isinstance(report, dict):
+        raise ValueError("transfer report must be a mapping")
+    for field_name in (
+        "source_topology_fingerprint",
+        "target_topology_fingerprint",
+        "mapping_fingerprint",
+    ):
+        value = report.get(field_name)
+        if not isinstance(value, str) or not value.startswith("sha256:"):
+            raise ValueError(
+                f"transfer report {field_name} is missing or invalid"
+            )
+    mappings = report.get("tensor_mappings")
+    if not isinstance(mappings, list):
+        raise ValueError("transfer report tensor_mappings must be a list")
+    if report["mapping_fingerprint"] != _json_fingerprint(mappings):
+        raise ValueError("transfer report mapping fingerprint mismatch")
+    if int(report.get("copied_tensors", -1)) != len(mappings):
+        raise ValueError(
+            "transfer report copied_tensors does not match its mappings"
+        )
+    copied_keys = report.get("copied_keys")
+    if copied_keys != [mapping.get("target") for mapping in mappings]:
+        raise ValueError(
+            "transfer report copied_keys does not match its mappings"
+        )
+    required_mapping_fields = {
+        "target",
+        "source",
+        "method",
+        "target_shape",
+        "source_shape",
+        "target_dtype",
+        "source_dtype",
+        "copied_parameters",
+    }
+    for mapping in mappings:
+        if not isinstance(mapping, dict) or not required_mapping_fields <= set(
+            mapping
+        ):
+            raise ValueError("transfer report tensor mapping is incomplete")
+        if mapping["method"] not in {
+            "exact",
+            "structured_mlp",
+            "token_rows",
+        }:
+            raise ValueError("transfer report tensor mapping method is invalid")
+        if int(mapping["copied_parameters"]) <= 0:
+            raise ValueError(
+                "transfer report tensor mapping copied no parameters"
+            )
+        if mapping["method"] != "exact":
+            selection = mapping.get("selection_fingerprint")
+            if (
+                not isinstance(selection, str)
+                or not selection.startswith("sha256:")
+            ):
+                raise ValueError(
+                    "non-exact transfer mapping selection fingerprint "
+                    "is missing"
+                )
+    return report
 
 
 def canonicalize_source_state(
@@ -402,6 +525,8 @@ def selective_transfer(
             "strict language attention transfer requires source and target "
             "attention geometry"
         )
+    source = canonicalize_source_state(source, family)
+    target = student.state_dict()
     report = TransferReport(
         family=family,
         fractions=normalized_fractions,
@@ -410,9 +535,9 @@ def selective_transfer(
         source_attention_geometry=source_geometry,
         target_attention_geometry=target_geometry,
         attention_geometry_compatible=geometry_compatible,
+        source_topology_fingerprint=_topology_fingerprint(source),
+        target_topology_fingerprint=_topology_fingerprint(target),
     )
-    source = canonicalize_source_state(source, family)
-    target = student.state_dict()
     if copy_token_embeddings is None:
         copy_token_embeddings = family == "student"
     source_keys = list(source)
@@ -487,6 +612,19 @@ def selective_transfer(
                 report.token_rows_copied = len(valid_pairs)
                 report.copied_parameters += len(valid_pairs) * target_tensor.shape[1]
                 report.copied_keys.append(target_key)
+                report.tensor_mappings.append(
+                    _tensor_mapping(
+                        target_key=target_key,
+                        source_key=target_key,
+                        method="token_rows",
+                        target_tensor=target_tensor,
+                        source_tensor=source_tensor,
+                        copied_parameters=(
+                            len(valid_pairs) * target_tensor.shape[1]
+                        ),
+                        selection_fingerprint=_json_fingerprint(valid_pairs),
+                    )
+                )
             continue
         if target_key == "language.token_embedding.weight" and not copy_token_embeddings:
             report.skipped_by_policy += 1
@@ -530,6 +668,8 @@ def selective_transfer(
             report.missing_source.append(source_key)
             continue
         structured = False
+        original_source_tensor = source_tensor
+        structured_selection_fingerprint = None
         if tuple(source_tensor.shape) != tuple(target_tensor.shape):
             mlp_match = _MLP_WEIGHT.match(target_key)
             if shape_policy == "structured_mlp" and mlp_match:
@@ -549,6 +689,9 @@ def selective_transfer(
                 if group is not None and target_key in group[0]:
                     source_tensor = group[0][target_key]
                     structured = True
+                    structured_selection_fingerprint = group[1][
+                        "channel_index_fingerprint"
+                    ]
                     if group_key not in recorded_structured_groups:
                         report.structured_groups.append(group[1])
                         recorded_structured_groups.add(group_key)
@@ -582,5 +725,17 @@ def selective_transfer(
             report.copied_parameters += target_tensor.numel()
             copied_storages.add(storage_key)
         report.copied_keys.append(target_key)
+        report.tensor_mappings.append(
+            _tensor_mapping(
+                target_key=target_key,
+                source_key=source_key,
+                method="structured_mlp" if structured else "exact",
+                target_tensor=target_tensor,
+                source_tensor=original_source_tensor,
+                copied_parameters=target_tensor.numel(),
+                selection_fingerprint=structured_selection_fingerprint,
+            )
+        )
     student.load_state_dict(target)
+    report.mapping_fingerprint = _json_fingerprint(report.tensor_mappings)
     return report

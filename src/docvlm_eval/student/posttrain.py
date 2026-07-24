@@ -22,7 +22,10 @@ from .data import (
     visual_model_inputs,
 )
 from .compute import estimate_preference_step_flops, estimate_rlvr_step_flops
-from .model import DocumentVLMStudent
+from .model import (
+    DocumentVLMStudent,
+    validate_checkpoint_initialization_lineage,
+)
 from .pretrain import (
     PretrainConfig,
     TrainingResult,
@@ -1241,6 +1244,7 @@ def _load_rlvr_checkpoint(
     metadata = json.loads(
         (path / "student" / "metadata.json").read_text(encoding="utf-8")
     )
+    validate_checkpoint_initialization_lineage(model, metadata)
     if metadata.get("run_stage") != "rlvr":
         raise ValueError("resume checkpoint is not an RLVR checkpoint")
     if metadata.get("tokenizer_fingerprint") != config.tokenizer_fingerprint:
@@ -1411,6 +1415,7 @@ def _load_preference_checkpoint(
     metadata = json.loads(
         (path / "student" / "metadata.json").read_text(encoding="utf-8")
     )
+    validate_checkpoint_initialization_lineage(model, metadata)
     if metadata.get("run_stage") != f"preference:{config.objective}":
         raise ValueError("resume checkpoint is not the requested preference objective")
     if metadata.get("tokenizer_fingerprint") != config.tokenizer_fingerprint:

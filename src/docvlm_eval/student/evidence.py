@@ -14,6 +14,7 @@ from .experiment import (
     _atomic_write_json,
     _fingerprint,
 )
+from .model import validate_initialization_lineage
 
 
 _TRAINING_STAGES = ("pretrain", "sft", "preference", "rlvr")
@@ -209,6 +210,65 @@ def _semantic_evidence(
         )
     )
 
+    lineage_candidates: list[tuple[str, Any]] = []
+    initial_lineage = (initialization or {}).get(
+        "initialization_lineage"
+    )
+    if initial_lineage is not None:
+        lineage_candidates.append(
+            ("initialization_metadata", initial_lineage)
+        )
+    for stage_name in _TRAINING_STAGES:
+        proof = training_proofs.get(stage_name)
+        checkpoint_lineage = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "initialization_lineage"
+            )
+        )
+        if checkpoint_lineage is not None:
+            lineage_candidates.append(
+                (f"{stage_name}_checkpoint", checkpoint_lineage)
+            )
+    reference_lineage_source, reference_lineage = (
+        lineage_candidates[0]
+        if lineage_candidates
+        else ("missing_initialization_lineage", None)
+    )
+    try:
+        reference_lineage = validate_initialization_lineage(
+            reference_lineage,
+            expected_architecture_fingerprint=architecture_fingerprint,
+        )
+    except (TypeError, ValueError):
+        reference_lineage = None
+    reference_lineage_fingerprint = (
+        reference_lineage.get("fingerprint")
+        if reference_lineage is not None
+        else None
+    )
+    evidence["initialization_lineage"] = reference_lineage
+    if "initialize_student" in stage_names:
+        checks.append(
+            _check(
+                "initialize_student_lineage_attestation",
+                reference_lineage_source == "initialization_metadata"
+                and reference_lineage is not None,
+                {
+                    "source": reference_lineage_source,
+                    "lineage_fingerprint": reference_lineage_fingerprint,
+                    "initialization_arm": (
+                        reference_lineage or {}
+                    ).get("initialization_arm"),
+                    "transfer_report_count": len(
+                        (reference_lineage or {}).get(
+                            "transfer_reports",
+                            [],
+                        )
+                    ),
+                },
+            )
+        )
+
     if "initialize_student" in stage_names:
         initialization_matches = (
             isinstance(initial_attestation, dict)
@@ -287,6 +347,36 @@ def _semantic_evidence(
                 {
                     "source": f"{stage_name}_checkpoint",
                     "parameter_attestation": checkpoint_attestation,
+                },
+            )
+        )
+        checkpoint_lineage = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "initialization_lineage"
+            )
+        )
+        try:
+            checkpoint_lineage = validate_initialization_lineage(
+                checkpoint_lineage,
+                expected_architecture_fingerprint=architecture_fingerprint,
+            )
+        except (TypeError, ValueError):
+            checkpoint_lineage = None
+        checks.append(
+            _check(
+                f"{stage_name}_initialization_lineage",
+                checkpoint_lineage is not None
+                and reference_lineage_fingerprint is not None
+                and checkpoint_lineage.get("fingerprint")
+                == reference_lineage_fingerprint,
+                {
+                    "source": f"{stage_name}_checkpoint",
+                    "lineage_fingerprint": (
+                        checkpoint_lineage or {}
+                    ).get("fingerprint"),
+                    "expected_lineage_fingerprint": (
+                        reference_lineage_fingerprint
+                    ),
                 },
             )
         )

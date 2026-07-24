@@ -744,7 +744,14 @@ def test_student_checkpoint_round_trip(tmp_path):
     model = DocumentVLMStudent(StudentConfig.tiny()).eval()
     ids = torch.randint(0, 256, (1, 5))
     expected = model(ids).logits
-    model.save_pretrained(tmp_path, metadata={"initialization_arm": "I0_random"})
+    model.save_pretrained(
+        tmp_path,
+        metadata={
+            "initialization_arm": "I0_random",
+            "initialization_seed": 9,
+            "transfer_reports": [],
+        },
+    )
 
     loaded = DocumentVLMStudent.from_pretrained(tmp_path).eval()
 
@@ -758,6 +765,54 @@ def test_student_checkpoint_round_trip(tmp_path):
     assert attestation["source"] == "runtime_numel"
     assert attestation["parameter_counts"]["total"] < 1_000_000_000
     assert attestation["budget"]["within_budget"] is True
+    lineage = metadata["initialization_lineage"]
+    assert lineage["initialization_arm"] == "I0_random"
+    assert lineage["initialization_seed"] == 9
+    assert lineage["transfer_reports"] == []
+    assert lineage["fingerprint"].startswith("sha256:")
+
+
+def test_student_checkpoint_propagates_and_validates_initialization_lineage(
+    tmp_path,
+):
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    initial = tmp_path / "initial"
+    trained = tmp_path / "trained"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    model.save_pretrained(
+        initial,
+        metadata={
+            "initialization_arm": "I0_random",
+            "initialization_seed": 17,
+            "transfer_reports": [],
+        },
+    )
+    initial_metadata = json.loads(
+        (initial / "metadata.json").read_text(encoding="utf-8")
+    )
+
+    loaded = DocumentVLMStudent.from_pretrained(initial)
+    loaded.save_pretrained(trained, metadata={"run_stage": "pretraining"})
+    trained_metadata = json.loads(
+        (trained / "metadata.json").read_text(encoding="utf-8")
+    )
+
+    assert (
+        trained_metadata["initialization_lineage"]
+        == initial_metadata["initialization_lineage"]
+    )
+    trained_metadata["initialization_lineage"]["initialization_seed"] = 18
+    (trained / "metadata.json").write_text(
+        json.dumps(trained_metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ValueError,
+        match="initialization_lineage fingerprint mismatch",
+    ):
+        DocumentVLMStudent.from_pretrained(trained)
 
 
 def test_parameter_attestation_tracks_trainability_and_fails_at_limit():
@@ -936,6 +991,16 @@ def test_selective_transfer_depth_maps_exact_shape_blocks_only():
     assert torch.all(student.language.blocks[1].attn.q_proj.weight == 4)
     assert "language.blocks.1.attn.q_proj.weight" in report.copied_keys
     assert report.copied_parameters > 0
+    assert report.source_topology_fingerprint.startswith("sha256:")
+    assert report.target_topology_fingerprint.startswith("sha256:")
+    assert report.mapping_fingerprint.startswith("sha256:")
+    mapping = next(
+        item
+        for item in report.tensor_mappings
+        if item["target"] == "language.blocks.1.attn.q_proj.weight"
+    )
+    assert mapping["source"] == "language.blocks.3.attn.q_proj.weight"
+    assert mapping["method"] == "exact"
 
 
 def test_siglip_transfer_maps_attention_output_projection():
@@ -965,6 +1030,33 @@ def test_siglip_transfer_maps_attention_output_projection():
 
     assert torch.all(student.vision.blocks[0].attn.o_proj.weight == 3)
     assert "vision.blocks.0.attn.o_proj.weight" in report.copied_keys
+
+
+def test_transfer_attestation_rejects_mapping_tampering():
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import (
+        selective_transfer,
+        validate_transfer_report_attestation,
+    )
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    source = {
+        key: tensor.clone()
+        for key, tensor in student.state_dict().items()
+    }
+    report = selective_transfer(
+        student,
+        source,
+        {"vision": 1.0},
+    ).to_dict()
+    report["tensor_mappings"][0]["source"] = "substituted.weight"
+
+    with pytest.raises(
+        ValueError,
+        match="mapping fingerprint mismatch",
+    ):
+        validate_transfer_report_attestation(report)
 
 
 def test_lfm2_hybrid_transfer_maps_attention_convolution_and_mlp():
@@ -1100,6 +1192,21 @@ def test_structured_mlp_transfer_uses_one_joint_channel_selection():
     assert group["source_channels"] == 4
     assert group["target_channels"] == 2
     assert group["channel_index_fingerprint"].startswith("sha256:")
+    structured_mappings = [
+        mapping
+        for mapping in report.tensor_mappings
+        if mapping["method"] == "structured_mlp"
+    ]
+    assert len(structured_mappings) == 3
+    assert {
+        tuple(mapping["source_shape"])
+        for mapping in structured_mappings
+    } == {(4, hidden), (hidden, 4)}
+    assert all(
+        mapping["selection_fingerprint"]
+        == group["channel_index_fingerprint"]
+        for mapping in structured_mappings
+    )
 
 
 def test_structured_mlp_transfer_fails_closed_for_incomplete_group():
@@ -1642,6 +1749,24 @@ def test_external_embedding_transfer_requires_identity_map():
     assert torch.equal(student.language.token_embedding.weight[6], original[6])
     assert report.token_rows_copied == 1
     assert report.copied_parameters == 128
+    assert report.tensor_mappings == [
+        {
+            "target": "language.token_embedding.weight",
+            "source": "language.token_embedding.weight",
+            "method": "token_rows",
+            "target_shape": [256, 128],
+            "source_shape": [256, 128],
+            "target_dtype": "float32",
+            "source_dtype": "float32",
+            "copied_parameters": 128,
+            "selection_fingerprint": report.tensor_mappings[0][
+                "selection_fingerprint"
+            ],
+        }
+    ]
+    assert report.tensor_mappings[0]["selection_fingerprint"].startswith(
+        "sha256:"
+    )
 
 
 def test_auxiliary_heads_are_real_architecture_switches():
