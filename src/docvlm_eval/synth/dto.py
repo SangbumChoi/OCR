@@ -125,6 +125,7 @@ class RenderSpec:
     fonts: list[str] = field(default_factory=list)
     box_resolver: str = "pdf_text"
     color_probe_fallback_count: int = 0
+    geometry: dict[str, Any] | None = None
 
     @property
     def aspect_ratio(self) -> float:
@@ -202,6 +203,9 @@ class GenConfig:
     validate_degraded_evidence: bool = True
     degraded_min_structure_correlation: float = 0.25
     degrade_max_attempts: int = 3
+    perspective_prob: float = 0.35
+    perspective_max_inset_fraction: float = 0.08
+    perspective_min_area_ratio: float = 0.70
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -256,6 +260,12 @@ class GenConfig:
             raise ValueError("degraded_min_structure_correlation must be within [0, 1]")
         if self.degrade_max_attempts < 1:
             raise ValueError("degrade_max_attempts must be positive")
+        if not 0 <= self.perspective_prob <= 1:
+            raise ValueError("perspective_prob must be within [0, 1]")
+        if not 0 < self.perspective_max_inset_fraction < 0.5:
+            raise ValueError("perspective_max_inset_fraction must be within (0, 0.5)")
+        if not 0 < self.perspective_min_area_ratio <= 1:
+            raise ValueError("perspective_min_area_ratio must be within (0, 1]")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -402,6 +412,7 @@ class DocSample:
             color_probe_fallback_count=int(
                 rj.get("color_probe_fallback_count", 0)
             ),
+            geometry=rj.get("geometry"),
         )
         langs = sorted({f.language for f in fields} | {gt.get("fields", {}).get("language", "en")}
                        if isinstance(gt.get("fields", {}).get("language"), str) else

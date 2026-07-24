@@ -244,6 +244,8 @@ added factor lifting the score a step, ending well above the baseline.
   families, exact five-language locale projection, multi-box structured SFT/RLVR targets, and
   semantic train/heldout leakage gate. Required spatial labels use occurrence-aware color-probe
   recovery when a complex-script or wrapped span is absent from the PDF text search results.
+  Photo-style cases can apply a deterministic same-frame perspective homography to pixels and all
+  boxes, with paired hard documents sharing geometry and explicit off/on ablation arms.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)

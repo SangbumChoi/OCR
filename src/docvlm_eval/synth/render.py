@@ -3,7 +3,8 @@
 The whole point of the synth package: the image and its ground truth come from the *same*
 source. We render HTML/CSS with WeasyPrint -> PDF, rasterize the PDF with PyMuPDF, and read text
 positions straight out of the PDF so spotting boxes are pixel-exact (and stay valid on a
-photometrically-degraded copy, because no geometry is changed).
+photometrically-degraded copy). Optional geometry is handled downstream by transforming the raster
+and boxes through the same homography.
 
 Heavy deps (weasyprint, pymupdf) are imported lazily so importing docvlm_eval stays cheap and the
 core test suite runs without the [synth] extra.

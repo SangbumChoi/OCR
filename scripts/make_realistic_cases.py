@@ -4,9 +4,9 @@
 
 Each case is declared through ``docvlm_eval.synth.DocBuilder`` so the ground truth is *produced
 by* the render — every value is declared once (no drift between pixels and labels) and spotting
-boxes are read straight out of the rendered PDF. A photometric Augraphy preset then makes a
-realistic degraded copy whose boxes are still valid (no geometry changed). Faker (seeded) fills
-field content deterministically.
+boxes are read straight out of the rendered PDF. Photo-style cases may receive a deterministic
+perspective warp whose exact homography is applied to every box before a photometric Augraphy
+preset makes a realistic degraded copy. Faker (seeded) fills field content deterministically.
 
 Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
 
@@ -35,7 +35,9 @@ from docvlm_eval.synth import (  # noqa: E402
     DocBuilder,
     degrade_with_retries,
     derive_degradation_seed,
+    derive_perspective_seed,
     esc,
+    warp_perspective,
 )
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
 from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
@@ -194,6 +196,14 @@ def _doc_rng(key: str) -> random.Random:
     return random.Random(f"{CFG.seed}:{key}:{variant}:{CURRENT_LANG}")
 
 
+def _paired_variant(key: str) -> str | None:
+    """Return a geometry variant that counterfactual pairs can share."""
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        return f"pair-{counterfactual_index // 2:04d}"
+    return CURRENT_VARIANT
+
+
 # --- content randomisers (avoid constant-content templates -> true duplicates -> memorization) ---
 _ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
          "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
@@ -250,9 +260,28 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         )
     else:
         img = builder_or_img
+    img = _resize_with_boxes(img, gt)
+    photo_style = preset == "photo" or acquisition == "photo"
+    geometry_seed = derive_perspective_seed(
+        CFG.seed,
+        key,
+        _paired_variant(key),
+        CURRENT_LANG,
+    )
+    if (
+        do_degrade
+        and photo_style
+        and random.Random(geometry_seed).random() < CFG.perspective_prob
+    ):
+        img, gt = warp_perspective(
+            img,
+            gt,
+            seed=geometry_seed,
+            max_inset_fraction=CFG.perspective_max_inset_fraction,
+            min_area_ratio=CFG.perspective_min_area_ratio,
+        )
     # Preserve a private pre-ablation audit view before A1/A2 removes supervision. It is never
     # serialized, so spotting-off arms keep the same image-quality gate without leaking boxes.
-    img = _resize_with_boxes(img, gt)
     quality_gt = copy.deepcopy(gt)
     apply_supervision_toggles(gt, CFG)
 
@@ -373,6 +402,15 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                     "content_fingerprint": (out.get("semantic_graph") or {}).get(
                         "content_fingerprint"),
                     "counterfactual": out.get("counterfactual"),
+                    "geometry": {
+                        "kind": out.get("render", {}).get("geometry", {}).get("kind"),
+                        "seed": out.get("render", {}).get("geometry", {}).get("seed"),
+                        "sampled_area_ratio": (
+                            out.get("render", {})
+                            .get("geometry", {})
+                            .get("sampled_area_ratio")
+                        ),
+                    } if out.get("render", {}).get("geometry") else None,
                     "quality": {
                         "clean_status": (
                             out.get("render", {})
@@ -972,6 +1010,12 @@ def main():
     ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
     ap.add_argument("--difficulty-level", type=int, choices=range(1, 6), default=None,
                     help="hard-document curriculum level in [1,5] (overrides config)")
+    ap.add_argument(
+        "--perspective-prob",
+        type=float,
+        default=None,
+        help="photo-style perspective probability in [0,1] (overrides config)",
+    )
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
@@ -988,6 +1032,10 @@ def main():
         CFG.seed = args.seed
     if args.difficulty_level is not None:
         CFG.difficulty_level = args.difficulty_level
+    if args.perspective_prob is not None:
+        if not 0 <= args.perspective_prob <= 1:
+            raise ValueError("perspective probability must be within [0, 1]")
+        CFG.perspective_prob = args.perspective_prob
     if args.split_name is not None:
         CFG.split_name = args.split_name
     if args.no_degrade:
@@ -1025,7 +1073,8 @@ def main():
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
           f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
           f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels} "
-          f"degraded_gate={CFG.validate_degraded_evidence}")
+          f"degraded_gate={CFG.validate_degraded_evidence} "
+          f"perspective_p={CFG.perspective_prob}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

@@ -16,22 +16,29 @@ HTML/CSS  (+ Faker, seeded -> deterministic)
    │  WeasyPrint
    ▼
   PDF
-   │  PyMuPDF:  page.get_pixmap(DPI)     -> clean.png
+   │  PyMuPDF:  page.get_pixmap(DPI)     -> raster
    │            page.search_for(field)   -> exact pixel box  (scaled by DPI/72)
    ▼
-  PNG  ── Augraphy (photometric: scan / photo / fax / historical) ──>  degraded.png
+  PNG + boxes
+   │  photo only: perspective homography transforms pixels + every box
+   ▼
+  clean.png ── Augraphy (photometric: scan / photo / fax / historical) ──> degraded.png
 ```
 
-GT boxes come straight from the renderer's text positions, so spotting boxes are pixel-exact.
+GT boxes start from the renderer's text positions. For eligible photo-style cases, one
+deterministically sampled homography transforms both the raster and every spatial target; the
+warped quadrilaterals are stored as axis-aligned xyxy envelopes for loader compatibility.
 Before writing a sample, the clean raster gate rejects unresolved, clipped, or visually blank
-boxes. Degradation is **photometric only**, but geometry alone is not treated as proof: every
+boxes. Augraphy remains **photometric only** in the resulting clean frame, but geometry alone is
+not treated as proof: every
 degraded evidence crop must remain visible and structurally correlated with the clean crop.
 Backend and quality failures use bounded deterministic retries. Each accepted case emits a paired
 `clean.png` + `degraded.png`, with both audit reports in `gt.json`, and feeds the
 robustness-retention metric directly.
 Spotting-off ablations still run the same private checks but persist only coordinate-free summaries.
-`index.json` mirrors each sample's clean/degraded status, accepted attempt count, and minimum
-structure correlation for corpus-level filtering without opening every GT record.
+`index.json` mirrors each sample's clean/degraded status, accepted attempt count, minimum structure
+correlation, and coordinate-free perspective provenance for corpus-level filtering without opening
+every GT record.
 
 ## GT patterns — declare a value once, get the label for free
 
@@ -87,6 +94,7 @@ python scripts/make_realistic_cases.py --count 500                       # 18 * 
 python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
+python scripts/make_realistic_cases.py --ablation D_perspective_on       # force photo perspective
 ```
 
 Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a

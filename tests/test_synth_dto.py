@@ -142,6 +142,37 @@ def test_color_probe_config_and_render_provenance():
     assert render.color_probe_fallback_count == 2
 
 
+def test_perspective_config_and_render_provenance():
+    config = GenConfig()
+    assert config.perspective_prob == 0.35
+    assert config.perspective_max_inset_fraction == 0.08
+    assert config.perspective_min_area_ratio == 0.70
+
+    with pytest.raises(ValueError, match="perspective_prob"):
+        GenConfig(perspective_prob=1.1)
+    with pytest.raises(ValueError, match="perspective_max_inset_fraction"):
+        GenConfig(perspective_max_inset_fraction=0.5)
+    with pytest.raises(ValueError, match="perspective_min_area_ratio"):
+        GenConfig(perspective_min_area_ratio=0)
+
+    geometry = {
+        "schema_version": 1,
+        "kind": "perspective",
+        "seed": 17,
+        "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    }
+    flat = {
+        "type": "document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "geometry": geometry,
+        },
+    }
+
+    assert DocSample.from_builder_gt(flat).render.geometry == geometry
+
+
 def test_evidence_pixel_gate_config_validation():
     config = GenConfig()
     assert config.validate_evidence_pixels is True

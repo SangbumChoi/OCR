@@ -74,6 +74,7 @@ synth = [
     "augraphy>=8.2",
     "qrcode>=7.4",
     "beautifulsoup4>=4.12.3",
+    "opencv-python-headless>=4.8",
 ]
 # Tests + lint.
 dev = ["pytest>=8.0", "ruff>=0.5"]

@@ -41,6 +41,11 @@ base:
   validate_degraded_evidence: true
   degraded_min_structure_correlation: 0.25
   degrade_max_attempts: 3
+  # Same-frame perspective geometry for photo-style clean/degraded pairs. Boxes are transformed
+  # by the exact homography and stored as axis-aligned envelopes in the warped pixel frame.
+  perspective_prob: 0.35
+  perspective_max_inset_fraction: 0.08
+  perspective_min_area_ratio: 0.70
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true
@@ -135,6 +140,8 @@ ablation_overrides:
   D_hard_level_5:   {difficulty_level: 5}
   D_color_probe_off: {color_probe_fallback: false}
   D_color_probe_on:  {color_probe_fallback: true}
+  D_perspective_off: {perspective_prob: 0.0}
+  D_perspective_on:  {perspective_prob: 1.0}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}

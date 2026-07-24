@@ -20,8 +20,10 @@ scientific-paper verification.
 5. `DocBuilder` renders the same values and resolves every evidence key through the PDF text layer,
    with an occurrence-aware color-probe fallback for required misses.
 6. A final raster audit deduplicates all field, answer, and multi-box evidence coordinates after
-   resize and supervision projection. It rejects unresolved requested keys, clipped geometry, and
-   crops without sufficient contrast against their local background.
+   resize, optional photo perspective, and supervision projection. It rejects unresolved requested
+   keys, clipped geometry, and crops without sufficient contrast against their local background.
+7. Photo-style samples use one deterministic homography for pixels and all spatial supervision.
+   Counterfactual factual/edited variants share that homography so geometry cannot reveal the role.
 
 The operation registry currently covers direct lookup, sum, mean, difference, ratio, percent
 change, relative reduction, extrema, weighted sum, path products, and sums of independent path
@@ -62,6 +64,7 @@ Each `gt.json` records:
 - a machine-readable `difficulty` profile;
 - explicit split provenance and a deterministic suggested split.
 - the spatial resolver contract and number of color-probe fallbacks used.
+- optional perspective seed, destination corners, homography, area ratio, and box enclosure policy.
 - the pixel-level evidence audit, thresholds, source coverage, and per-box visibility statistics.
 
 ## Hard families
@@ -128,6 +131,10 @@ visible evidence, and a minimum clean/degraded structure correlation for every b
 runtime failures and rejected candidates use a bounded deterministic retry sequence controlled by
 `degrade_max_attempts`; the accepted seed, attempt count, and per-box retention statistics are
 stored under `degradation.evidence_quality`.
+Photo perspective is controlled by `perspective_prob`, `perspective_max_inset_fraction`, and
+`perspective_min_area_ratio`. It is sampled only for `photo` preset/acquisition cases and only when
+degraded generation is enabled. The transform runs before both pixel gates and Augraphy, and
+`D_perspective_off/on` provide probability-zero and probability-one ablation arms.
 Spotting-off controls are audited against a private pre-ablation box view; only the status,
 thresholds, and aggregate structure statistics are serialized, so the gate cannot become a hidden
 coordinate-supervision channel.
@@ -150,3 +157,9 @@ A multilingual CLI smoke generated 40 clean difficulty-5 documents across all fo
 and all five supported languages. All 40 GT/image pairs passed locale validation and had unique
 content fingerprints. A direct 20-cell family-by-language render verified searchable text, exact
 program answers, localized text answers, and language-independent template fingerprints.
+
+A forced-perspective smoke covered ID, webtoon, LCD, and hard-chart photo cases. Every transformed
+box remained inside its raster and all clean/degraded evidence audits passed. A hard-chart
+counterfactual pair shared its seed, destination corners, and homography while retaining distinct
+content fingerprints. Across 256 base seeds, the default 0.35 probability selected 335 of 1,024
+eligible document decisions (32.71%); non-photo families never received geometry.

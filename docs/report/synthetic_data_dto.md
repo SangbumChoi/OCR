@@ -42,14 +42,18 @@ Matching the real-world *and* image distribution is done on three axes, all conf
 
 | Real-world axis | How we match it | Knob |
 | --- | --- | --- |
-| **Acquisition modality** (the taxonomy's PDF-native / scan / phone-photo / screenshot split) | a photometric Augraphy preset applied to a *copy* (no geometry change → boxes stay valid): `scan`/`photo`/`fax`/`historical`/`screenshot` | `degrade_prob`, `degrade_presets`, `degrade_severity` |
+| **Acquisition modality** (the taxonomy's PDF-native / scan / phone-photo / screenshot split) | deterministic same-frame perspective for photo-style cases, then a photometric Augraphy preset: `scan`/`photo`/`fax`/`historical`/`screenshot` | `perspective_*`, `degrade_prob`, `degrade_presets`, `degrade_severity` |
 | **Resolution / capture optics** | rasterise at a chosen DPI; optionally resize the longest side and (de)preserve aspect to mimic a model's preprocessor; record a small-text slice | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Language / script mix** | choose each document's language from a weighted mix; generate content in that Faker locale; record language + writing system | `languages`, `language_weights` |
 | **Spatial-label resolver** | PDF text positions first; model-free color-probe render only for required misses | `color_probe_fallback` |
 | **Spatial-label visibility** | final-resolution box geometry and local-background pixel contrast | `validate_evidence_pixels`, `evidence_min_*` |
 
-Because the boxes come from the clean digital-native render and degradation is photometric only,
-a degraded copy can reuse the clean geometry. Reuse is no longer assumed sufficient: every
+Boxes first come from the digital-native render. After A7 resizing, an eligible photo-style sample
+may transform the raster, spotting boxes, grounding answers, rationale coordinates, and evidence
+boxes through one exact homography. Standard xyxy consumers receive clipped axis-aligned envelopes
+of the transformed quadrilaterals. The resulting warped raster is the clean coordinate frame;
+Augraphy then changes pixels without changing that frame, so the degraded copy reuses its geometry.
+Reuse is not assumed sufficient: every
 candidate must retain visible local evidence and a minimum clean/degraded padded-crop structure
 correlation before it is written. Spotting-off ablations run the same checks against a private
 pre-ablation view, but serialize only a coordinate-free quality summary.
@@ -71,7 +75,7 @@ DocSample
 ├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
-│                      box_resolver, color_probe_fallback_count, evidence_quality)
+│                      box_resolver, color_probe_fallback_count, geometry, evidence_quality)
 ├─ degradation:  Degradation(preset, severity, seed, attempts, geometry_preserved,
 │                            evidence_quality)
 ├─ gen_config:   the GenConfig that produced this sample (provenance)
@@ -125,7 +129,8 @@ Because it is geometry + arithmetic only, every answer is **gold by construction
 **validate** (warn + skip when a requested word is absent, so GT is never silently wrong) and the
 whole layer is one config switch (`emit_understanding`, ablation `U_understanding_on/off`). Under an
 A7 resize, derived boxes (and the coordinates inside their rationales) are rescaled with the image so
-they stay exact. Browse it interactively in
+they stay exact. An optional perspective transform then updates the same coordinate-bearing views
+with its homography before DTO conversion and quality auditing. Browse it interactively in
 [`notebooks/synthetic_data_design.ipynb`](../../notebooks/synthetic_data_design.ipynb), which shows
 each case's GT image with box overlays and the derived *question → answer → reasoning*.
 

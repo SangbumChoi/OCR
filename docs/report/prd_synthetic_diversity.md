@@ -23,6 +23,7 @@ documents.
 | --- | --- | --- |
 | document kind | 18 case templates (invoice…webtoon…UI plus four hard families) | `--only` / weights |
 | acquisition / lighting | Augraphy presets (scan/photo/fax/historical/screenshot) | `degrade_presets`, `degrade_prob` |
+| photographed geometry | same-frame perspective warp with exact homography box transforms | `perspective_prob`, `perspective_max_inset_fraction`, `perspective_min_area_ratio` |
 | degradation validity | local evidence visibility + clean/degraded crop correlation | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |
 | paper colour / tint | per-doc background palette | `jitter` |
 | accent / brand colour | per-doc accent for headings/totals/links | `jitter` |
@@ -103,11 +104,12 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
 - **v2a (implemented):** executable semantic graphs; difficulty levels 1–5; graph-authored hard
   table, chart, investment, and scientific-paper families; multi-box evidence for SFT/RLVR; content
   and template fingerprints; deterministic split assignment and a cross-split leakage validator.
-- **v2b (multilingual projection implemented):** the four executable hard families now render
+- **v2b (multilingual projection and photographed geometry implemented):** the four executable hard families now render
   English, Spanish, Korean, Japanese, and Simplified Chinese titles, tables, body text, questions,
-  text answers, and rationales from one validated locale catalog. Remaining v2b work is 2–3 layout
-  templates per case, handwriting/stamp/seal overlays, and photographed-perspective warp with
-  transformed boxes.
+  text answers, and rationales from one validated locale catalog. Photo-style cases can now warp
+  the post-resize raster and every spatial target through the same deterministic homography;
+  counterfactual pairs share the warp, while `--no-degrade` stays pristine. Remaining v2b work is
+  2–3 layout templates per case and handwriting/stamp/seal overlays.
 - **v2c (degradation evidence gate implemented):** final-resolution clean boxes are checked against
   local background pixels; each degraded candidate must preserve both visibility and padded-crop
   structure. A 17-family by 5-preset by 3-seed calibration observed 1,018 valid box crops; the
@@ -123,4 +125,6 @@ generalization improves.
 - More diversity can dilute any single skill at fixed count → control via A0 + per-axis eval.
 - Font availability (CJK/Arabic/handwriting) — installed in the notebooks/sweep; report flags tofu.
 - Box validity under visual jitter — jitter is photometric/typographic only (no geometry move), so
-  GT boxes stay exact (re-resolved from the render each time).
+  GT boxes stay exact (re-resolved from the render each time). Perspective is the explicit
+  exception: every supported spatial view is transformed by the sampled homography and stored as a
+  clipped axis-aligned envelope before the clean and degraded pixel gates run.
