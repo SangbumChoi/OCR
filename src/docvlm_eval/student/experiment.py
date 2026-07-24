@@ -653,6 +653,18 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 "disabled RLVR cannot set stage-specific overrides: "
                 f"{ignored}"
             )
+    evaluation = _require_mapping(raw, "evaluation")
+    if int(evaluation.get("max_new_tokens", 0)) <= 0:
+        raise ValueError("evaluation.max_new_tokens must be positive")
+    if not isinstance(evaluation.get("use_kv_cache"), bool):
+        raise ValueError("evaluation.use_kv_cache must be a boolean")
+    if evaluation.get("precision", "auto") not in {
+        "auto",
+        "float32",
+        "float16",
+        "bfloat16",
+    }:
+        raise ValueError("evaluation.precision is unsupported")
     return name, output_root, blueprint
 
 
@@ -1692,6 +1704,8 @@ def build_experiment_plan(
         str(int(evaluation.get("seed", 0))),
     ]
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
+    if not bool(evaluation["use_kv_cache"]):
+        eval_command.append("--no-kv-cache")
     for key, flag in (
         ("baseline_evaluation", "--baseline-evaluation"),
         (

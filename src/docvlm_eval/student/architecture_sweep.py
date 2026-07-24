@@ -337,6 +337,11 @@ def compile_architecture_sweep(
             rlvr_replay_every_steps=int(
                 reference.get("rlvr_replay_every_steps", 20)
             ),
+            rlvr_use_kv_cache=bool(
+                candidate["training"]["posttraining"]["rlvr"][
+                    "rollout"
+                ]["use_kv_cache"]
+            ),
         )
         profiles.append(
             ArchitectureProfile(

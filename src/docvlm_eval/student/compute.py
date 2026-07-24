@@ -67,6 +67,31 @@ def visual_tokens_for_canvas(
     return patch_side * patch_side
 
 
+def estimate_language_kv_cache_bytes(
+    config: StudentConfig,
+    *,
+    sequence_tokens: int,
+    batch_size: int = 1,
+    bytes_per_element: int = 2,
+) -> int:
+    """Return compact GQA key/value storage for every decoder layer."""
+
+    if min(sequence_tokens, batch_size, bytes_per_element) <= 0:
+        raise ValueError("KV-cache dimensions must be positive")
+    head_dim = (
+        config.language.width // config.language.attention_heads
+    )
+    return (
+        config.language.layers
+        * 2
+        * batch_size
+        * config.language.kv_heads
+        * sequence_tokens
+        * head_dim
+        * bytes_per_element
+    )
+
+
 def _vision_block_flops(
     config: StudentConfig,
     tokens: int,
@@ -144,6 +169,27 @@ def _language_flops(
         4 * sequence_tokens * sequence_tokens * width
     )
     mlp = 6 * sequence_tokens * width * language.mlp_width
+    return batch_size * language.layers * (
+        projections + attention_products + mlp
+    )
+
+
+def _language_decode_flops(
+    config: StudentConfig,
+    key_tokens: int,
+    batch_size: int,
+) -> int:
+    """Estimate one cached-token decoder pass against existing keys."""
+
+    language = config.language
+    width = language.width
+    kv_width = (
+        language.kv_heads
+        * (language.width // language.attention_heads)
+    )
+    projections = 4 * width * width + 4 * width * kv_width
+    attention_products = 4 * key_tokens * width
+    mlp = 6 * width * language.mlp_width
     return batch_size * language.layers * (
         projections + attention_products + mlp
     )
@@ -387,6 +433,7 @@ def estimate_rlvr_step_flops(
     completion_tokens: int,
     group_size: int,
     replay_text_tokens: int | None = None,
+    use_kv_cache: bool = True,
     checkpoint_components: tuple[str, ...] = (),
 ) -> dict[str, int]:
     """Estimate one rollout, policy/reference scoring, and optional replay."""
@@ -402,14 +449,38 @@ def estimate_rlvr_step_flops(
     )
     image_encoding = image_only.vision + image_only.connector
     rollout = image_encoding
-    for generated in range(completion_tokens):
-        rollout += estimate_forward_flops(
+    if use_kv_cache:
+        prefill = estimate_forward_flops(
             config,
-            text_tokens=prompt_tokens + generated,
+            text_tokens=prompt_tokens,
             vision_tokens=vision_tokens,
             batch_size=group_size,
             include_vision=False,
+            include_lm_head=False,
+            include_task_heads=False,
         ).total
+        rollout += prefill + _lm_head_flops(config, 1, group_size)
+        prefix_tokens = (
+            config.connector.latent_tokens if vision_tokens > 0 else 0
+        )
+        for generated in range(1, completion_tokens):
+            key_tokens = prefix_tokens + prompt_tokens + generated
+            rollout += _language_decode_flops(
+                config,
+                key_tokens,
+                group_size,
+            )
+            rollout += _lm_head_flops(config, 1, group_size)
+    else:
+        for generated in range(completion_tokens):
+            rollout += estimate_forward_flops(
+                config,
+                text_tokens=prompt_tokens + generated,
+                vision_tokens=vision_tokens,
+                batch_size=group_size,
+                include_vision=False,
+                include_task_heads=False,
+            ).total
     scored_tokens = prompt_tokens + completion_tokens
     full_group = estimate_forward_flops(
         config,
@@ -463,6 +534,7 @@ def compute_profile(
     rlvr_completion_tokens: int = 128,
     rlvr_group_size: int = 8,
     rlvr_replay_every_steps: int = 20,
+    rlvr_use_kv_cache: bool = True,
     checkpoint_components: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     vision_tokens = visual_tokens_for_canvas(
@@ -481,6 +553,7 @@ def compute_profile(
         prompt_tokens=rlvr_prompt_tokens,
         completion_tokens=rlvr_completion_tokens,
         group_size=rlvr_group_size,
+        use_kv_cache=rlvr_use_kv_cache,
         checkpoint_components=checkpoint_components,
     )
     training = estimate_training_flops_breakdown(
@@ -505,6 +578,20 @@ def compute_profile(
             else 0
         )
     )
+    peak_cache_tokens = (
+        config.connector.latent_tokens
+        + rlvr_prompt_tokens
+        + max(rlvr_completion_tokens - 1, 0)
+    )
+    peak_kv_cache_bytes = (
+        estimate_language_kv_cache_bytes(
+            config,
+            sequence_tokens=peak_cache_tokens,
+            batch_size=rlvr_group_size,
+        )
+        if rlvr_use_kv_cache
+        else 0
+    )
     return {
         "image_long_side": image_long_side,
         "vision_tokens": vision_tokens,
@@ -526,6 +613,8 @@ def compute_profile(
             "expected_executed_total_per_step": int(
                 expected_rlvr + expected_rlvr_recompute
             ),
+            "peak_kv_cache_tokens": peak_cache_tokens,
+            "peak_kv_cache_bytes_bfloat16": peak_kv_cache_bytes,
         },
         "convention": {
             "multiply_add": "two_flops",
@@ -536,6 +625,7 @@ def compute_profile(
                 "recomputation is reported separately"
             ),
             "checkpoint_components": list(checkpoint_components),
+            "rlvr_use_kv_cache": rlvr_use_kv_cache,
             "excluded": [
                 "normalization",
                 "activation",

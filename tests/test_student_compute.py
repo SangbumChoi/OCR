@@ -7,6 +7,7 @@ from docvlm_eval.student.compute import (
     estimate_batch_training_flops,
     estimate_batch_training_flops_breakdown,
     estimate_forward_flops,
+    estimate_language_kv_cache_bytes,
     estimate_rlvr_step_flops,
     estimate_training_flops,
     estimate_training_flops_breakdown,
@@ -23,6 +24,30 @@ def test_visual_canvas_token_count_is_square_and_capped():
 
     with pytest.raises(ValueError, match="square"):
         visual_tokens_for_canvas(448, 14, 4000)
+
+
+def test_gqa_kv_cache_uses_only_configured_kv_heads():
+    config = StudentConfig.tiny()
+    expected = (
+        config.language.layers
+        * 2
+        * 3
+        * config.language.kv_heads
+        * 17
+        * (config.language.width // config.language.attention_heads)
+        * 2
+    )
+
+    assert estimate_language_kv_cache_bytes(
+        config,
+        sequence_tokens=17,
+        batch_size=3,
+    ) == expected
+    with pytest.raises(ValueError, match="positive"):
+        estimate_language_kv_cache_bytes(
+            config,
+            sequence_tokens=0,
+        )
 
 
 def test_forward_flops_increase_with_resolution_and_visual_latents():
@@ -133,6 +158,14 @@ def test_rlvr_compute_tracks_generation_and_replay():
         replay_text_tokens=32,
         checkpoint_components=("vision", "connector", "language"),
     )
+    uncached = estimate_rlvr_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        group_size=2,
+        use_kv_cache=False,
+    )
 
     assert long["rollout"] > short["rollout"]
     assert long["policy_update"] > short["policy_update"]
@@ -143,6 +176,8 @@ def test_rlvr_compute_tracks_generation_and_replay():
     assert replay["executed_total"] == (
         replay["total"] + replay["checkpoint_recompute"]
     )
+    assert uncached["rollout"] > long["rollout"]
+    assert uncached["policy_update"] == long["policy_update"]
 
 
 def test_profile_exposes_phase_accounting_convention():
@@ -168,4 +203,6 @@ def test_profile_exposes_phase_accounting_convention():
     assert profile["rlvr"]["expected_executed_total_per_step"] > (
         profile["rlvr"]["expected_total_per_step"]
     )
+    assert profile["rlvr"]["peak_kv_cache_bytes_bfloat16"] > 0
     assert profile["convention"]["multiply_add"] == "two_flops"
+    assert profile["convention"]["rlvr_use_kv_cache"] is True

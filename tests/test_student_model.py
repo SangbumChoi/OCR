@@ -250,6 +250,116 @@ def test_multimodal_generation_encodes_the_image_once(monkeypatch):
     assert calls == 1
 
 
+def test_language_kv_cache_matches_full_prefix_logits():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.compute import (
+        estimate_language_kv_cache_bytes,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(17)
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config).eval()
+    input_ids = torch.randint(0, config.language.vocab_size, (2, 5))
+    visual_prefix = model.encode_images(torch.randn(2, 3, 32, 32))
+    attention_mask = torch.ones_like(input_ids)
+
+    full = model(
+        input_ids,
+        visual_prefix=visual_prefix,
+        attention_mask=attention_mask,
+    ).logits[:, -1].float()
+    cached, state = model.prefill_generation(
+        input_ids,
+        visual_prefix=visual_prefix,
+        attention_mask=attention_mask,
+        max_new_tokens=3,
+    )
+
+    assert torch.allclose(cached, full, atol=1e-5, rtol=1e-5)
+    assert state.cache.sequence_length == (
+        config.connector.latent_tokens + input_ids.shape[1]
+    )
+    for key, value in state.cache.layers:
+        assert key.shape == value.shape
+        assert key.shape[:2] == (2, config.language.kv_heads)
+        assert key.shape[2] == state.cache.capacity
+    assert state.cache.tensor_bytes == estimate_language_kv_cache_bytes(
+        config,
+        sequence_tokens=state.cache.capacity,
+        batch_size=2,
+        bytes_per_element=4,
+    )
+    cache_pointers = [
+        (key.data_ptr(), value.data_ptr())
+        for key, value in state.cache.layers
+    ]
+
+    sequence = input_ids
+    for token in (
+        torch.tensor([[7], [8]]),
+        torch.tensor([[9], [10]]),
+    ):
+        sequence = torch.cat((sequence, token), dim=1)
+        cached, state = model.decode_generation(token, state)
+        full = model(
+            sequence,
+            visual_prefix=visual_prefix,
+            attention_mask=torch.ones_like(sequence),
+        ).logits[:, -1].float()
+        assert torch.allclose(cached, full, atol=1e-5, rtol=1e-5)
+        assert [
+            (key.data_ptr(), value.data_ptr())
+            for key, value in state.cache.layers
+        ] == cache_pointers
+    with pytest.raises(ValueError, match="capacity exceeded"):
+        model.decode_generation(torch.tensor([[11], [12]]), state)
+
+
+def test_cached_generation_matches_uncached_and_decodes_one_token(monkeypatch):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(19)
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config).eval()
+    input_ids = torch.randint(0, config.language.vocab_size, (2, 4))
+    query_lengths = []
+    projection = model.language.blocks[0].attn.k_proj
+    original = projection.forward
+
+    def counted_forward(values):
+        query_lengths.append(int(values.shape[1]))
+        return original(values)
+
+    monkeypatch.setattr(projection, "forward", counted_forward)
+    cached, cached_confidence = model.generate_with_confidence(
+        input_ids,
+        max_new_tokens=3,
+        use_kv_cache=True,
+    )
+    assert query_lengths == [4, 1, 1]
+
+    query_lengths.clear()
+    uncached, uncached_confidence = model.generate_with_confidence(
+        input_ids,
+        max_new_tokens=3,
+        use_kv_cache=False,
+    )
+    assert query_lengths == [4, 5, 6]
+    assert torch.equal(cached, uncached)
+    assert torch.allclose(
+        cached_confidence,
+        uncached_confidence,
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+
 def test_generation_rejects_a_mask_without_an_image():
     import torch
 

@@ -27,6 +27,48 @@ class _PackedAttentionPlan:
 
 _COMPILED_FLEX_ATTENTION: Any = None
 _FLEX_DISABLED_DEVICES: set[str] = set()
+_SDPA_SUPPORTS_GQA = "enable_gqa" in (
+    F.scaled_dot_product_attention.__doc__ or ""
+)
+
+
+def _scaled_dot_product_gqa(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    *,
+    attention_bias: torch.Tensor | None,
+    dropout: float,
+    is_causal: bool,
+) -> torch.Tensor:
+    if query.shape[1] == key.shape[1]:
+        return F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attention_bias,
+            dropout_p=dropout,
+            is_causal=is_causal,
+        )
+    if _SDPA_SUPPORTS_GQA and query.is_cuda:
+        return F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attention_bias,
+            dropout_p=dropout,
+            is_causal=is_causal,
+            enable_gqa=True,
+        )
+    repeats = query.shape[1] // key.shape[1]
+    return F.scaled_dot_product_attention(
+        query,
+        key.repeat_interleave(repeats, dim=1),
+        value.repeat_interleave(repeats, dim=1),
+        attn_mask=attention_bias,
+        dropout_p=dropout,
+        is_causal=is_causal,
+    )
 
 
 def _checkpointed(
@@ -788,25 +830,110 @@ class GroupedQueryAttention(nn.Module):
         is_causal: bool,
         cos: torch.Tensor,
         sin: torch.Tensor,
-    ) -> torch.Tensor:
+        *,
+        past_key_value: tuple[torch.Tensor, torch.Tensor] | None = None,
+        use_cache: bool = False,
+    ) -> torch.Tensor | tuple[
+        torch.Tensor,
+        tuple[torch.Tensor, torch.Tensor],
+    ]:
         batch, length, width = x.shape
         q = self.q_proj(x).view(batch, length, self.heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(batch, length, self.kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(batch, length, self.kv_heads, self.head_dim).transpose(1, 2)
         q, k = _apply_rope(q, k, cos, sin)
-        repeats = self.heads // self.kv_heads
-        k = k.repeat_interleave(repeats, dim=1)
-        v = v.repeat_interleave(repeats, dim=1)
-
-        out = F.scaled_dot_product_attention(
+        if past_key_value is not None:
+            past_key, past_value = past_key_value
+            expected = (batch, self.kv_heads, self.head_dim)
+            if (
+                past_key.ndim != 4
+                or past_value.shape != past_key.shape
+                or (
+                    past_key.shape[0],
+                    past_key.shape[1],
+                    past_key.shape[3],
+                )
+                != expected
+            ):
+                raise ValueError("invalid grouped-query attention KV cache")
+            k = torch.cat((past_key, k), dim=2)
+            v = torch.cat((past_value, v), dim=2)
+        present = (k, v)
+        out = _scaled_dot_product_gqa(
             q,
             k,
             v,
-            attn_mask=attention_bias,
-            dropout_p=self.dropout if self.training else 0.0,
+            attention_bias=attention_bias,
+            dropout=self.dropout if self.training else 0.0,
             is_causal=is_causal,
         )
-        return self.o_proj(out.transpose(1, 2).contiguous().view(batch, length, width))
+        projected = self.o_proj(
+            out.transpose(1, 2).contiguous().view(batch, length, width)
+        )
+        return (projected, present) if use_cache else projected
+
+    def forward_static_cache(
+        self,
+        x: torch.Tensor,
+        attention_bias: torch.Tensor | None,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        key_cache: torch.Tensor,
+        value_cache: torch.Tensor,
+        cache_position: int,
+    ) -> torch.Tensor:
+        """Attend one query while updating a preallocated compact GQA cache."""
+
+        batch, length, width = x.shape
+        if length != 1:
+            raise ValueError("static KV-cache attention requires one query")
+        expected = (batch, self.kv_heads, self.head_dim)
+        if (
+            key_cache.ndim != 4
+            or value_cache.shape != key_cache.shape
+            or (
+                key_cache.shape[0],
+                key_cache.shape[1],
+                key_cache.shape[3],
+            )
+            != expected
+            or not 0 <= cache_position < key_cache.shape[2]
+        ):
+            raise ValueError("invalid static grouped-query attention KV cache")
+        q = self.q_proj(x).view(
+            batch,
+            length,
+            self.heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        k = self.k_proj(x).view(
+            batch,
+            length,
+            self.kv_heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        v = self.v_proj(x).view(
+            batch,
+            length,
+            self.kv_heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        q, k = _apply_rope(q, k, cos, sin)
+        key_cache[:, :, cache_position : cache_position + 1].copy_(k)
+        value_cache[:, :, cache_position : cache_position + 1].copy_(v)
+        key = key_cache[:, :, : cache_position + 1]
+        value = value_cache[:, :, : cache_position + 1]
+        out = _scaled_dot_product_gqa(
+            q,
+            key,
+            value,
+            attention_bias=attention_bias,
+            dropout=self.dropout if self.training else 0.0,
+            is_causal=False,
+        )
+        return self.o_proj(
+            out.transpose(1, 2).contiguous().view(batch, length, width)
+        )
 
 
 class DecoderBlock(nn.Module):
@@ -827,6 +954,67 @@ class DecoderBlock(nn.Module):
     ) -> torch.Tensor:
         x = x + self.attn(self.norm1(x), attention_bias, is_causal, cos, sin)
         return x + self.mlp(self.norm2(x))
+
+    def forward_cached(
+        self,
+        x: torch.Tensor,
+        attention_bias: torch.Tensor | None,
+        is_causal: bool,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        past_key_value: tuple[torch.Tensor, torch.Tensor] | None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        attention, present = self.attn(
+            self.norm1(x),
+            attention_bias,
+            is_causal,
+            cos,
+            sin,
+            past_key_value=past_key_value,
+            use_cache=True,
+        )
+        x = x + attention
+        return x + self.mlp(self.norm2(x)), present
+
+    def forward_static_cache(
+        self,
+        x: torch.Tensor,
+        attention_bias: torch.Tensor | None,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        key_cache: torch.Tensor,
+        value_cache: torch.Tensor,
+        cache_position: int,
+    ) -> torch.Tensor:
+        attention = self.attn.forward_static_cache(
+            self.norm1(x),
+            attention_bias,
+            cos,
+            sin,
+            key_cache,
+            value_cache,
+            cache_position,
+        )
+        x = x + attention
+        return x + self.mlp(self.norm2(x))
+
+
+@dataclass(frozen=True)
+class LanguageKVCache:
+    layers: tuple[tuple[torch.Tensor, torch.Tensor], ...]
+    sequence_length: int
+
+    @property
+    def capacity(self) -> int:
+        return int(self.layers[0][0].shape[2]) if self.layers else 0
+
+    @property
+    def tensor_bytes(self) -> int:
+        return sum(
+            tensor.numel() * tensor.element_size()
+            for pair in self.layers
+            for tensor in pair
+        )
 
 
 class LanguageDecoder(nn.Module):
@@ -850,19 +1038,10 @@ class LanguageDecoder(nn.Module):
         capture_layers: set[int] | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, dict[int, torch.Tensor]]:
         x = embeddings
-        attention_bias = None
-        is_causal = attention_mask is None
-        if attention_mask is not None:
-            length = x.shape[1]
-            minimum = torch.finfo(x.dtype).min
-            causal = torch.full(
-                (length, length),
-                minimum,
-                dtype=x.dtype,
-                device=x.device,
-            ).triu(1)
-            padding = (1.0 - attention_mask[:, None, None, :].to(x.dtype)) * minimum
-            attention_bias = causal[None, None] + padding
+        attention_bias, is_causal = self._attention_plan(
+            x,
+            attention_mask,
+        )
         cos, sin = self.rotary(x.shape[1], x.device, x.dtype)
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
@@ -890,6 +1069,143 @@ class LanguageDecoder(nn.Module):
             return x, features
         return x
 
+    @staticmethod
+    def _attention_plan(
+        x: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, bool]:
+        if attention_mask is None:
+            return None, True
+        length = x.shape[1]
+        if attention_mask.shape != (x.shape[0], length):
+            raise ValueError("language attention_mask must match embeddings")
+        minimum = torch.finfo(x.dtype).min
+        causal = torch.full(
+            (length, length),
+            minimum,
+            dtype=x.dtype,
+            device=x.device,
+        ).triu(1)
+        padding = (
+            1.0 - attention_mask[:, None, None, :].to(x.dtype)
+        ) * minimum
+        return causal[None, None] + padding, False
+
+    def prefill(
+        self,
+        embeddings: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        *,
+        max_cache_length: int | None = None,
+    ) -> tuple[torch.Tensor, LanguageKVCache]:
+        """Run an inference prefill and retain compact GQA keys and values."""
+
+        if torch.is_grad_enabled():
+            raise RuntimeError("language KV cache is inference-only")
+        x = embeddings
+        attention_bias, is_causal = self._attention_plan(
+            x,
+            attention_mask,
+        )
+        cos, sin = self.rotary(x.shape[1], x.device, x.dtype)
+        sequence_length = int(x.shape[1])
+        capacity = (
+            sequence_length
+            if max_cache_length is None
+            else int(max_cache_length)
+        )
+        if capacity < sequence_length:
+            raise ValueError("language KV cache cannot be shorter than prefill")
+        present: list[tuple[torch.Tensor, torch.Tensor]] = []
+        for block in self.blocks:
+            x, layer_cache = block.forward_cached(
+                x,
+                attention_bias,
+                is_causal,
+                cos,
+                sin,
+                None,
+            )
+            key, value = layer_cache
+            if capacity > sequence_length:
+                key_buffer = key.new_empty(
+                    key.shape[0],
+                    key.shape[1],
+                    capacity,
+                    key.shape[3],
+                )
+                value_buffer = value.new_empty(
+                    value.shape[0],
+                    value.shape[1],
+                    capacity,
+                    value.shape[3],
+                )
+                key_buffer[:, :, :sequence_length].copy_(key)
+                value_buffer[:, :, :sequence_length].copy_(value)
+                layer_cache = (key_buffer, value_buffer)
+            present.append(layer_cache)
+        return self.norm(x), LanguageKVCache(
+            tuple(present),
+            sequence_length=sequence_length,
+        )
+
+    def decode(
+        self,
+        embeddings: torch.Tensor,
+        cache: LanguageKVCache,
+        attention_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, LanguageKVCache]:
+        """Decode one token against a prefilled language KV cache."""
+
+        if torch.is_grad_enabled():
+            raise RuntimeError("language KV cache is inference-only")
+        if embeddings.ndim != 3 or embeddings.shape[1] != 1:
+            raise ValueError("cached language decode requires one token")
+        if len(cache.layers) != len(self.blocks):
+            raise ValueError("language KV cache layer count mismatch")
+        past_length = cache.sequence_length
+        total_length = past_length + 1
+        if total_length > cache.capacity:
+            raise ValueError("language KV cache capacity exceeded")
+        if attention_mask is not None and attention_mask.shape != (
+            embeddings.shape[0],
+            total_length,
+        ):
+            raise ValueError(
+                "cached language attention_mask must cover past and current tokens"
+            )
+        attention_bias = None
+        if attention_mask is not None:
+            minimum = torch.finfo(embeddings.dtype).min
+            attention_bias = (
+                1.0
+                - attention_mask[:, None, None, :].to(embeddings.dtype)
+            ) * minimum
+        cos, sin = self.rotary(
+            total_length,
+            embeddings.device,
+            embeddings.dtype,
+        )
+        cos = cos[..., past_length:total_length, :]
+        sin = sin[..., past_length:total_length, :]
+        x = embeddings
+        for block, layer_cache in zip(self.blocks, cache.layers):
+            if int(layer_cache[0].shape[2]) != cache.capacity:
+                raise ValueError("language KV cache capacities disagree")
+            x = block.forward_static_cache(
+                x,
+                attention_bias,
+                cos,
+                sin,
+                layer_cache[0],
+                layer_cache[1],
+                past_length,
+            )
+        return self.norm(x), LanguageKVCache(
+            cache.layers,
+            sequence_length=total_length,
+        )
+
 
 @dataclass
 class StudentOutput:
@@ -904,6 +1220,12 @@ class StudentOutput:
     language_features: dict[int, torch.Tensor] = field(default_factory=dict)
     vision_mask: torch.Tensor | None = None
     visual_attention_backend: str = "none"
+
+
+@dataclass(frozen=True)
+class GenerationState:
+    cache: LanguageKVCache
+    attention_mask: torch.Tensor | None
 
 
 class DocumentVLMStudent(nn.Module):
@@ -1360,6 +1682,97 @@ class DocumentVLMStudent(nn.Module):
         )
 
     @torch.no_grad()
+    def prefill_generation(
+        self,
+        input_ids: torch.Tensor,
+        *,
+        visual_prefix: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        max_new_tokens: int = 1,
+    ) -> tuple[torch.Tensor, GenerationState]:
+        """Prefill prompt and visual tokens once for incremental decoding."""
+
+        if input_ids.ndim != 2 or input_ids.shape[1] == 0:
+            raise ValueError(
+                "generation input_ids must have shape [batch, nonzero tokens]"
+            )
+        if attention_mask is not None and attention_mask.shape != input_ids.shape:
+            raise ValueError("generation attention_mask must match input_ids")
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        if visual_prefix is not None:
+            if (
+                visual_prefix.ndim != 3
+                or visual_prefix.shape[0] != input_ids.shape[0]
+                or visual_prefix.shape[-1] != self.config.language.width
+            ):
+                raise ValueError(
+                    "visual_prefix must have shape [batch, tokens, language width]"
+                )
+        text_embeddings = self.language.token_embedding(input_ids)
+        embeddings = (
+            text_embeddings
+            if visual_prefix is None
+            else torch.cat((visual_prefix, text_embeddings), dim=1)
+        )
+        full_mask = attention_mask
+        if attention_mask is not None and visual_prefix is not None:
+            prefix_mask = torch.ones(
+                input_ids.shape[0],
+                visual_prefix.shape[1],
+                dtype=attention_mask.dtype,
+                device=attention_mask.device,
+            )
+            full_mask = torch.cat((prefix_mask, attention_mask), dim=1)
+        hidden, cache = self.language.prefill(
+            embeddings,
+            full_mask,
+            max_cache_length=(
+                embeddings.shape[1] + max_new_tokens - 1
+            ),
+        )
+        return self.lm_head(hidden[:, -1]).float(), GenerationState(
+            cache=cache,
+            attention_mask=full_mask,
+        )
+
+    @torch.no_grad()
+    def decode_generation(
+        self,
+        token_ids: torch.Tensor,
+        state: GenerationState,
+    ) -> tuple[torch.Tensor, GenerationState]:
+        """Advance an incremental generation state by exactly one token."""
+
+        if token_ids.ndim != 2 or token_ids.shape[1] != 1:
+            raise ValueError(
+                "cached generation token_ids must have shape [batch, 1]"
+            )
+        attention_mask = state.attention_mask
+        if attention_mask is not None:
+            attention_mask = torch.cat(
+                (
+                    attention_mask,
+                    torch.ones(
+                        token_ids.shape[0],
+                        1,
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    ),
+                ),
+                dim=1,
+            )
+        hidden, cache = self.language.decode(
+            self.language.token_embedding(token_ids),
+            state.cache,
+            attention_mask,
+        )
+        return self.lm_head(hidden[:, -1]).float(), GenerationState(
+            cache=cache,
+            attention_mask=attention_mask,
+        )
+
+    @torch.no_grad()
     def _generate_with_confidence(
         self,
         input_ids: torch.Tensor,
@@ -1369,10 +1782,15 @@ class DocumentVLMStudent(nn.Module):
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
         packed_attention_backend: str = "auto",
+        attention_mask: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
+        use_kv_cache: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
         generated = input_ids
+        generated_attention_mask = attention_mask
         has_packed = any(
             value is not None
             for value in (
@@ -1406,16 +1824,33 @@ class DocumentVLMStudent(nn.Module):
             dtype=torch.bool,
             device=input_ids.device,
         )
-        for _ in range(max_new_tokens):
-            output = self(
+        next_logits = None
+        generation_state = None
+        if use_kv_cache:
+            next_logits, generation_state = self.prefill_generation(
                 generated,
                 visual_prefix=visual_prefix,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
             )
-            next_logits = output.logits[:, -1].float()
+        for step in range(max_new_tokens):
+            if not use_kv_cache:
+                output = self(
+                    generated,
+                    attention_mask=generated_attention_mask,
+                    visual_prefix=visual_prefix,
+                )
+                next_logits = output.logits[:, -1].float()
             next_probability, next_token_flat = torch.softmax(
                 next_logits,
                 dim=-1,
             ).max(dim=-1)
+            if eos_token_id is not None:
+                next_token_flat = torch.where(
+                    active,
+                    next_token_flat,
+                    torch.full_like(next_token_flat, eos_token_id),
+                )
             next_token = next_token_flat.unsqueeze(-1)
             log_probability_sum += torch.where(
                 active,
@@ -1424,10 +1859,28 @@ class DocumentVLMStudent(nn.Module):
             )
             token_count += active.float()
             generated = torch.cat((generated, next_token), dim=1)
+            if generated_attention_mask is not None:
+                generated_attention_mask = torch.cat(
+                    (
+                        generated_attention_mask,
+                        torch.ones(
+                            generated.shape[0],
+                            1,
+                            dtype=generated_attention_mask.dtype,
+                            device=generated_attention_mask.device,
+                        ),
+                    ),
+                    dim=1,
+                )
             if eos_token_id is not None:
                 active &= next_token_flat != eos_token_id
                 if not torch.any(active):
                     break
+            if use_kv_cache and step + 1 < max_new_tokens:
+                next_logits, generation_state = self.decode_generation(
+                    next_token,
+                    generation_state,
+                )
         confidence = torch.exp(
             log_probability_sum / token_count.clamp_min(1.0)
         )
@@ -1443,8 +1896,10 @@ class DocumentVLMStudent(nn.Module):
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
         packed_attention_backend: str = "auto",
+        attention_mask: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
+        use_kv_cache: bool = True,
     ) -> torch.Tensor:
         generated, _ = self._generate_with_confidence(
             input_ids,
@@ -1454,8 +1909,10 @@ class DocumentVLMStudent(nn.Module):
             packed_position_ids=packed_position_ids,
             packed_cu_seqlens=packed_cu_seqlens,
             packed_attention_backend=packed_attention_backend,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
+            use_kv_cache=use_kv_cache,
         )
         return generated
 
@@ -1469,8 +1926,10 @@ class DocumentVLMStudent(nn.Module):
         packed_position_ids: torch.Tensor | None = None,
         packed_cu_seqlens: torch.Tensor | None = None,
         packed_attention_backend: str = "auto",
+        attention_mask: torch.Tensor | None = None,
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
+        use_kv_cache: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return greedy sequences and geometric-mean generated-token probabilities."""
 
@@ -1482,8 +1941,10 @@ class DocumentVLMStudent(nn.Module):
             packed_position_ids=packed_position_ids,
             packed_cu_seqlens=packed_cu_seqlens,
             packed_attention_backend=packed_attention_backend,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
+            use_kv_cache=use_kv_cache,
         )
 
     def save_pretrained(

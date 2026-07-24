@@ -99,6 +99,7 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
             "splits": {name: str(path) for name, path in split_paths},
             "max_new_tokens": args.max_new_tokens,
             "max_samples": args.max_samples,
+            "use_kv_cache": not args.no_kv_cache,
             "precision": args.precision,
         },
     )
@@ -142,6 +143,11 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument(
+        "--no-kv-cache",
+        action="store_true",
+        help="Recompute the full language prefix for generation ablations.",
+    )
     parser.add_argument(
         "--precision",
         choices=["auto", "float32", "bfloat16", "float16"],
@@ -204,6 +210,7 @@ def main() -> None:
         output_dir=str(args.output),
         max_new_tokens=args.max_new_tokens,
         max_samples=args.max_samples,
+        use_kv_cache=not args.no_kv_cache,
         precision=args.precision,
         device=device,
         seed=args.seed,

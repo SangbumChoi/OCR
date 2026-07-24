@@ -139,6 +139,7 @@ posttraining:
 evaluation:
   max_new_tokens: 128
   max_samples: null
+  use_kv_cache: true
   precision: bfloat16
   seed: 31
   wandb_project: null

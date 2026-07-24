@@ -37,6 +37,13 @@ Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which 
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
 
+Autoregressive generation encodes the image and prompt once, stores RoPE-applied keys and values at
+the eight native GQA KV heads, and advances the decoder with one-token queries. The uncached
+full-prefix path remains selectable as an explicit ablation. For the production RLVR shape
+(2,520 visual patches, 256 prompt tokens, 128 completion tokens, group size eight), analytical
+accounting estimates roughly 99% less rollout compute and a 161 MiB peak bf16 KV cache; completed
+sequence policy/reference scoring remains unchanged.
+
 The ViT's 4,096-position budget corresponds to a maximum square canvas of 64 by 64 patches, or
 896 by 896 pixels at patch size 14. The input collator preserves aspect ratio, pads into that fixed
 canvas, and supplies a pixel mask; padded patches are excluded from ViT self-attention, resampler

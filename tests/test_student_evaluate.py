@@ -107,10 +107,18 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
             *,
             pixel_values=None,
             pixel_mask=None,
+            attention_mask=None,
             max_new_tokens,
             eos_token_id,
+            use_kv_cache,
         ):
-            del pixel_values, pixel_mask, max_new_tokens
+            del (
+                pixel_values,
+                pixel_mask,
+                attention_mask,
+                max_new_tokens,
+                use_kv_cache,
+            )
             self.calls += 1
             assert input_ids.shape == (1, 1)
             token = 20 if int(input_ids[0, 0]) == 5 else 21
@@ -143,6 +151,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     assert result.summary["score"] == pytest.approx(0.5)
     assert result.summary["reward"] == pytest.approx(0.5)
     assert result.summary["valid_structure_fraction"] == pytest.approx(0.5)
+    assert result.summary["generation_backend"] == "kv_cache"
     assert result.summary["answer_rate"] == pytest.approx(0.5)
     assert result.summary["by_answer_type"]["chart-numeric"]["score"] == 1.0
     assert result.summary["by_answer_type"]["kie"]["score"] == 0.0

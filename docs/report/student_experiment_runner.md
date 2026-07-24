@@ -132,6 +132,8 @@ Set `evaluation.baseline_evaluation` to an evaluation root produced by
 control root. Both roots must contain `comparison.json` and split-level `per_sample.jsonl` files.
 The native evaluator records each sample's source metadata and geometric-mean generated-token
 confidence, enabling matched counterfactual and fixed-coverage reliability checks.
+It uses compact-GQA KV caching by default and records `generation_backend`; setting
+`evaluation.use_kv_cache: false` compiles an explicit full-prefix ablation.
 
 Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
 configuration acquires the public UDD train fold at an immutable commit, validates its schema,

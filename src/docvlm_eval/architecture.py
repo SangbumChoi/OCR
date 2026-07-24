@@ -622,6 +622,10 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append("training.posttraining.rlvr.rollout.temperature must be positive")
     if not 0 < float(rollout.get("top_p", 0)) <= 1:
         errors.append("training.posttraining.rlvr.rollout.top_p must be within (0, 1]")
+    if not isinstance(rollout.get("use_kv_cache"), bool):
+        errors.append(
+            "training.posttraining.rlvr.rollout.use_kv_cache must be a boolean"
+        )
     supported_rewards = {
         "answer_correctness",
         "normalized_text_similarity",

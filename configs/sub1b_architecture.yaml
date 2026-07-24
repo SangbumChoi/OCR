@@ -253,6 +253,7 @@ training:
         max_new_tokens: 128
         temperature: 0.8
         top_p: 0.95
+        use_kv_cache: true
       optimizer:
         max_steps: 1000
         total_student_flops: null

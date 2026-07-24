@@ -128,6 +128,9 @@ The final `gate/visual_efficiency` value is logged only when target-device evide
 `1` means parity, resolved FlexAttention, speed, and memory all passed, while `0` means a measured
 threshold failed. An absent key means the gate remained `insufficient_evidence`.
 The same convention applies to `gate/training_feasibility`.
+The run config records `use_kv_cache`; split summaries record `generation_backend`. Do not compare
+latency between cached and `--no-kv-cache` runs without treating the backend as the experimental
+factor.
 
 ### Packed visual backend benchmark
 

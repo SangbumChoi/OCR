@@ -142,8 +142,57 @@ def test_default_experiment_compiles_complete_stage_dag():
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
     assert "--visual-backend-benchmark" in evaluate.command
     assert "--training-feasibility-benchmark" in evaluate.command
+    assert "--no-kv-cache" not in evaluate.command
     assert "visual_backend_benchmark" in evaluate.dependencies
     assert "training_feasibility_benchmark" in evaluate.dependencies
+
+
+def test_experiment_can_compile_full_prefix_generation_ablation(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["use_kv_cache"] = False
+    config = tmp_path / "uncached-evaluation.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = build_experiment_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+    evaluate = next(
+        stage for stage in plan.stages if stage.name == "evaluate"
+    )
+
+    assert "--no-kv-cache" in evaluate.command
+
+
+def test_experiment_rejects_non_boolean_generation_cache(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["use_kv_cache"] = "yes"
+    config = tmp_path / "invalid-cache.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="use_kv_cache must be a boolean"):
+        build_experiment_plan(
+            config,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
 
 
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):

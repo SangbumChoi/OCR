@@ -38,6 +38,7 @@ class StructuredEvalConfig:
     output_dir: str
     max_new_tokens: int = 128
     max_samples: int | None = None
+    use_kv_cache: bool = True
     precision: str = "bfloat16"
     device: str = "auto"
     seed: int = 0
@@ -47,6 +48,8 @@ class StructuredEvalConfig:
             raise ValueError("max_new_tokens must be positive")
         if self.max_samples is not None and self.max_samples <= 0:
             raise ValueError("max_samples must be positive when set")
+        if not isinstance(self.use_kv_cache, bool):
+            raise ValueError("use_kv_cache must be a boolean")
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
             raise ValueError("invalid evaluation precision")
 
@@ -250,16 +253,20 @@ def evaluate_structured_student(
                     generated = model.generate(
                         prompt_batch["input_ids"],
                         **visual_model_inputs(prompt_batch),
+                        attention_mask=prompt_batch["attention_mask"],
                         max_new_tokens=config.max_new_tokens,
                         eos_token_id=int(tokenizer.eos_token_id),
+                        use_kv_cache=config.use_kv_cache,
                     )
                     confidence = None
                 else:
                     generated, confidence_tensor = generate_with_confidence(
                         prompt_batch["input_ids"],
                         **visual_model_inputs(prompt_batch),
+                        attention_mask=prompt_batch["attention_mask"],
                         max_new_tokens=config.max_new_tokens,
                         eos_token_id=int(tokenizer.eos_token_id),
+                        use_kv_cache=config.use_kv_cache,
                     )
                     confidence = float(confidence_tensor[0].item())
             if generated.ndim != 2 or generated.shape[0] != 1:
@@ -350,6 +357,9 @@ def evaluate_structured_student(
         "elapsed_seconds": _round(elapsed),
         "milliseconds_per_sample": _round(
             elapsed * 1000 / len(rows) if rows else 0.0
+        ),
+        "generation_backend": (
+            "kv_cache" if config.use_kv_cache else "full_prefix"
         ),
         "by_answer_type": _group_summaries(rows, "answer_type"),
         "by_source": _group_summaries(rows, "source"),

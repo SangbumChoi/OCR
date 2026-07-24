@@ -137,6 +137,7 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
             "language",
         )
         assert config.gradient_checkpointing_use_reentrant is False
+    assert rlvr.use_kv_cache is True
 
 
 def test_structured_posttraining_dataset_exposes_ablation_targets():
@@ -186,6 +187,43 @@ def test_group_rollout_reuses_one_visual_encoding(tmp_path, monkeypatch):
     assert completion_mask.shape == completion_ids.shape
     assert len(texts) == 2
     assert calls == 1
+
+
+def test_group_rollout_cache_matches_full_prefix_sampling(tmp_path):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import sample_completion_group
+
+    torch.manual_seed(23)
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    prompt = {
+        "input_ids": torch.tensor([[1, 7, 8]]),
+        "attention_mask": torch.ones(1, 3, dtype=torch.long),
+    }
+    config = _rl_config(tmp_path, 1)
+
+    torch.manual_seed(101)
+    cached = sample_completion_group(
+        model,
+        prompt,
+        _Tokenizer(),
+        config,
+    )
+    torch.manual_seed(101)
+    uncached = sample_completion_group(
+        model,
+        prompt,
+        _Tokenizer(),
+        replace(config, use_kv_cache=False),
+    )
+
+    assert torch.equal(cached[0], uncached[0])
+    assert torch.equal(cached[1], uncached[1])
+    assert cached[2] == uncached[2]
 
 
 def test_group_relative_policy_loss_uses_reward_rank_and_reference_kl():
@@ -372,6 +410,8 @@ def test_structured_sft_runs_and_marks_the_checkpoint_stage(tmp_path):
 
 
 def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypatch):
+    from dataclasses import replace
+
     import torch
 
     from docvlm_eval.student.config import StudentConfig
@@ -436,6 +476,25 @@ def test_rlvr_checkpoint_resume_matches_uninterrupted_updates(tmp_path, monkeypa
         ),
         rewards,
     )
+    with pytest.raises(ValueError, match="rollout contract mismatch"):
+        train_grpo(
+            copy.deepcopy(resumed),
+            copy.deepcopy(reference_resumed),
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            replace(
+                _rl_config(
+                    tmp_path / "resumed",
+                    2,
+                    "latest",
+                    replay_every=1,
+                    replay_coefficient=0.5,
+                ),
+                use_kv_cache=False,
+            ),
+            rewards,
+        )
     resumed_result = train_grpo(
         resumed,
         reference_resumed,

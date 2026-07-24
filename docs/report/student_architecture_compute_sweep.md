@@ -60,6 +60,11 @@ Actual batch shapes drive runtime accounting. The final update can cross the tar
 completed phase must reach its budget without exceeding the configured 2% overshoot tolerance.
 `compute_budget_report.json` fails the suite when any run violates that gate.
 
+RLVR rollout accounting follows the blueprint's `use_kv_cache` contract: one group prompt prefill
+plus one-token cached decoder passes, while policy and reference scoring remain full teacher-forced
+passes. Profiles also report peak compact-GQA cache bytes. The cache implementation changes runtime
+overhead, not the algorithmic training FLOP estimand used for matched optimization budgets.
+
 All profiles deliberately use dense fixed-square execution to isolate resolution and resampler
 capacity. The packed FlexAttention preflight is therefore disabled for these runs; their
 `visual_efficiency` deployment gate remains `insufficient_evidence` instead of attributing

@@ -367,6 +367,7 @@ class RLVRConfig:
     max_new_tokens: int = 128
     temperature: float = 0.8
     top_p: float = 0.95
+    use_kv_cache: bool = True
     learning_rate: float = 5e-6
     weight_decay: float = 0.1
     beta1: float = 0.9
@@ -409,6 +410,8 @@ class RLVRConfig:
             raise ValueError("RLVR steps/tokens must be positive and group_size at least two")
         if self.temperature <= 0 or not 0 < self.top_p <= 1:
             raise ValueError("RLVR sampling controls are invalid")
+        if not isinstance(self.use_kv_cache, bool):
+            raise ValueError("RLVR use_kv_cache must be a boolean")
         if self.learning_rate <= 0 or self.weight_decay < 0:
             raise ValueError("RLVR optimizer controls are invalid")
         if not 0 <= self.beta1 < 1 or not 0 <= self.beta2 < 1:
@@ -478,6 +481,7 @@ class RLVRConfig:
             "max_new_tokens": int(rollout["max_new_tokens"]),
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
+            "use_kv_cache": bool(rollout["use_kv_cache"]),
             "learning_rate": float(optimizer["learning_rate"]),
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
@@ -619,25 +623,50 @@ def sample_completion_group(
         if visual_inputs
         else None
     )
-    for _ in range(config.max_new_tokens):
-        output = model(
-            generated,
-            attention_mask=torch.ones_like(generated),
-            visual_prefix=visual_prefix,
-        )
-        next_token = _top_p_sample(
-            output.logits[:, -1].float() / config.temperature,
-            config.top_p,
-        ).squeeze(-1)
-        next_token = torch.where(active, next_token, torch.full_like(next_token, eos))
-        token_mask = active.clone()
-        completion_tokens.append(next_token)
-        completion_masks.append(token_mask)
-        generated = torch.cat((generated, next_token[:, None]), dim=1)
-        active = active & (next_token != eos)
-        if not torch.any(active):
-            break
-    model.train(was_training)
+    next_logits = None
+    generation_state = None
+    try:
+        if config.use_kv_cache:
+            next_logits, generation_state = model.prefill_generation(
+                generated,
+                visual_prefix=visual_prefix,
+                attention_mask=torch.ones_like(generated),
+                max_new_tokens=config.max_new_tokens,
+            )
+        for step in range(config.max_new_tokens):
+            if not config.use_kv_cache:
+                output = model(
+                    generated,
+                    attention_mask=torch.ones_like(generated),
+                    visual_prefix=visual_prefix,
+                )
+                next_logits = output.logits[:, -1].float()
+            next_token = _top_p_sample(
+                next_logits / config.temperature,
+                config.top_p,
+            ).squeeze(-1)
+            next_token = torch.where(
+                active,
+                next_token,
+                torch.full_like(next_token, eos),
+            )
+            token_mask = active.clone()
+            completion_tokens.append(next_token)
+            completion_masks.append(token_mask)
+            generated = torch.cat((generated, next_token[:, None]), dim=1)
+            active = active & (next_token != eos)
+            if not torch.any(active):
+                break
+            if (
+                config.use_kv_cache
+                and step + 1 < config.max_new_tokens
+            ):
+                next_logits, generation_state = model.decode_generation(
+                    next_token[:, None],
+                    generation_state,
+                )
+    finally:
+        model.train(was_training)
     token_tensor = torch.stack(completion_tokens, dim=1)
     mask_tensor = torch.stack(completion_masks, dim=1)
     texts = [
@@ -782,6 +811,18 @@ def _rlvr_budget_contract(config: RLVRConfig) -> dict[str, int | bool | None]:
     }
 
 
+def _rlvr_rollout_contract(
+    config: RLVRConfig,
+) -> dict[str, int | float | bool]:
+    return {
+        "group_size": config.group_size,
+        "max_new_tokens": config.max_new_tokens,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
+        "use_kv_cache": config.use_kv_cache,
+    }
+
+
 def _save_rlvr_checkpoint(
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
@@ -807,6 +848,7 @@ def _save_rlvr_checkpoint(
                 model.gradient_checkpointing_state
             ),
             "supervised_replay": _supervised_replay_contract(config),
+            "rollout": _rlvr_rollout_contract(config),
             "compute_budget": _rlvr_budget_contract(config),
         },
     )
@@ -872,6 +914,8 @@ def _load_rlvr_checkpoint(
         )
     if metadata.get("supervised_replay") != _supervised_replay_contract(config):
         raise ValueError("RLVR supervised replay contract mismatch")
+    if metadata.get("rollout") != _rlvr_rollout_contract(config):
+        raise ValueError("RLVR rollout contract mismatch")
     if metadata.get("compute_budget") != _rlvr_budget_contract(config):
         raise ValueError("RLVR compute-budget contract mismatch")
     model.load_state_dict(
@@ -1082,6 +1126,7 @@ def train_grpo(
             completion_tokens=int(completion_ids.shape[1]),
             group_size=config.group_size,
             replay_text_tokens=replay_text_tokens,
+            use_kv_cache=config.use_kv_cache,
             checkpoint_components=(
                 config.gradient_checkpointing_components
                 if config.gradient_checkpointing
