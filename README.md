@@ -261,7 +261,7 @@ decoder, with contrastive, orientation, and valid-box auxiliary heads:
 ```bash
 pip install -e ".[student]"
 python scripts/build_sub1b_student.py --device meta
-# exact result: 799,919,882 parameters, without allocating the weights
+# exact result: 799,919,884 parameters, without allocating the weights
 ```
 
 `--init-arm I0_random|I1_vision|I2_language|I3_dual|I4_selective` controls initialization.

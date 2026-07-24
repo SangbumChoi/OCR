@@ -165,7 +165,8 @@ def _visual_report(
     student = StudentConfig.from_blueprint(_blueprint())
     return {
         "schema_version": schema_version,
-        "scope": "student_vision_tower_and_gated_resampler",
+        "scope": "student_vision_tower_and_connector",
+        "connector_family": "gated_resampler",
         "student_config_fingerprint": student_config_fingerprint(student),
         "student_config": student.to_dict(),
         "benchmark_config": {

@@ -45,10 +45,10 @@ compares four profiles:
 
 | Arm | Full-attention layers | Conv kernel | Parameters | Peak bf16 generation cache |
 | --- | ---: | ---: | ---: | ---: |
-| `all_attention` | 23 | n/a | 799,919,882 | 160.6 MiB |
-| `alternating_k3` | 12 | 3 | 834,528,522 | 84.3 MiB |
-| `lfm_ratio_k3` | 8 | 3 | 847,113,482 | 56.6 MiB |
-| `lfm_ratio_k5` | 8 | 5 | 847,159,562 | 57.3 MiB |
+| `all_attention` | 23 | n/a | 799,919,884 | 160.6 MiB |
+| `alternating_k3` | 12 | 3 | 834,528,524 | 84.3 MiB |
+| `lfm_ratio_k3` | 8 | 3 | 847,113,484 | 56.6 MiB |
+| `lfm_ratio_k5` | 8 | 5 | 847,159,564 | 57.3 MiB |
 
 The cache calculation uses a 64-token visual prefix, 256 prompt tokens, 128
 completion tokens, and rollout group size eight. Short convolution has more

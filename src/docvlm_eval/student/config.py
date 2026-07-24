@@ -55,6 +55,7 @@ class ConnectorConfig:
     attention_heads: int
     mlp_width: int
     gate_init: float = 0.01
+    family: str = "gated_resampler"
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ class StudentConfig:
             language["full_attention_layers"] = tuple(
                 language["full_attention_layers"]
             )
-        connector = {k: v for k, v in student["connector"].items() if k != "family"}
+        connector = dict(student["connector"])
         return cls(
             vision=VisionConfig(**vision),
             language=LanguageConfig(**language),
@@ -120,6 +121,7 @@ class StudentConfig:
                 layers=1,
                 attention_heads=8,
                 mlp_width=256,
+                family="gated_resampler",
             ),
             task_heads=TaskHeadConfig(contrastive_width=32),
         )
@@ -183,6 +185,13 @@ class StudentConfig:
             errors.append("language convolution bias must be boolean")
         if self.connector.output_width % self.connector.attention_heads:
             errors.append("connector output width must be divisible by connector attention heads")
+        if self.connector.family not in {
+            "gated_resampler",
+            "average_pool_projector",
+        }:
+            errors.append(
+                "connector family must be gated_resampler or average_pool_projector"
+            )
         if self.connector.input_width != self.vision.width:
             errors.append("connector input width must equal vision width")
         if self.connector.output_width != self.language.width:

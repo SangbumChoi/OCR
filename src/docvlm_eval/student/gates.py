@@ -514,7 +514,7 @@ def _visual_efficiency(
     if (
         reported_schema_version < minimum_schema_version
         or report.get("scope")
-        != "student_vision_tower_and_gated_resampler"
+        != "student_vision_tower_and_connector"
     ):
         return _result(
             gate,
@@ -528,6 +528,8 @@ def _visual_efficiency(
         report.get("student_config") != expected_config
         or report.get("student_config_fingerprint")
         != expected_fingerprint
+        or report.get("connector_family")
+        != expected_student.connector.family
     ):
         return _result(
             gate,
@@ -538,6 +540,12 @@ def _visual_efficiency(
                     "student_config_fingerprint"
                 ),
                 "expected_fingerprint": expected_fingerprint,
+                "reported_connector_family": report.get(
+                    "connector_family"
+                ),
+                "expected_connector_family": (
+                    expected_student.connector.family
+                ),
             },
         )
 

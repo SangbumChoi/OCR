@@ -149,6 +149,10 @@ def _connector_flops(
     latents = connector.latent_tokens
     source_width = connector.input_width
     width = connector.output_width
+    if connector.family == "average_pool_projector":
+        pooling = 2 * vision_tokens * source_width
+        projection = 2 * latents * source_width * width
+        return batch_size * (pooling + projection)
     projections = (
         4 * latents * width * width
         + 4 * vision_tokens * source_width * width

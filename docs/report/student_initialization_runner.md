@@ -14,7 +14,7 @@ The matched initialization sweep uses:
 | language | [`Qwen/Qwen2.5-1.5B`](https://huggingface.co/Qwen/Qwen2.5-1.5B/tree/8faed761d45a263340a0528343f099c05c9a4323) | `8faed761d45a263340a0528343f099c05c9a4323` | 1536 hidden width and multilingual decoder representations | KV-head geometry and 8960-wide MLP differ; external vocabulary rows are not copied without an identity map |
 
 The source model can exceed one billion parameters because it is an initialization teacher, not the
-deployed student. The student remains 799,919,882 parameters.
+deployed student. The default student remains 799,919,884 parameters.
 
 Inspect compatibility from safetensors headers without downloading model weights:
 

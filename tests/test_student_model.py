@@ -79,6 +79,77 @@ def test_siglip_objective_trains_logit_scale_and_bias():
     assert model.contrastive_logit_bias.grad is not None
 
 
+def test_average_pool_connector_matches_dense_and_packed_sequences():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import AveragePoolProjector
+
+    config = replace(
+        StudentConfig.tiny().connector,
+        family="average_pool_projector",
+        latent_tokens=3,
+    )
+    connector = AveragePoolProjector(config)
+    first = torch.randn(5, config.input_width)
+    second = torch.randn(3, config.input_width)
+    dense = torch.zeros(2, 5, config.input_width)
+    dense[0] = first
+    dense[1, :3] = second
+    mask = torch.tensor(
+        [
+            [True, True, True, True, True],
+            [True, True, True, False, False],
+        ]
+    )
+    packed = torch.cat((first, second))
+    cu_seqlens = torch.tensor([0, 5, 8], dtype=torch.int32)
+
+    dense_output = connector(dense, mask)
+    packed_output = connector.forward_packed(packed, cu_seqlens)
+
+    assert dense_output.shape == (2, 3, config.output_width)
+    assert torch.allclose(dense_output, packed_output)
+    assert connector.last_packed_attention_backend == "pool"
+
+
+def test_average_pool_student_forward_trains_connector_projection():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        connector=replace(
+            base.connector,
+            family="average_pool_projector",
+        ),
+    )
+    model = DocumentVLMStudent(config)
+    model.configure_gradient_checkpointing(
+        enabled=True,
+        components=("connector",),
+        use_reentrant=False,
+    )
+    input_ids = torch.randint(0, config.language.vocab_size, (2, 6))
+    output = model(
+        input_ids=input_ids,
+        pixel_values=torch.randn(2, 3, 32, 32),
+        labels=input_ids,
+    )
+
+    assert output.loss is not None and torch.isfinite(output.loss)
+    output.loss.backward()
+    assert model.connector.projection.weight.grad is not None
+    assert (
+        model.connector.gradient_probe_anchor
+        is model.connector.projection.weight
+    )
+    assert model.connector.gradient_checkpointing is True
+
+
 def test_gradient_checkpointing_preserves_forward_and_backward(monkeypatch):
     import torch
 
@@ -685,6 +756,31 @@ def test_hybrid_meta_model_matches_the_blueprint_estimator():
     estimated = estimate_parameters(blueprint)
     assert actual == estimated
     assert 800_000_000 < actual["total"] < 1_000_000_000
+
+
+def test_average_pool_meta_model_matches_the_blueprint_estimator():
+    import torch
+
+    from docvlm_eval.architecture import estimate_parameters, load_blueprint
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import (
+        DocumentVLMStudent,
+        count_unique_parameters,
+    )
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    blueprint["student"]["connector"]["family"] = (
+        "average_pool_projector"
+    )
+    with torch.device("meta"):
+        model = DocumentVLMStudent(
+            StudentConfig.from_blueprint(blueprint)
+        )
+
+    actual = count_unique_parameters(model)
+    assert actual == estimate_parameters(blueprint)
+    assert actual["connector"] == 1_181_184
+    assert actual["total"] == 767_942_922
 
 
 def test_student_config_preserves_invalid_mixer_indices_for_validation():

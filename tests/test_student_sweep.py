@@ -237,6 +237,49 @@ def test_contrastive_objective_sweep_compiles_paired_fixed_compute_arms(
         )
 
 
+def test_connector_family_sweep_compiles_compute_matched_pareto_arms(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_connector_family_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "connector-family-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "gated_resampler"
+    parameters = {}
+    for variant in plan.variants:
+        connector = variant.plan.resolved_blueprint["student"]["connector"]
+        assert connector["family"] == variant.arm_id
+        parameters.setdefault(
+            variant.arm_id,
+            variant.parameters["total"],
+        )
+        optimizer = variant.plan.resolved_blueprint["training"][
+            "pretraining"
+        ]["optimizer"]
+        assert optimizer["stop_at_student_flops"] is True
+        assert optimizer["total_student_flops"] == 165669831748966989312
+    assert parameters == {
+        "gated_resampler": 799_919_884,
+        "average_pool_projector": 767_942_922,
+    }
+
+
 def test_box_iou_loss_sweep_compiles_paired_fixed_compute_arms(tmp_path):
     from docvlm_eval.student.pretrain import PretrainConfig
 

@@ -654,7 +654,7 @@ def _gradient_probe_anchors(
     if "vision" in components:
         anchors["vision"] = student.vision.norm.weight
     if "connector" in components:
-        anchors["connector"] = student.connector.layers[-1].norm2.weight
+        anchors["connector"] = student.connector.gradient_probe_anchor
     if "language" in components:
         anchors["language"] = student.language.norm.weight
     if any(not parameter.requires_grad for parameter in anchors.values()):

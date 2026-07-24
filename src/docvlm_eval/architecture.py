@@ -86,19 +86,25 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
     connector_layers = int(connector["layers"])
     connector_mlp = int(connector["mlp_width"])
     connector_latents = int(connector["latent_tokens"])
-    cross_attention = (
-        connector_out * connector_out + connector_out
-        + 2 * (connector_in * connector_out + connector_out)
-        + connector_out * connector_out + connector_out
-    )
-    connector_ffn = (
-        2 * (connector_out * connector_mlp + connector_mlp)
-        + connector_mlp * connector_out + connector_out
-    )
-    connector_params = (
-        connector_latents * connector_out
-        + connector_layers * (2 * connector_out + cross_attention + connector_ffn + 1)
-    )
+    connector_family = str(connector.get("family", "gated_resampler"))
+    if connector_family == "average_pool_projector":
+        connector_params = connector_in * connector_out + connector_out
+    else:
+        cross_attention = (
+            connector_out * connector_out + connector_out
+            + 2 * (connector_in * connector_out + connector_out)
+            + connector_out * connector_out + connector_out
+        )
+        connector_ffn = (
+            2 * (connector_out * connector_mlp + connector_mlp)
+            + connector_mlp * connector_out + connector_out
+        )
+        connector_params = (
+            connector_latents * connector_out
+            + connector_layers * (
+                2 * connector_out + cross_attention + connector_ffn + 1
+            )
+        )
 
     heads = student["task_heads"]
     contrastive_width = int(heads["contrastive_width"])
@@ -619,6 +625,17 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "box_regression",
         "orientation",
     }
+    connector_family = blueprint["student"]["connector"].get(
+        "family",
+        "gated_resampler",
+    )
+    if connector_family not in {
+        "gated_resampler",
+        "average_pool_projector",
+    }:
+        errors.append(
+            "student.connector.family must be gated_resampler or average_pool_projector"
+        )
     task_heads = blueprint["student"]["task_heads"]
     contrastive_objective = task_heads.get(
         "contrastive_objective",

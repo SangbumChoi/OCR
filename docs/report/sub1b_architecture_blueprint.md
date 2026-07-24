@@ -20,9 +20,9 @@ separates initialization benefit from teacher supervision.
 | --- | --- | ---: | --- |
 | Vision tower | ViT, 12 layers, width 768, patch 14 | 88.7M | Retains fine glyph detail without spending most of the budget on natural-image capacity. |
 | Language decoder | 23 layers, width 1536, GQA 24Q/8KV, 64k vocabulary | 677.5M | Holds multilingual emission, cross-region binding, arithmetic, and structured generation. |
-| Connector | Two-layer gated resampler, 64 visual tokens | 33.2M | Makes compression an explicit, ablatable bottleneck instead of a fixed projection. |
+| Connector | Two-layer gated resampler, 64 visual tokens | 33.2M | Makes compression explicit; an ordered pooled-projector control is executable. |
 | Temporary task heads | contrast, orientation, normalized box regression | 0.6M | Supplies dense pretraining signals; removable for deployment. |
-| **Total** | | **799,919,882** | The instantiated model and independent estimator agree exactly; the model remains below one billion. |
+| **Total** | | **799,919,884** | The instantiated model and independent estimator agree exactly; the model remains below one billion. |
 
 The estimate is transparent and checked against the actual module graph. Run
 `python scripts/validate_sub1b_blueprint.py` after changing dimensions or mixtures, then instantiate
@@ -36,6 +36,10 @@ python scripts/build_sub1b_student.py --tiny --device cpu --allow-full-memory
 Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which implements the
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
+
+`student.connector.family` selects the default `gated_resampler` or the 767,942,922-parameter
+`average_pool_projector` control. Their compute-matched decision rule is specified in
+[`student_connector_family_sweep.md`](student_connector_family_sweep.md).
 
 The all-attention language stack remains the default control. Set
 `student.language.full_attention_layers` to a sorted zero-based subset to replace every other

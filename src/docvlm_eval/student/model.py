@@ -689,6 +689,10 @@ class GatedResampler(nn.Module):
         self.gradient_checkpointing = False
         self.checkpoint_use_reentrant = False
 
+    @property
+    def gradient_probe_anchor(self) -> nn.Parameter:
+        return self.layers[-1].norm2.weight
+
     def forward(
         self,
         vision_tokens: torch.Tensor,
@@ -749,6 +753,91 @@ class GatedResampler(nn.Module):
             "flex" if plan.use_flex else "loop"
         )
         return latents
+
+
+class AveragePoolProjector(nn.Module):
+    """Ordered adaptive pooling followed by one vision-to-language projection."""
+
+    def __init__(self, config: ConnectorConfig):
+        super().__init__()
+        self.latent_tokens = config.latent_tokens
+        self.projection = nn.Linear(config.input_width, config.output_width)
+        self.last_packed_attention_backend = "pool"
+        self.gradient_checkpointing = False
+        self.checkpoint_use_reentrant = False
+
+    @property
+    def gradient_probe_anchor(self) -> nn.Parameter:
+        return self.projection.weight
+
+    def _pool(self, tokens: torch.Tensor) -> torch.Tensor:
+        if tokens.ndim != 2 or tokens.shape[0] == 0:
+            raise ValueError("average-pool connector requires non-empty token sequences")
+        pooled = F.adaptive_avg_pool1d(
+            tokens.T.unsqueeze(0),
+            self.latent_tokens,
+        )
+        return pooled.squeeze(0).T
+
+    def _project(self, pooled: torch.Tensor) -> torch.Tensor:
+        return _checkpointed(
+            self.projection,
+            pooled,
+            enabled=self.gradient_checkpointing and self.training,
+            use_reentrant=self.checkpoint_use_reentrant,
+        )
+
+    def forward(
+        self,
+        vision_tokens: torch.Tensor,
+        vision_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if vision_tokens.ndim != 3:
+            raise ValueError("vision_tokens must have shape [batch, tokens, width]")
+        if vision_mask is not None and vision_mask.shape != vision_tokens.shape[:2]:
+            raise ValueError("vision_mask must match vision token dimensions")
+        pooled = []
+        for index, tokens in enumerate(vision_tokens):
+            valid = (
+                tokens
+                if vision_mask is None
+                else tokens[vision_mask[index].to(dtype=torch.bool)]
+            )
+            pooled.append(self._pool(valid))
+        return self._project(torch.stack(pooled))
+
+    def forward_packed(
+        self,
+        vision_tokens: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        *,
+        attention_backend: str = "auto",
+    ) -> torch.Tensor:
+        del attention_backend
+        if vision_tokens.ndim != 2:
+            raise ValueError("packed vision_tokens must have shape [tokens, width]")
+        if cu_seqlens.ndim != 1 or cu_seqlens.numel() < 2:
+            raise ValueError("cu_seqlens must contain at least one sequence")
+        pooled = [
+            self._pool(
+                vision_tokens[
+                    int(cu_seqlens[index].item()) : int(
+                        cu_seqlens[index + 1].item()
+                    )
+                ]
+            )
+            for index in range(cu_seqlens.numel() - 1)
+        ]
+        self.last_packed_attention_backend = "pool"
+        return self._project(torch.stack(pooled))
+
+
+def build_connector(config: ConnectorConfig) -> nn.Module:
+    if config.family == "gated_resampler":
+        return GatedResampler(config)
+    if config.family == "average_pool_projector":
+        return AveragePoolProjector(config)
+    raise ValueError(f"unsupported connector family {config.family!r}")
 
 
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
@@ -1438,7 +1527,7 @@ class DocumentVLMStudent(nn.Module):
             raise ValueError("invalid student config: " + "; ".join(errors))
         self.config = config
         self.vision = VisionTower(config.vision)
-        self.connector = GatedResampler(config.connector)
+        self.connector = build_connector(config.connector)
         self.language = LanguageDecoder(config.language)
         self.lm_head = nn.Linear(config.language.width, config.language.vocab_size, bias=False)
         if config.language.tied_embeddings:
@@ -1481,7 +1570,8 @@ class DocumentVLMStudent(nn.Module):
             self.register_parameter("contrastive_logit_scale", None)
             self.register_parameter("contrastive_logit_bias", None)
         self.apply(self._init_weights)
-        nn.init.normal_(self.connector.latents, std=0.02)
+        if isinstance(self.connector, GatedResampler):
+            nn.init.normal_(self.connector.latents, std=0.02)
         nn.init.zeros_(self.vision.position_embedding)
 
     def configure_gradient_checkpointing(
@@ -1608,7 +1698,7 @@ class DocumentVLMStudent(nn.Module):
             self.last_visual_attention_backend = (
                 "flex"
                 if self.vision.last_packed_attention_backend == "flex"
-                and self.connector.last_packed_attention_backend == "flex"
+                and self.connector.last_packed_attention_backend in {"flex", "pool"}
                 else "loop"
             )
             return prefix
@@ -1720,7 +1810,7 @@ class DocumentVLMStudent(nn.Module):
             self.last_visual_attention_backend = (
                 "flex"
                 if self.vision.last_packed_attention_backend == "flex"
-                and self.connector.last_packed_attention_backend == "flex"
+                and self.connector.last_packed_attention_backend in {"flex", "pool"}
                 else "loop"
             )
         elif pixel_mask is not None:

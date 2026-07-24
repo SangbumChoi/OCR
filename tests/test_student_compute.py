@@ -129,6 +129,34 @@ def test_forward_flops_increase_with_resolution_and_visual_latents():
     assert more_latents.total > low_resolution.total
 
 
+def test_average_pool_connector_reduces_connector_flops():
+    from dataclasses import replace
+
+    from docvlm_eval.student.compute import estimate_forward_flops
+    from docvlm_eval.student.config import StudentConfig
+
+    config = StudentConfig.tiny()
+    attention = estimate_forward_flops(
+        config,
+        text_tokens=16,
+        vision_tokens=64,
+    )
+    pooled = estimate_forward_flops(
+        replace(
+            config,
+            connector=replace(
+                config.connector,
+                family="average_pool_projector",
+            ),
+        ),
+        text_tokens=16,
+        vision_tokens=64,
+    )
+
+    assert pooled.connector < attention.connector
+    assert pooled.total < attention.total
+
+
 def test_batch_training_flops_use_dense_padded_shapes():
     torch = pytest.importorskip("torch")
     config = StudentConfig.tiny()

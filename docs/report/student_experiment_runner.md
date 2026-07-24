@@ -100,7 +100,7 @@ report, legacy or short benchmark, or missing dense control is `insufficient_evi
 mismatched architecture, fallback, execution error, numerical violation, or runtime regression
 is `fail`.
 
-`runtime.training_feasibility_benchmark` then runs the complete 799,919,882-parameter student with
+`runtime.training_feasibility_benchmark` then runs the complete 799,919,884-parameter student with
 the production micro-batch, 2,048 text tokens, a 40x63 packed visual grid, all native auxiliary
 heads, loss construction, scaled backward, gradient clipping, and AdamW. The first warmup step
 materializes optimizer state; two measured steps record steady latency. Its JSON preserves setup,

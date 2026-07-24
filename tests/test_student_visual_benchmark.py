@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(**overrides):
+    student = overrides.pop("student", StudentConfig.tiny())
     values = {
         "sequence_lengths": (3, 5),
         "backends": ("loop", "auto", "flex"),
@@ -33,7 +35,7 @@ def _run(**overrides):
     }
     values.update(overrides)
     return run_visual_backend_benchmark(
-        StudentConfig.tiny(),
+        student,
         VisualBenchmarkConfig(**values),
     )
 
@@ -41,7 +43,8 @@ def _run(**overrides):
 def test_cpu_benchmark_records_fallback_and_explicit_flex_error():
     report = _run()
 
-    assert report["scope"] == "student_vision_tower_and_gated_resampler"
+    assert report["scope"] == "student_vision_tower_and_connector"
+    assert report["connector_family"] == "gated_resampler"
     assert report["schema_version"] == 2
     assert report["language_decoder_included"] is False
     assert report["visual_tokens"] == 8
@@ -77,6 +80,28 @@ def test_require_flex_gate_preserves_report_on_cpu():
         "flex_resolved": False,
         "passed": False,
     }
+
+
+def test_average_pool_connector_benchmark_uses_vision_backend_resolution():
+    base = StudentConfig.tiny()
+    student = replace(
+        base,
+        connector=replace(
+            base.connector,
+            family="average_pool_projector",
+        ),
+    )
+
+    report = _run(
+        student=student,
+        backends=("loop", "auto"),
+    )
+
+    assert report["connector_family"] == "average_pool_projector"
+    assert all(record["status"] == "ok" for record in report["results"])
+    assert report["student_config"]["connector"]["family"] == (
+        "average_pool_projector"
+    )
 
 
 def test_training_mode_measures_forward_and_backward():

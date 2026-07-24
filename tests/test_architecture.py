@@ -78,6 +78,7 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     blueprint["student"]["task_heads"]["contrastive_objective"] = "cosine"
     blueprint["student"]["task_heads"]["contrastive_temperature"] = 0.0
     blueprint["student"]["task_heads"]["contrastive_bias_init"] = float("nan")
+    blueprint["student"]["connector"]["family"] = "unknown"
 
     _, errors = validate_blueprint(blueprint)
 
@@ -100,6 +101,7 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("contrastive_objective" in error for error in errors)
     assert any("contrastive_temperature" in error for error in errors)
     assert any("contrastive_bias_init" in error for error in errors)
+    assert any("connector.family" in error for error in errors)
 
 
 def test_packed_visual_sequences_reject_redundant_aspect_bucketing():

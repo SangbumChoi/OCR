@@ -15,7 +15,7 @@ from typing import Any, Literal
 import torch
 
 from .config import StudentConfig, student_config_fingerprint
-from .model import DocumentVLMStudent, GatedResampler, VisionTower
+from .model import DocumentVLMStudent, VisionTower, build_connector
 
 
 Backend = Literal[
@@ -279,14 +279,14 @@ def _materialize_inputs(
 
 def _resolved_backend(
     vision: VisionTower,
-    connector: GatedResampler,
+    connector: torch.nn.Module,
     backend: Backend,
 ) -> str:
     if backend in {"dense_adaptive", "dense_fixed_square"}:
         return "dense"
     if (
         vision.last_packed_attention_backend == "flex"
-        and connector.last_packed_attention_backend == "flex"
+        and connector.last_packed_attention_backend in {"flex", "pool"}
     ):
         return "flex"
     return "loop"
@@ -294,7 +294,7 @@ def _resolved_backend(
 
 def _forward(
     vision: VisionTower,
-    connector: GatedResampler,
+    connector: torch.nn.Module,
     inputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     backend: Backend,
     precision: str,
@@ -324,7 +324,7 @@ def _forward(
 
 def _parity_output(
     vision: VisionTower,
-    connector: GatedResampler,
+    connector: torch.nn.Module,
     inputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     backend: Backend,
     precision: str,
@@ -343,7 +343,7 @@ def _parity_output(
 
 def _measure_backend(
     vision: VisionTower,
-    connector: GatedResampler,
+    connector: torch.nn.Module,
     inputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     *,
     backend: Backend,
@@ -644,10 +644,11 @@ def run_visual_backend_benchmark(
     if device.type == "cuda":
         torch.cuda.manual_seed_all(config.seed)
     vision = VisionTower(student.vision).to(device)
-    connector = GatedResampler(student.connector).to(device)
+    connector = build_connector(student.connector).to(device)
     vision.apply(DocumentVLMStudent._init_weights)
     connector.apply(DocumentVLMStudent._init_weights)
-    torch.nn.init.normal_(connector.latents, std=0.02)
+    if hasattr(connector, "latents"):
+        torch.nn.init.normal_(connector.latents, std=0.02)
     torch.nn.init.zeros_(vision.position_embedding)
     lengths = config.resolved_sequence_lengths
     canonical = _canonical_inputs(
@@ -751,7 +752,8 @@ def run_visual_backend_benchmark(
     )
     report = {
         "schema_version": 2,
-        "scope": "student_vision_tower_and_gated_resampler",
+        "scope": "student_vision_tower_and_connector",
+        "connector_family": student.connector.family,
         "language_decoder_included": False,
         "student_config_fingerprint": student_config_fingerprint(student),
         "student_config": student.to_dict(),
