@@ -30,6 +30,12 @@ base:
   # Fall back to a layout-neutral color-probe render when the PDF text layer cannot resolve
   # a required spotting/grounding span (notably CJK, RTL, letter-spaced, or wrapped text).
   color_probe_fallback: true
+  # Reject requested-but-unresolved, clipped, or visually blank evidence boxes after the final
+  # resize and supervision projection. Metrics compare each crop with its local background.
+  validate_evidence_pixels: true
+  evidence_min_contrast: 8.0
+  evidence_min_foreground_fraction: 0.002
+  evidence_min_foreground_pixels: 4
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true

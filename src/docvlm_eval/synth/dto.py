@@ -194,6 +194,10 @@ class GenConfig:
     emit_understanding: bool = True
     emit_counterfactual_pairs: bool = True
     color_probe_fallback: bool = True
+    validate_evidence_pixels: bool = True
+    evidence_min_contrast: float = 8.0
+    evidence_min_foreground_fraction: float = 0.002
+    evidence_min_foreground_pixels: int = 4
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -234,6 +238,14 @@ class GenConfig:
             raise ValueError("split_group_by must be content, template, or document")
         if not isinstance(self.color_probe_fallback, bool):
             raise ValueError("color_probe_fallback must be boolean")
+        if not isinstance(self.validate_evidence_pixels, bool):
+            raise ValueError("validate_evidence_pixels must be boolean")
+        if self.evidence_min_contrast <= 0:
+            raise ValueError("evidence_min_contrast must be positive")
+        if not 0 <= self.evidence_min_foreground_fraction <= 1:
+            raise ValueError("evidence_min_foreground_fraction must be within [0, 1]")
+        if self.evidence_min_foreground_pixels < 1:
+            raise ValueError("evidence_min_foreground_pixels must be positive")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":

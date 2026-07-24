@@ -36,6 +36,7 @@ from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
 from docvlm_eval.synth.hard_locale import validate_hard_document_language  # noqa: E402
 from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
 from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
+from docvlm_eval.synth.quality import audit_render_evidence  # noqa: E402
 
 OUT = ROOT / "data" / "probes" / "realistic_cases"
 
@@ -243,18 +244,14 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     img = _resize_with_boxes(img, gt)
     apply_supervision_toggles(gt, CFG)
 
-    folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
-    folder.mkdir(parents=True, exist_ok=True)
-    img.save(folder / "clean.png")
-
     degradation = None
+    deg = None
     if do_degrade and random.random() < CFG.degrade_prob:
         chosen = _pick_preset(key, preset)
         # stable per-case seed (Python's str hash is salted per-process -> not reproducible)
         seed = CFG.seed + int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
         deg = degrade(img, chosen, seed=seed)
         if deg is not None:
-            deg.save(folder / "degraded.png")
             degradation = Degradation(preset=chosen, severity=CFG.degrade_severity, seed=seed)
 
     doc = DocSample.from_builder_gt(
@@ -263,6 +260,20 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     )
     doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
     out = doc.to_dict()
+    if CFG.validate_evidence_pixels:
+        required_spotting_keys = (
+            [spot[0] for spot in builder._spots]
+            if builder is not None and CFG.emit_spotting
+            else []
+        )
+        out["render"]["evidence_quality"] = audit_render_evidence(
+            img,
+            out,
+            required_spotting_keys=required_spotting_keys,
+            min_contrast=CFG.evidence_min_contrast,
+            min_foreground_fraction=CFG.evidence_min_foreground_fraction,
+            min_foreground_pixels=CFG.evidence_min_foreground_pixels,
+        )
     counterfactual_index = _counterfactual_variant_index()
     if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
         out["counterfactual"] = {
@@ -277,6 +288,11 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     if out.get("semantic_graph"):
         policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
         out["suggested_split"] = policy.assign(out)
+    folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
+    folder.mkdir(parents=True, exist_ok=True)
+    img.save(folder / "clean.png")
+    if deg is not None:
+        deg.save(folder / "degraded.png")
     (folder / "gt.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     sup = out["ablation_support"]
     records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
@@ -920,7 +936,7 @@ def main():
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
           f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
-          f"color_probe={CFG.color_probe_fallback}")
+          f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

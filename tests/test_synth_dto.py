@@ -142,6 +142,23 @@ def test_color_probe_config_and_render_provenance():
     assert render.color_probe_fallback_count == 2
 
 
+def test_evidence_pixel_gate_config_validation():
+    config = GenConfig()
+    assert config.validate_evidence_pixels is True
+    assert config.evidence_min_contrast == 8.0
+    assert config.evidence_min_foreground_fraction == 0.002
+    assert config.evidence_min_foreground_pixels == 4
+
+    with pytest.raises(ValueError, match="validate_evidence_pixels must be boolean"):
+        GenConfig(validate_evidence_pixels="yes")
+    with pytest.raises(ValueError, match="evidence_min_contrast must be positive"):
+        GenConfig(evidence_min_contrast=0)
+    with pytest.raises(ValueError, match="evidence_min_foreground_fraction"):
+        GenConfig(evidence_min_foreground_fraction=1.1)
+    with pytest.raises(ValueError, match="evidence_min_foreground_pixels must be positive"):
+        GenConfig(evidence_min_foreground_pixels=0)
+
+
 def test_graph_evidence_keys_resolve_to_multiple_boxes():
     gt = {
         "type": "hard table",

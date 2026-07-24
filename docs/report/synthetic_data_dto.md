@@ -46,6 +46,7 @@ Matching the real-world *and* image distribution is done on three axes, all conf
 | **Resolution / capture optics** | rasterise at a chosen DPI; optionally resize the longest side and (de)preserve aspect to mimic a model's preprocessor; record a small-text slice | `dpi`, `target_long_side`, `keep_aspect`, `tiling_n_max`, `small_text_px` |
 | **Language / script mix** | choose each document's language from a weighted mix; generate content in that Faker locale; record language + writing system | `languages`, `language_weights` |
 | **Spatial-label resolver** | PDF text positions first; model-free color-probe render only for required misses | `color_probe_fallback` |
+| **Spatial-label visibility** | final-resolution box geometry and local-background pixel contrast | `validate_evidence_pixels`, `evidence_min_*` |
 
 Because the boxes come from the clean digital-native render and degradation is photometric only,
 **a degraded copy reuses the clean GT** — the heuristic that makes free, exact labels possible.
@@ -67,7 +68,7 @@ DocSample
 ├─ split: synthetic|train|validation|heldout
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
-│                      box_resolver, color_probe_fallback_count)
+│                      box_resolver, color_probe_fallback_count, evidence_quality)
 ├─ degradation:  Degradation(preset, severity, seed, geometry_preserved)
 ├─ gen_config:   the GenConfig that produced this sample (provenance)
 └─ ablation_support: AblationSupport(spotting, rationale, multilingual, small_text,
@@ -136,6 +137,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Hard curriculum** | lookup → aggregation → cross-region/multi-path | `semantic_graph`, `difficulty` | `difficulty_level` |
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
+| **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 
 (*A5 LoRA-placement* and *A6 HPO* are training-side — they consume this GT but need no generator
 knob.)
@@ -168,6 +170,9 @@ that weight map and sample uniformly from only the languages named by each arm.
 ## 5. Guarantees
 
 - **No label drift:** every value is declared once and the box is read from the render.
+- **No invisible spatial labels:** requested boxes must resolve, remain inside the final raster, and
+  contain sufficient foreground contrast; the full audit is persisted under
+  `render.evidence_quality`.
 - **No false multilingual labels:** hard-document render text, questions, text answers, rationales,
   fields, and graph locale must agree; unsupported locale projections and missing CJK fonts fail.
 - **Boxes survive degradation and resize:** degradation is photometric; the A7 resize rescales all

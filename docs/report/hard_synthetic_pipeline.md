@@ -19,6 +19,9 @@ scientific-paper verification.
    authored `expected` answer.
 5. `DocBuilder` renders the same values and resolves every evidence key through the PDF text layer,
    with an occurrence-aware color-probe fallback for required misses.
+6. A final raster audit deduplicates all field, answer, and multi-box evidence coordinates after
+   resize and supervision projection. It rejects unresolved requested keys, clipped geometry, and
+   crops without sufficient contrast against their local background.
 
 The operation registry currently covers direct lookup, sum, mean, difference, ratio, percent
 change, relative reduction, extrema, weighted sum, path products, and sums of independent path
@@ -59,6 +62,7 @@ Each `gt.json` records:
 - a machine-readable `difficulty` profile;
 - explicit split provenance and a deterministic suggested split.
 - the spatial resolver contract and number of color-probe fallbacks used.
+- the pixel-level evidence audit, thresholds, source coverage, and per-box visibility statistics.
 
 ## Hard families
 
@@ -116,7 +120,13 @@ python scripts/validate_synth_splits.py \
   --output docs/results/hard_split_audit.json
 ```
 
-The default validator rejects the same semantic content fingerprint across splits while reporting
+Generation itself is fail-closed before any sample files are written. The pixel gate is configured
+by `validate_evidence_pixels`, `evidence_min_contrast`,
+`evidence_min_foreground_fraction`, and `evidence_min_foreground_pixels` in
+`configs/synth_data.yaml`. It runs on the clean final-resolution raster; photometric degraded copies
+reuse geometry only after the clean evidence contract passes.
+
+The split validator rejects the same semantic content fingerprint across splits while reporting
 template overlap. `--require-template-isolation` additionally rejects the same graph program
 topology across splits, which is useful for a strict template-generalization evaluation. Template
 overlap is otherwise allowed so the standard heldout set can measure new values under known

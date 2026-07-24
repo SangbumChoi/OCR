@@ -24,6 +24,7 @@ from .latent import (
     DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
 )
 from .render import RenderResult, render_html, resolve_boxes
+from .quality import EvidenceQualityError, audit_render_evidence, collect_evidence_boxes
 from .splits import SplitPolicy, validate_split_leakage
 from .supervision import apply_supervision_toggles
 from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
@@ -41,4 +42,5 @@ __all__ = [
     "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
     "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
     "apply_supervision_toggles",
+    "EvidenceQualityError", "audit_render_evidence", "collect_evidence_boxes",
 ]
