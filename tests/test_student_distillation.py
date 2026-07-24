@@ -48,7 +48,11 @@ def test_identical_teacher_has_zero_topk_and_feature_distillation_loss():
         language_layer_pairs=((1, 1), (-1, -1)),
     )
     batch = _batch()
-    teacher = NativeStudentTeacher(teacher_model, distill_config)
+    teacher = NativeStudentTeacher(
+        teacher_model,
+        distill_config,
+        teacher_id="test:identical",
+    )
     signals = teacher(batch)
     output = student(
         input_ids=batch["input_ids"],
@@ -69,6 +73,27 @@ def test_identical_teacher_has_zero_topk_and_feature_distillation_loss():
         torch.tensor(0.0),
         atol=1e-6,
     )
+
+
+def test_distillation_uses_logits_preceding_supervised_labels():
+    import torch
+
+    from docvlm_eval.student.distillation import (
+        _causal_distillation_inputs,
+    )
+
+    logits = torch.arange(1 * 5 * 3, dtype=torch.float32).reshape(1, 5, 3)
+    labels = torch.tensor([[-100, -100, 7, 8, 9]])
+
+    aligned, mask = _causal_distillation_inputs(
+        logits,
+        labels,
+        ignore_index=-100,
+    )
+
+    assert mask.tolist() == [[False, True, True, True]]
+    assert torch.equal(aligned[mask], logits[0, 1:4])
+    assert not torch.equal(aligned[mask], logits[0, 2:5])
 
 
 def test_distillation_projects_incompatible_teacher_widths_and_backpropagates():
@@ -107,7 +132,11 @@ def test_distillation_projects_incompatible_teacher_widths_and_backpropagates():
         language_layer_pairs=((0, 0),),
     )
     batch = _batch()
-    signals = NativeStudentTeacher(teacher_model, distill_config)(batch)
+    signals = NativeStudentTeacher(
+        teacher_model,
+        distill_config,
+        teacher_id="test:wide-teacher",
+    )(batch)
     output = student(
         input_ids=batch["input_ids"],
         attention_mask=batch["attention_mask"],
@@ -170,7 +199,11 @@ def test_text_only_distillation_skips_unavailable_vision_features():
     batch = _batch()
     batch.pop("pixel_values")
     batch.pop("pixel_mask")
-    signals = NativeStudentTeacher(teacher_model, distill_config)(batch)
+    signals = NativeStudentTeacher(
+        teacher_model,
+        distill_config,
+        teacher_id="test:text-only",
+    )(batch)
     output = student(
         input_ids=batch["input_ids"],
         attention_mask=batch["attention_mask"],
@@ -202,5 +235,30 @@ def test_distillation_config_is_read_from_the_blueprint():
 
     assert config.temperature == 2.0
     assert config.logit_top_k == 128
+    assert config.target_alignment == "causal_next_token"
+    assert config.to_dict()["target_alignment"] == "causal_next_token"
     assert config.vision_layer_pairs[-1] == (11, 11)
     assert config.language_layer_pairs[-1] == (22, 22)
+
+
+def test_distillation_rejects_noncausal_target_alignment():
+    from docvlm_eval.student.distillation import DistillationConfig
+
+    with pytest.raises(ValueError, match="causal_next_token"):
+        DistillationConfig(target_alignment="same_position")
+
+
+def test_online_teacher_requires_a_checkpoint_identity():
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.distillation import (
+        DistillationConfig,
+        NativeStudentTeacher,
+    )
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    with pytest.raises(ValueError, match="teacher_id"):
+        NativeStudentTeacher(
+            DocumentVLMStudent(StudentConfig.tiny()),
+            DistillationConfig(),
+            teacher_id="",
+        )

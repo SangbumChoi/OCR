@@ -18,6 +18,7 @@ from .model import DocumentVLMStudent, StudentOutput
 class DistillationConfig:
     temperature: float = 2.0
     logit_top_k: int = 128
+    target_alignment: str = "causal_next_token"
     vision_layer_pairs: tuple[tuple[int, int], ...] = ()
     language_layer_pairs: tuple[tuple[int, int], ...] = ()
 
@@ -26,6 +27,10 @@ class DistillationConfig:
             raise ValueError("distillation temperature must be positive")
         if self.logit_top_k < 0:
             raise ValueError("logit_top_k must be non-negative")
+        if self.target_alignment != "causal_next_token":
+            raise ValueError(
+                "distillation target_alignment must be causal_next_token"
+            )
 
     @classmethod
     def from_blueprint(cls, blueprint: dict[str, Any]) -> "DistillationConfig":
@@ -33,6 +38,9 @@ class DistillationConfig:
         return cls(
             temperature=float(raw["temperature"]),
             logit_top_k=int(raw["logit_top_k"]),
+            target_alignment=str(
+                raw.get("target_alignment", "causal_next_token")
+            ),
             vision_layer_pairs=tuple(
                 (int(pair[0]), int(pair[1]))
                 for pair in raw.get("vision_layer_pairs", [])
@@ -42,6 +50,19 @@ class DistillationConfig:
                 for pair in raw.get("language_layer_pairs", [])
             ),
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "temperature": self.temperature,
+            "logit_top_k": self.logit_top_k,
+            "target_alignment": self.target_alignment,
+            "vision_layer_pairs": [
+                list(pair) for pair in self.vision_layer_pairs
+            ],
+            "language_layer_pairs": [
+                list(pair) for pair in self.language_layer_pairs
+            ],
+        }
 
     @property
     def student_feature_layers(self) -> dict[str, list[int]]:
@@ -98,6 +119,22 @@ def _compress_teacher_logits(
     return top_indices, torch.cat((top_values, other[:, None]), dim=-1), None
 
 
+def _causal_distillation_inputs(
+    text_logits: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    ignore_index: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Align next-token logits with the same supervised targets as causal CE."""
+    if text_logits.ndim != 3 or labels.ndim != 2:
+        raise ValueError("distillation logits and labels have invalid ranks")
+    if text_logits.shape[:2] != labels.shape:
+        raise ValueError("distillation logits and labels must share batch and time")
+    if text_logits.shape[1] < 2:
+        raise ValueError("distillation requires at least two text tokens")
+    return text_logits[:, :-1], labels[:, 1:] != ignore_index
+
+
 class NativeStudentTeacher:
     """Frozen native teacher with immediate top-k logit compression."""
 
@@ -105,9 +142,14 @@ class NativeStudentTeacher:
         self,
         model: DocumentVLMStudent,
         config: DistillationConfig,
+        *,
+        teacher_id: str,
     ):
+        if not teacher_id.strip():
+            raise ValueError("online teacher_id cannot be empty")
         self.model = model.eval()
         self.config = config
+        self.teacher_id = teacher_id
         for parameter in self.model.parameters():
             parameter.requires_grad_(False)
 
@@ -123,9 +165,13 @@ class NativeStudentTeacher:
             feature_layers=self.config.teacher_feature_layers,
         )
         text_length = batch["input_ids"].shape[1]
-        token_mask = batch["labels"] != self.model.config.ignore_index
-        topk_indices, bucket_logits, full_logits = _compress_teacher_logits(
+        aligned_logits, token_mask = _causal_distillation_inputs(
             output.logits[:, -text_length:],
+            batch["labels"],
+            ignore_index=self.model.config.ignore_index,
+        )
+        topk_indices, bucket_logits, full_logits = _compress_teacher_logits(
+            aligned_logits,
             token_mask,
             top_k=self.config.logit_top_k,
             temperature=self.config.temperature,
@@ -198,6 +244,10 @@ class DistillationLoss(nn.Module):
         student_logits: torch.Tensor,
         signals: TeacherSignals,
     ) -> torch.Tensor:
+        if student_logits.shape[:2] != signals.token_mask.shape:
+            raise ValueError(
+                "student logits do not match causal teacher token positions"
+            )
         selected = student_logits[signals.token_mask].float() / self.config.temperature
         if signals.full_logits is not None:
             return (
@@ -250,9 +300,10 @@ class DistillationLoss(nn.Module):
         attention_mask: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         text_length = attention_mask.shape[1]
+        text_logits = student_output.logits[:, -text_length:]
         losses = {
             "teacher_kl": self._logit_loss(
-                student_output.logits[:, -text_length:],
+                text_logits[:, :-1],
                 signals,
             )
         }

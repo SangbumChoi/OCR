@@ -630,7 +630,11 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
                 "hidden_feature_distillation": 0.2,
             },
         ),
-        teacher=NativeStudentTeacher(teacher_model, distill_config),
+        teacher=NativeStudentTeacher(
+            teacher_model,
+            distill_config,
+            teacher_id="test:resume-teacher",
+        ),
         distillation_loss=loss_module,
     )
     payload = torch.load(
@@ -644,6 +648,123 @@ def test_distilled_pretraining_saves_projection_state(tmp_path):
     assert result.executed_visual_tokens_seen == result.valid_visual_tokens_seen
     assert "language_projections.s0_t0.weight" in payload["distillation_loss"]
     assert "vision_projections.s0_t0.weight" in payload["distillation_loss"]
+    metadata = json.loads(
+        (
+            tmp_path
+            / "distilled"
+            / "checkpoints"
+            / "step-00000001"
+            / "student"
+            / "metadata.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert metadata["supervision_contract"]["online_distillation"] == (
+        {
+            "teacher_id": "test:resume-teacher",
+            **distill_config.to_dict(),
+        }
+    )
+    metric = json.loads(
+        (tmp_path / "distilled" / "metrics.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert metric["train/distillation_tokens"] > 0
+    assert metric["train/distillation_supervised_coverage"] == 1.0
+    assert (
+        metric["train/distillation_target_alignment"]
+        == "causal_next_token"
+    )
+
+    changed_config = DistillationConfig(
+        temperature=3.0,
+        logit_top_k=8,
+        vision_layer_pairs=((0, 0),),
+        language_layer_pairs=((0, 0),),
+    )
+    resumed_student = DocumentVLMStudent(student_config)
+    resumed_teacher = DocumentVLMStudent(teacher_config)
+    with pytest.raises(ValueError, match="supervision contract"):
+        train_student(
+            resumed_student,
+            _loader("packed", batch_size=2),
+            replace(
+                training_config,
+                max_steps=2,
+                resume_from="latest",
+                loss_weights={
+                    **training_config.loss_weights,
+                    "teacher_kl": 0.3,
+                    "hidden_feature_distillation": 0.2,
+                },
+            ),
+            teacher=NativeStudentTeacher(
+                resumed_teacher,
+                changed_config,
+                teacher_id="test:resume-teacher",
+            ),
+            distillation_loss=DistillationLoss(
+                student_config,
+                teacher_config,
+                changed_config,
+            ),
+        )
+
+    identity_changed_teacher = DocumentVLMStudent(teacher_config)
+    identity_changed_teacher.load_state_dict(teacher_model.state_dict())
+    with pytest.raises(ValueError, match="supervision contract"):
+        train_student(
+            DocumentVLMStudent(student_config),
+            _loader("packed", batch_size=2),
+            replace(
+                training_config,
+                max_steps=2,
+                resume_from="latest",
+                loss_weights={
+                    **training_config.loss_weights,
+                    "teacher_kl": 0.3,
+                    "hidden_feature_distillation": 0.2,
+                },
+            ),
+            teacher=NativeStudentTeacher(
+                identity_changed_teacher,
+                distill_config,
+                teacher_id="test:different-teacher",
+            ),
+            distillation_loss=DistillationLoss(
+                student_config,
+                teacher_config,
+                distill_config,
+            ),
+        )
+
+    matching_teacher = DocumentVLMStudent(teacher_config)
+    matching_teacher.load_state_dict(teacher_model.state_dict())
+    resumed_result = train_student(
+        DocumentVLMStudent(student_config),
+        _loader("packed", batch_size=2),
+        replace(
+            training_config,
+            max_steps=2,
+            resume_from="latest",
+            loss_weights={
+                **training_config.loss_weights,
+                "teacher_kl": 0.3,
+                "hidden_feature_distillation": 0.2,
+            },
+        ),
+        teacher=NativeStudentTeacher(
+            matching_teacher,
+            distill_config,
+            teacher_id="test:resume-teacher",
+        ),
+        distillation_loss=DistillationLoss(
+            student_config,
+            teacher_config,
+            distill_config,
+        ),
+    )
+    assert resumed_result.global_step == 2
 
 
 def test_final_partial_accumulation_window_matches_a_full_step(tmp_path):
@@ -1006,6 +1127,7 @@ def test_checkpoint_records_resolved_supervision_contract(tmp_path):
     contract = metadata["supervision_contract"]
     assert contract["has_online_teacher"] is False
     assert contract["online_teacher_losses"] == []
+    assert contract["online_distillation"] is None
     assert contract["box_iou_loss"] == "giou"
     assert contract["contrastive_memory"]["enabled"] is False
     assert contract["stages"][0]["active_losses"] == [

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,22 @@ def _checkpoint_tokenizer_fingerprint(checkpoint: Path) -> str | None:
     return json.loads(metadata_path.read_text(encoding="utf-8")).get(
         "tokenizer_fingerprint"
     )
+
+
+def _checkpoint_identity(checkpoint: Path) -> str:
+    digest = hashlib.sha256()
+    for name in ("student_config.json", "model.pt"):
+        path = checkpoint / name
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"online teacher checkpoint is missing {path}"
+            )
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _load_udd(src: Path, repo: str | None, split: str):
@@ -286,7 +303,11 @@ def main() -> None:
             args.teacher_checkpoint,
             map_location=device,
         )
-        teacher = NativeStudentTeacher(teacher_model, distillation_config)
+        teacher = NativeStudentTeacher(
+            teacher_model,
+            distillation_config,
+            teacher_id=_checkpoint_identity(args.teacher_checkpoint),
+        )
         distillation_loss = DistillationLoss(
             student.config,
             teacher_model.config,

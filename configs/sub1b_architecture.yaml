@@ -136,6 +136,7 @@ training:
     distillation:
       temperature: 2.0
       logit_top_k: 128
+      target_alignment: causal_next_token
       sequence_targets:
         probability: 0.0
         min_score: 0.8

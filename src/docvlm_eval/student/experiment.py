@@ -26,6 +26,7 @@ from .checkpoint_acquisition import (
     checkpoint_path_from_manifest,
 )
 from .config import StudentConfig
+from .distillation import DistillationConfig
 from .mixture import MixtureComponent, validate_components
 from .pretrain import PretrainConfig, pretraining_supervision_contract
 
@@ -1040,13 +1041,25 @@ def build_experiment_plan(
             "runtime.training_feasibility_benchmark.text_tokens exceeds "
             "the resolved pretraining maximum"
         )
+    has_online_teacher = bool(
+        (raw.get("pretraining") or {}).get("teacher_checkpoint")
+    )
+    teacher_checkpoint = (
+        str((raw.get("pretraining") or {}).get("teacher_checkpoint") or "")
+    )
     pretraining_supervision_contract(
         PretrainConfig.from_blueprint(
             blueprint,
             output_root / "artifacts" / "pretrain",
         ),
-        has_online_teacher=bool(
-            (raw.get("pretraining") or {}).get("teacher_checkpoint")
+        has_online_teacher=has_online_teacher,
+        online_distillation_contract=(
+            {
+                "teacher_id": f"path:{teacher_checkpoint}",
+                **DistillationConfig.from_blueprint(blueprint).to_dict(),
+            }
+            if has_online_teacher
+            else None
         ),
     )
     for component, allowed in (

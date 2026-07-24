@@ -120,9 +120,10 @@ every curriculum stage before optimization and rejects active online-teacher los
 checkpoint, a teacher checkpoint with no active online loss, or any stage with no active loss.
 Teacher inference is skipped in stages where its losses are both zero.
 
-Checkpoint metadata records stage-level active losses, online-teacher status, selected
-gold/offline-teacher target counts, and the box IoU-family objective. Exact resume requires the same
-supervision contract. The paired leave-one-loss-out design is
+Checkpoint metadata records stage-level active losses, online-teacher status, the resolved online
+distillation objective, selected gold/offline-teacher target counts, and the box IoU-family
+objective. Exact resume requires the same supervision contract. The paired leave-one-loss-out
+design is
 [`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); the matched softmax and
 SigLIP comparison is
 [`student_contrastive_objective_sweep.md`](student_contrastive_objective_sweep.md), the memory
@@ -147,11 +148,19 @@ Online distillation is deliberately strict:
 - student and teacher must use the identical tokenizer artifact, not merely the same vocabulary
   size;
 - the tokenizer SHA-256 fingerprint stored in the teacher checkpoint must match `--tokenizer`;
+- teacher and student logits use the same causal alignment as autoregressive cross-entropy:
+  `logits[t-1]` predicts supervised `labels[t]`;
 - teacher logits are reduced immediately to the configured top-k tokens plus one exact
   remaining-vocabulary mass bucket;
 - selected vision and language depth anchors are retained only for the current step;
 - trainable linear projections align incompatible hidden widths before cosine feature loss;
 - text-only batches skip vision feature pairs without inventing visual inputs.
+
+At startup, the runner hashes the native teacher configuration and weight files. Checkpoints record
+that identity together with temperature, top-k compression, feature-layer pairs, and the
+`causal_next_token` alignment, so resume rejects a different teacher or objective. Training logs
+`train/distillation_tokens`, `train/distillation_supervised_coverage`, and
+`train/distillation_target_alignment` to expose the realized teacher dose and alignment.
 
 LFM2.5-VL and other cross-tokenizer teachers do not satisfy this contract. Their outputs enter as
 offline sequence targets or pseudo-labels in UDD, where the student tokenizer encodes the resulting

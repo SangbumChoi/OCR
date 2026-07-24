@@ -334,6 +334,7 @@ def pretraining_supervision_contract(
     config: PretrainConfig,
     *,
     has_online_teacher: bool,
+    online_distillation_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve stage-level active losses and reject silent supervision gaps."""
 
@@ -385,6 +386,21 @@ def pretraining_supervision_contract(
             "native teacher checkpoint provided but teacher_kl and "
             "hidden_feature_distillation are inactive"
         )
+    if has_online_teacher and online_distillation_contract is None:
+        raise ValueError(
+            "native teacher checkpoint requires a resolved online-distillation contract"
+        )
+    if (
+        online_distillation_contract is not None
+        and not str(online_distillation_contract.get("teacher_id", "")).strip()
+    ):
+        raise ValueError(
+            "online-distillation contract requires a teacher checkpoint identity"
+        )
+    if not has_online_teacher and online_distillation_contract is not None:
+        raise ValueError(
+            "online-distillation contract provided without a native teacher checkpoint"
+        )
     if config.contrastive_memory.enabled and contrastive_stages == 0:
         raise ValueError(
             "enabled contrastive memory requires an active "
@@ -393,6 +409,7 @@ def pretraining_supervision_contract(
     return {
         "has_online_teacher": has_online_teacher,
         "online_teacher_losses": sorted(active_online),
+        "online_distillation": online_distillation_contract,
         "target_source_counts": {
             name: int(count)
             for name, count in sorted(config.target_source_counts.items())
@@ -604,6 +621,7 @@ class PretrainingModule(nn.Module):
         self.last_contrastive_memory_size = 0
         self.last_contrastive_negative_pairs = 0
         self.last_contrastive_additional_flops = 0
+        self.last_distillation_tokens = 0
 
     def forward(
         self,
@@ -661,6 +679,11 @@ class PretrainingModule(nn.Module):
                 inputs["contrastive_ids"],
             )
         self.last_contrastive_memory_size = len(self.contrastive_memory)
+        self.last_distillation_tokens = (
+            int(teacher_signals.token_mask.sum().item())
+            if teacher_signals is not None
+            else 0
+        )
         if teacher_signals is not None:
             losses.update(
                 self.distillation_loss(
@@ -1417,9 +1440,30 @@ def train_student(
 
     if (teacher is None) != (distillation_loss is None):
         raise ValueError("teacher and distillation_loss must be provided together")
+    online_distillation_contract = (
+        {
+            "teacher_id": teacher.teacher_id,
+            **distillation_loss.config.to_dict(),
+        }
+        if distillation_loss is not None
+        else None
+    )
+    if (
+        teacher is not None
+        and teacher.config.to_dict()
+        != {
+            key: value
+            for key, value in online_distillation_contract.items()
+            if key != "teacher_id"
+        }
+    ):
+        raise ValueError(
+            "teacher and distillation loss use different distillation contracts"
+        )
     supervision_contract = pretraining_supervision_contract(
         config,
         has_online_teacher=teacher is not None,
+        online_distillation_contract=online_distillation_contract,
     )
     if getattr(train_loader, "persistent_workers", False):
         raise ValueError("exact-resume augmentation requires persistent_workers=False")
@@ -1559,6 +1603,7 @@ def train_student(
     accumulated_dense_visual_tokens = 0
     accumulated_valid_visual_tokens = 0
     accumulated_samples = 0
+    accumulated_distillation_tokens = 0
     epoch = state.epoch
     while not stop and (config.epochs is None or epoch < config.epochs):
         if (
@@ -1738,6 +1783,7 @@ def train_student(
                 accumulated_losses[name] = (
                     accumulated_losses.get(name, 0.0) + float(value.detach())
                 )
+            accumulated_distillation_tokens += module.last_distillation_tokens
             state.batch_in_epoch = batch_index + 1
             if not should_step:
                 continue
@@ -1771,6 +1817,10 @@ def train_student(
                 context,
             )
             global_samples = _all_reduce_int(accumulated_samples, context)
+            global_distillation_tokens = _all_reduce_int(
+                accumulated_distillation_tokens,
+                context,
+            )
             state.dense_visual_tokens_seen += global_dense_visual_tokens
             state.executed_visual_tokens_seen += global_dense_visual_tokens
             state.valid_visual_tokens_seen += global_valid_visual_tokens
@@ -1851,6 +1901,20 @@ def train_student(
                     "train/contrastive_negative_pairs": float(
                         module.last_contrastive_negative_pairs
                     ),
+                    "train/distillation_tokens": float(
+                        global_distillation_tokens
+                    ),
+                    "train/distillation_supervised_coverage": (
+                        global_distillation_tokens
+                        / global_token_counts["supervised"]
+                        if global_token_counts["supervised"]
+                        else 0.0
+                    ),
+                    "train/distillation_target_alignment": (
+                        online_distillation_contract["target_alignment"]
+                        if online_distillation_contract is not None
+                        else "disabled"
+                    ),
                     "train/visual_attention_backend": (
                         module.student.last_visual_attention_backend
                     ),
@@ -1881,6 +1945,7 @@ def train_student(
             accumulated_dense_visual_tokens = 0
             accumulated_valid_visual_tokens = 0
             accumulated_samples = 0
+            accumulated_distillation_tokens = 0
 
             if context.is_main and (
                 state.global_step == 1

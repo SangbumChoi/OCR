@@ -74,6 +74,9 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     sequence_targets["probability"] = 1.1
     sequence_targets["min_score"] = -0.1
     sequence_targets["seed"] = -1
+    blueprint["training"]["pretraining"]["distillation"][
+        "target_alignment"
+    ] = "same_position"
     blueprint["tokenizer"]["vocab_size"] = 32000
     blueprint["student"]["task_heads"]["contrastive_objective"] = "cosine"
     blueprint["student"]["task_heads"]["contrastive_temperature"] = 0.0
@@ -88,6 +91,7 @@ def test_blueprint_rejects_invalid_input_pipeline_controls():
     assert any("visual_sequence_mode" in error for error in errors)
     assert any("packed_attention_backend" in error for error in errors)
     assert any("aspect_ratio_bucketing must be boolean" in error for error in errors)
+    assert any("target_alignment" in error for error in errors)
     assert any("aspect_ratio_bucket_log2_step" in error for error in errors)
     assert any("max_position_tokens" in error for error in errors)
     assert any("full_attention_layers must be unique" in error for error in errors)

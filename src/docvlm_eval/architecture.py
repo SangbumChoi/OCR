@@ -355,6 +355,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.pretraining.distillation.logit_top_k must be within the vocabulary"
         )
+    if distillation.get("target_alignment") != "causal_next_token":
+        errors.append(
+            "training.pretraining.distillation.target_alignment must be "
+            "causal_next_token"
+        )
     sequence_targets = distillation.get("sequence_targets", {})
     for field in ("probability", "min_score"):
         value = float(sequence_targets.get(field, -1.0))
