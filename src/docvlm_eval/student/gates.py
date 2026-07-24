@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .config import StudentConfig, student_config_fingerprint
+from .optim import OptimizerSpec
 
 
 _STATUSES = {"pass", "fail", "insufficient_evidence"}
@@ -986,6 +987,31 @@ def _training_feasibility(
                 ),
             },
         )
+    expected_optimizer = OptimizerSpec.from_mapping(optimizer).to_dict()
+    optimizer_runtime = report.get("optimizer_runtime")
+    reported_optimizer = benchmark.get("optimizer")
+    optimizer_contract_matches = (
+        reported_optimizer == expected_optimizer
+        and isinstance(optimizer_runtime, Mapping)
+        and optimizer_runtime.get("spec") == expected_optimizer
+        and isinstance(optimizer_runtime.get("implementation"), str)
+        and bool(optimizer_runtime["implementation"])
+        and (
+            expected_optimizer["name"] != "adamw_8bit"
+            or bool(optimizer_runtime.get("bitsandbytes_version"))
+        )
+    )
+    if not optimizer_contract_matches:
+        return _result(
+            gate,
+            "fail",
+            "training feasibility evidence used a different optimizer contract",
+            {
+                "reported_optimizer": reported_optimizer,
+                "reported_optimizer_runtime": optimizer_runtime,
+                "expected_optimizer": expected_optimizer,
+            },
+        )
 
     minimum_text = int(gate.get("min_text_tokens", 1))
     minimum_visual = int(gate.get("min_visual_tokens_per_sample", 1))
@@ -1069,6 +1095,8 @@ def _training_feasibility(
             "gradient_checkpointing"
         ),
         "optimizer_state": optimizer_state,
+        "optimizer": benchmark.get("optimizer"),
+        "optimizer_runtime": optimizer_runtime,
         "training_flops_per_microbatch": training_flops,
         "contrastive_memory": benchmark.get("contrastive_memory"),
         "contrastive_memory_size": last_measured.get(

@@ -430,6 +430,13 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert "visual_backend_benchmark" not in plan.stage_names
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
     assert pipeline["max_image_long_side"] == tiny.vision.image_size
+    optimizer_sections = (
+        plan.resolved_blueprint["training"]["pretraining"]["optimizer"],
+        plan.resolved_blueprint["training"]["posttraining"]["sft"]["optimizer"],
+        plan.resolved_blueprint["training"]["posttraining"]["preference"]["optimizer"],
+        plan.resolved_blueprint["training"]["posttraining"]["rlvr"]["optimizer"],
+    )
+    assert all(section["name"] == "adamw" for section in optimizer_sections)
     initialize = next(stage for stage in plan.stages if stage.name == "initialize_student")
     assert initialize.command[initialize.command.index("--tiny-vocab-size") + 1] == "512"
     assert initialize.command[initialize.command.index("--seed") + 1] == "5"

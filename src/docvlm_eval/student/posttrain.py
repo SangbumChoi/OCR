@@ -6,7 +6,7 @@ import json
 import os
 import random
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -25,6 +25,11 @@ from .compute import estimate_preference_step_flops, estimate_rlvr_step_flops
 from .model import (
     DocumentVLMStudent,
     validate_checkpoint_initialization_lineage,
+)
+from .optim import (
+    OptimizerSpec,
+    build_optimizer,
+    optimizer_runtime_contract,
 )
 from .pretrain import (
     PretrainConfig,
@@ -65,6 +70,7 @@ class SFTConfig:
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
+    optimizer: OptimizerSpec = field(default_factory=OptimizerSpec)
     warmup_tokens: int = 10_000_000
     total_tokens: int = 1_000_000_000
     stop_at_total_tokens: bool = False
@@ -171,6 +177,7 @@ class SFTConfig:
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
             "beta2": float(optimizer["betas"][1]),
+            "optimizer": OptimizerSpec.from_mapping(optimizer),
             "warmup_tokens": int(optimizer["warmup_tokens"]),
             "total_tokens": int(optimizer["total_tokens"]),
             "stop_at_total_tokens": bool(
@@ -220,6 +227,7 @@ class SFTConfig:
             weight_decay=self.weight_decay,
             beta1=self.beta1,
             beta2=self.beta2,
+            optimizer=self.optimizer,
             warmup_tokens=self.warmup_tokens,
             total_tokens=self.total_tokens,
             stop_at_total_tokens=self.stop_at_total_tokens,
@@ -384,6 +392,7 @@ class RLVRConfig:
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
+    optimizer: OptimizerSpec = field(default_factory=OptimizerSpec)
     kl_coefficient: float = 0.04
     advantage_epsilon: float = 1e-4
     supervised_replay_every_steps: int = 0
@@ -507,6 +516,7 @@ class RLVRConfig:
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
             "beta2": float(optimizer["betas"][1]),
+            "optimizer": OptimizerSpec.from_mapping(optimizer),
             "kl_coefficient": float(raw["kl_coefficient"]),
             "advantage_epsilon": float(raw["advantage_epsilon"]),
             "supervised_replay_every_steps": int(
@@ -556,6 +566,7 @@ class PreferenceConfig:
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
+    optimizer: OptimizerSpec = field(default_factory=OptimizerSpec)
     max_grad_norm: float = 1.0
     precision: str = "bfloat16"
     gradient_checkpointing: bool = False
@@ -677,6 +688,7 @@ class PreferenceConfig:
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
             "beta2": float(optimizer["betas"][1]),
+            "optimizer": OptimizerSpec.from_mapping(optimizer),
             "max_grad_norm": float(optimizer["max_grad_norm"]),
             "precision": str(optimizer["precision"]),
             "gradient_checkpointing": bool(checkpointing["enabled"]),
@@ -1201,6 +1213,10 @@ def _save_rlvr_checkpoint(
             "rollout": _rlvr_rollout_contract(config),
             "objective": _rlvr_objective_contract(config, reward_config),
             "compute_budget": _rlvr_budget_contract(config),
+            "optimizer": optimizer_runtime_contract(
+                optimizer,
+                config.optimizer,
+            ),
         },
     )
     torch.save(
@@ -1276,6 +1292,11 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR objective contract mismatch")
     if metadata.get("compute_budget") != _rlvr_budget_contract(config):
         raise ValueError("RLVR compute-budget contract mismatch")
+    if metadata.get("optimizer") != optimizer_runtime_contract(
+        optimizer,
+        config.optimizer,
+    ):
+        raise ValueError("RLVR optimizer contract mismatch")
     model.load_state_dict(
         torch.load(
             path / "student" / "model.pt",
@@ -1370,6 +1391,10 @@ def _save_preference_checkpoint(
             "rollout": _preference_rollout_contract(config),
             "objective": _preference_objective_contract(config, reward_config),
             "compute_budget": _preference_budget_contract(config),
+            "optimizer": optimizer_runtime_contract(
+                optimizer,
+                config.optimizer,
+            ),
         },
     )
     torch.save(
@@ -1443,6 +1468,11 @@ def _load_preference_checkpoint(
         raise ValueError("preference objective contract mismatch")
     if metadata.get("compute_budget") != _preference_budget_contract(config):
         raise ValueError("preference compute-budget contract mismatch")
+    if metadata.get("optimizer") != optimizer_runtime_contract(
+        optimizer,
+        config.optimizer,
+    ):
+        raise ValueError("preference optimizer contract mismatch")
     model.load_state_dict(
         torch.load(
             path / "student" / "model.pt",
@@ -1524,9 +1554,10 @@ def train_preference(
     reference.to(device).eval()
     for parameter in reference.parameters():
         parameter.requires_grad_(False)
-    optimizer = torch.optim.AdamW(
+    optimizer = build_optimizer(
         _parameter_groups(policy, config.weight_decay),
-        lr=config.learning_rate,
+        config.optimizer,
+        learning_rate=config.learning_rate,
         betas=(config.beta1, config.beta2),
     )
     scaler = torch.amp.GradScaler(
@@ -1837,9 +1868,10 @@ def train_grpo(
     reference.to(device).eval()
     for parameter in reference.parameters():
         parameter.requires_grad_(False)
-    optimizer = torch.optim.AdamW(
+    optimizer = build_optimizer(
         _parameter_groups(policy, config.weight_decay),
-        lr=config.learning_rate,
+        config.optimizer,
+        learning_rate=config.learning_rate,
         betas=(config.beta1, config.beta2),
     )
     scaler = torch.amp.GradScaler(

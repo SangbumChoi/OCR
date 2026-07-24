@@ -211,6 +211,10 @@ training:
       relation_temperature: 1.0
       cross_tokenizer_policy: sequence_targets_only
     optimizer:
+      name: adamw_8bit
+      eps: 0.00000001
+      min_8bit_size: 4096
+      block_wise: true
       # The full run cycles deterministic sampler epochs until the effective-token budget is met.
       # --max-steps remains an explicit smoke/debug override.
       epochs: null
@@ -299,6 +303,10 @@ training:
       response_format: structured_json_v1
       target_mode: evidence_linked
       optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
         epochs: 2
         max_steps: null
         micro_batch_size: 1
@@ -343,6 +351,10 @@ training:
         top_p: 0.95
         use_kv_cache: true
       optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
         max_steps: 1000
         total_student_flops: null
         stop_at_student_flops: false
@@ -373,6 +385,10 @@ training:
         top_p: 0.95
         use_kv_cache: true
       optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
         max_steps: 1000
         total_student_flops: null
         stop_at_student_flops: false
@@ -449,14 +465,14 @@ evaluation_gates:
     max_peak_memory_ratio_vs_dense_adaptive: 1.05
     max_abs_delta_vs_loop: 0.02
   - id: training_feasibility
-    requirement: "the complete student executes finite production-shaped forward, backward, clipping, and AdamW steps within target-GPU memory"
+    requirement: "the complete student executes finite production-shaped forward, backward, clipping, and configured optimizer steps within target-GPU memory"
     required_device_type: cuda
     required_resolved_visual_attention_backend: flex
     required_precision: bfloat16
     require_gradient_checkpointing: true
     required_gradient_checkpointing_components: [vision, connector, language]
     required_gradient_checkpointing_use_reentrant: false
-    min_benchmark_schema_version: 1
+    min_benchmark_schema_version: 2
     required_micro_batch_size: 1
     min_text_tokens: 2048
     min_visual_tokens_per_sample: 2500

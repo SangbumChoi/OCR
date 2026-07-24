@@ -17,7 +17,7 @@ held-out ablations in the architecture blueprint.
 Train the tokenizer once:
 
 ```bash
-pip install -e ".[student]"
+pip install -e ".[student,student-gpu]"
 python scripts/train_student_tokenizer.py \
   --repo danelcsb/UDD \
   --output artifacts/student_tokenizer
@@ -335,6 +335,12 @@ Each checkpoint contains:
   `latest_checkpoint.txt` pointer;
 - the gradient-conflict probe schedule and anchor selection when configured;
 - adaptive mixture probabilities, EMA losses, pending update, and counters when enabled.
+
+The checkpoint also records the complete optimizer spec, realized Python implementation, and
+bitsandbytes version. Exact resume rejects a changed optimizer family, epsilon, quantization
+threshold, block-wise setting, implementation, or bitsandbytes version before loading optimizer
+state. The production blueprint selects `adamw_8bit`; the tiny CPU experiment resolves explicitly
+to `adamw`. See [`student_optimizer_memory.md`](student_optimizer_memory.md).
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
 Combined with the deterministic balanced sampler and `persistent_workers=False`, an interrupted run

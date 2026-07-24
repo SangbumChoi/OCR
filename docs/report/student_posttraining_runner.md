@@ -224,13 +224,17 @@ RLVR and preference checkpoints contain policy weights, optimizer and AMP scaler
 Python/Torch/CUDA RNG state, stage cursors, student FLOPs consumed, tokenizer fingerprint, and a
 frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, rationale
 verifier, objective contract, compute-budget contract, or activation-checkpointing contract. RLVR
-additionally guards the replay contract. Setting `max_steps: null`,
+additionally guards the replay contract. SFT, preference optimization, and RLVR all use the same
+fail-closed optimizer factory as pretraining. Preference and RLVR checkpoints bind the requested
+optimizer controls to the realized implementation and bitsandbytes version; SFT inherits the
+pretraining checkpoint contract. Setting `max_steps: null`,
 `stop_at_student_flops: true`, and
 `total_student_flops` makes the compute budget the production stop; this is used by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 
-Native preference optimization and RLVR currently run in one process. An 800M policy, frozen 800M reference, gradients, and
-AdamW state must fit on that process; shard independent experiments by seed when one device is not
+Native preference optimization and RLVR currently run in one process. An 800M policy, frozen 800M
+reference, gradients, and the configured optimizer state must fit on that process; shard
+independent experiments by seed when one device is not
 large enough. Distributed rollout, optimizer sharding, KV caching, multi-epoch off-policy replay,
 and learned semantic rationale entailment remain future measured extensions. Exact arithmetic
 trace verification, frozen-reference KL, and periodic supervised replay are implemented.

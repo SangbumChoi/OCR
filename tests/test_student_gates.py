@@ -233,7 +233,7 @@ def _training_report(
 
     student = StudentConfig.from_blueprint(_blueprint())
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": "full_student_multimodal_training_step",
         "student_config_fingerprint": student_config_fingerprint(student),
         "student_config": student.to_dict(),
@@ -254,6 +254,12 @@ def _training_report(
                 "language",
             ],
             "gradient_checkpointing_use_reentrant": False,
+            "optimizer": {
+                "name": "adamw_8bit",
+                "eps": 1e-8,
+                "min_8bit_size": 4096,
+                "block_wise": True,
+            },
             "contrastive_memory": {
                 "enabled": True,
                 "size": 1024,
@@ -295,6 +301,17 @@ def _training_report(
         "steps_per_second": 2.0,
         "all_finite": all_finite,
         "all_optimizer_steps_succeeded": optimizer_succeeded,
+        "optimizer_runtime": {
+            "schema_version": 1,
+            "spec": {
+                "name": "adamw_8bit",
+                "eps": 1e-8,
+                "min_8bit_size": 4096,
+                "block_wise": True,
+            },
+            "implementation": "bitsandbytes.optim.adamw.AdamW8bit",
+            "bitsandbytes_version": "0.48.1",
+        },
         "optimizer_state": {
             "parameter_states": 100,
             "tensor_bytes": 6_000_000_000,
@@ -459,6 +476,23 @@ def test_training_feasibility_gate_requires_steady_contrastive_memory():
     assert gate["status"] == "insufficient_evidence"
     assert gate["evidence"]["contrastive_memory_size"] is None
     assert gate["evidence"]["contrastive_negative_pairs"] is None
+
+
+def test_training_feasibility_gate_rejects_optimizer_mismatch():
+    from docvlm_eval.student.gates import (
+        evaluate_training_feasibility_gate,
+    )
+
+    report = _training_report()
+    report["optimizer_runtime"]["spec"]["name"] = "adamw"
+
+    gate = evaluate_training_feasibility_gate(_blueprint(), report)
+
+    assert gate["status"] == "fail"
+    assert (
+        gate["evidence"]["reported_optimizer_runtime"]["spec"]["name"]
+        == "adamw"
+    )
 
 
 def test_visual_efficiency_gate_rejects_fallback_and_regressions():

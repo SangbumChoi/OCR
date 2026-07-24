@@ -271,7 +271,7 @@ design document. It consists of a 12-layer ViT, a 64-token gated resampler, and 
 decoder, with contrastive, orientation, and valid-box auxiliary heads:
 
 ```bash
-pip install -e ".[student]"
+pip install -e ".[student,student-gpu]"
 python scripts/build_sub1b_student.py --device meta
 # exact result: 799,919,884 parameters, without allocating the weights
 ```
@@ -287,6 +287,10 @@ The default input path uses per-image packed patch sequences with stable 2D posi
 dense adaptive, aspect-bucketed, and fixed-square controls and visual-padding efficiency
 measurements are documented in
 [`docs/report/student_visual_canvas_sweep.md`](docs/report/student_visual_canvas_sweep.md).
+The production recipe uses fail-closed bitsandbytes AdamW8bit in every native training stage;
+CPU smoke plans resolve explicitly to standard AdamW. Runtime identity, version, state bytes, and
+resume invariants are documented in
+[`docs/report/student_optimizer_memory.md`](docs/report/student_optimizer_memory.md).
 
 The native UDD input path is also executable. It lazily expands every image's QA list, derives
 single-evidence grounding examples from structured elements, balances task/source/language groups,

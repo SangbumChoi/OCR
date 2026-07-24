@@ -152,12 +152,16 @@ is `fail`.
 
 `runtime.training_feasibility_benchmark` then runs the complete 799,919,884-parameter student with
 the production micro-batch, 2,048 text tokens, a 40x63 packed visual grid, all native auxiliary
-heads, loss construction, scaled backward, gradient clipping, and AdamW. The first warmup step
-materializes optimizer state; two measured steps record steady latency. Its JSON preserves setup,
+heads, loss construction, scaled backward, gradient clipping, and the configured optimizer. The
+production optimizer is fail-closed bitsandbytes AdamW8bit, including an explicit quantization
+threshold and block-wise mode. The first warmup step materializes optimizer state; two measured
+steps record steady latency. Its schema-v2 JSON preserves the requested optimizer spec, realized
+implementation, bitsandbytes version, setup,
 state-materialization, and steady-state CUDA peaks, optimizer-state bytes and step counters,
 per-loss finiteness, the resolved visual backend, and failure/OOM evidence. The
 `training_feasibility` gate requires bfloat16 CUDA execution resolved to FlexAttention, all three
-optimizer steps to advance, finite losses and gradients, and effective peak reserved memory below
+optimizer steps to advance, exact agreement with the production optimizer contract, finite losses
+and gradients, and effective peak reserved memory below
 95% of device memory. It also requires the benchmark to use the exact production
 `vision`/`connector`/`language` non-reentrant activation-checkpointing contract.
 

@@ -136,6 +136,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   same-tokenizer online distillation, token-based learning-rate scheduling, deterministic
   sampler/loss curricula, mixed precision, `torchrun`, sample-weighted held-out evaluation, and
   exact checkpoint resume.
+- **Fit optimizer state on the target GPU:**
+  [`report/student_optimizer_memory.md`](report/student_optimizer_memory.md) — one fail-closed
+  optimizer contract across pretraining and post-training, exact resume identity, and measured
+  state/peak-memory deployment evidence.
 - **Adapt the data mixture:**
   [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) — a separate
   optimizer-heldout validation split, EMA validation-loss feedback, epoch-boundary probability

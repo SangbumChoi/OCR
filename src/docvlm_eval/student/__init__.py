@@ -94,6 +94,7 @@ from .compute import (
     visual_tokens_for_canvas,
 )
 from .tokenizer import DocumentTokenizer
+from .optim import OptimizerSpec
 from .pretrain import (
     ContrastiveMemoryConfig,
     PretrainConfig,
@@ -151,6 +152,7 @@ __all__ = [
     "MixtureComponent",
     "MatchedControl",
     "NativeStudentTeacher",
+    "OptimizerSpec",
     "ParetoObjective",
     "ParetoPromotionRule",
     "PretrainConfig",

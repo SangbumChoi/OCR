@@ -218,6 +218,39 @@ def test_blueprint_rejects_invalid_contrastive_memory_contract():
     )
 
 
+def test_blueprint_rejects_invalid_optimizer_contracts():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    paths = (
+        blueprint["training"]["pretraining"]["optimizer"],
+        blueprint["training"]["posttraining"]["sft"]["optimizer"],
+        blueprint["training"]["posttraining"]["preference"]["optimizer"],
+        blueprint["training"]["posttraining"]["rlvr"]["optimizer"],
+    )
+    for optimizer in paths:
+        optimizer.update(
+            {
+                "name": "fallback",
+                "eps": 0,
+                "min_8bit_size": True,
+                "block_wise": "yes",
+            }
+        )
+
+    _, errors = validate_blueprint(blueprint)
+
+    for stage in (
+        "pretraining",
+        "posttraining.sft",
+        "posttraining.preference",
+        "posttraining.rlvr",
+    ):
+        prefix = f"training.{stage}.optimizer"
+        assert any(f"{prefix}.name" in error for error in errors)
+        assert any(f"{prefix}.eps" in error for error in errors)
+        assert any(f"{prefix}.min_8bit_size" in error for error in errors)
+        assert any(f"{prefix}.block_wise" in error for error in errors)
+
+
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1

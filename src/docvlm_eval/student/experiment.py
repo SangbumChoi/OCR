@@ -963,6 +963,14 @@ def _resolved_blueprint(
         )
         distillation["vision_layer_pairs"] = []
         distillation["language_layer_pairs"] = []
+        optimizer_sections = [
+            blueprint["training"]["pretraining"]["optimizer"],
+            blueprint["training"]["posttraining"]["sft"]["optimizer"],
+            blueprint["training"]["posttraining"]["preference"]["optimizer"],
+            blueprint["training"]["posttraining"]["rlvr"]["optimizer"],
+        ]
+        for optimizer in optimizer_sections:
+            optimizer["name"] = "adamw"
         blueprint["name"] = f"{blueprint['name']}-tiny"
         blueprint["budget"]["target_parameters"] = estimate_parameters(blueprint)["total"]
     weights = {component.name: component.weight for component in components}

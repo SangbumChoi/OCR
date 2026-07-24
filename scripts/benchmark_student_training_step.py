@@ -16,6 +16,7 @@ from docvlm_eval.student.gates import (
     evaluate_training_feasibility_gate,
     write_gate_report,
 )
+from docvlm_eval.student.optim import OptimizerSpec
 from docvlm_eval.student.pretrain import ContrastiveMemoryConfig
 from docvlm_eval.student.training_benchmark import (
     TrainingBenchmarkConfig,
@@ -197,6 +198,7 @@ def main() -> None:
     report = run_training_feasibility_benchmark(
         StudentConfig.from_blueprint(blueprint),
         config,
+        optimizer_spec=OptimizerSpec.from_mapping(optimizer),
         loss_weights={
             str(name): float(weight)
             for name, weight in pretraining["losses"].items()

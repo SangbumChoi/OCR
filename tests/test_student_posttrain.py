@@ -175,6 +175,7 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
     )
 
     for config in (sft, preference, rlvr):
+        assert config.optimizer.name == "adamw_8bit"
         assert config.gradient_checkpointing is True
         assert config.gradient_checkpointing_components == (
             "vision",
@@ -187,6 +188,7 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
     assert preference.sequence_reduction == "sum"
     assert rlvr.use_kv_cache is True
     assert rlvr.advantage_estimator == "group_standardized"
+    assert sft.as_pretrain_config().optimizer == sft.optimizer
 
 
 def test_structured_posttraining_dataset_exposes_ablation_targets():

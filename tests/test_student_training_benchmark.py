@@ -51,7 +51,7 @@ def test_cpu_training_probe_executes_full_optimizer_step():
         ),
     )
 
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     assert report["scope"] == "full_student_multimodal_training_step"
     assert report["benchmark_config"]["box_iou_loss"] == "ciou"
     assert report["benchmark_config"]["contrastive_memory"]["enabled"] is True
@@ -75,6 +75,9 @@ def test_cpu_training_probe_executes_full_optimizer_step():
     )
     assert report["all_finite"] is True
     assert report["all_optimizer_steps_succeeded"] is True
+    assert report["benchmark_config"]["optimizer"]["name"] == "adamw"
+    assert report["optimizer_runtime"]["spec"]["name"] == "adamw"
+    assert report["optimizer_runtime"]["implementation"].endswith(".AdamW")
     assert report["optimizer_state"]["parameter_states"] > 0
     assert report["optimizer_state"]["tensor_bytes"] > 0
     assert report["optimizer_state"]["max_step"] == 1

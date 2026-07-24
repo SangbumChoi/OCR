@@ -37,6 +37,12 @@ Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which 
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
 
+Production pretraining, SFT, preference optimization, and RLVR use the same configurable,
+fail-closed optimizer factory. The default is bitsandbytes AdamW8bit; no missing or broken
+bitsandbytes installation silently falls back to full-precision AdamW. Tiny CPU plans explicitly
+select standard AdamW. The target-device memory evidence and resume contract are specified in
+[`student_optimizer_memory.md`](student_optimizer_memory.md).
+
 Every native `save_pretrained` call independently recounts the instantiated module graph before
 writing a checkpoint. `metadata.json` records component and total parameters, trainable/frozen
 counts, the removable task-head contribution, deployment count with those heads removed, and a

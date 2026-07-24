@@ -903,6 +903,29 @@ def test_resume_rejects_a_different_training_stage(tmp_path):
         train_student(model, _loader(), resumed)
 
 
+def test_resume_rejects_a_changed_optimizer_contract(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.optim import OptimizerSpec
+    from docvlm_eval.student.pretrain import train_student
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    output = tmp_path / "optimizer-contract"
+    train_student(model, _loader(), _config(output, max_steps=1))
+
+    with pytest.raises(ValueError, match="optimizer contract"):
+        train_student(
+            model,
+            _loader(),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                optimizer=OptimizerSpec(eps=1e-7),
+            ),
+        )
+
+
 def test_token_cosine_scheduler_is_driven_by_tokens_not_step_count():
     import torch
 
@@ -1028,6 +1051,9 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
         "language",
     )
     assert config.gradient_checkpointing_use_reentrant is False
+    assert config.optimizer.name == "adamw_8bit"
+    assert config.optimizer.min_8bit_size == 4096
+    assert config.optimizer.block_wise is True
     assert config.loss_weights["teacher_kl"] == 0.0
     assert config.box_iou_loss == "giou"
     assert [stage.id for stage in config.curriculum.stages] == [

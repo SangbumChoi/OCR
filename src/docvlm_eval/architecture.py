@@ -140,6 +140,32 @@ def _validate_mix(name: str, values: Any, errors: list[str]) -> None:
         errors.append(f"{name} weights sum to {sum(numeric):.6f}, expected 1.0")
 
 
+def _validate_optimizer(
+    path: str,
+    values: Any,
+    errors: list[str],
+) -> None:
+    if not isinstance(values, dict):
+        errors.append(f"{path} must be a mapping")
+        return
+    if values.get("name", "adamw") not in {"adamw", "adamw_8bit"}:
+        errors.append(f"{path}.name must be adamw or adamw_8bit")
+    try:
+        if float(values.get("eps", 1e-8)) <= 0:
+            errors.append(f"{path}.eps must be positive")
+    except (TypeError, ValueError):
+        errors.append(f"{path}.eps must be a positive number")
+    min_8bit_size = values.get("min_8bit_size", 4096)
+    if (
+        not isinstance(min_8bit_size, int)
+        or isinstance(min_8bit_size, bool)
+        or min_8bit_size <= 0
+    ):
+        errors.append(f"{path}.min_8bit_size must be a positive integer")
+    if not isinstance(values.get("block_wise", True), bool):
+        errors.append(f"{path}.block_wise must be a boolean")
+
+
 def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[str]]:
     errors: list[str] = []
     required = {
@@ -402,6 +428,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                     f"{student_layer} is out of range"
                 )
     optimizer = blueprint["training"]["pretraining"].get("optimizer", {})
+    _validate_optimizer(
+        "training.pretraining.optimizer",
+        optimizer,
+        errors,
+    )
     positive_optimizer_fields = (
         "micro_batch_size",
         "grad_accum_steps",
@@ -907,6 +938,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     }:
         errors.append("training.posttraining.sft.target_mode is invalid")
     sft_optimizer = sft.get("optimizer", {})
+    _validate_optimizer(
+        "training.posttraining.sft.optimizer",
+        sft_optimizer,
+        errors,
+    )
     for field in (
         "micro_batch_size",
         "grad_accum_steps",
@@ -1044,6 +1080,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "a boolean"
         )
     preference_optimizer = preference.get("optimizer", {})
+    _validate_optimizer(
+        "training.posttraining.preference.optimizer",
+        preference_optimizer,
+        errors,
+    )
     for field in ("learning_rate", "max_grad_norm", "log_every_steps"):
         if float(preference_optimizer.get(field, 0)) <= 0:
             errors.append(
@@ -1174,6 +1215,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             f"{sorted(unknown_rewards)}"
         )
     rl_optimizer = rlvr.get("optimizer", {})
+    _validate_optimizer(
+        "training.posttraining.rlvr.optimizer",
+        rl_optimizer,
+        errors,
+    )
     for field in (
         "learning_rate",
         "max_grad_norm",

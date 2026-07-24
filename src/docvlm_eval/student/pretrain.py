@@ -34,6 +34,11 @@ from .model import (
     DocumentVLMStudent,
     validate_checkpoint_initialization_lineage,
 )
+from .optim import (
+    OptimizerSpec,
+    build_optimizer,
+    optimizer_runtime_contract,
+)
 
 
 _ONLINE_TEACHER_LOSSES = frozenset(
@@ -101,6 +106,7 @@ class PretrainConfig:
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
+    optimizer: OptimizerSpec = field(default_factory=OptimizerSpec)
     warmup_tokens: int = 100_000_000
     total_tokens: int = 20_000_000_000
     stop_at_total_tokens: bool = False
@@ -285,6 +291,7 @@ class PretrainConfig:
             "weight_decay": float(raw["weight_decay"]),
             "beta1": float(raw["betas"][0]),
             "beta2": float(raw["betas"][1]),
+            "optimizer": OptimizerSpec.from_mapping(raw),
             "warmup_tokens": int(raw["warmup_tokens"]),
             "total_tokens": int(raw["total_tokens"]),
             "stop_at_total_tokens": bool(raw.get("stop_at_total_tokens", False)),
@@ -1284,6 +1291,10 @@ def _save_checkpoint(
                 curriculum_total_steps if config.curriculum.stages else None
             ),
             "supervision_contract": supervision_contract,
+            "optimizer": optimizer_runtime_contract(
+                optimizer,
+                config.optimizer,
+            ),
             "token_budget": {
                 **_budget_contract(config),
             },
@@ -1342,6 +1353,7 @@ def _load_checkpoint(
     expected_curriculum_total_steps: int,
     expected_token_budget: dict[str, Any],
     expected_supervision_contract: dict[str, Any],
+    expected_optimizer: OptimizerSpec,
     adaptive_controller: AdaptiveMixtureController | None,
 ) -> TrainerState:
     metadata_path = path / "student" / "metadata.json"
@@ -1405,6 +1417,14 @@ def _load_checkpoint(
     if metadata.get("supervision_contract") != expected_supervision_contract:
         raise ValueError(
             "resume checkpoint supervision contract does not match "
+            "the active training plan"
+        )
+    if metadata.get("optimizer") != optimizer_runtime_contract(
+        optimizer,
+        expected_optimizer,
+    ):
+        raise ValueError(
+            "resume checkpoint optimizer contract does not match "
             "the active training plan"
         )
     saved_world_size = int(metadata.get("world_size", 1))
@@ -1608,9 +1628,10 @@ def train_student(
     ).to(context.device)
     if teacher is not None:
         teacher.model.to(context.device)
-    optimizer = torch.optim.AdamW(
+    optimizer = build_optimizer(
         _parameter_groups(module, config.weight_decay),
-        lr=config.learning_rate,
+        config.optimizer,
+        learning_rate=config.learning_rate,
         betas=(config.beta1, config.beta2),
     )
     scaler = torch.amp.GradScaler(
@@ -1658,6 +1679,7 @@ def train_student(
             curriculum_horizon,
             _budget_contract(config),
             supervision_contract,
+            config.optimizer,
             adaptive_controller,
         )
         if adaptive_controller is not None:

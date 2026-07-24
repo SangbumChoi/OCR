@@ -264,6 +264,11 @@ forward-block recomputation caused by the reported activation-checkpointing plac
 The production benchmark pre-fills the configured contrastive FIFO to capacity before measured
 steps, so its negative-pair, latency, and peak-memory evidence represents steady state rather than
 an empty-queue first step.
+The W&B run config includes the complete optimizer spec. The embedded
+`training_feasibility_report.optimizer_runtime` records the realized implementation and
+bitsandbytes version; `optimizer_tensor_bytes` is the measured tensor storage after state
+materialization. The deployment gate rejects a report whose requested or realized optimizer
+contract differs from the production blueprint.
 
 ## 7. Glossary — every term you'll see
 

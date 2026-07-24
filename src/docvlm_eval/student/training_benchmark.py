@@ -14,6 +14,11 @@ import torch
 from .config import StudentConfig, student_config_fingerprint
 from .compute import TrainingFlops, estimate_batch_training_flops_breakdown
 from .model import DocumentVLMStudent
+from .optim import (
+    OptimizerSpec,
+    build_optimizer,
+    optimizer_runtime_contract,
+)
 from .pretrain import (
     ContrastiveMemoryConfig,
     PretrainingModule,
@@ -335,6 +340,7 @@ def run_training_feasibility_benchmark(
     student_config: StudentConfig,
     config: TrainingBenchmarkConfig,
     *,
+    optimizer_spec: OptimizerSpec = OptimizerSpec(),
     loss_weights: dict[str, float],
     learning_rate: float,
     weight_decay: float,
@@ -356,7 +362,7 @@ def run_training_feasibility_benchmark(
     precision = _resolved_precision(config.precision, device)
     environment = _environment(device)
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": "full_student_multimodal_training_step",
         "student_config": student_config.to_dict(),
         "student_config_fingerprint": student_config_fingerprint(student_config),
@@ -370,6 +376,7 @@ def run_training_feasibility_benchmark(
             "learning_rate": learning_rate,
             "weight_decay": weight_decay,
             "betas": list(betas),
+            "optimizer": optimizer_spec.to_dict(),
             "max_grad_norm": max_grad_norm,
             "contrastive": contrastive,
             "box_iou_loss": box_iou_loss,
@@ -397,6 +404,7 @@ def run_training_feasibility_benchmark(
         "steps_per_second": None,
         "all_finite": False,
         "all_optimizer_steps_succeeded": False,
+        "optimizer_runtime": None,
         "optimizer_state": None,
     }
     torch.manual_seed(config.seed)
@@ -459,10 +467,15 @@ def run_training_feasibility_benchmark(
                 memory_ids,
             )
         report["parameter_count"] = _unique_parameter_count(module)
-        optimizer = torch.optim.AdamW(
+        optimizer = build_optimizer(
             _parameter_groups(module, weight_decay),
-            lr=learning_rate,
+            optimizer_spec,
+            learning_rate=learning_rate,
             betas=betas,
+        )
+        report["optimizer_runtime"] = optimizer_runtime_contract(
+            optimizer,
+            optimizer_spec,
         )
         scaler = torch.amp.GradScaler(
             "cuda",
