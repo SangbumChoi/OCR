@@ -248,6 +248,7 @@ def test_continuation_compiles_model_preserving_adaptation_dag(tmp_path):
         "build_curriculum_samples",
         "sft",
         "rlvr",
+        "evaluate_baseline",
         "evaluate",
         "plan_next_synthetic_batch",
     ]
@@ -273,6 +274,20 @@ def test_continuation_compiles_model_preserving_adaptation_dag(tmp_path):
     assert contract["replay_source_kind"] == "base_train"
     assert contract["replay_origin_rounds"] == [0]
     assert contract["schema_version"] == 2
+    assert spec["evaluation"]["baseline_checkpoint_stage"] == "inherited"
+    assert spec["evaluation"]["baseline_evaluation"] is None
+    baseline = next(
+        stage for stage in plan.stages if stage.name == "evaluate_baseline"
+    )
+    assert baseline.command[
+        baseline.command.index("--checkpoint") + 1
+    ] == str(student_root)
+    assert baseline.dependencies[0] == "attest_continuation"
+    assert "build_curriculum_samples" in baseline.dependencies
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    assert evaluate.command[
+        evaluate.command.index("--baseline-evaluation") + 1
+    ] == str(child_root / "artifacts" / "evaluation_baseline")
 
 
 def test_continuation_rejects_checkpoint_content_changed_after_attestation(

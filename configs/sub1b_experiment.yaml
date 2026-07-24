@@ -199,5 +199,9 @@ evaluation:
   wandb_run: null
   wandb_group: null
   wandb_tags: [native-student, hard-documents]
+  # Evaluate the untrained initialization on the exact same splits before
+  # comparing the final checkpoint. An external baseline root remains available
+  # for cross-experiment comparisons.
+  baseline_checkpoint_stage: initial
   baseline_evaluation: null
   monolingual_control_evaluation: null

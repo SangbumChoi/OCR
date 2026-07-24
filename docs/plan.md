@@ -196,8 +196,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   DPO-versus-IPO comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
-  weighted UDD mixing, pretraining, SFT, RLVR, train/validation/heldout evaluation, and next-batch
-  synthesis planning.
+  weighted UDD mixing, pretraining, SFT, RLVR, matched initial-versus-final
+  train/validation/heldout evaluation, and next-batch synthesis planning.
 - **Continue failure-driven rounds:**
   [`report/student_curriculum_runner.md`](report/student_curriculum_runner.md) — full-hash parent
   attestation, exact model/tokenizer preservation, validation-authorized generation, deterministic

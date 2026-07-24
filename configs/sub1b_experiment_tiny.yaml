@@ -110,5 +110,6 @@ evaluation:
     seed: 47
   wandb_project: null
   wandb_tags: [native-student, smoke]
+  baseline_checkpoint_stage: initial
   baseline_evaluation: null
   monolingual_control_evaluation: null

@@ -772,6 +772,61 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         )
     evaluation = _require_mapping(raw, "evaluation")
     _validate_wandb_options(evaluation, "evaluation")
+    baseline_checkpoint_stage = evaluation.get("baseline_checkpoint_stage")
+    if baseline_checkpoint_stage is not None:
+        if baseline_checkpoint_stage not in {
+            "initial",
+            "pretrain",
+            "sft",
+            "preference",
+            "rlvr",
+            "inherited",
+        }:
+            raise ValueError(
+                "evaluation.baseline_checkpoint_stage must be one of "
+                "initial, pretrain, sft, preference, rlvr, or inherited"
+            )
+        if evaluation.get("baseline_evaluation"):
+            raise ValueError(
+                "evaluation.baseline_checkpoint_stage and "
+                "evaluation.baseline_evaluation are mutually exclusive"
+            )
+        if bool(continuation.get("enabled", False)) and (
+            baseline_checkpoint_stage in {"initial", "pretrain"}
+        ):
+            raise ValueError(
+                "continuation cannot evaluate an internal initial or "
+                "pretrain baseline because those stages are inherited"
+            )
+        if (
+            baseline_checkpoint_stage == "inherited"
+            and not bool(continuation.get("enabled", False))
+        ):
+            raise ValueError(
+                "evaluation inherited baseline requires continuation"
+            )
+        if baseline_checkpoint_stage == "preference" and not preference_enabled:
+            raise ValueError(
+                "evaluation baseline requests the disabled preference stage"
+            )
+        if baseline_checkpoint_stage == "rlvr" and not rlvr_enabled:
+            raise ValueError(
+                "evaluation baseline requests the disabled RLVR stage"
+            )
+        final_checkpoint_stage = (
+            "preference"
+            if preference_enabled
+            else "rlvr"
+            if rlvr_enabled
+            else "sft"
+        )
+        if (
+            baseline_checkpoint_stage != "inherited"
+            and baseline_checkpoint_stage == final_checkpoint_stage
+        ):
+            raise ValueError(
+                "evaluation baseline must precede the final checkpoint stage"
+            )
     if int(evaluation.get("max_new_tokens", 0)) <= 0:
         raise ValueError("evaluation.max_new_tokens must be positive")
     if not isinstance(evaluation.get("use_kv_cache"), bool):
@@ -953,7 +1008,14 @@ def _with_default_wandb_ids(
     stages: list[ExperimentStage],
     experiment_fingerprint: str,
 ) -> list[ExperimentStage]:
-    tracked_stages = {"pretrain", "sft", "preference", "rlvr", "evaluate"}
+    tracked_stages = {
+        "pretrain",
+        "sft",
+        "preference",
+        "rlvr",
+        "evaluate_baseline",
+        "evaluate",
+    }
     out = []
     for stage in stages:
         command = list(stage.command)
@@ -1066,6 +1128,7 @@ def build_experiment_plan(
     sft_dir = artifacts / "sft"
     preference_dir = artifacts / "preference"
     rlvr_dir = artifacts / "rlvr"
+    baseline_eval_dir = artifacts / "evaluation_baseline"
     eval_dir = artifacts / "evaluation"
     next_synthesis_plan = artifacts / "synthetic" / "next_train_plan.json"
     continuation_dir = artifacts / "continuation"
@@ -2246,6 +2309,86 @@ def build_experiment_plan(
             str(int(calibration["seed"])),
         ]
     )
+    internal_baseline_stage = evaluation.get("baseline_checkpoint_stage")
+    if internal_baseline_stage is not None:
+        baseline_command = list(eval_command)
+        if internal_baseline_stage == "initial":
+            baseline_checkpoint = str(initial_dir)
+            baseline_checkpoint_dependency = "initialize_student"
+        elif internal_baseline_stage == "inherited":
+            if continuation_contract is None:
+                raise ValueError(
+                    "inherited baseline has no continuation contract"
+                )
+            baseline_checkpoint = continuation_contract.checkpoint
+            baseline_checkpoint_dependency = "attest_continuation"
+        else:
+            baseline_checkpoint = f"@student:{internal_baseline_stage}"
+            baseline_checkpoint_dependency = str(internal_baseline_stage)
+        baseline_command[
+            baseline_command.index("--checkpoint") + 1
+        ] = baseline_checkpoint
+        baseline_command[
+            baseline_command.index("--output") + 1
+        ] = str(baseline_eval_dir)
+        baseline_tracking = copy.deepcopy(evaluation)
+        baseline_tracking.pop("wandb_id", None)
+        if baseline_tracking.get("wandb_run"):
+            baseline_tracking["wandb_run"] = (
+                f"{baseline_tracking['wandb_run']}--baseline"
+            )
+        baseline_tracking["wandb_tags"] = list(
+            dict.fromkeys(
+                [
+                    *[
+                        str(tag)
+                        for tag in baseline_tracking.get("wandb_tags") or []
+                    ],
+                    "baseline",
+                    f"checkpoint-stage:{internal_baseline_stage}",
+                ]
+            )
+        )
+        _add_wandb_options(baseline_command, baseline_tracking)
+        baseline_dependencies = [
+            baseline_checkpoint_dependency,
+            (
+                "build_curriculum_samples"
+                if continuation_contract is not None
+                else "build_train_samples"
+            ),
+            "build_heldout_samples",
+        ]
+        if validation_enabled:
+            baseline_dependencies.append("build_validation_samples")
+        stages.append(
+            ExperimentStage(
+                "evaluate_baseline",
+                tuple(baseline_command),
+                tuple(dict.fromkeys(baseline_dependencies)),
+                (
+                    Artifact(str(baseline_eval_dir / "manifest.json")),
+                    Artifact(str(baseline_eval_dir / "comparison.json")),
+                    Artifact(
+                        str(
+                            baseline_eval_dir
+                            / "train"
+                            / "per_sample.jsonl"
+                        )
+                    ),
+                    Artifact(
+                        str(
+                            baseline_eval_dir
+                            / "heldout"
+                            / "per_sample.jsonl"
+                        )
+                    ),
+                ),
+            )
+        )
+        eval_command.extend(
+            ["--baseline-evaluation", str(baseline_eval_dir)]
+        )
     for key, flag in (
         ("baseline_evaluation", "--baseline-evaluation"),
         (
@@ -2289,6 +2432,8 @@ def build_experiment_plan(
     ]
     if validation_enabled:
         evaluation_dependencies.append("build_validation_samples")
+    if internal_baseline_stage is not None:
+        evaluation_dependencies.append("evaluate_baseline")
     stages.append(
         ExperimentStage(
             "evaluate",

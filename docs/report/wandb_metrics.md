@@ -185,6 +185,12 @@ derives a stable W&B ID from the exact experiment fingerprint and stage, so an e
 continues the same run. A changed config or source fingerprint receives a different ID. Sweep
 compilation assigns one common suite group plus `stage`, `variant`, and `replicate` tags.
 
+When `evaluation.baseline_checkpoint_stage` is configured, the experiment creates a separate
+`evaluate_baseline` run before final gate evaluation. It shares the final evaluation's W&B group
+and paired axis keys, adds `baseline` and `checkpoint-stage:<stage>` tags, and uses its own
+fingerprint-derived run ID. This keeps baseline and final histories distinct while allowing both
+to be selected in the same train-versus-heldout workspace panels.
+
 ### Packed visual backend benchmark
 
 The target-GPU runner described in

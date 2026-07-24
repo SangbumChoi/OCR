@@ -481,6 +481,11 @@ def prepare_next_round_spec(
         parent / "artifacts" / "synthetic" / "next_train_plan.json"
     )
     spec["synthetic"]["training_policy_plan"] = str(policy_path)
+    evaluation = spec.get("evaluation")
+    if not isinstance(evaluation, dict):
+        raise ValueError("parent experiment has no evaluation mapping")
+    evaluation["baseline_checkpoint_stage"] = "inherited"
+    evaluation["baseline_evaluation"] = None
     return spec
 
 

@@ -55,6 +55,15 @@ tokenizer training, student initialization, and pretraining. This preserves lear
 without silently pretending to resume an optimizer schedule from a different stage. SFT and RLVR
 each initialize their own optimizer, as declared by the continuation policy.
 
+The next-round spec also replaces the fresh-run
+`evaluation.baseline_checkpoint_stage` with `inherited`. The child then evaluates the parent's
+attested final checkpoint on the child's exact current train/validation/heldout files before
+evaluating the updated checkpoint. This preserves matched heldout sample IDs and a valid
+train-minus-heldout gap even after cumulative replay changes the active train set. Each
+continuation therefore measures incremental improvement against the exact model that generated
+the previous round's failure-driven policy without pretending that an omitted initialization or
+pretraining stage can be evaluated locally.
+
 ## Replay and provenance
 
 Every new failure-driven sample is retained in

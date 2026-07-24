@@ -49,6 +49,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "pretrain",
         "sft",
         "rlvr",
+        "evaluate_baseline",
         "evaluate",
         "plan_next_synthetic_batch",
     ]
@@ -145,6 +146,50 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert "visual_backend_benchmark" in initialize.dependencies
     assert "training_feasibility_benchmark" in initialize.dependencies
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+    baseline = next(
+        stage for stage in plan.stages if stage.name == "evaluate_baseline"
+    )
+    assert str(
+        Path(plan.root) / "artifacts" / "initial"
+    ) == baseline.command[baseline.command.index("--checkpoint") + 1]
+    assert "--baseline-evaluation" not in baseline.command
+    assert baseline.dependencies == (
+        "initialize_student",
+        "build_train_samples",
+        "build_heldout_samples",
+        "build_validation_samples",
+    )
+    baseline_splits = [
+        baseline.command[index + 1]
+        for index, value in enumerate(baseline.command[:-1])
+        if value == "--split"
+    ]
+    final_splits = [
+        evaluate.command[index + 1]
+        for index, value in enumerate(evaluate.command[:-1])
+        if value == "--split"
+    ]
+    assert baseline_splits == final_splits
+    for flag in (
+        "--config",
+        "--tokenizer",
+        "--precision",
+        "--max-new-tokens",
+        "--seed",
+        "--calibration-source-split",
+        "--calibration-fraction",
+        "--calibration-min-samples",
+        "--calibration-correct-threshold",
+        "--calibration-min-temperature",
+        "--calibration-max-temperature",
+        "--calibration-seed",
+    ):
+        assert baseline.command[baseline.command.index(flag) + 1] == (
+            evaluate.command[evaluate.command.index(flag) + 1]
+        )
+    assert evaluate.command[
+        evaluate.command.index("--baseline-evaluation") + 1
+    ].endswith("artifacts/evaluation_baseline")
     assert "--visual-backend-benchmark" in evaluate.command
     assert "--training-feasibility-benchmark" in evaluate.command
     assert "--no-kv-cache" not in evaluate.command
@@ -200,6 +245,58 @@ def test_experiment_rejects_non_boolean_generation_cache(tmp_path):
         )
 
 
+def test_experiment_can_use_a_pretraining_checkpoint_as_internal_baseline(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["baseline_checkpoint_stage"] = "pretrain"
+    config = tmp_path / "pretrain-baseline.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    baseline = next(
+        stage for stage in plan.stages if stage.name == "evaluate_baseline"
+    )
+
+    assert "@student:pretrain" in baseline.command
+    assert baseline.dependencies[0] == "pretrain"
+    assert any(
+        artifact.path.endswith("heldout/per_sample.jsonl")
+        for artifact in baseline.artifacts
+    )
+
+
+def test_experiment_rejects_ambiguous_or_nonpreceding_baselines(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["baseline_evaluation"] = "external"
+    config = tmp_path / "ambiguous-baseline.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+    raw["evaluation"]["baseline_evaluation"] = None
+    raw["evaluation"]["baseline_checkpoint_stage"] = "rlvr"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="must precede"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+    raw["evaluation"]["baseline_checkpoint_stage"] = "inherited"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="requires continuation"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
@@ -226,6 +323,7 @@ def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
         "sft",
         "build_train_samples",
         "build_heldout_samples",
+        "evaluate_baseline",
     )
 
 
@@ -265,6 +363,7 @@ def test_experiment_can_run_preference_stage_from_sft(tmp_path):
         "preference",
         "build_train_samples",
         "build_heldout_samples",
+        "evaluate_baseline",
     )
 
 
@@ -325,7 +424,7 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
         python=sys.executable,
     )
     tiny = StudentConfig.tiny(vocab_size=512)
-    assert len(plan.stages) == 16
+    assert len(plan.stages) == 17
     assert plan.resolved_blueprint["student"]["vision"]["image_size"] == tiny.vision.image_size
     assert plan.resolved_blueprint["tokenizer"]["vocab_size"] == tiny.language.vocab_size
     assert "visual_backend_benchmark" not in plan.stage_names
@@ -337,6 +436,7 @@ def test_tiny_experiment_resolves_one_consistent_pipeline():
     assert "export_teacher_requests" in plan.stage_names
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
     assert any(artifact.path.endswith("gates.json") for artifact in evaluate.artifacts)
+    assert "evaluate_baseline" in evaluate.dependencies
     generate = next(
         stage for stage in plan.stages if stage.name == "generate_teacher_predictions"
     )
@@ -863,6 +963,27 @@ def test_experiment_wires_resume_stable_wandb_runs_to_training_stages(
         ]
         assert len(run_id) == 32
         assert run_id == repeated_id
+
+    baseline_command = next(
+        stage.command
+        for stage in first.stages
+        if stage.name == "evaluate_baseline"
+    )
+    baseline_run_id = baseline_command[
+        baseline_command.index("--wandb-id") + 1
+    ]
+    final_run_id = next(
+        stage.command
+        for stage in first.stages
+        if stage.name == "evaluate"
+    )
+    final_run_id = final_run_id[final_run_id.index("--wandb-id") + 1]
+    assert len(baseline_run_id) == 32
+    assert baseline_run_id != final_run_id
+    assert baseline_command[
+        baseline_command.index("--wandb-run") + 1
+    ] == "trial--evaluate--baseline"
+    assert "checkpoint-stage:initial" in baseline_command
 
 
 def test_experiment_rejects_invalid_training_wandb_tags(tmp_path):

@@ -21,8 +21,10 @@ Every attestation reports:
   attestation authorize `deployment_capability`.
 
 This means the one-step CPU experiment can prove orchestration, checkpoint handoffs, gradient
-updates, RLVR replay, and heldout evaluation without making a quality claim. Missing baselines or
-target-GPU measurements remain `insufficient_evidence`, never an implicit pass.
+updates, RLVR replay, and matched initial-versus-final heldout evaluation without making a
+deployment-quality claim. The production and tiny fresh-run configurations materialize the
+initial checkpoint baseline inside the same DAG. Missing monolingual controls, statistical dose,
+or target-GPU measurements remain `insufficient_evidence`, never an implicit pass.
 
 ## Runtime parameter evidence
 

@@ -54,12 +54,19 @@ initialization stage therefore proves its size from the inherited training check
 substituting a blueprint estimate. Initialization, pretraining, SFT, preference, and RLVR
 checkpoints must report the same tensor-shape fingerprint, parameter decomposition, and
 initialization-lineage fingerprint.
-Generalization, grounding, counterfactual reasoning, and reliability
-require a matched reference-checkpoint evaluation, while multilingual retention requires a
-per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight JSON
-and requires matched loop/candidate measurements from the exact resolved student configuration.
-Configured evaluation roots are content-addressed so changing a baseline invalidates the
-evaluation stage.
+Generalization, grounding, counterfactual reasoning, and reliability require a matched
+reference-checkpoint evaluation. Set `evaluation.baseline_checkpoint_stage` to `initial`,
+`pretrain`, or another enabled stage that precedes the final checkpoint to materialize that
+reference inside the same DAG. Continuation plans use `inherited` to reevaluate the parent final
+checkpoint. The baseline stage uses the exact train/validation/heldout files,
+generation controls, calibration contract, tokenizer, and resolved blueprint used by the final
+evaluation. Its comparison and per-sample rows are declared artifacts, and final evaluation
+depends on them. `baseline_evaluation` remains available for an external reference root, but the
+two options are mutually exclusive. Multilingual retention still requires a separately trained
+per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight
+JSON and requires matched loop/candidate measurements from the exact resolved student
+configuration. Configured external evaluation roots are content-addressed so changing a baseline
+invalidates the evaluation stage.
 
 For matched multi-run ablations, use
 [`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
@@ -76,11 +83,12 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 23 stages, including target-device visual-backend and full-training preflights,
-validation conversion/evaluation, and next-batch synthesis planning.
+The full plan has 24 stages, including target-device visual-backend and full-training preflights,
+an initial-checkpoint matched baseline, validation conversion/evaluation, and next-batch
+synthesis planning.
 The CPU contract test disables those deployment preflights and omits the full plan's public-Hub acquisition, leaving
-16 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, and one optimizer step
-per training phase:
+17 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, one optimizer step per
+training phase, and the same internal baseline comparison:
 
 ```bash
 python scripts/run_student_experiment.py \
@@ -113,7 +121,9 @@ W&B is optional and stage-specific. Set `wandb_project`, entity, group, run, and
 Training stages stream the same numeric records persisted in their local `metrics.jsonl`; rank zero
 is the only writer. When a project is configured, the compiler adds a deterministic stage run ID
 derived from the full experiment fingerprint, so exact resume appends to the same W&B run while a
-changed plan receives a new identity.
+changed plan receives a new identity. Internal baseline evaluation receives a distinct run ID,
+`baseline` and `checkpoint-stage:<stage>` tags, and a `--baseline` run-name suffix so its curves
+can be selected alongside the final evaluation without merging their histories.
 
 The production synthetic list includes five single-page hard families plus `audit_packet` and
 `investment_dossier`. Those composed families supply the exact multi-page and cross-document tiers
