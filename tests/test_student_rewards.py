@@ -347,6 +347,82 @@ def test_program_trace_verifier_reexecutes_scientific_inference():
     assert result.components["grounded_rationale_consistency"] == 1.0
 
 
+def test_program_trace_verifier_reexecutes_scientific_claim_consistency():
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+    from docvlm_eval.synth.latent import (
+        GraphNode,
+        GraphQuery,
+        LatentDocumentGraph,
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id="scientific-claim-reward-trace",
+        template_family="scientific-claim-reward-trace-v1",
+        nodes=[
+            GraphNode("treatment", "mean", 80, "Treatment mean"),
+            GraphNode("control", "mean", 100, "Control mean"),
+            GraphNode("treatment_se", "uncertainty", 3, "Treatment SE"),
+            GraphNode("control_se", "uncertainty", 2, "Control SE"),
+            GraphNode("reported_claim", "claim", 0, "Unsupported claim"),
+        ],
+        queries=[
+            GraphQuery(
+                "claim_consistency",
+                "Is the claim consistent?",
+                "significance_claim_consistency",
+                (
+                    "treatment",
+                    "control",
+                    "treatment_se",
+                    "control_se",
+                    "reported_claim",
+                ),
+                "H-science-claim-verification",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "threshold": 1.96,
+                    "claim_labels": ["not supported", "supported"],
+                    "outputs": ["inconsistent", "consistent"],
+                },
+            )
+        ],
+    )
+    resolved = graph.resolve("claim_consistency")
+    context = RewardContext(
+        sample_id="scientific-claim-program-trace",
+        answers=(resolved.answer,),
+        gold_boxes=(
+            (0.05, 0.1, 0.2, 0.2),
+            (0.25, 0.1, 0.4, 0.2),
+            (0.45, 0.1, 0.6, 0.2),
+            (0.65, 0.1, 0.8, 0.2),
+            (0.1, 0.7, 0.9, 0.8),
+        ),
+        gold_rationale=resolved.rationale,
+        reasoning_trace=resolved.reasoning_trace,
+    )
+
+    result = score_structured_response(
+        build_structured_target(
+            resolved.answer,
+            evidence=context.gold_boxes,
+            rationale=resolved.rationale,
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+
+    assert resolved.answer == "inconsistent"
+    assert result.components["rationale_program_fact_score"] == 1.0
+    assert result.components["program_trace_consistency"] == 1.0
+    assert result.components["grounded_rationale_consistency"] == 1.0
+
+
 def test_reward_context_rejects_a_tampered_program_trace():
     from docvlm_eval.schema import Sample
     from docvlm_eval.student.rewards import RewardContext

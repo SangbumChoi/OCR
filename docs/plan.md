@@ -283,6 +283,9 @@ added factor lifting the score a step, ending well above the baseline.
   confidence-interval and precision questions, and balance supported versus unsupported
   pooled-standard-error significance claims. Their interval and decision programs are independently
   re-executed by production RLVR rather than accepted from authored rationale text.
+  The same latent results render a captioned quantitative figure and a separately grounded Results
+  claim. Correct and incorrect manuscript claims are balanced, and a five-evidence program
+  recomputes figure-table-claim consistency for a dedicated held-out and RLVR slice.
   Every executable graph query now preserves a fingerprinted reasoning trace through QA and sample
   conversion. Production RLVR independently re-executes that trace and combines evidence overlap,
   semantic rationale similarity, required-number recall, and hallucinated-number precision; a

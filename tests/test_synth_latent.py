@@ -146,8 +146,77 @@ def test_scientific_interval_and_significance_programs_are_executable():
     assert "-5.55" in decision.rationale
 
 
+def test_scientific_claim_consistency_program_checks_the_reported_claim():
+    graph = LatentDocumentGraph(
+        graph_id="scientific-claim-consistency",
+        template_family="scientific-claim-consistency-v1",
+        nodes=[
+            GraphNode("treatment", "mean", 80, "Treatment mean"),
+            GraphNode("control", "mean", 100, "Control mean"),
+            GraphNode("treatment_se", "uncertainty", 3, "Treatment SE"),
+            GraphNode("control_se", "uncertainty", 2, "Control SE"),
+            GraphNode("claim_supported", "claim", 1, "Supported claim"),
+            GraphNode("claim_unsupported", "claim", 0, "Unsupported claim"),
+        ],
+        queries=[
+            GraphQuery(
+                "consistent",
+                "Is the claim consistent?",
+                "significance_claim_consistency",
+                (
+                    "treatment",
+                    "control",
+                    "treatment_se",
+                    "control_se",
+                    "claim_supported",
+                ),
+                "H-science-claim-verification",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "threshold": 1.96,
+                    "claim_labels": ["not supported", "supported"],
+                    "outputs": ["inconsistent", "consistent"],
+                },
+            ),
+            GraphQuery(
+                "inconsistent",
+                "Is the claim consistent?",
+                "significance_claim_consistency",
+                (
+                    "treatment",
+                    "control",
+                    "treatment_se",
+                    "control_se",
+                    "claim_unsupported",
+                ),
+                "H-science-claim-verification",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "threshold": 1.96,
+                    "claim_labels": ["not supported", "supported"],
+                    "outputs": ["inconsistent", "consistent"],
+                },
+            ),
+        ],
+    )
+
+    consistent = graph.resolve("consistent")
+    inconsistent = graph.resolve("inconsistent")
+
+    assert consistent.answer == "consistent"
+    assert inconsistent.answer == "inconsistent"
+    assert consistent.reasoning_trace["operation"] == (
+        "significance_claim_consistency"
+    )
+    assert "data imply supported" in inconsistent.rationale
+    assert "Results claim states not supported" in inconsistent.rationale
+
+
 def test_scientific_generator_authors_both_inference_decisions():
     decisions = set()
+    claim_decisions = set()
     for seed in range(32):
         case = HARD_CASE_FACTORIES["hard_science"](
             random.Random(seed),
@@ -181,8 +250,34 @@ def test_scientific_generator_authors_both_inference_decisions():
         assert (
             decision == "supported"
         ) is graph["metadata"]["authored_compound_b_supported"]
+        figure_query = next(
+            row
+            for row in graph["queries"]
+            if row["query_id"] == "figure_b_reduction"
+        )
+        reduction = next(
+            row
+            for row in graph["nodes"]
+            if row["node_id"] == "reduction_2"
+        )
+        assert figure_query["resolved"]["answer"] == f"{reduction['value']:.1f}"
+        assert figure_query["resolved"]["evidence_keys"] == (
+            "figure_effect_2",
+        )
+        claim_query = next(
+            row
+            for row in graph["queries"]
+            if row["query_id"] == "compound_b_claim_consistency"
+        )
+        claim_decision = claim_query["resolved"]["answer"]
+        claim_decisions.add(claim_decision)
+        assert (
+            claim_decision == "consistent"
+        ) is graph["metadata"]["authored_claim_consistent"]
+        assert len(claim_query["resolved"]["evidence_keys"]) == 5
 
     assert decisions == {"supported", "not supported"}
+    assert claim_decisions == {"consistent", "inconsistent"}
 
 
 @pytest.mark.parametrize("level", [1, 3, 5])

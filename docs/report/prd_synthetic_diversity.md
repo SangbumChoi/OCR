@@ -129,9 +129,11 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
   source documents. Its executable graph supervises valuation, growth, claim discrepancy,
   source reliability, and next action with exact cross-document evidence. A programmatic scientific
   workflow adds directed topology, edge reading, path products, parallel-path aggregation, and
-  expected-count questions across three semantic-preserving layouts. Exact page/document counts
-  now survive the UDD bridge and drive a secondary, task-preserving optimizer-step curriculum from
-  single pages through multi-page packets to cross-document dossiers.
+  expected-count questions across three semantic-preserving layouts. Scientific result pages now
+  add grounded quantitative figure marks and balanced correct/incorrect Results claims whose
+  consistency is recomputed from four table values plus the visible claim. Exact page/document
+  counts now survive the UDD bridge and drive a secondary, task-preserving optimizer-step
+  curriculum from single pages through multi-page packets to cross-document dossiers.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out
 generalization improves.
 

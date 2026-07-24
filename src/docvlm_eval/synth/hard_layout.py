@@ -101,7 +101,16 @@ _LAYOUTS: dict[str, dict[str, HardLayoutSpec]] = {
             "A4",
             ".authors{font-size:9px;text-align:center}.abstract{columns:2;column-gap:18px;"
             "font-size:9px;text-align:justify}.equation{text-align:center;font-family:serif;"
-            "margin:12px}.caption{font-size:8px;color:#444}",
+            "margin:10px}.caption{font-size:8px;color:#444}"
+            ".science-figure{border:1px solid #9aa7b2;padding:8px;margin:10px 0}"
+            ".figure-title{font-size:9px;font-weight:bold;margin:0 0 5px}"
+            ".effect-plot{height:122px;display:flex;align-items:flex-end;gap:14px;"
+            "border-bottom:1px solid #555;padding:0 14px}"
+            ".effect-col{flex:1;text-align:center}.effect-bar{width:72%;margin:auto;"
+            "background:#537a95;color:white;font-size:8px;padding-top:4px}"
+            ".effect-condition{font-size:8px;margin-top:3px}"
+            ".science-claim{border-left:3px solid #537a95;padding:6px 8px;"
+            "font-size:9px;background:#f3f7f9}",
         ),
         "compact-v1": HardLayoutSpec(
             "compact-v1",
@@ -110,7 +119,16 @@ _LAYOUTS: dict[str, dict[str, HardLayoutSpec]] = {
             "align-items:start}.paper-intro{border-right:1px solid #999;padding-right:18px}"
             ".authors{font-size:9px}.abstract{font-size:9px;text-align:justify}"
             ".equation{text-align:center;font-family:serif;margin:8px}"
-            ".caption{font-size:8px;color:#444}table{font-size:9px}",
+            ".caption{font-size:8px;color:#444}table{font-size:9px}"
+            ".science-figure{border:1px solid #9aa7b2;padding:7px;margin:8px 0}"
+            ".figure-title{font-size:9px;font-weight:bold;margin:0 0 4px}"
+            ".effect-plot{height:104px;display:flex;align-items:flex-end;gap:10px;"
+            "border-bottom:1px solid #555;padding:0 10px}"
+            ".effect-col{flex:1;text-align:center}.effect-bar{width:76%;margin:auto;"
+            "background:#537a95;color:white;font-size:7px;padding-top:3px}"
+            ".effect-condition{font-size:7px;margin-top:2px}"
+            ".science-claim{border-left:3px solid #537a95;padding:5px 7px;"
+            "font-size:8px;background:#f3f7f9}",
         ),
         "report-v1": HardLayoutSpec(
             "report-v1",
@@ -119,7 +137,16 @@ _LAYOUTS: dict[str, dict[str, HardLayoutSpec]] = {
             ".results-card{border:1px solid #8293a3;padding:12px;background:#f7f9fb}"
             ".abstract{font-size:9px;text-align:justify;margin-top:14px}"
             ".equation{text-align:center;font-family:serif;margin:10px}"
-            ".caption{font-size:8px;color:#444}th{background:#e8eef3}",
+            ".caption{font-size:8px;color:#444}th{background:#e8eef3}"
+            ".science-figure{border:1px solid #8293a3;padding:8px;margin:10px 0}"
+            ".figure-title{font-size:9px;font-weight:bold;margin:0 0 5px}"
+            ".effect-plot{height:120px;display:flex;align-items:flex-end;gap:14px;"
+            "border-bottom:1px solid #555;padding:0 14px}"
+            ".effect-col{flex:1;text-align:center}.effect-bar{width:72%;margin:auto;"
+            "background:#446b86;color:white;font-size:8px;padding-top:4px}"
+            ".effect-condition{font-size:8px;margin-top:3px}"
+            ".science-claim{border-left:3px solid #446b86;padding:6px 8px;"
+            "font-size:9px;background:#eef3f6}",
         ),
     },
 }

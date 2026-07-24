@@ -402,6 +402,76 @@ class LatentDocumentGraph:
                 threshold=f"{threshold:g}",
                 decision=decision,
             )
+        if query.operation == "significance_claim_consistency":
+            if len(values) != 5:
+                raise ValueError(
+                    "significance_claim_consistency requires two means, two "
+                    "standard errors, and one binary claim"
+                )
+            mean_left, mean_right, se_left, se_right, claim_value = [
+                _number(value, label)
+                for value, label in zip(values, labels)
+            ]
+            if se_left < 0 or se_right < 0:
+                raise ValueError(
+                    "significance_claim_consistency standard errors cannot "
+                    "be negative"
+                )
+            if claim_value not in {0.0, 1.0}:
+                raise ValueError(
+                    "significance_claim_consistency claim must be 0 or 1"
+                )
+            pooled = math.sqrt(se_left**2 + se_right**2)
+            if pooled == 0:
+                raise ValueError(
+                    "significance_claim_consistency pooled standard error "
+                    "cannot be zero"
+                )
+            threshold = _number(
+                query.parameters.get("threshold"),
+                "significance threshold",
+            )
+            claim_labels = query.parameters.get("claim_labels")
+            outputs = query.parameters.get("outputs")
+            if threshold <= 0:
+                raise ValueError("significance threshold must be positive")
+            if (
+                not isinstance(claim_labels, list)
+                or len(claim_labels) != 2
+                or any(
+                    not isinstance(item, str) or not item
+                    for item in claim_labels
+                )
+            ):
+                raise ValueError(
+                    "significance_claim_consistency requires two claim labels"
+                )
+            if (
+                not isinstance(outputs, list)
+                or len(outputs) != 2
+                or any(not isinstance(item, str) or not item for item in outputs)
+            ):
+                raise ValueError(
+                    "significance_claim_consistency requires two text outputs"
+                )
+            z_score = (mean_left - mean_right) / pooled
+            data_claim = int(abs(z_score) >= threshold)
+            reported_claim = int(claim_value)
+            decision = outputs[int(data_claim == reported_claim)]
+            return decision, hard_text(
+                self.language,
+                "r_claim_consistency",
+                se_left=f"{se_left:g}",
+                se_right=f"{se_right:g}",
+                pooled=f"{pooled:.2f}",
+                left=f"{mean_left:g}",
+                right=f"{mean_right:g}",
+                z_score=f"{z_score:.2f}",
+                threshold=f"{threshold:g}",
+                data_claim=claim_labels[data_claim],
+                reported_claim=claim_labels[reported_claim],
+                decision=decision,
+            )
         if query.operation in {"argmax", "argmin"}:
             if not values:
                 raise ValueError(f"{query.operation} requires at least one node")

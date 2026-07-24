@@ -27,8 +27,8 @@ scientific-paper verification.
 
 The operation registry currently covers direct lookup, sum, mean, difference, ratio, percent
 change, relative reduction, confidence intervals, pooled-standard-error significance decisions,
-extrema, weighted sum, path products, and sums of independent path products. This is deliberately
-small and auditable: no teacher model invents hard labels.
+manuscript-claim consistency, extrema, weighted sum, path products, and sums of independent path
+products. This is deliberately small and auditable: no teacher model invents hard labels.
 
 ## Multilingual projection
 
@@ -76,7 +76,7 @@ Each `gt.json` records:
 | `hard_table` | dense regional operating table plus an external budget field | lookup, sums, profit, argmax, cross-region budget subtraction | eleven-box evidence for a table-to-summary calculation |
 | `hard_chart` | labelled temporal bar chart | lookup, percent change, argmax, multi-year mean | exact temporal chart aggregation |
 | `hard_investment` | direct beneficial-ownership schedule | relation lookup, path product, sum of path products | effective ownership across two independent paths |
-| `hard_science` | paper title, abstract, inference rules, mean/SE result table, caption | lookup, argmin, control-relative reduction, confidence interval, pooled-SE significance | exact uncertainty interpretation and quantitative claim verification |
+| `hard_science` | paper title, abstract, inference rules, mean/SE table, quantitative figure, caption, Results claim | lookup, figure reading, argmin, relative reduction, confidence interval, pooled-SE significance and claim consistency | exact figure-table-claim verification with five-box evidence |
 | `investment_dossier` | audited filing, exchange snapshot, and external analyst memo | weighted valuation, percent change, discrepancy checks, decision lookup | three-source claim verification and next action |
 | `hard_diagram` | directed parallel-assay workflow with exact edge labels | lookup, topology, path product, sum of paths, weighted expected count | six- and seven-box process reasoning |
 
@@ -105,6 +105,14 @@ margin from the threshold. The resolved answer, concise rationale, four evidence
 inputs, operation parameters, and trace fingerprint survive benchmark conversion. Production
 RLVR independently recomputes the interval or decision and fails closed on a changed input,
 threshold, output label, or answer.
+
+The same latent means also render Figure 1 as independently grounded reduction marks with exact
+numeric labels and a figure-specific QA slice. A Results sentence is authored to agree or disagree
+with the table under the stated z rule, with both outcomes balanced across seeds. The
+`significance_claim_consistency` program consumes the treatment and control means, both standard
+errors, and the visible claim node. Its five evidence boxes therefore span the table and prose
+rather than rewarding conclusion-word lookup. The verifier recomputes the data-implied claim,
+compares it with the reported claim, and emits localized consistent/inconsistent targets.
 
 ## Semantic-preserving layouts
 

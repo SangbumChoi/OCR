@@ -197,6 +197,7 @@ _TRACE_OPERATIONS = {
     "relative_reduction",
     "confidence_interval",
     "significance_decision",
+    "significance_claim_consistency",
     "argmax",
     "argmin",
     "weighted_sum",
@@ -395,6 +396,58 @@ def _evaluate_reasoning_trace(trace: dict[str, Any]) -> Any:
             )
         z_score = (mean_left - mean_right) / pooled
         return outputs[int(abs(z_score) >= threshold)]
+    if operation == "significance_claim_consistency":
+        if len(numeric) != 5:
+            raise ValueError(
+                "significance_claim_consistency reasoning trace requires "
+                "five inputs"
+            )
+        mean_left, mean_right, se_left, se_right, claim_value = numeric
+        if se_left < 0 or se_right < 0:
+            raise ValueError(
+                "significance_claim_consistency standard errors cannot be "
+                "negative"
+            )
+        if claim_value not in {0.0, 1.0}:
+            raise ValueError(
+                "significance_claim_consistency claim must be 0 or 1"
+            )
+        pooled = math.sqrt(se_left**2 + se_right**2)
+        if pooled == 0:
+            raise ValueError(
+                "significance_claim_consistency pooled standard error "
+                "cannot be zero"
+            )
+        threshold = _trace_number(
+            parameters.get("threshold"),
+            "significance threshold",
+        )
+        claim_labels = parameters.get("claim_labels")
+        outputs = parameters.get("outputs")
+        if threshold <= 0:
+            raise ValueError("significance threshold must be positive")
+        if (
+            not isinstance(claim_labels, list)
+            or len(claim_labels) != 2
+            or any(
+                not isinstance(item, str) or not item
+                for item in claim_labels
+            )
+        ):
+            raise ValueError(
+                "significance_claim_consistency requires two claim labels"
+            )
+        if (
+            not isinstance(outputs, list)
+            or len(outputs) != 2
+            or any(not isinstance(item, str) or not item for item in outputs)
+        ):
+            raise ValueError(
+                "significance_claim_consistency requires two text outputs"
+            )
+        z_score = (mean_left - mean_right) / pooled
+        data_claim = int(abs(z_score) >= threshold)
+        return outputs[int(data_claim == int(claim_value))]
     if operation in {"argmax", "argmin"}:
         if not numeric:
             raise ValueError(

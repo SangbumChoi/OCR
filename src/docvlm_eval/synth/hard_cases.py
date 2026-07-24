@@ -579,9 +579,12 @@ def hard_science_case(
             "effect-size",
             "confidence-interval",
             "statistical-inference",
+            "scientific-figure",
+            "caption-reference",
+            "cross-region-claim-verification",
             "claim-verification",
         ),
-        base_hops=5,
+        base_hops=6,
         cross_region=True,
     )
     conditions = [
@@ -608,6 +611,15 @@ def hard_science_case(
         control - b_effect,
         control - rng.randrange(22, 36),
     ]
+    reductions = [control - mean for mean in means]
+    claim_consistent = rng.random() < 0.5
+    claim_supported = b_supported if claim_consistent else not b_supported
+    claim_sentence = text(
+        "science_claim_positive"
+        if claim_supported
+        else "science_claim_negative",
+        condition=conditions[2],
+    )
     nodes: list[GraphNode] = []
     rows: list[list[str]] = []
     spots: list[tuple[int, int]] = []
@@ -634,6 +646,27 @@ def hard_science_case(
             )
         )
         spots.extend(((index, 1), (index, 2)))
+    for index in range(1, len(conditions)):
+        nodes.append(
+            GraphNode(
+                f"reduction_{index}",
+                "scientific-figure-mark",
+                reductions[index],
+                text("reduction_label", condition=conditions[index]),
+                "relative fluorescence units",
+                {"field_key": f"figure_effect_{index}"},
+            )
+        )
+    nodes.append(
+        GraphNode(
+            "claim_b",
+            "manuscript-claim",
+            int(claim_supported),
+            claim_sentence,
+            "binary significance claim",
+            {"field_key": "conclusion_claim"},
+        )
+    )
     queries = [
         GraphQuery(
             "control_value",
@@ -709,6 +742,34 @@ def hard_science_case(
                 ],
             },
         ),
+        GraphQuery(
+            "figure_b_reduction",
+            text("science_q_figure", condition=conditions[2]),
+            "value",
+            ("reduction_2",),
+            "T-science-figure",
+            answer_format="decimal:1",
+        ),
+        GraphQuery(
+            "compound_b_claim_consistency",
+            text("science_q_claim", condition=conditions[2]),
+            "significance_claim_consistency",
+            ("mean_2", "mean_0", "se_2", "se_0", "claim_b"),
+            "H-science-claim-verification",
+            metric="anls",
+            answer_format="text",
+            parameters={
+                "threshold": 1.96,
+                "claim_labels": [
+                    text("science_not_supported"),
+                    text("science_supported"),
+                ],
+                "outputs": [
+                    text("science_inconsistent"),
+                    text("science_consistent"),
+                ],
+            },
+        ),
     ]
     graph = LatentDocumentGraph(
         graph_id=f"hard-science-{rng.randrange(1_000_000_000)}",
@@ -716,10 +777,10 @@ def hard_science_case(
         nodes=nodes,
         queries=[
             queries[0],
-            *([queries[2]] if level >= 2 else []),
+            *([queries[2], queries[7]] if level >= 2 else []),
             *([queries[1]] if level >= 3 else []),
             *([queries[4], queries[5]] if level >= 4 else []),
-            *([queries[3], queries[6]] if level >= 5 else []),
+            *([queries[3], queries[6], queries[8]] if level >= 5 else []),
         ],
         metadata={
             "control_node": "mean_0",
@@ -728,6 +789,8 @@ def hard_science_case(
             "critical_value": 1.96,
             "significance_rule": "two-sided absolute z threshold",
             "authored_compound_b_supported": b_supported,
+            "reported_compound_b_supported": claim_supported,
+            "authored_claim_consistent": claim_consistent,
         },
         language=language,
     )
@@ -740,6 +803,9 @@ def hard_science_case(
             "effect-size",
             "uncertainty",
             "statistical-inference",
+            "scientific-figure",
+            "caption-reference",
+            "cross-region-claim-verification",
             "claim-verification",
         ],
         "relaxed accuracy",
@@ -764,6 +830,37 @@ def hard_science_case(
             region=text("science_region"),
         )
 
+    def add_figure() -> None:
+        max_reduction = max(reductions[1:])
+        b.raw("<figure class=science-figure>")
+        b.line(text("science_figure_title"), cls="figure-title")
+        b.raw("<div class=effect-plot>")
+        for index in range(1, len(conditions)):
+            reduction = reductions[index]
+            bar_height = max(26, round(reduction / max_reduction * 94))
+            value_label = f"{reduction:.1f} RFU"
+            b.raw(
+                "<div class=effect-col>"
+                f"<div class=effect-bar style='height:{bar_height}px'>"
+                f"{value_label}</div>"
+                f"<div class=effect-condition>{conditions[index]}</div>"
+                "</div>"
+            )
+            b.spot(f"figure_effect_{index}", value_label)
+        b.raw("</div>")
+        b.line(text("science_figure_caption"), cls="caption")
+        b.raw("</figure>")
+
+    def add_claim() -> None:
+        b.field(
+            text("science_claim_label"),
+            claim_sentence,
+            key="conclusion_claim",
+            spot=True,
+            cls="science-claim",
+            role="caption",
+        )
+
     if layout.family == "classic-v1":
         b.title(text("science_title"), level=2)
         b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
@@ -772,6 +869,8 @@ def hard_science_case(
         b.line(text("science_inference"), cls="equation")
         add_table()
         b.line(text("science_caption"), cls="caption")
+        add_figure()
+        add_claim()
     elif layout.family == "compact-v1":
         b.raw("<section class=paper-grid><div class=paper-intro>")
         b.title(text("science_title"), level=2)
@@ -782,6 +881,8 @@ def hard_science_case(
         b.line(text("science_inference"), cls="equation")
         add_table()
         b.line(text("science_caption"), cls="caption")
+        add_figure()
+        add_claim()
         b.raw("</div></section>")
     else:
         b.title(text("science_title"), level=2)
@@ -793,6 +894,8 @@ def hard_science_case(
         b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
         b.line(text("science_equation"), cls="equation")
         b.line(text("science_inference"), cls="equation")
+        add_figure()
+        add_claim()
     b.task(text("science_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))
