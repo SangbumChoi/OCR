@@ -334,6 +334,7 @@ def run_training_feasibility_benchmark(
     grad_accum_steps: int,
     max_grad_norm: float,
     contrastive: bool,
+    box_iou_loss: str = "giou",
 ) -> dict[str, Any]:
     """Run real full-student micro-steps and retain evidence even on OOM."""
 
@@ -358,6 +359,7 @@ def run_training_feasibility_benchmark(
             "betas": list(betas),
             "max_grad_norm": max_grad_norm,
             "contrastive": contrastive,
+            "box_iou_loss": box_iou_loss,
         },
         "environment": environment,
         "parameter_count": None,
@@ -398,7 +400,10 @@ def run_training_feasibility_benchmark(
         report["gradient_checkpointing"] = (
             student.gradient_checkpointing_state
         )
-        module = PretrainingModule(student).to(device)
+        module = PretrainingModule(
+            student,
+            box_iou_loss_kind=box_iou_loss,
+        ).to(device)
         module.train()
         report["parameter_count"] = _unique_parameter_count(module)
         optimizer = torch.optim.AdamW(

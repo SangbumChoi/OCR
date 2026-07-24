@@ -853,14 +853,61 @@ def test_student_builder_rejects_a_required_zero_parameter_transfer(tmp_path):
     assert "copied zero parameters" in result.stderr
 
 
-def test_generalized_box_iou_is_zero_for_an_exact_match():
+def test_box_iou_losses_are_zero_for_an_exact_match():
     import torch
 
-    from docvlm_eval.student.losses import generalized_box_iou_loss
+    from docvlm_eval.student.losses import (
+        complete_box_iou_loss,
+        distance_box_iou_loss,
+        generalized_box_iou_loss,
+    )
 
     boxes = torch.tensor([[0.1, 0.2, 0.7, 0.9], [0.0, 0.0, 1.0, 1.0]])
 
     assert torch.allclose(generalized_box_iou_loss(boxes, boxes), torch.tensor(0.0))
+    assert torch.allclose(distance_box_iou_loss(boxes, boxes), torch.tensor(0.0))
+    assert torch.allclose(complete_box_iou_loss(boxes, boxes), torch.tensor(0.0))
+
+
+def test_complete_iou_penalizes_aspect_ratio_beyond_distance_iou():
+    import torch
+
+    from docvlm_eval.student.losses import (
+        box_iou_loss,
+        complete_box_iou_loss,
+        distance_box_iou_loss,
+    )
+
+    horizontal = torch.tensor([[0.1, 0.3, 0.9, 0.7]])
+    vertical = torch.tensor([[0.3, 0.1, 0.7, 0.9]])
+
+    diou = distance_box_iou_loss(horizontal, vertical)
+    ciou = complete_box_iou_loss(horizontal, vertical)
+
+    assert ciou > diou
+    assert torch.equal(box_iou_loss(horizontal, vertical, kind="ciou"), ciou)
+    with pytest.raises(ValueError, match="unsupported box IoU loss"):
+        box_iou_loss(horizontal, vertical, kind="plain_iou")
+
+
+@pytest.mark.parametrize("kind", ["giou", "diou", "ciou"])
+def test_box_iou_losses_have_finite_coordinate_gradients(kind):
+    import torch
+
+    from docvlm_eval.student.losses import box_iou_loss
+
+    predicted = torch.tensor(
+        [[0.05, 0.20, 0.65, 0.55]],
+        requires_grad=True,
+    )
+    target = torch.tensor([[0.30, 0.10, 0.75, 0.85]])
+
+    loss = box_iou_loss(predicted, target, kind=kind)
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert predicted.grad is not None
+    assert torch.all(torch.isfinite(predicted.grad))
 
 
 def test_external_embedding_transfer_requires_identity_map():

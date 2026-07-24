@@ -145,10 +145,12 @@ gradient.
 
 The native model exposes autoregressive, symmetric contrastive, four-way orientation, and normalized
 box losses. Boxes are parameterized as start plus non-negative extent, so `x2 >= x1` and
-`y2 >= y1` always hold; training combines smooth L1 with generalized IoU. The runner adds compressed
-teacher KL and selected intermediate-feature alignment. Reading-order examples use answer-only
-autoregressive supervision; there is no unimplemented standalone reading-order loss hidden inside
-the weighted total.
+`y2 >= y1` always hold; training combines smooth L1 with a selectable GIoU, DIoU, or CIoU term.
+GIoU remains the default until the compute-matched
+[`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md) provides heldout evidence. The
+runner adds compressed teacher KL and selected intermediate-feature alignment. Reading-order
+examples use answer-only autoregressive supervision; there is no unimplemented standalone
+reading-order loss hidden inside the weighted total.
 
 LFM2.5-VL is connected through offline sequence distillation rather than invalid token-position
 KL. Every image-question request is fingerprinted, generated resumably, scored with its native gold
@@ -278,6 +280,10 @@ The multi-objective pretraining losses also have an executable, trajectory-prese
 probe. [`student_gradient_conflict_audit.md`](student_gradient_conflict_audit.md) measures weighted
 loss cosines on shared-trunk anchors across paired replicates and requires material evidence before
 PCGrad or GradNorm is added as an intervention.
+
+The box head exposes GIoU, DIoU, and CIoU under one checkpointed supervision contract. Their
+three-replicate fixed-FLOP comparison is specified in
+[`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md).
 
 Post-training exposes both standardized GRPO and leave-one-out reward advantages under one
 checkpointed objective contract. The compute-matched comparison is specified in

@@ -42,10 +42,12 @@ def test_cpu_training_probe_executes_full_optimizer_step():
         grad_accum_steps=2,
         max_grad_norm=1.0,
         contrastive=True,
+        box_iou_loss="ciou",
     )
 
     assert report["schema_version"] == 1
     assert report["scope"] == "full_student_multimodal_training_step"
+    assert report["benchmark_config"]["box_iou_loss"] == "ciou"
     assert report["status"] == "ok"
     assert report["resolved_visual_attention_backend"] == "loop"
     assert report["gradient_checkpointing"] == {

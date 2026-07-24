@@ -197,6 +197,7 @@ def main() -> None:
         grad_accum_steps=int(optimizer["grad_accum_steps"]),
         max_grad_norm=float(optimizer["max_grad_norm"]),
         contrastive=bool(pipeline["contrastive"]),
+        box_iou_loss=str(pretraining.get("box_iou_loss", "giou")),
     )
     report["deployment_gate"] = evaluate_training_feasibility_gate(
         blueprint,

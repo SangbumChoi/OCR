@@ -154,10 +154,12 @@ def test_blueprint_rejects_invalid_gradient_probe_contract():
 def test_blueprint_rejects_an_unimplemented_pretraining_loss():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["pretraining"]["losses"]["future_objective"] = 0.1
+    blueprint["training"]["pretraining"]["box_iou_loss"] = "plain_iou"
 
     _, errors = validate_blueprint(blueprint)
 
     assert any("future_objective is not implemented" in error for error in errors)
+    assert any("box_iou_loss" in error for error in errors)
 
 
 def test_blueprint_rejects_invalid_curriculum_contracts():

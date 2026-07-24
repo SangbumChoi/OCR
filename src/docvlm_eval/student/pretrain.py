@@ -25,6 +25,7 @@ from .curriculum import CurriculumSchedule, planned_optimizer_steps
 from .compute import estimate_batch_training_flops_breakdown
 from .gradient_probe import GradientConflictProbeConfig
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
+from .losses import BOX_IOU_LOSSES
 from .model import DocumentVLMStudent
 
 
@@ -71,6 +72,7 @@ class PretrainConfig:
     tokenizer_fingerprint: str | None = None
     run_stage: str = "pretraining"
     loss_weights: dict[str, float] = field(default_factory=dict)
+    box_iou_loss: str = "giou"
     target_source_counts: dict[str, int] = field(default_factory=dict)
     curriculum: CurriculumSchedule = field(default_factory=CurriculumSchedule)
     adaptive_mixture: AdaptiveMixtureConfig = field(
@@ -153,6 +155,10 @@ class PretrainConfig:
             raise ValueError("log_every_steps must be positive")
         if any(weight < 0 for weight in self.loss_weights.values()):
             raise ValueError("pretraining loss weights must be non-negative")
+        if self.box_iou_loss not in BOX_IOU_LOSSES:
+            raise ValueError(
+                f"box_iou_loss must be one of {sorted(BOX_IOU_LOSSES)}"
+            )
         if any(count < 0 for count in self.target_source_counts.values()):
             raise ValueError("target source counts must be non-negative")
         if not self.run_stage.strip():
@@ -253,6 +259,12 @@ class PretrainConfig:
                 str(name): float(weight)
                 for name, weight in blueprint["training"]["pretraining"]["losses"].items()
             },
+            "box_iou_loss": str(
+                blueprint["training"]["pretraining"].get(
+                    "box_iou_loss",
+                    "giou",
+                )
+            ),
             "curriculum": CurriculumSchedule.from_blueprint(blueprint),
             "adaptive_mixture": (
                 AdaptiveMixtureConfig.from_blueprint(blueprint)
@@ -319,6 +331,7 @@ def pretraining_supervision_contract(
         },
         "adaptive_mixture": config.adaptive_mixture.to_dict(),
         "gradient_conflict_probe": config.gradient_conflict_probe.to_dict(),
+        "box_iou_loss": config.box_iou_loss,
         "stages": profiles,
     }
 
@@ -402,10 +415,16 @@ class PretrainingModule(nn.Module):
         self,
         student: DocumentVLMStudent,
         distillation_loss: DistillationLoss | None = None,
+        box_iou_loss_kind: str = "giou",
     ):
         super().__init__()
         self.student = student
         self.distillation_loss = distillation_loss
+        if box_iou_loss_kind not in BOX_IOU_LOSSES:
+            raise ValueError(
+                f"box_iou_loss_kind must be one of {sorted(BOX_IOU_LOSSES)}"
+            )
+        self.box_iou_loss_kind = box_iou_loss_kind
 
     def forward(
         self,
@@ -420,6 +439,7 @@ class PretrainingModule(nn.Module):
             inputs["feature_layers"] = (
                 self.distillation_loss.config.student_feature_layers
             )
+        inputs["box_iou_loss_kind"] = self.box_iou_loss_kind
         output = self.student(**inputs)
         losses = dict(output.losses)
         if teacher_signals is not None:
@@ -1186,7 +1206,11 @@ def train_student(
             config.gradient_checkpointing_use_reentrant
         ),
     )
-    module = PretrainingModule(student, distillation_loss).to(context.device)
+    module = PretrainingModule(
+        student,
+        distillation_loss,
+        config.box_iou_loss,
+    ).to(context.device)
     if teacher is not None:
         teacher.model.to(context.device)
     optimizer = torch.optim.AdamW(
@@ -1566,6 +1590,7 @@ def train_student(
                         curriculum_stage.id if curriculum_stage is not None else "base"
                     ),
                     "train/curriculum_progress": curriculum_progress,
+                    "train/box_iou_loss": config.box_iou_loss,
                     "train/visual_attention_backend": (
                         module.student.last_visual_attention_backend
                     ),

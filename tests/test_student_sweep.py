@@ -202,6 +202,65 @@ def test_pretraining_loss_sweep_compiles_active_leave_one_out_arms(tmp_path):
         ]
 
 
+def test_box_iou_loss_sweep_compiles_paired_fixed_compute_arms(tmp_path):
+    from docvlm_eval.student.pretrain import PretrainConfig
+
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_box_iou_loss_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "box-iou-loss-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "giou"
+    baseline_by_replicate = {
+        variant.replicate_id: PretrainConfig.from_blueprint(
+            variant.plan.resolved_blueprint,
+            tmp_path / variant.id,
+        )
+        for variant in plan.variants
+        if variant.arm_id == "giou"
+    }
+    for variant in plan.variants:
+        training = PretrainConfig.from_blueprint(
+            variant.plan.resolved_blueprint,
+            tmp_path / variant.id,
+        )
+        baseline = baseline_by_replicate[variant.replicate_id]
+        assert training.box_iou_loss == variant.arm_id
+        assert training.loss_weights == baseline.loss_weights
+        assert training.curriculum == baseline.curriculum
+        assert training.max_steps is None
+        assert training.stop_at_total_tokens is False
+        assert training.stop_at_student_flops is True
+        assert training.schedule_unit == "student_flops"
+        assert training.curriculum.unit == "training_compute_fraction"
+        assert (
+            training.total_student_flops
+            == 165_669_831_748_966_989_312
+        )
+        assert (
+            training.warmup_student_flops
+            == 828_349_158_744_834_946
+        )
+        assert "box-iou-loss-ablation" in variant.plan.raw_spec[
+            "evaluation"
+        ]["wandb_tags"]
+
+
 def test_adaptive_mixture_sweep_compiles_paired_validation_arms(tmp_path):
     from docvlm_eval.student.pretrain import PretrainConfig
 

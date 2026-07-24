@@ -115,10 +115,12 @@ every curriculum stage before optimization and rejects active online-teacher los
 checkpoint, a teacher checkpoint with no active online loss, or any stage with no active loss.
 Teacher inference is skipped in stages where its losses are both zero.
 
-Checkpoint metadata records stage-level active losses, online-teacher status, and selected
-gold/offline-teacher target counts. Exact resume requires the same supervision contract. The paired
-leave-one-loss-out design is
-[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md).
+Checkpoint metadata records stage-level active losses, online-teacher status, selected
+gold/offline-teacher target counts, and the box IoU-family objective. Exact resume requires the same
+supervision contract. The paired leave-one-loss-out design is
+[`student_pretraining_loss_sweep.md`](student_pretraining_loss_sweep.md); the matched GIoU, DIoU,
+and CIoU comparison is
+[`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md).
 
 ## Teacher contract
 
@@ -309,7 +311,7 @@ The runner currently optimizes and logs separate scalars for:
 - native-teacher KL;
 - selected hidden-feature distillation;
 - multi-positive region/text contrast;
-- normalized box regression with generalized IoU;
+- normalized box regression with selectable GIoU, DIoU, or CIoU;
 - four-way orientation classification.
 
 Reading-order questions are generative examples and therefore contribute to autoregressive loss;

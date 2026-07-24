@@ -29,6 +29,8 @@ removes each active objective one at a time:
 Every arm preserves architecture, data, offline teacher generation, initialization, token budgets,
 post-training, evaluation documents, and the three paired stochastic blocks. Curriculum overrides
 for the removed loss are also zeroed, preventing a later stage from silently re-enabling it.
+The separate [`student_box_iou_loss_sweep.md`](student_box_iou_loss_sweep.md) keeps box supervision
+active and isolates which IoU-family geometry term should accompany SmoothL1.
 
 ## Supervision contract
 

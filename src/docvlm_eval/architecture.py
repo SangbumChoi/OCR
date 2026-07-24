@@ -618,6 +618,14 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "box_regression",
         "orientation",
     }
+    box_iou_loss = training["pretraining"].get("box_iou_loss", "giou")
+    if (
+        not isinstance(box_iou_loss, str)
+        or box_iou_loss not in {"giou", "diou", "ciou"}
+    ):
+        errors.append(
+            "training.pretraining.box_iou_loss must be giou, diou, or ciou"
+        )
     for name, weight in training["pretraining"]["losses"].items():
         if name not in supported_pretraining_losses:
             errors.append(f"training.pretraining.losses.{name} is not implemented")

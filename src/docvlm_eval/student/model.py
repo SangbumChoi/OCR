@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from .config import ConnectorConfig, LanguageConfig, StudentConfig, VisionConfig
-from .losses import decode_normalized_box, generalized_box_iou_loss
+from .losses import box_iou_loss, decode_normalized_box
 
 
 @dataclass
@@ -1620,6 +1620,7 @@ class DocumentVLMStudent(nn.Module):
         contrastive: bool = False,
         contrastive_ids: torch.Tensor | None = None,
         loss_weights: dict[str, float] | None = None,
+        box_iou_loss_kind: str = "giou",
         feature_layers: dict[str, list[int] | tuple[int, ...]] | None = None,
         visual_prefix: torch.Tensor | None = None,
     ) -> StudentOutput:
@@ -1779,9 +1780,10 @@ class DocumentVLMStudent(nn.Module):
                         box_predictions[valid_boxes],
                         box_targets[valid_boxes],
                     )
-                    + generalized_box_iou_loss(
+                    + box_iou_loss(
                         box_predictions[valid_boxes],
                         box_targets[valid_boxes],
+                        kind=box_iou_loss_kind,
                     )
                 )
 

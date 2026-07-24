@@ -745,6 +745,7 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     )
     assert config.gradient_checkpointing_use_reentrant is False
     assert config.loss_weights["teacher_kl"] == 0.0
+    assert config.box_iou_loss == "giou"
     assert [stage.id for stage in config.curriculum.stages] == [
         "perception_bootstrap",
         "dense_multilingual_alignment",
@@ -844,11 +845,18 @@ def test_checkpoint_records_resolved_supervision_contract(tmp_path):
     contract = metadata["supervision_contract"]
     assert contract["has_online_teacher"] is False
     assert contract["online_teacher_losses"] == []
+    assert contract["box_iou_loss"] == "giou"
     assert contract["stages"][0]["active_losses"] == [
         "autoregressive",
         "box_regression",
         "orientation",
     ]
+    metric = json.loads(
+        (tmp_path / "contract" / "metrics.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert metric["train/box_iou_loss"] == "giou"
 
 
 def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
@@ -867,6 +875,13 @@ def test_pretrain_config_rejects_invalid_logging_and_loss_controls(tmp_path):
             warmup_tokens=0,
             total_tokens=10,
             loss_weights={"autoregressive": -1.0},
+        )
+    with pytest.raises(ValueError, match="box_iou_loss"):
+        PretrainConfig(
+            output_dir=str(tmp_path),
+            warmup_tokens=0,
+            total_tokens=10,
+            box_iou_loss="plain_iou",
         )
     with pytest.raises(ValueError, match="epochs can be null"):
         PretrainConfig(
@@ -997,6 +1012,32 @@ def test_resume_rejects_a_changed_token_budget_contract(tmp_path):
             replace(
                 _config(output, max_steps=2, resume="latest"),
                 token_unit="text",
+            ),
+        )
+
+
+def test_resume_rejects_a_changed_box_iou_loss(tmp_path):
+    from dataclasses import replace
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    output = tmp_path / "box-loss-resume"
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    train_student(
+        model,
+        _loader(),
+        _config(output, max_steps=1),
+    )
+
+    with pytest.raises(ValueError, match="supervision contract"):
+        train_student(
+            model,
+            _loader(),
+            replace(
+                _config(output, max_steps=2, resume="latest"),
+                box_iou_loss="diou",
             ),
         )
 

@@ -190,6 +190,7 @@ training:
       region_text_contrastive: 0.15
       box_regression: 0.20
       orientation: 0.05
+    box_iou_loss: giou
     curriculum:
       unit: training_token_fraction
       stages:

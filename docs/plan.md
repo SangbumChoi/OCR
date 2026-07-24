@@ -252,6 +252,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) ·
    [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
    [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) ·
+   [`report/student_box_iou_loss_sweep.md`](report/student_box_iou_loss_sweep.md) ·
    [`report/student_sequence_teacher_sweep.md`](report/student_sequence_teacher_sweep.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
