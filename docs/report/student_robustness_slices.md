@@ -2,7 +2,7 @@
 
 Headline accuracy can hide a gain confined to one template, language, easy single-region
 question, clean rendering, or an authored document mark. Native-student evaluation therefore
-assigns every sample six
+assigns every sample seven
 canonical labels:
 
 | Axis | Canonical source |
@@ -13,6 +13,7 @@ canonical labels:
 | `degradation` | `clean` or the rendered degradation preset |
 | `overlay` | `none`, one mark type, or a sorted `+`-joined handwriting/stamp/seal mixture |
 | `page_count` | number of rendered pages available to the model |
+| `document_count` | number of independently authored source documents available to the model |
 
 The labels are stored in each evaluation row under `robustness_slices`. Synthetic conversion also
 stores them in `Sample.meta`, so the labels survive JSONL serialization and can be audited before
@@ -46,6 +47,8 @@ eval_by_slice/overlay/<value>/train
 eval_by_slice/overlay/<value>/heldout
 eval_by_slice/page_count/<value>/train
 eval_by_slice/page_count/<value>/heldout
+eval_by_slice/document_count/<value>/train
+eval_by_slice/document_count/<value>/heldout
 ```
 
 Selecting the two metrics with the same `<axis>/<value>` suffix produces a directly matched panel.

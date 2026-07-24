@@ -98,6 +98,38 @@ def transform_ground_truth(
     transformed = copy.deepcopy(dict(ground_truth))
     transformed_count = 0
 
+    def transform_regions(
+        origins_key: str,
+        sizes_key: str,
+    ) -> None:
+        nonlocal transformed_count
+        render = transformed.get("render") or {}
+        origins = render.get(origins_key) or []
+        sizes = render.get(sizes_key) or []
+        if len(origins) != len(sizes):
+            return
+        new_origins: list[list[int]] = []
+        new_sizes: list[list[int]] = []
+        for origin, size in zip(origins, sizes):
+            region = transform_box(
+                [
+                    origin[0],
+                    origin[1],
+                    origin[0] + size[0],
+                    origin[1] + size[1],
+                ],
+                homography,
+                width=width,
+                height=height,
+            )
+            new_origins.append(region[:2])
+            new_sizes.append(
+                [region[2] - region[0], region[3] - region[1]]
+            )
+            transformed_count += 1
+        render[origins_key] = new_origins
+        render[sizes_key] = new_sizes
+
     spotting = transformed.get("spotting")
     if isinstance(spotting, Mapping):
         transformed["spotting"] = {
@@ -161,6 +193,16 @@ def transform_ground_truth(
                 for box in query["evidence_bboxes"]
             ]
             transformed_count += len(query["evidence_bboxes"])
+
+    transform_regions("page_origins_px", "page_sizes_px")
+    transform_regions("document_origins_px", "document_sizes_px")
+    render = transformed.get("render") or {}
+    document_origins = render.get("document_origins_px") or []
+    document_sizes = render.get("document_sizes_px") or []
+    for index, document in enumerate(render.get("documents") or []):
+        if index < len(document_origins) and index < len(document_sizes):
+            document["origin_px"] = list(document_origins[index])
+            document["size_px"] = list(document_sizes[index])
 
     for overlay in (transformed.get("render") or {}).get("overlays") or []:
         if isinstance(overlay, dict) and overlay.get("bbox"):

@@ -88,6 +88,44 @@ def test_transform_ground_truth_updates_all_legacy_spatial_views():
     assert count == 3
 
 
+def test_transform_ground_truth_updates_page_and_document_regions():
+    translation = np.asarray(
+        [[1.0, 0.0, 5.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    gt = {
+        "render": {
+            "page_origins_px": [[10, 12]],
+            "page_sizes_px": [[20, 30]],
+            "document_origins_px": [[8, 10]],
+            "document_sizes_px": [[40, 50]],
+            "documents": [
+                {
+                    "document_id": "source",
+                    "origin_px": [8, 10],
+                    "size_px": [40, 50],
+                }
+            ],
+        }
+    }
+
+    transformed, count = transform_ground_truth(
+        gt,
+        translation,
+        width=100,
+        height=80,
+    )
+
+    render = transformed["render"]
+    assert render["page_origins_px"] == [[15, 15]]
+    assert render["page_sizes_px"] == [[20, 30]]
+    assert render["document_origins_px"] == [[13, 13]]
+    assert render["document_sizes_px"] == [[40, 50]]
+    assert render["documents"][0]["origin_px"] == [13, 13]
+    assert render["documents"][0]["size_px"] == [40, 50]
+    assert count == 2
+
+
 def test_warp_perspective_is_deterministic_and_preserves_visible_evidence():
     pytest.importorskip("cv2")
     image = Image.new("RGB", (160, 120), "white")

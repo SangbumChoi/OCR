@@ -77,6 +77,9 @@ DocSample
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      rendered_page_count, page_mode, page_gap_px,
 │                      page_origins_px, page_sizes_px,
+│                      page_document_indices, page_document_ids,
+│                      document_count, document_mode, document_gap_px,
+│                      document_ids, document_origins_px, document_sizes_px, documents,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
 │                      layout_family, layout_fingerprint, box_resolver,
 │                      overlay_seed, overlay_fingerprint, overlays,
@@ -126,6 +129,13 @@ grid modes store each page's canvas origin and pixel size, so text-search boxes,
 and evidence-page attribution share one coordinate contract. Cross-page samples carry the sorted
 `evidence_pages` list and a `cross_page_evidence` flag into training and evaluation metadata.
 
+Cross-document bundles add a second provenance level without changing the one-image student
+contract. Each independently rendered source receives a stable document ID and exact canvas
+origin/size; source keys are namespaced as `<document_id>.<field>`. Flattened page arrays retain
+page-aware compatibility, while `page_document_indices`, `page_document_ids`, and `documents`
+recover source identity. Cross-document samples carry sorted `evidence_documents` and a
+`cross_document_evidence` flag.
+
 Every hard document also contains a locale-matched absent-field question. The converted sample
 sets `abstain_expected: true`, includes the localized absence form among valid answers, and feeds
 the same locale forms to the calibrated-abstention reward. This makes the hallucination slice part
@@ -170,6 +180,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Hard-layout diversity** | classic vs compact vs report structure | `RenderSpec.layout_family`, `layout_fingerprint` | `hard_layout_families` |
 | **Document-mark robustness** | none vs handwriting/stamp/seal mixtures | `RenderSpec.overlays`, grounded mark QA | `overlay_prob`, `overlay_types`, `overlay_max_count` |
 | **Multi-page composition** | vertical strip vs compute-aware page grid | page origins/sizes, `evidence_pages`, `page_count` | `multipage_mode` |
+| **Multi-document composition** | independent-source strip vs document grid | document IDs/origins/sizes, `evidence_documents`, `document_count` | `multidocument_mode` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
 | **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |

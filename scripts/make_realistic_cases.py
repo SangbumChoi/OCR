@@ -32,9 +32,15 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.synth import (  # noqa: E402
+    BundleDocument,
+    DifficultySpec,
     DocBuilder,
+    GraphNode,
+    GraphQuery,
+    LatentDocumentGraph,
     OVERLAY_TYPES,
     apply_document_overlays,
+    compose_document_bundle,
     degrade_with_retries,
     derive_degradation_seed,
     derive_overlay_seed,
@@ -165,6 +171,29 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
         ]
     if render.get("page_gap_px"):
         render["page_gap_px"] = round(render["page_gap_px"] * sy)
+    if render.get("document_origins_px"):
+        render["document_origins_px"] = [
+            [round(origin[0] * sx), round(origin[1] * sy)]
+            for origin in render["document_origins_px"]
+        ]
+    if render.get("document_sizes_px"):
+        render["document_sizes_px"] = [
+            [round(size[0] * sx), round(size[1] * sy)]
+            for size in render["document_sizes_px"]
+        ]
+    if render.get("document_gap_px"):
+        render["document_gap_px"] = round(render["document_gap_px"] * sy)
+    for document in render.get("documents") or []:
+        if document.get("origin_px"):
+            document["origin_px"] = [
+                round(document["origin_px"][0] * sx),
+                round(document["origin_px"][1] * sy),
+            ]
+        if document.get("size_px"):
+            document["size_px"] = [
+                round(document["size_px"][0] * sx),
+                round(document["size_px"][1] * sy),
+            ]
     return img
 
 
@@ -276,16 +305,18 @@ def _pick_preset(key: str, default: str) -> str:
 
 
 def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | None = None,
-         *, builder=None, domain: str | None = None, acquisition: str | None = None):
+         *, builder=None, domain: str | None = None, acquisition: str | None = None,
+         language: str | None = None):
     """Render a builder (or accept a prebuilt PIL image + gt) -> clean.png + degraded.png + gt.json.
 
     Writes the structured DocSample DTO (a superset of the legacy flat gt schema)."""
+    sample_language = language or CURRENT_LANG
     if gt is None:
         builder = builder_or_img
-        builder.language = CURRENT_LANG
+        builder.language = sample_language
         for field_key in list(builder.field_lang):
             if builder.field_lang[field_key] == "en":
-                builder.field_lang[field_key] = CURRENT_LANG
+                builder.field_lang[field_key] = sample_language
         if getattr(CFG, "jitter", False):       # per-doc visual theme (paper/accent/font/margin)
             builder.css += _theme_css(_doc_rng(key), structural=key not in _FIXED_LAYOUT)
         img, gt = builder.build(
@@ -294,12 +325,17 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         )
     else:
         img = builder_or_img
+    required_spotting_keys = (
+        [spot[0] for spot in builder._spots]
+        if builder is not None
+        else list((gt.get("render") or {}).get("required_spotting_keys") or [])
+    )
     img = _resize_with_boxes(img, gt)
     overlay_seed = derive_overlay_seed(
         CFG.seed,
         key,
         _paired_variant(key),
-        CURRENT_LANG,
+        sample_language,
     )
     img, gt = apply_document_overlays(
         img,
@@ -308,14 +344,14 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         probability=CFG.overlay_prob,
         overlay_types=CFG.overlay_types,
         max_count=CFG.overlay_max_count,
-        language=CURRENT_LANG,
+        language=sample_language,
     )
     photo_style = preset == "photo" or acquisition == "photo"
     geometry_seed = derive_perspective_seed(
         CFG.seed,
         key,
         _paired_variant(key),
-        CURRENT_LANG,
+        sample_language,
     )
     if (
         do_degrade
@@ -338,7 +374,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         gt, builder=builder, gen_config=CFG, degradation=None,
         domain=domain, acquisition=acquisition,
     )
-    doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
+    doc.languages = [sample_language] if builder is not None else doc.languages
     out = doc.to_dict()
     quality_out = out
     if CFG.validate_evidence_pixels or CFG.validate_degraded_evidence:
@@ -351,17 +387,12 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
             acquisition=acquisition,
         )
         quality_doc.languages = (
-            [CURRENT_LANG]
+            [sample_language]
             if builder is not None
             else quality_doc.languages
         )
         quality_out = quality_doc.to_dict()
     if CFG.validate_evidence_pixels:
-        required_spotting_keys = (
-            [spot[0] for spot in builder._spots]
-            if builder is not None
-            else []
-        )
         clean_quality = audit_render_evidence(
             img,
             quality_out,
@@ -382,7 +413,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
             CFG.seed,
             key,
             CURRENT_VARIANT,
-            CURRENT_LANG,
+            sample_language,
         )
         degraded_quality = None
 
@@ -427,10 +458,10 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
             "pair_id": f"{key}:{counterfactual_index // 2:04d}",
             "role": "factual" if counterfactual_index % 2 == 0 else "edited",
             "edit_scope": "latent_values",
-            "language": CURRENT_LANG,
+            "language": sample_language,
         }
     if key in HARD_CASE_FACTORIES:
-        validate_hard_document_language(out, CURRENT_LANG)
+        validate_hard_document_language(out, sample_language)
     if out.get("semantic_graph"):
         policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
         out["suggested_split"] = policy.assign(out)
@@ -442,7 +473,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     (folder / "gt.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     sup = out["ablation_support"]
     records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
-                    "language": CURRENT_LANG, "stressors": gt["stressors"],
+                    "language": sample_language, "stressors": gt["stressors"],
                     "anchor_metric": gt["anchor_metric"], "support": sup,
                     "split": out["split"], "suggested_split": out.get("suggested_split"),
                     "difficulty": out.get("difficulty"),
@@ -472,6 +503,18 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                         ),
                         "mode": out.get("render", {}).get("page_mode", "first"),
                         "gap_px": out.get("render", {}).get("page_gap_px", 0),
+                    },
+                    "documents": {
+                        "count": out.get("render", {}).get("document_count", 1),
+                        "mode": out.get("render", {}).get(
+                            "document_mode",
+                            "single",
+                        ),
+                        "ids": out.get("render", {}).get("document_ids", []),
+                        "gap_px": out.get("render", {}).get(
+                            "document_gap_px",
+                            0,
+                        ),
                     },
                     "geometry": {
                         "kind": out.get("render", {}).get("geometry", {}).get("kind"),
@@ -503,7 +546,7 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
         flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
                         ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
-        print(f"[ok] {key:14} {img.size} lang={CURRENT_LANG:2} fields={len(out.get('fields',{}))} "
+        print(f"[ok] {key:14} {img.size} lang={sample_language:2} fields={len(out.get('fields',{}))} "
               f"spots={len(out.get('spotting',{}))} [{flags}]")
 
 
@@ -1122,6 +1165,426 @@ def case_audit_packet(do_degrade):
         do_degrade,
         domain="finance",
         acquisition="scan",
+        language="en",
+    )
+
+
+def case_investment_dossier(do_degrade):
+    """Three independent sources with exact cross-document investment analysis."""
+    ticker = "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(4))
+    company = fake.company()
+    prior_revenue = fake.random_int(820, 1600)
+    current_revenue = prior_revenue + fake.random_int(70, 340)
+    cash = fake.random_int(120, 620)
+    debt = fake.random_int(max(cash + 80, 350), 1300)
+    shares = fake.random_int(100, 450)
+    share_price = fake.random_int(1800, 9200) / 100
+    enterprise_value = shares * share_price + debt - cash
+    revenue_growth = (
+        (current_revenue - prior_revenue) / prior_revenue * 100
+    )
+    claimed_ev = enterprise_value + fake.random_int(250, 1200)
+    claimed_growth = revenue_growth + fake.random_int(125, 475) / 100
+    ev_overstatement = claimed_ev - enterprise_value
+    growth_overstatement = claimed_growth - revenue_growth
+
+    def money_m(value):
+        return f"${value:,.2f}m"
+
+    def build_source(
+        document_id: str,
+        builder: DocBuilder,
+    ) -> BundleDocument:
+        if CFG.jitter:
+            builder.css += _theme_css(
+                _doc_rng(f"investment_dossier:{document_id}"),
+                structural=True,
+            )
+        image, ground_truth = builder.build(
+            dpi=CFG.dpi,
+            color_probe_fallback=CFG.color_probe_fallback,
+        )
+        return BundleDocument(
+            document_id,
+            image,
+            ground_truth,
+            required_spotting_keys=tuple(spot[0] for spot in builder._spots),
+        )
+
+    filing = DocBuilder(
+        "audited annual filing",
+        ["financial-table", "small-text", "source-reliability"],
+        "KIE F1 + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Serif',serif;font-size:10px;}
+        .head{border-bottom:4px solid #24486b;padding-bottom:8px;margin-bottom:12px;}
+        .head h2{color:#24486b;}
+        .audit{border:1px solid #708090;background:#f3f6f8;padding:8px;margin:10px 0;}
+        .note{font-size:8px;color:#555;margin-top:18px;}
+        """,
+    )
+    filing.raw("<header class=head>")
+    filing.title(f"{esc(company)} - AUDITED ANNUAL FILING", level=2)
+    filing.line(f"Ticker: {esc(ticker)} | Fiscal year 2025", cls="muted")
+    filing.raw("</header><div class=audit>Independent auditor status: Unqualified</div>")
+    filing.field(
+        "FY2025 revenue (USD millions)",
+        f"{current_revenue:,}",
+        key="revenue_current",
+        spot=True,
+    )
+    filing.field(
+        "FY2024 revenue (USD millions)",
+        f"{prior_revenue:,}",
+        key="revenue_prior",
+        spot=True,
+    )
+    filing.field(
+        "Cash and equivalents (USD millions)",
+        f"{cash:,}",
+        key="cash",
+        spot=True,
+    )
+    filing.field(
+        "Total debt (USD millions)",
+        f"{debt:,}",
+        key="debt",
+        spot=True,
+    )
+    filing.field(
+        "Diluted shares outstanding (millions)",
+        f"{shares:,}",
+        key="shares",
+        spot=True,
+    )
+    filing.raw(
+        "<p class=note>Source A - filed financial statements. "
+        "Figures are audited and stated in USD millions.</p>"
+    )
+
+    market = DocBuilder(
+        "independent market snapshot",
+        ["market-data", "timestamp", "source-reliability"],
+        "KIE F1 + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Sans',sans-serif;font-size:10px;}
+        .head{background:#173f35;color:white;padding:11px;margin-bottom:14px;}
+        .head h2{color:white !important;}
+        .quote{border:2px solid #2e715f;padding:14px;margin:20px 0;}
+        .price{font-size:28px;color:#173f35;font-weight:bold;}
+        .note{font-size:8px;color:#555;margin-top:22px;}
+        """,
+    )
+    market.raw("<header class=head>")
+    market.title("INDEPENDENT MARKET SNAPSHOT", level=2)
+    market.raw("</header><div class=quote>")
+    market.field("Ticker", ticker, key="ticker", spot=True)
+    market.field(
+        "Closing share price (USD)",
+        f"${share_price:.2f}",
+        key="share_price",
+        spot=True,
+        cls="price",
+    )
+    market.field(
+        "Quote date",
+        "2025-03-31",
+        key="quote_date",
+        spot=True,
+    )
+    market.raw("</div>")
+    market.line("Valuation convention: market capitalization plus debt less cash.")
+    market.raw(
+        "<p class=note>Source B - exchange close. Price is per diluted share.</p>"
+    )
+
+    memo = DocBuilder(
+        "external analyst memo",
+        ["conflicting-claims", "source-reliability", "review-action"],
+        "claim verification + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Sans',sans-serif;font-size:10px;}
+        .head{border-bottom:2px solid #8b3c36;padding-bottom:8px;margin-bottom:14px;}
+        .head h2{color:#8b3c36;}
+        .claim{border-left:5px solid #8b3c36;background:#faf1ef;padding:10px;margin:14px 0;}
+        .disclaimer{font-size:8px;color:#666;margin-top:25px;}
+        """,
+    )
+    memo.raw("<header class=head>")
+    memo.title("EXTERNAL ANALYST VALUATION MEMO", level=2)
+    memo.line(f"Subject: {esc(ticker)} | Preliminary, unaudited", cls="muted")
+    memo.raw("</header><div class=claim>")
+    memo.field(
+        "Claimed enterprise value (USD millions)",
+        f"{claimed_ev:,.2f}",
+        key="claimed_ev",
+        spot=True,
+    )
+    memo.field(
+        "Claimed year-over-year revenue growth",
+        f"{claimed_growth:.2f}%",
+        key="claimed_growth",
+        spot=True,
+    )
+    memo.field(
+        "Recommendation",
+        "APPROVE WITHOUT FURTHER REVIEW",
+        key="recommendation",
+        spot=True,
+    )
+    memo.raw("</div>")
+    memo.raw(
+        "<p class=disclaimer>Source C - third-party opinion. "
+        "Claims must be reconciled to primary sources before approval.</p>"
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id=f"investment-dossier-{ticker}",
+        template_family="cross-document-investment-dossier-v1",
+        language="en",
+        nodes=[
+            GraphNode(
+                "revenue_current",
+                "financial_fact",
+                current_revenue,
+                "FY2025 revenue",
+                "USD millions",
+                {"field_key": "filing.revenue_current", "document_id": "filing"},
+            ),
+            GraphNode(
+                "revenue_prior",
+                "financial_fact",
+                prior_revenue,
+                "FY2024 revenue",
+                "USD millions",
+                {"field_key": "filing.revenue_prior", "document_id": "filing"},
+            ),
+            GraphNode(
+                "cash",
+                "financial_fact",
+                cash,
+                "cash",
+                "USD millions",
+                {"field_key": "filing.cash", "document_id": "filing"},
+            ),
+            GraphNode(
+                "debt",
+                "financial_fact",
+                debt,
+                "debt",
+                "USD millions",
+                {"field_key": "filing.debt", "document_id": "filing"},
+            ),
+            GraphNode(
+                "shares",
+                "financial_fact",
+                shares,
+                "diluted shares",
+                "millions",
+                {"field_key": "filing.shares", "document_id": "filing"},
+            ),
+            GraphNode(
+                "share_price",
+                "market_fact",
+                share_price,
+                "share price",
+                "USD",
+                {"field_key": "market.share_price", "document_id": "market"},
+            ),
+            GraphNode(
+                "actual_ev",
+                "derived_fact",
+                enterprise_value,
+                "recomputed enterprise value",
+                "USD millions",
+            ),
+            GraphNode(
+                "actual_growth",
+                "derived_fact",
+                revenue_growth,
+                "recomputed revenue growth",
+                "percent",
+            ),
+            GraphNode(
+                "claimed_ev",
+                "analyst_claim",
+                claimed_ev,
+                "claimed enterprise value",
+                "USD millions",
+                {"field_key": "memo.claimed_ev", "document_id": "memo"},
+            ),
+            GraphNode(
+                "claimed_growth",
+                "analyst_claim",
+                claimed_growth,
+                "claimed revenue growth",
+                "percent",
+                {"field_key": "memo.claimed_growth", "document_id": "memo"},
+            ),
+            GraphNode(
+                "review_action",
+                "decision",
+                "escalate the memo for review",
+                "required action",
+            ),
+        ],
+        queries=[
+            GraphQuery(
+                "enterprise_value",
+                "Using the audited filing and market snapshot, what is the "
+                "enterprise value in USD millions?",
+                "weighted_sum",
+                ("shares", "debt", "cash"),
+                "H-cross-document-valuation",
+                evidence=("shares", "share_price", "debt", "cash"),
+                parameters={"weights": [share_price, 1.0, -1.0]},
+                answer_format="money",
+                expected=f"${enterprise_value:,.2f}",
+            ),
+            GraphQuery(
+                "revenue_growth",
+                "What is the audited year-over-year revenue growth?",
+                "percent_change",
+                ("revenue_current", "revenue_prior"),
+                "H-cross-document-growth",
+                evidence=("revenue_current", "revenue_prior"),
+                answer_format="percent",
+                expected=f"{revenue_growth:.2f}%",
+            ),
+            GraphQuery(
+                "ev_overstatement",
+                "By how much does the analyst memo overstate enterprise value "
+                "in USD millions?",
+                "difference",
+                ("claimed_ev", "actual_ev"),
+                "H-cross-document-consistency",
+                evidence=("claimed_ev", "shares", "share_price", "debt", "cash"),
+                answer_format="money",
+                expected=f"${ev_overstatement:,.2f}",
+            ),
+            GraphQuery(
+                "growth_overstatement",
+                "By how many percentage points does the memo overstate revenue growth?",
+                "difference",
+                ("claimed_growth", "actual_growth"),
+                "H-cross-document-consistency",
+                evidence=(
+                    "claimed_growth",
+                    "revenue_current",
+                    "revenue_prior",
+                ),
+                answer_format="decimal:2",
+                expected=f"{growth_overstatement:.2f}",
+            ),
+            GraphQuery(
+                "review_action",
+                "What should the reviewer do next?",
+                "value",
+                ("review_action",),
+                "H-cross-document-action",
+                metric="anls",
+                evidence=(
+                    "claimed_ev",
+                    "claimed_growth",
+                    "shares",
+                    "share_price",
+                    "debt",
+                    "cash",
+                    "revenue_current",
+                    "revenue_prior",
+                ),
+                answer_format="text",
+                expected="escalate the memo for review",
+            ),
+        ],
+        metadata={
+            "document_ids": ["filing", "market", "memo"],
+            "source_order_invariant": True,
+        },
+    )
+    qas = []
+    for query in graph.queries:
+        resolved = graph.resolve(query.query_id)
+        rationale = resolved.rationale
+        if query.query_id == "review_action":
+            rationale = (
+                f"The memo overstates enterprise value by {money_m(ev_overstatement)} "
+                f"and growth by {growth_overstatement:.2f} percentage points, "
+                "so its approve-without-review recommendation is unsupported."
+            )
+        qas.append(
+            {
+                "question": query.question + " Answer concisely, no explanation.",
+                "answers": [resolved.answer],
+                "metric": query.metric,
+                "answer_type": query.answer_type,
+                "rationale": rationale,
+                "evidence_keys": list(resolved.evidence_keys),
+                "graph_query_id": query.query_id,
+                "languages": ["en"],
+            }
+        )
+
+    image, ground_truth = compose_document_bundle(
+        [
+            build_source("filing", filing),
+            build_source("market", market),
+            build_source("memo", memo),
+        ],
+        mode=CFG.multidocument_mode,
+        doc_type="cross-document investment dossier",
+        stressors=[
+            "multi-document",
+            "cross-document-reasoning",
+            "source-reliability",
+            "financial-reconciliation",
+            "next-action",
+        ],
+        anchor_metric="relaxed accuracy + evidence IoU",
+        task=(
+            "Reconcile the audited filing, independent market snapshot, and "
+            "external analyst memo before approving the recommendation."
+        ),
+        qa=qas,
+        probes=[
+            {
+                "kind": "abstain",
+                "question": "What is the company's 2026 revenue guidance?",
+                "expected": "not present - abstain",
+            }
+        ],
+        include_source_qa=False,
+    )
+    ground_truth["semantic_graph"] = graph.to_dict()
+    ground_truth["difficulty"] = DifficultySpec(
+        level=5,
+        reasoning_hops=4,
+        distractor_count=3,
+        visual_density=0.72,
+        cross_region=True,
+        skills=(
+            "cross-document-retrieval",
+            "valuation",
+            "claim-verification",
+            "source-reliability",
+            "next-action",
+        ),
+    ).to_dict()
+    emit(
+        "investment_dossier",
+        image,
+        "scan",
+        do_degrade,
+        gt=ground_truth,
+        domain="finance",
+        acquisition="scan",
+        language="en",
     )
 
 
@@ -1203,6 +1666,7 @@ CASES = {
     "webtoon": case_webtoon, "prescription": case_prescription, "cheque": case_cheque,
     "ancient": case_ancient, "website": case_website, "mobile_app": case_mobile_app,
     "pdf_paper": case_pdf_paper, "audit_packet": case_audit_packet,
+    "investment_dossier": case_investment_dossier,
     "lcd_7seg": case_lcd,
     "hard_table": case_hard_table, "hard_chart": case_hard_chart,
     "hard_investment": case_hard_investment, "hard_science": case_hard_science,
@@ -1266,6 +1730,12 @@ def main():
         default=None,
         help="multi-page raster composition (overrides config)",
     )
+    ap.add_argument(
+        "--multidocument-mode",
+        choices=["vertical", "grid"],
+        default=None,
+        help="multi-document raster composition (overrides config)",
+    )
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
@@ -1296,6 +1766,8 @@ def main():
         CFG.overlay_types = list(args.overlay_type)
     if args.multipage_mode is not None:
         CFG.multipage_mode = args.multipage_mode
+    if args.multidocument_mode is not None:
+        CFG.multidocument_mode = args.multidocument_mode
     if args.split_name is not None:
         CFG.split_name = args.split_name
     if args.no_degrade:
@@ -1337,7 +1809,8 @@ def main():
           f"perspective_p={CFG.perspective_prob} "
           f"hard_layouts={CFG.hard_layout_families} "
           f"overlay_p={CFG.overlay_prob} overlay_types={CFG.overlay_types} "
-          f"multipage_mode={CFG.multipage_mode}")
+          f"multipage_mode={CFG.multipage_mode} "
+          f"multidocument_mode={CFG.multidocument_mode}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

@@ -65,6 +65,10 @@ cross-attention, and pooled vision features.
 Multi-page synthetic packets use an exact-offset page grid before entering that canvas. This keeps
 the one-image model contract while spending the fixed 4,096-position budget more evenly across
 pages than a very tall strip; vertical versus grid composition remains an explicit data ablation.
+Independent source documents use the same composition layer with a separate document provenance
+map. This lets the fixed architecture train cross-document retrieval and claim verification
+without pretending to support a multi-image API; document-grid versus vertical-strip packing is a
+matched data ablation.
 
 ### Why this split
 
@@ -248,7 +252,8 @@ must separate templates, fonts, value distributions, and document graphs, not me
 3. Remove each dense pretraining loss one at a time.
 4. Compare answer-only, free rationale, and evidence-linked rationale SFT.
 5. Compare SFT, correctness-only RLVR, and the full decomposed reward.
-6. Evaluate every gain by document family, language, evidence count, and degradation.
+6. Evaluate every gain by document family, language, evidence count, degradation, page count, and
+   independent document count.
 7. Repeat the best recipe with LFM and at least one non-LFM teacher to detect teacher-specific gains.
 
 The initialization-by-data-scale cross is compiled by

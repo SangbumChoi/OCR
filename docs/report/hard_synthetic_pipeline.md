@@ -76,6 +76,7 @@ Each `gt.json` records:
 | `hard_chart` | labelled temporal bar chart | lookup, percent change, argmax, multi-year mean | exact temporal chart aggregation |
 | `hard_investment` | direct beneficial-ownership schedule | relation lookup, path product, sum of path products | effective ownership across two independent paths |
 | `hard_science` | paper title, abstract, equation, result table, caption | lookup, argmin, control-relative reduction, treatment comparison | quantitative claim verification against the stated equation |
+| `investment_dossier` | audited filing, exchange snapshot, and external analyst memo | weighted valuation, percent change, discrepancy checks, decision lookup | three-source claim verification and next action |
 
 The `difficulty_level` knob is an integer from 1 to 5. Level 1 emits direct visual lookup. Higher
 levels add aggregation or relational paths. Level 5 enables multi-path or cross-region reasoning
@@ -132,6 +133,33 @@ evaluation exposes `page_count` as a matched robustness axis.
 `--multipage-mode` provide matched controls. Grid is the small-model default. For three A5 pages
 at a 896px long-side budget, it raises effective page width from about 209px to 313px versus one
 vertical strip, while retaining exact page identity and ordering.
+
+## Cross-document composition
+
+`BundleDocument` represents an independently rendered source with its own image, GT, and stable
+ID. `compose_document_bundle()` packs those sources into a `grid` or `vertical` canvas and
+namespaces every field and spotting key as `<document_id>.<key>`. It preserves both levels of
+provenance: flattened page origins remain compatible with page-aware consumers, while document
+IDs, origins, sizes, page ownership, and per-source records distinguish independent evidence.
+Resize and perspective transform both region levels with the authored boxes.
+
+The `investment_dossier` family composes three independent sources:
+
+1. an audited filing with revenue, cash, debt, and diluted shares;
+2. an exchange snapshot with dated share price;
+3. an unaudited analyst memo containing deliberately inconsistent valuation and growth claims.
+
+Its executable graph recomputes enterprise value as `shares x price + debt - cash`, audited revenue
+growth, valuation overstatement, and growth overstatement. A fifth query converts those verified
+discrepancies into an exact next action: escalate the memo for review. Four of five reasoning
+queries cross document boundaries; the most difficult two cite all three sources. An absent 2026
+guidance probe remains the abstention control.
+
+`multidocument_mode`, `D_multidocument_vertical/grid`, and `--multidocument-mode` provide matched
+packing controls. The sample bridge records `evidence_documents`, `cross_document_evidence`, and
+`document_count`; native evaluation exposes `document_count` as a seventh canonical robustness
+axis. This preserves the production student's one-image API rather than relying on an unimplemented
+multi-image path.
 
 ## Grounded post-training
 
@@ -230,7 +258,8 @@ A separate 24-document degraded CLI smoke passed all clean/degraded gates; each 
 counterfactual pair shared its layout. A high-value compact-chart regression also verifies that
 normalized bars and labels remain inside the landscape page.
 
-A forced-overlay smoke covered all 19 document families and produced all three mark types while
+A forced-overlay smoke covered the 19 families present at that calibration point and produced all
+three mark types while
 every clean evidence audit passed. A second 24-document hard-family smoke combined overlays,
 degradation, and sampled perspective: all clean and degraded gates passed, every pair shared its
 mark-type signature, and the mix contained 14 seals, 12 handwritten notes, and 6 stamps. Across
@@ -242,3 +271,12 @@ marks. Every clean/degraded audit passed; the minimum observed structure correla
 All reconciliation and consistency samples carried evidence pages `[0,1,2]`, and quantity samples
 carried `[0,1]`. A vertical 875x3,759 control and a resized 543x768 grid render also passed exact
 box and page-provenance checks.
+
+A real three-source investment-dossier render produced a 1,768x2,500 document grid with eleven
+visible field boxes and 66 deduplicated field/evidence references. Its valuation sample cited
+documents `[0,1]`; valuation discrepancy and review-action samples cited `[0,1,2]`; the local
+audited-growth control cited `[0]`. Three forced-overlay degraded variants passed every clean and
+degraded gate on the first attempt, with minimum structure correlation 0.646. A 178x768 vertical
+low-resolution control also preserved all document origins, evidence boxes, and quality checks,
+while exposing the expected severe text-resolution cost of strip packing. A subsequent
+forced-overlay clean smoke covered all 20 current case families and every evidence gate passed.

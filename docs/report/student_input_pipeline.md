@@ -94,6 +94,13 @@ portrait pages into two columns instead of one tall strip, preserving about 313p
 metadata, so cross-page evidence is auditable even though the student consumes one image tensor.
 Vertical composition remains a matched data ablation.
 
+Independent-document bundles use the same pre-resize contract but retain a higher-level source
+map. The default grid packs an audited filing, market snapshot, and analyst memo into one canvas;
+`document_origins_px`, `document_sizes_px`, and `page_document_ids` keep evidence attribution
+exact. A cross-document QA therefore reaches the one-image student unchanged while evaluation can
+distinguish local, two-source, and three-source reasoning. Vertical document composition remains a
+matched control and is intentionally resolution-stressed.
+
 Dense `pixel_mask` is pooled into a patch mask. Invalid patches are excluded from ViT
 self-attention, resampler cross-attention, and vision pooling. Packed inputs carry only valid patch
 slots. Both modes use a fixed two-dimensional 64-by-64 position grid rather than the flattened

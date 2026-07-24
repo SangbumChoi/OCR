@@ -56,6 +56,7 @@ def _dataset():
                     "degradation": "scan",
                     "overlay_types": ["stamp"],
                     "page_count": 3,
+                    "document_count": 2,
                 },
             ),
             Sample(
@@ -73,6 +74,7 @@ def _dataset():
                     "degradation": "clean",
                     "overlay_types": [],
                     "page_count": 1,
+                    "document_count": 1,
                 },
             ),
         ]
@@ -169,6 +171,10 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     assert result.summary["by_robustness_axis"]["overlay"]["stamp"]["score"] == 1.0
     assert result.summary["by_robustness_axis"]["overlay"]["none"]["score"] == 0.0
     assert result.summary["by_robustness_axis"]["page_count"]["3"]["score"] == 1.0
+    assert (
+        result.summary["by_robustness_axis"]["document_count"]["2"]["score"]
+        == 1.0
+    )
     assert result.summary["robustness_coverage"]["complete"] is True
     assert result.summary["reward_components"]["answer_correctness"] == {
         "n": 1,
@@ -182,6 +188,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         "degradation": "scan",
         "overlay": "stamp",
         "page_count": "3",
+        "document_count": "2",
     }
     assert result.per_sample[0]["confidence"] is None
     assert (tmp_path / "summary.json").exists()

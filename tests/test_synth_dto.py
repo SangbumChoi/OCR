@@ -272,6 +272,13 @@ def test_multipage_render_provenance_round_trips():
     assert render.page_sizes_px[0] == [400, 400]
 
 
+def test_config_validates_multidocument_mode():
+    assert GenConfig(multidocument_mode="grid").multidocument_mode == "grid"
+    assert GenConfig(multidocument_mode="vertical").multidocument_mode == "vertical"
+    with pytest.raises(ValueError, match="multidocument_mode"):
+        GenConfig(multidocument_mode="horizontal")
+
+
 def test_evidence_pixel_gate_config_validation():
     config = GenConfig()
     assert config.validate_evidence_pixels is True

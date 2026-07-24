@@ -79,6 +79,27 @@ def _box_page_index(box: object, render: dict) -> int | None:
     return 0 if int(render.get("rendered_page_count") or 1) == 1 else None
 
 
+def _box_document_index(box: object, render: dict) -> int | None:
+    if not isinstance(box, (list, tuple)) or len(box) < 4:
+        return None
+    try:
+        center_x = (float(box[0]) + float(box[2])) / 2
+        center_y = (float(box[1]) + float(box[3])) / 2
+    except (TypeError, ValueError):
+        return None
+    origins = render.get("document_origins_px") or []
+    sizes = render.get("document_sizes_px") or []
+    for index, (origin, size) in enumerate(zip(origins, sizes)):
+        if (
+            len(origin) >= 2
+            and len(size) >= 2
+            and float(origin[0]) <= center_x <= float(origin[0]) + float(size[0])
+            and float(origin[1]) <= center_y <= float(origin[1]) + float(size[1])
+        ):
+            return index
+    return 0 if int(render.get("document_count") or 1) == 1 else None
+
+
 def case_to_samples(
     gt: dict,
     image_path: str,
@@ -124,6 +145,11 @@ def case_to_samples(
         "page_mode": str(render.get("page_mode") or "first"),
         "page_origins_px": render.get("page_origins_px") or [[0, 0]],
         "page_sizes_px": render.get("page_sizes_px") or [size],
+        "document_count": int(render.get("document_count") or 1),
+        "document_mode": str(render.get("document_mode") or "single"),
+        "document_ids": render.get("document_ids") or ["document-0"],
+        "document_origins_px": render.get("document_origins_px") or [[0, 0]],
+        "document_sizes_px": render.get("document_sizes_px") or [size],
     }
 
     for i, qa in enumerate(gt.get("qa", [])):
@@ -174,6 +200,18 @@ def case_to_samples(
         if evidence_pages:
             meta["evidence_pages"] = evidence_pages
             meta["cross_page_evidence"] = len(evidence_pages) > 1
+        evidence_documents = sorted(
+            {
+                document
+                for box in spatial_boxes
+                if (
+                    document := _box_document_index(box, render)
+                ) is not None
+            }
+        )
+        if evidence_documents:
+            meta["evidence_documents"] = evidence_documents
+            meta["cross_document_evidence"] = len(evidence_documents) > 1
         out.append(Sample(
             f"{prefix}:qa{i}", image_path, qa["question"], list(qa["answers"]),
             qa.get("answer_type", "kie"), qa.get("metric", "anls"),
@@ -195,6 +233,13 @@ def case_to_samples(
                                   page
                                   for page in [_box_page_index(box, render)]
                                   if page is not None
+                              ],
+                              "evidence_documents": [
+                                  document
+                                  for document in [
+                                      _box_document_index(box, render)
+                                  ]
+                                  if document is not None
                               ],
                           }))
 

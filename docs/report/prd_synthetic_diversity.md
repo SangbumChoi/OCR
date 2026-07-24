@@ -21,7 +21,7 @@ documents.
 ### Axis A — Visual diversity (the *image* distribution)
 | Sub-dimension | Method | Knob |
 | --- | --- | --- |
-| document kind | 19 case templates (invoice…webtoon…UI, audit packet, and four hard families) | `--only` / weights |
+| document kind | 20 case templates (invoice…UI, audit packet, investment dossier, and four hard families) | `--only` / weights |
 | acquisition / lighting | Augraphy presets (scan/photo/fax/historical/screenshot) | `degrade_presets`, `degrade_prob` |
 | photographed geometry | same-frame perspective warp with exact homography box transforms | `perspective_prob`, `perspective_max_inset_fraction`, `perspective_min_area_ratio` |
 | degradation validity | local evidence visibility + clean/degraded crop correlation | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |
@@ -121,12 +121,14 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
   minimum valid correlation was 0.269, fixing the conservative default at 0.25. Eleven Augraphy
   runtime failures in 255 candidates motivated bounded deterministic retries with accepted
   seed/attempt provenance.
-- **v3 (multi-page tranche implemented):** a three-page procurement packet composes order,
+- **v3 (multi-page and cross-document tranches implemented):** a three-page procurement packet composes order,
   receiving, and payment records with six-box cross-page reconciliation, quantity, and consistency
   targets. The renderer can preserve every PDF page in exact-offset vertical or compute-aware grid
-  canvases; grid is the default for small-model resolution efficiency. Remaining v3 work is
-  cross-document reasoning beyond one packet, richer programmatic diagrams, next-action GT, and
-  curriculum scheduling of these compositions.
+  canvases; grid is the default for small-model resolution efficiency. A separate investment
+  dossier composes an audited filing, exchange snapshot, and external analyst memo as independent
+  source documents. Its executable graph supervises valuation, growth, claim discrepancy,
+  source reliability, and next action with exact cross-document evidence. Remaining v3 work is
+  richer programmatic diagrams and curriculum scheduling of these compositions.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out
 generalization improves.
 

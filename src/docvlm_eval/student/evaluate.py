@@ -39,6 +39,7 @@ ROBUSTNESS_AXES = (
     "degradation",
     "overlay",
     "page_count",
+    "document_count",
 )
 
 
@@ -151,6 +152,7 @@ def _canonical_robustness_slices(
         ),
         "overlay": overlay,
         "page_count": str(meta.get("page_count") or "unknown"),
+        "document_count": str(meta.get("document_count") or "unknown"),
     }
 
 

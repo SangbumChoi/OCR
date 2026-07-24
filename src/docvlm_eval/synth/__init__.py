@@ -16,6 +16,7 @@ lazily.
 from .degrade import (
     DegradationError, PRESETS, degrade, degrade_with_retries, derive_degradation_seed,
 )
+from .bundle import BundleDocument, compose_document_bundle
 from .geometry import (
     GeometryAugmentationError,
     derive_perspective_seed,
@@ -51,6 +52,7 @@ from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
 __all__ = [
     "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade",
     "degrade_with_retries", "derive_degradation_seed", "DegradationError", "PRESETS",
+    "BundleDocument", "compose_document_bundle",
     "warp_perspective", "transform_box", "transform_ground_truth",
     "derive_perspective_seed", "GeometryAugmentationError",
     "case_to_samples", "load_case_dir", "load_realistic_samples",

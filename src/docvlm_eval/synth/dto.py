@@ -129,6 +129,15 @@ class RenderSpec:
     page_gap_px: int = 0
     page_origins_px: list[list[int]] = field(default_factory=list)
     page_sizes_px: list[list[int]] = field(default_factory=list)
+    page_document_indices: list[int] = field(default_factory=list)
+    page_document_ids: list[str] = field(default_factory=list)
+    document_count: int = 1
+    document_mode: str = "single"
+    document_gap_px: int = 0
+    document_ids: list[str] = field(default_factory=list)
+    document_origins_px: list[list[int]] = field(default_factory=list)
+    document_sizes_px: list[list[int]] = field(default_factory=list)
+    documents: list[dict[str, Any]] = field(default_factory=list)
     target_long_side: int | None = None  # A7: longest side the image was resized to (None = native)
     keep_aspect: bool = True             # A7
     tiling: dict[str, Any] | None = None  # A7: {"n_max": int, ...} when dynamic tiling was simulated
@@ -225,6 +234,7 @@ class GenConfig:
     overlay_types: list[str] = field(default_factory=lambda: list(OVERLAY_TYPES))
     overlay_max_count: int = 2
     multipage_mode: str = "grid"
+    multidocument_mode: str = "grid"
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -308,6 +318,8 @@ class GenConfig:
             raise ValueError("overlay_max_count must be positive")
         if self.multipage_mode not in {"vertical", "grid"}:
             raise ValueError("multipage_mode must be vertical or grid")
+        if self.multidocument_mode not in {"vertical", "grid"}:
+            raise ValueError("multidocument_mode must be vertical or grid")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -458,6 +470,28 @@ class DocSample:
             ],
             page_sizes_px=[
                 list(size) for size in (rj.get("page_sizes_px") or [])
+            ],
+            page_document_indices=[
+                int(index) for index in (rj.get("page_document_indices") or [])
+            ],
+            page_document_ids=[
+                str(document_id)
+                for document_id in (rj.get("page_document_ids") or [])
+            ],
+            document_count=int(rj.get("document_count") or 1),
+            document_mode=str(rj.get("document_mode") or "single"),
+            document_gap_px=int(rj.get("document_gap_px") or 0),
+            document_ids=[
+                str(document_id) for document_id in (rj.get("document_ids") or [])
+            ],
+            document_origins_px=[
+                list(origin) for origin in (rj.get("document_origins_px") or [])
+            ],
+            document_sizes_px=[
+                list(size) for size in (rj.get("document_sizes_px") or [])
+            ],
+            documents=[
+                dict(document) for document in (rj.get("documents") or [])
             ],
             target_long_side=(gen_config.target_long_side if gen_config else None),
             keep_aspect=(gen_config.keep_aspect if gen_config else True),

@@ -91,7 +91,7 @@ controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`ba
 `ablation_overrides`), so each ablation arm is one `--ablation` flag:
 
 ```bash
-python scripts/make_realistic_cases.py --count 500                       # 19 * 500 = 9500 labelled docs
+python scripts/make_realistic_cases.py --count 500                       # 20 * 500 = 10000 labelled docs
 python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
@@ -100,6 +100,7 @@ python scripts/make_realistic_cases.py --hard-layout compact-v1          # diagn
 python scripts/make_realistic_cases.py --ablation D_overlays_on           # force document marks
 python scripts/make_realistic_cases.py --overlay-prob 1 --overlay-type stamp seal
 python scripts/make_realistic_cases.py --only audit_packet --multipage-mode grid
+python scripts/make_realistic_cases.py --only investment_dossier --multidocument-mode grid
 ```
 
 The four hard families select from `classic-v1`, `compact-v1`, and `report-v1`. Their graph
@@ -118,6 +119,11 @@ The `audit_packet` case preserves three PDF pages in one page-aware image. `grid
 small-model packing; `vertical` is the reading-order control. Every page origin and size is
 recorded, and cross-page QAs identify which pages supply their evidence.
 
+The `investment_dossier` case renders an audited filing, exchange snapshot, and analyst memo
+independently, then composes them into one document-aware image. Every field key is namespaced by
+source; document IDs, origins, sizes, and page ownership remain explicit. Exact graph programs
+supervise enterprise value, audited growth, claim discrepancies, and the reviewer's next action.
+
 Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) serialised as a
 **backward-compatible superset** of the legacy flat schema. Alongside the flat keys (`type ·
 fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
@@ -125,6 +131,7 @@ carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
 (`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
 `render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`layout_family`/
 `layout_fingerprint`/`page_mode`/`page_origins_px`/`page_sizes_px`/
+`document_mode`/`document_ids`/`document_origins_px`/`document_sizes_px`/
 `overlay_seed`/`overlay_fingerprint`/`overlays`/
 `evidence_quality`), `degradation`
 (`preset`/`seed`/`attempts`/`evidence_quality`), `gen_config`, and an
@@ -153,8 +160,10 @@ inside the image, redacted values never leak, `to_dict` stays back-compatible, e
 | `mobile_app`     | mobile app / phone screenshot| mobile layout · vertical reflow · read-order | NED + read-order        |
 | `pdf_paper`      | PDF research paper (2-col) | multi-column · read-order · figure · header/footer | read-order + NED + TEDS |
 | `audit_packet`   | procurement audit packet | multi-page · reconciliation · cross-page grounding | relaxed acc + evidence IoU |
+| `investment_dossier` | investment evidence bundle | independent sources · valuation · claim verification · next action | relaxed acc + evidence IoU |
 
-The last three are **digital-native media surfaces** (not paper). Same WeasyPrint pipeline, only
+`website`, `mobile_app`, and `pdf_paper` are **digital-native media surfaces**. They use the same
+WeasyPrint pipeline; only
 the `@page` size changes — desktop `1280px`, phone `390×844`, paper `A4` (multi-page with running
 header + `counter(page)`). They use the lighter **`screenshot`** degradation preset (compression
 + subtle noise, no paper texture); the paper uses `scan`. Caveat: WeasyPrint is a *print* engine
@@ -170,7 +179,7 @@ absent from an ID card).
 
 ```bash
 pip install -e ".[synth]"          # weasyprint + pymupdf + faker + augraphy
-python scripts/make_realistic_cases.py                  # all 19 cases (clean + degraded)
+python scripts/make_realistic_cases.py                  # all 20 cases (clean + degraded)
 python scripts/make_realistic_cases.py --only id_card cheque
 python scripts/make_realistic_cases.py --no-degrade     # clean only (fast)
 ```

@@ -50,6 +50,7 @@ base:
   overlay_types: [handwriting, stamp, seal]
   overlay_max_count: 2
   multipage_mode: grid
+  multidocument_mode: grid
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true
@@ -153,6 +154,8 @@ ablation_overrides:
   D_overlays_on:  {overlay_prob: 1.0}
   D_multipage_vertical: {multipage_mode: vertical}
   D_multipage_grid: {multipage_mode: grid}
+  D_multidocument_vertical: {multidocument_mode: vertical}
+  D_multidocument_grid: {multidocument_mode: grid}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}
