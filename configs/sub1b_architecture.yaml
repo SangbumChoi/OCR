@@ -306,6 +306,7 @@ training:
         every_steps: 20
         loss_coefficient: 0.10
       malformed_reward: 0.0
+      rationale_verifier: evidence_semantic
       rollout:
         max_new_tokens: 128
         temperature: 0.8

@@ -252,6 +252,7 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     rlvr["rollout"]["top_p"] = 2.0
     rlvr["rollout"]["use_kv_cache"] = "yes"
     rlvr["supervised_replay"]["every_steps"] = 0
+    rlvr["rationale_verifier"] = "nonempty"
     rlvr["reward_mix"]["unsupported_reward"] = 0.0
 
     _, errors = validate_blueprint(blueprint)
@@ -269,6 +270,7 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     assert any("rollout.top_p must be within" in error for error in errors)
     assert any("rollout.use_kv_cache must be a boolean" in error for error in errors)
     assert any("interval and coefficient" in error for error in errors)
+    assert any("rationale_verifier" in error for error in errors)
     assert any("unsupported_reward" in error for error in errors)
 
 

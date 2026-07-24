@@ -92,6 +92,7 @@ class RewardContext:
 class RewardConfig:
     weights: dict[str, float]
     malformed_reward: float = 0.0
+    rationale_verifier: str = "evidence_semantic"
 
     def __post_init__(self) -> None:
         if not self.weights:
@@ -102,6 +103,10 @@ class RewardConfig:
             raise ValueError("at least one reward weight must be positive")
         if not 0 <= self.malformed_reward <= 1:
             raise ValueError("malformed_reward must be within [0, 1]")
+        if self.rationale_verifier != "evidence_semantic":
+            raise ValueError(
+                "rationale_verifier must be evidence_semantic"
+            )
 
     @classmethod
     def from_blueprint(cls, blueprint: dict[str, Any]) -> "RewardConfig":
@@ -112,6 +117,9 @@ class RewardConfig:
                 for name, weight in raw["reward_mix"].items()
             },
             malformed_reward=float(raw.get("malformed_reward", 0.0)),
+            rationale_verifier=str(
+                raw.get("rationale_verifier", "evidence_semantic")
+            ),
         )
 
 
@@ -520,10 +528,24 @@ def score_structured_response(
         components["box_iou"] = box_score
         applicable.add("box_iou")
         if context.gold_rationale:
-            components["grounded_rationale_consistency"] = (
-                box_score if response.rationale else 0.0
+            rationale_similarity = (
+                semantic_match(
+                    response.rationale,
+                    [context.gold_rationale],
+                )
+                if response.rationale
+                else 0.0
             )
-            applicable.add("grounded_rationale_consistency")
+            components["rationale_text_similarity"] = rationale_similarity
+            components["grounded_rationale_consistency"] = (
+                box_score * rationale_similarity
+            )
+            applicable.update(
+                {
+                    "grounded_rationale_consistency",
+                    "rationale_text_similarity",
+                }
+            )
     if context.table_expected:
         components["table_tree_similarity"] = teds_score(
             response.answer,

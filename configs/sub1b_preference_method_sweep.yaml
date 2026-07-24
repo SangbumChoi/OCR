@@ -65,6 +65,7 @@ matched_controls:
   - {document: blueprint, path: /training/posttraining/rlvr/rollout}
   - {document: blueprint, path: /training/posttraining/rlvr/reward_mix}
   - {document: blueprint, path: /training/posttraining/rlvr/malformed_reward}
+  - {document: blueprint, path: /training/posttraining/rlvr/rationale_verifier}
   - {document: blueprint, path: /training/posttraining/rlvr/optimizer}
   - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
 

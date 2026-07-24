@@ -177,7 +177,7 @@ become zeros:
 | `table_tree_similarity` | table/TEDS sample | TEDS |
 | `chart_numeric_tolerance` | numeric/chart sample | tolerance-aware numeric accuracy |
 | `formula_equivalence` | formula/LaTeX sample | bounded symbolic equivalence with exact-normalized fast path |
-| `grounded_rationale_consistency` | evidence and authored rationale exist | non-empty rationale gated by evidence IoU |
+| `grounded_rationale_consistency` | evidence and authored rationale exist | evidence IoU multiplied by deterministic rationale semantic match |
 | `calibrated_abstention` | all samples | abstain iff the sample requires abstention |
 
 Formula verification first applies deterministic LaTeX normalization, then parses elementary
@@ -187,11 +187,13 @@ It accepts expansions, factorizations, constant-scaled equations, and standard i
 are capped by character, command, symbol, operation, and expression-tree limits. Unknown commands,
 malformed LaTeX, integrals, sums, products, derivatives, limits, and parser failures receive zero
 equivalence reward. This is intentionally narrower than a theorem prover. The rationale verifier
-proves cited-region overlap and rationale presence, not semantic entailment; keep that metric
-separate before making faithful-reasoning claims.
+requires both cited-region overlap and lexical/numeric agreement with the authored rationale.
+`reward_diagnostic/rationale_text_similarity` and the corresponding evaluation component expose
+the text contribution independently. This remains a deterministic proxy, not proof of causal
+faithfulness.
 
 `metrics.jsonl` reports the estimator, total reward, reward variance, advantage scale, policy loss,
-reference KL, total loss, gradient norm, structural-validity fraction, replay
+reference KL, total loss, gradient norm, structural-validity fraction, rationale similarity, replay
 application/loss/token count, the replay sample ID, cumulative and per-step analytical student
 FLOPs, and every applicable reward component independently. A group with no reward variance
 receives zero policy advantage; a scheduled replay anchor can still provide a supervised update.
@@ -200,9 +202,9 @@ receives zero policy advantage; a scheduled replay anchor can still provide a su
 
 RLVR and preference checkpoints contain policy weights, optimizer and AMP scaler state,
 Python/Torch/CUDA RNG state, stage cursors, student FLOPs consumed, tokenizer fingerprint, and a
-frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, objective
-contract, compute-budget contract, or activation-checkpointing contract. RLVR additionally guards
-the replay contract. Setting `max_steps: null`,
+frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, rationale
+verifier, objective contract, compute-budget contract, or activation-checkpointing contract. RLVR
+additionally guards the replay contract. Setting `max_steps: null`,
 `stop_at_student_flops: true`, and
 `total_student_flops` makes the compute budget the production stop; this is used by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).

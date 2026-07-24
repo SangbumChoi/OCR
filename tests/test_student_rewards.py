@@ -62,7 +62,7 @@ def test_chart_grounding_and_rationale_rewards_are_independently_reported():
     response = build_structured_target(
         "42.1",
         evidence=((0.1, 0.2, 0.5, 0.6),),
-        rationale="The cited bar is labeled 42.1.",
+        rationale="Read the value from the highlighted bar.",
     )
 
     result = score_structured_response(response, context, _config())
@@ -71,9 +71,58 @@ def test_chart_grounding_and_rationale_rewards_are_independently_reported():
     assert result.components["answer_correctness"] == 0.0
     assert result.components["chart_numeric_tolerance"] == 1.0
     assert result.components["box_iou"] == pytest.approx(1.0)
+    assert result.components["rationale_text_similarity"] == pytest.approx(1.0)
     assert result.components["grounded_rationale_consistency"] == pytest.approx(1.0)
     assert result.components["calibrated_abstention"] == 1.0
     assert 0 < result.total < 1
+
+
+def test_grounded_rationale_rejects_arbitrary_nonempty_text():
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+
+    context = RewardContext(
+        sample_id="chart-rationale-hack",
+        answers=("42",),
+        gold_boxes=((0.1, 0.2, 0.5, 0.6),),
+        gold_rationale="Read the value from the highlighted bar.",
+    )
+    grounded = score_structured_response(
+        build_structured_target(
+            "42",
+            evidence=context.gold_boxes,
+            rationale=context.gold_rationale,
+        ),
+        context,
+        _config(),
+    )
+    arbitrary = score_structured_response(
+        build_structured_target(
+            "42",
+            evidence=context.gold_boxes,
+            rationale="This sentence is intentionally unrelated.",
+        ),
+        context,
+        _config(),
+    )
+
+    assert grounded.components["grounded_rationale_consistency"] == 1.0
+    assert arbitrary.components["rationale_text_similarity"] == 0.0
+    assert arbitrary.components["grounded_rationale_consistency"] == 0.0
+    assert arbitrary.total < grounded.total
+
+
+def test_reward_config_rejects_an_unverified_rationale_method():
+    from docvlm_eval.student.rewards import RewardConfig
+
+    with pytest.raises(ValueError, match="rationale_verifier"):
+        RewardConfig(
+            weights={"answer_correctness": 1.0},
+            rationale_verifier="nonempty",
+        )
 
 
 def test_box_reward_penalizes_extra_box_spraying():

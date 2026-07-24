@@ -1,4 +1,4 @@
-# SFT-only and two RLVR reward regimes by three paired replicates.
+# SFT-only and three RLVR reward regimes by three paired replicates.
 
 schema_version: 1
 name: docvlm-rlvr-reward-ablation
@@ -30,6 +30,7 @@ matched_controls:
   - {document: blueprint, path: /training/pretraining/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/rationale_verifier}
   - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
   - {document: blueprint, path: /training/pretraining/optimizer/epochs}
   - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
@@ -108,6 +109,21 @@ variants:
           formula_equivalence: 0.0
           grounded_rationale_consistency: 0.0
           calibrated_abstention: 0.0
+
+  - id: no_rationale_reward
+    hypothesis: "Removing only semantic-grounded rationale reward tests its incremental heldout value."
+    blueprint_patches:
+      - op: replace
+        path: /training/posttraining/rlvr/reward_mix
+        value:
+          answer_correctness: 0.2777777777777778
+          normalized_text_similarity: 0.16666666666666666
+          box_iou: 0.16666666666666666
+          table_tree_similarity: 0.1111111111111111
+          chart_numeric_tolerance: 0.1111111111111111
+          formula_equivalence: 0.1111111111111111
+          grounded_rationale_consistency: 0.0
+          calibrated_abstention: 0.05555555555555555
 
   - id: sft_only
     hypothesis: "The unchanged evidence-linked SFT checkpoint measures the incremental effect of RLVR."

@@ -1158,6 +1158,7 @@ def _rlvr_objective_contract(
             for name, weight in sorted(reward_config.weights.items())
         },
         "malformed_reward": reward_config.malformed_reward,
+        "rationale_verifier": reward_config.rationale_verifier,
     }
 
 
@@ -1315,6 +1316,7 @@ def _preference_objective_contract(
             for name, weight in sorted(reward_config.weights.items())
         },
         "malformed_reward": reward_config.malformed_reward,
+        "rationale_verifier": reward_config.rationale_verifier,
     }
 
 
@@ -1702,6 +1704,15 @@ def train_preference(
             ]
             if values:
                 final_metrics[f"reward/{name}"] = sum(values) / len(values)
+        rationale_similarities = [
+            result.components["rationale_text_similarity"]
+            for result in reward_results
+            if "rationale_text_similarity" in result.applicable
+        ]
+        if rationale_similarities:
+            final_metrics["reward_diagnostic/rationale_text_similarity"] = (
+                sum(rationale_similarities) / len(rationale_similarities)
+            )
         if (
             state.preference_step == 1
             or state.preference_step % config.log_every_steps == 0
@@ -1997,6 +2008,15 @@ def train_grpo(
             ]
             if values:
                 final_metrics[f"reward/{name}"] = sum(values) / len(values)
+        rationale_similarities = [
+            result.components["rationale_text_similarity"]
+            for result in reward_results
+            if "rationale_text_similarity" in result.applicable
+        ]
+        if rationale_similarities:
+            final_metrics["reward_diagnostic/rationale_text_similarity"] = (
+                sum(rationale_similarities) / len(rationale_similarities)
+            )
         if (
             state.rollout_step == 1
             or state.rollout_step % config.log_every_steps == 0

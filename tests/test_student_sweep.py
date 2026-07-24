@@ -488,7 +488,7 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
         compile_root=tmp_path / "compiled",
     )
 
-    assert len(plan.variants) == 9
+    assert len(plan.variants) == 12
     assert plan.baseline == "full_reward"
     for variant in plan.variants:
         evaluate = next(
@@ -509,6 +509,14 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
                 weight == 0.0
                 for name, weight in reward_mix.items()
                 if name != "answer_correctness"
+            )
+        if variant.arm_id == "no_rationale_reward":
+            assert reward_mix["grounded_rationale_consistency"] == 0.0
+            assert sum(reward_mix.values()) == pytest.approx(1.0)
+            assert all(
+                weight > 0.0
+                for name, weight in reward_mix.items()
+                if name != "grounded_rationale_consistency"
             )
         assert "rlvr-reward-ablation" in variant.plan.raw_spec["evaluation"][
             "wandb_tags"
