@@ -2168,6 +2168,7 @@ class ExperimentRunner:
                 ],
             }
 
+        invocation_started = time.time()
         self._write_static_manifests()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -2272,10 +2273,63 @@ class ExperimentRunner:
                     f"stage {stage.name!r} failed; inspect {log_path}"
                 )
             outcomes.append({"stage": stage.name, "status": "completed"})
+        invocation_finished = time.time()
+        invocation_outcomes = {
+            outcome["stage"]: outcome["status"] for outcome in outcomes
+        }
+        stage_summaries = []
+        for stage in self.plan.stages:
+            state = self._load_state(stage.name) or {}
+            expected_signature = signatures[stage.name]
+            stage_summaries.append(
+                {
+                    "stage": stage.name,
+                    "invocation_status": invocation_outcomes.get(
+                        stage.name,
+                        "not_selected",
+                    ),
+                    "state_status": state.get("status", "missing"),
+                    "signature": state.get("signature"),
+                    "signature_matches": state.get("signature")
+                    == expected_signature,
+                    "artifacts_valid": stage.artifacts_valid(),
+                    "started_at_unix": state.get("started_at_unix"),
+                    "finished_at_unix": state.get("finished_at_unix"),
+                    "duration_seconds": state.get("duration_seconds"),
+                    "return_code": state.get("return_code"),
+                    "log": state.get("log"),
+                }
+            )
+        pipeline_complete = all(
+            summary["state_status"] == "completed"
+            and summary["signature_matches"]
+            and summary["artifacts_valid"]
+            for summary in stage_summaries
+        )
         result = {
+            "schema_version": 2,
             "dry_run": False,
             "fingerprint": self.plan.fingerprint,
             "outcomes": outcomes,
+            "latest_invocation": {
+                "id": _fingerprint(
+                    {
+                        "experiment": self.plan.fingerprint,
+                        "started_at_unix": invocation_started,
+                        "selected_stages": [stage.name for stage in selected],
+                        "resume": resume,
+                    }
+                ),
+                "started_at_unix": invocation_started,
+                "finished_at_unix": invocation_finished,
+                "duration_seconds": invocation_finished - invocation_started,
+                "resume": resume,
+                "from_stage": start,
+                "to_stage": stop,
+                "selected_stages": [stage.name for stage in selected],
+            },
+            "pipeline_complete": pipeline_complete,
+            "stages": stage_summaries,
         }
         _atomic_write_json(self.root / "run_summary.json", result)
         return result

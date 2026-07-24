@@ -358,6 +358,20 @@ split evaluation. The full DAG also blocks initialization on target-GPU visual p
 and a production-shaped full-model forward/backward/AdamW memory probe. See
 [`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
 
+After a run, produce and independently re-verify a full-hash evidence attestation:
+
+```bash
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment_tiny.yaml
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment_tiny.yaml \
+  --verify outputs/docvlm-tiny-smoke/evidence_attestation.json
+```
+
+The attestation separates pipeline execution from capability evidence, so a successful smoke run
+cannot be mistaken for a quality or deployment pass. See
+[`docs/report/student_experiment_evidence.md`](docs/report/student_experiment_evidence.md).
+
 The full mixture now acquires the pinned public `danelcsb/UDD` train fold at 55% and combines it
 with 45% authored hard documents. Hub revision, selection, schema, duplicate identity, decoded
 image dimensions, and source distributions are recorded before mixing. See

@@ -197,7 +197,21 @@ Each run root contains:
 - `state/stages/<stage>.json` with status, command, timing, return code, and signature;
 - `logs/<stage>.log` with combined process output;
 - `artifacts/` with immutable stage handoffs and final split comparison;
-- `run_summary.json` with completed or skipped outcomes.
+- schema-v2 `run_summary.json`, which separates latest-invocation completed/skipped outcomes from
+  cumulative authoritative stage completion, signature, artifact, timing, and log evidence.
+
+After a complete run, create a deterministic evidence attestation:
+
+```bash
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment.yaml
+```
+
+The attestation re-hashes declared artifacts, logs, and resolved latest checkpoints; verifies
+optimization and train/heldout generation progress; and reports pipeline-contract status separately
+from capability/deployment gates. Re-run it with `--verify <path>` before publishing or promoting a
+checkpoint. See
+[`student_experiment_evidence.md`](student_experiment_evidence.md).
 
 Run a bounded section only after its external dependencies have completed:
 

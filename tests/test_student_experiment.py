@@ -842,6 +842,18 @@ def test_runner_dry_run_is_read_only_and_resume_checks_artifacts(tmp_path):
     ]
     resumed = runner.run()
     assert [item["status"] for item in resumed["outcomes"]] == ["skipped", "skipped"]
+    assert resumed["schema_version"] == 2
+    assert resumed["pipeline_complete"] is True
+    assert [stage["state_status"] for stage in resumed["stages"]] == [
+        "completed",
+        "completed",
+    ]
+    assert [stage["invocation_status"] for stage in resumed["stages"]] == [
+        "skipped",
+        "skipped",
+    ]
+    assert all(stage["signature_matches"] for stage in resumed["stages"])
+    assert all(stage["artifacts_valid"] for stage in resumed["stages"])
 
     (Path(plan.root) / "second.txt").unlink()
     repaired = runner.run()

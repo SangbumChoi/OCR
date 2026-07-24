@@ -291,7 +291,10 @@ reward verifiers, supervised-replay-anchored single-update GRPO runner, and mult
 generation evaluator are executable and tested. The contracts are detailed in
 [`student_input_pipeline.md`](student_input_pipeline.md) and
 [`student_pretraining_runner.md`](student_pretraining_runner.md), and
-[`student_posttraining_runner.md`](student_posttraining_runner.md). The next evidence-producing
+[`student_posttraining_runner.md`](student_posttraining_runner.md). Completed experiment roots can
+be independently re-hashed and semantically checked with
+[`student_experiment_evidence.md`](student_experiment_evidence.md); this attestation distinguishes
+an execution-contract pass from a capability or deployment pass. The next quality-evidence-producing
 step is to execute the compiled matched suites in
 [`student_sweep_runner.md`](student_sweep_runner.md) at fixed token budgets and paired stochastic
 replicates, including the data-scale cross in

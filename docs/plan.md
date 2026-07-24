@@ -193,6 +193,11 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
+- **Attest execution evidence:**
+  [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
+  source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,
+  resume-safe cumulative stage state, and a strict separation between pipeline execution and
+  deployment-capability claims.
 - **Run matched ablations:** [`report/student_sweep_runner.md`](report/student_sweep_runner.md) —
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
