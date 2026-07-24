@@ -8,7 +8,7 @@ import random
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -29,9 +29,9 @@ from .model import (
 from .pretrain import (
     PretrainConfig,
     TrainingResult,
-    _append_metric,
     _autocast_context,
     _parameter_groups,
+    _record_metric,
     _uses_fp16,
     train_student,
 )
@@ -338,6 +338,8 @@ def train_sft(
     dataset: StructuredPostTrainingDataset,
     collator: StudentCollator,
     config: SFTConfig,
+    *,
+    metric_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> TrainingResult:
     """Run answer-only, free-rationale, or evidence-linked structured SFT."""
 
@@ -358,7 +360,12 @@ def train_sft(
         pin_memory=torch.cuda.is_available(),
         persistent_workers=False,
     )
-    return train_student(student, loader, config.as_pretrain_config())
+    return train_student(
+        student,
+        loader,
+        config.as_pretrain_config(),
+        metric_callback=metric_callback,
+    )
 
 
 @dataclass(frozen=True)
@@ -1489,6 +1496,8 @@ def train_preference(
     tokenizer: Any,
     config: PreferenceConfig,
     reward_config: RewardConfig,
+    *,
+    metric_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> PreferenceResult:
     """Run resumable verifier-ranked preference optimization."""
 
@@ -1727,7 +1736,7 @@ def train_preference(
             state.preference_step == 1
             or state.preference_step % config.log_every_steps == 0
         ):
-            _append_metric(
+            _record_metric(
                 output_dir,
                 {
                     "kind": "preference",
@@ -1737,6 +1746,7 @@ def train_preference(
                     "sequence_reduction": config.sequence_reduction,
                     **final_metrics,
                 },
+                metric_callback,
             )
             print(
                 f"[preference] step={state.preference_step} "
@@ -1800,6 +1810,7 @@ def train_grpo(
     reward_config: RewardConfig,
     *,
     replay_dataset: StructuredPostTrainingDataset | None = None,
+    metric_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> RLVRResult:
     """Run resumable group-relative RL with an optional supervised replay anchor."""
 
@@ -2036,7 +2047,7 @@ def train_grpo(
             state.rollout_step == 1
             or state.rollout_step % config.log_every_steps == 0
         ):
-            _append_metric(
+            _record_metric(
                 output_dir,
                 {
                     "kind": "rlvr",
@@ -2045,6 +2056,7 @@ def train_grpo(
                     "advantage_estimator": config.advantage_estimator,
                     **final_metrics,
                 },
+                metric_callback,
             )
             print(
                 f"[rlvr] step={state.rollout_step} "

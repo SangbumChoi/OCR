@@ -226,6 +226,30 @@ def test_pretraining_checkpoint_resume_matches_uninterrupted_training(tmp_path):
         assert torch.equal(expected, resumed.state_dict()[name]), name
 
 
+def test_pretraining_streams_the_same_metrics_to_a_callback(tmp_path):
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.pretrain import train_student
+
+    observed = []
+    train_student(
+        DocumentVLMStudent(StudentConfig.tiny()),
+        _loader(),
+        _config(tmp_path / "tracked", max_steps=1),
+        metric_callback=observed.append,
+    )
+    persisted = [
+        json.loads(line)
+        for line in (tmp_path / "tracked" / "metrics.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert observed == persisted
+    assert observed[-1]["kind"] == "train"
+    assert observed[-1]["train/global_step"] == 1
+
+
 def test_contrastive_memory_batch_one_resume_matches_uninterrupted(tmp_path):
     from dataclasses import replace
 

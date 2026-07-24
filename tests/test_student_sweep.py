@@ -173,6 +173,20 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
     assert evaluation["wandb_run"] == "docvlm-tiny-sweep--baseline--seed_0"
     assert "variant:baseline" in evaluation["wandb_tags"]
     assert "replicate:seed_0" in evaluation["wandb_tags"]
+    for stage_name, section in {
+        "pretrain": baseline.plan.raw_spec["pretraining"],
+        "sft": baseline.plan.raw_spec["posttraining"]["sft"],
+        "preference": baseline.plan.raw_spec["posttraining"]["preference"],
+        "rlvr": baseline.plan.raw_spec["posttraining"]["rlvr"],
+    }.items():
+        assert section["wandb_group"] == "docvlm-tiny-sweep"
+        assert section["wandb_run"] == (
+            "docvlm-tiny-sweep--baseline--seed_0"
+            f"--{stage_name}"
+        )
+        assert f"stage:{stage_name}" in section["wandb_tags"]
+        assert "variant:baseline" in section["wandb_tags"]
+        assert "replicate:seed_0" in section["wandb_tags"]
     assert (
         plan.control_values_by_replicate["seed_0"][
             "experiment:/pretraining/max_steps"

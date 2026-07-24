@@ -38,6 +38,18 @@ def _fingerprint(value: Any) -> str:
     return f"sha256:{hashlib.sha256(_stable_json(value).encode('utf-8')).hexdigest()}"
 
 
+def _without_wandb_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_wandb_metadata(item)
+            for key, item in value.items()
+            if not key.startswith("wandb_")
+        }
+    if isinstance(value, list):
+        return [_without_wandb_metadata(item) for item in value]
+    return copy.deepcopy(value)
+
+
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -853,6 +865,37 @@ def compile_sweep_plan(
                     ]
                 )
             )
+            training_sections = {
+                "pretrain": experiment.setdefault("pretraining", {}),
+                "sft": experiment.setdefault("posttraining", {}).setdefault(
+                    "sft",
+                    {},
+                ),
+                "preference": experiment["posttraining"].setdefault(
+                    "preference",
+                    {},
+                ),
+                "rlvr": experiment["posttraining"].setdefault("rlvr", {}),
+            }
+            for stage_name, section in training_sections.items():
+                section["wandb_group"] = name
+                section["wandb_run"] = (
+                    f"{name}--{run_id}--{stage_name}"
+                )
+                stage_tags = [
+                    str(tag) for tag in section.get("wandb_tags") or []
+                ]
+                section["wandb_tags"] = list(
+                    dict.fromkeys(
+                        [
+                            *stage_tags,
+                            "native-student-sweep",
+                            f"stage:{stage_name}",
+                            f"variant:{variant_id}",
+                            f"replicate:{replicate_id}",
+                        ]
+                    )
+                )
             _atomic_write_yaml(blueprint_path, blueprint)
             _atomic_write_yaml(experiment_path, experiment)
 
@@ -875,7 +918,12 @@ def compile_sweep_plan(
                 raw_spec=canonical_experiment,
                 fingerprint=variant_fingerprint,
             )
-            documents = {"experiment": canonical_experiment, "blueprint": blueprint}
+            documents = {
+                "experiment": _without_wandb_metadata(
+                    canonical_experiment
+                ),
+                "blueprint": blueprint,
+            }
             values = {
                 control.key: copy.deepcopy(
                     _pointer_get(documents[control.document], control.path)

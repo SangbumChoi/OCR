@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
@@ -24,6 +24,10 @@ from docvlm_eval.student.posttrain import (
 )
 from docvlm_eval.student.rewards import RewardConfig
 from docvlm_eval.student.tokenizer import DocumentTokenizer
+from docvlm_eval.student.tracking import (
+    WandbMetricTracker,
+    start_wandb_metric_tracker,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +70,29 @@ def _device(args) -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def _start_tracker(
+    args,
+    stage: str,
+    config,
+    student,
+) -> WandbMetricTracker | None:
+    return start_wandb_metric_tracker(
+        stage=stage,
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        name=args.wandb_run,
+        group=args.wandb_group,
+        tags=args.wandb_tags,
+        run_id=args.wandb_id,
+        config={
+            "stage": stage,
+            "output": str(args.output),
+            "student": student.config.to_dict(),
+            "optimizer": asdict(config),
+        },
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("stage", choices=["sft", "preference", "rlvr"])
@@ -105,6 +132,12 @@ def main() -> None:
         "--target-mode",
         choices=["answer_only", "free_rationale", "evidence_linked"],
     )
+    parser.add_argument("--wandb-project")
+    parser.add_argument("--wandb-entity")
+    parser.add_argument("--wandb-run")
+    parser.add_argument("--wandb-group")
+    parser.add_argument("--wandb-tags", nargs="*")
+    parser.add_argument("--wandb-id")
     args = parser.parse_args()
 
     blueprint = load_blueprint(args.config)
@@ -154,7 +187,28 @@ def main() -> None:
             args.checkpoint,
             map_location=device,
         )
-        result = train_sft(student, dataset, collator, config)
+        tracker = _start_tracker(args, "sft", config, student)
+        try:
+            result = train_sft(
+                student,
+                dataset,
+                collator,
+                config,
+                metric_callback=tracker,
+            )
+        except BaseException:
+            if tracker is not None:
+                tracker.finish({"stage_status": "failed"})
+            raise
+        if tracker is not None:
+            tracker.finish(
+                {
+                    "stage_status": "completed",
+                    "global_step": result.global_step,
+                    "student_flops_seen": result.student_flops_seen,
+                    "last_checkpoint": result.last_checkpoint,
+                }
+            )
         print(
             f"Finished SFT step={result.global_step} checkpoint={result.last_checkpoint}"
         )
@@ -189,15 +243,32 @@ def main() -> None:
             reference_id=reference_id,
             **overrides,
         )
-        result = train_preference(
-            policy,
-            reference,
-            dataset,
-            collator,
-            tokenizer,
-            config,
-            reward_config,
-        )
+        tracker = _start_tracker(args, "preference", config, policy)
+        try:
+            result = train_preference(
+                policy,
+                reference,
+                dataset,
+                collator,
+                tokenizer,
+                config,
+                reward_config,
+                metric_callback=tracker,
+            )
+        except BaseException:
+            if tracker is not None:
+                tracker.finish({"stage_status": "failed"})
+            raise
+        if tracker is not None:
+            tracker.finish(
+                {
+                    "stage_status": "completed",
+                    "preference_step": result.preference_step,
+                    "optimizer_step": result.optimizer_step,
+                    "student_flops_seen": result.student_flops_seen,
+                    "last_checkpoint": result.last_checkpoint,
+                }
+            )
         print(
             f"Finished {config.objective.upper()} "
             f"preference_step={result.preference_step} "
@@ -230,16 +301,33 @@ def main() -> None:
         if args.replay_samples is not None
         else None
     )
-    result = train_grpo(
-        policy,
-        reference,
-        dataset,
-        collator,
-        tokenizer,
-        config,
-        reward_config,
-        replay_dataset=replay_dataset,
-    )
+    tracker = _start_tracker(args, "rlvr", config, policy)
+    try:
+        result = train_grpo(
+            policy,
+            reference,
+            dataset,
+            collator,
+            tokenizer,
+            config,
+            reward_config,
+            replay_dataset=replay_dataset,
+            metric_callback=tracker,
+        )
+    except BaseException:
+        if tracker is not None:
+            tracker.finish({"stage_status": "failed"})
+        raise
+    if tracker is not None:
+        tracker.finish(
+            {
+                "stage_status": "completed",
+                "rollout_step": result.rollout_step,
+                "optimizer_step": result.optimizer_step,
+                "student_flops_seen": result.student_flops_seen,
+                "last_checkpoint": result.last_checkpoint,
+            }
+        )
     print(
         f"Finished RLVR step={result.rollout_step} "
         f"student_flops={result.student_flops_seen:,} "

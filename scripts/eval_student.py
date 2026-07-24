@@ -94,6 +94,8 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
         name=args.wandb_run,
         group=args.wandb_group,
         tags=args.wandb_tags,
+        id=args.wandb_id,
+        resume="allow" if args.wandb_id else None,
         config={
             "checkpoint": str(args.checkpoint),
             "checkpoint_stage": metadata.get("run_stage"),
@@ -194,6 +196,7 @@ def main() -> None:
     parser.add_argument("--wandb-run")
     parser.add_argument("--wandb-group")
     parser.add_argument("--wandb-tags", nargs="*")
+    parser.add_argument("--wandb-id")
     parser.add_argument(
         "--baseline-evaluation",
         type=Path,

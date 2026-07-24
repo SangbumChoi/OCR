@@ -143,21 +143,41 @@ pretraining:
   num_workers: null
   eval_group_by: component
   no_grounding: false
+  wandb_project: null
+  wandb_entity: null
+  wandb_run: null
+  wandb_group: null
+  wandb_tags: [native-student, pretraining]
 
 posttraining:
   sft:
     max_steps: null
     num_workers: null
     target_mode: evidence_linked
+    wandb_project: null
+    wandb_entity: null
+    wandb_run: null
+    wandb_group: null
+    wandb_tags: [native-student, sft]
   preference:
     enabled: false
     max_steps: null
+    wandb_project: null
+    wandb_entity: null
+    wandb_run: null
+    wandb_group: null
+    wandb_tags: [native-student, preference]
   rlvr:
     enabled: true
     max_steps: null
     replay_every_steps: null
     replay_loss_coefficient: null
     replay_samples: null
+    wandb_project: null
+    wandb_entity: null
+    wandb_run: null
+    wandb_group: null
+    wandb_tags: [native-student, rlvr]
 
 evaluation:
   max_new_tokens: 128

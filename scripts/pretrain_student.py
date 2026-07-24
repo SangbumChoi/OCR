@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+from dataclasses import asdict
 from pathlib import Path
 
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
@@ -25,6 +26,7 @@ from docvlm_eval.student.distillation import (
 from docvlm_eval.student.model import DocumentVLMStudent
 from docvlm_eval.student.pretrain import PretrainConfig, train_student
 from docvlm_eval.student.tokenizer import DocumentTokenizer
+from docvlm_eval.student.tracking import start_wandb_metric_tracker
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -147,6 +149,12 @@ def main() -> None:
         default="task",
     )
     parser.add_argument("--no-grounding", action="store_true")
+    parser.add_argument("--wandb-project")
+    parser.add_argument("--wandb-entity")
+    parser.add_argument("--wandb-run")
+    parser.add_argument("--wandb-group")
+    parser.add_argument("--wandb-tags", nargs="*")
+    parser.add_argument("--wandb-id")
     args = parser.parse_args()
 
     import torch
@@ -313,14 +321,45 @@ def main() -> None:
             teacher_model.config,
             distillation_config,
         )
-    result = train_student(
-        student,
-        train_loader,
-        config,
-        teacher=teacher,
-        distillation_loss=distillation_loss,
-        eval_loaders=eval_loaders,
+    tracker = start_wandb_metric_tracker(
+        stage="pretrain",
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        name=args.wandb_run,
+        group=args.wandb_group,
+        tags=args.wandb_tags,
+        run_id=args.wandb_id,
+        config={
+            "stage": "pretrain",
+            "output": str(args.output),
+            "student": student.config.to_dict(),
+            "optimizer": asdict(config),
+        },
     )
+    try:
+        result = train_student(
+            student,
+            train_loader,
+            config,
+            teacher=teacher,
+            distillation_loss=distillation_loss,
+            eval_loaders=eval_loaders,
+            metric_callback=tracker,
+        )
+    except BaseException:
+        if tracker is not None:
+            tracker.finish({"stage_status": "failed"})
+        raise
+    if tracker is not None:
+        tracker.finish(
+            {
+                "stage_status": "completed",
+                "global_step": result.global_step,
+                "budget_tokens_seen": result.budget_tokens_seen,
+                "student_flops_seen": result.student_flops_seen,
+                "last_checkpoint": result.last_checkpoint,
+            }
+        )
     if int(os.environ.get("RANK", "0")) == 0:
         print(
             f"Finished step={result.global_step} "

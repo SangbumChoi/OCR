@@ -11,7 +11,7 @@ from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import torch
 import torch.nn as nn
@@ -1171,6 +1171,16 @@ def _append_metric(output_dir: Path, payload: dict[str, Any]) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def _record_metric(
+    output_dir: Path,
+    payload: dict[str, Any],
+    metric_callback: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    _append_metric(output_dir, payload)
+    if metric_callback is not None:
+        metric_callback(dict(payload))
+
+
 def _batch_visual_counts(
     batch: dict[str, Any],
     patch_size: int,
@@ -1514,6 +1524,7 @@ def train_student(
     teacher: NativeStudentTeacher | None = None,
     distillation_loss: DistillationLoss | None = None,
     eval_loaders: dict[str, Iterable[dict[str, Any]]] | None = None,
+    metric_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> TrainingResult:
     """Train or resume a student. Use ``torchrun`` plus a distributed balanced sampler for DDP."""
 
@@ -1710,7 +1721,7 @@ def train_student(
                 had_pending
                 or (state.global_step == 0 and epoch == 0)
             ):
-                _append_metric(
+                _record_metric(
                     output_dir,
                     {
                         "kind": "adaptive_mixture",
@@ -1734,6 +1745,7 @@ def train_student(
                             )
                         },
                     },
+                    metric_callback,
                 )
         _set_loader_epoch(train_loader, epoch, config.seed, context.rank)
         module.train()
@@ -1827,7 +1839,7 @@ def train_student(
                     scaled_loss = total / config.grad_accum_steps
                 scaler.scale(scaled_loss).backward()
             if context.is_main and gradient_probe_metrics is not None:
-                _append_metric(
+                _record_metric(
                     output_dir,
                     {
                         "kind": "gradient_conflict",
@@ -1836,6 +1848,7 @@ def train_student(
                         "gradient_probe/batch_index": batch_index,
                         **gradient_probe_metrics,
                     },
+                    metric_callback,
                 )
             accumulated_microbatches = microbatch_number
             state.visual_attention_backend = (
@@ -2073,7 +2086,11 @@ def train_student(
                 state.global_step == 1
                 or state.global_step % config.log_every_steps == 0
             ):
-                _append_metric(output_dir, {"kind": "train", **means})
+                _record_metric(
+                    output_dir,
+                    {"kind": "train", **means},
+                    metric_callback,
+                )
                 print(
                     f"[student] step={state.global_step} "
                     f"{config.token_unit}_tokens={budget_tokens_seen:,} "
@@ -2105,7 +2122,7 @@ def train_student(
                         }
                     )
                 if context.is_main:
-                    _append_metric(
+                    _record_metric(
                         output_dir,
                         {
                             "kind": "eval",
@@ -2128,6 +2145,7 @@ def train_student(
                             ),
                             **final_metrics,
                         },
+                        metric_callback,
                     )
                 module.train()
             if is_last_batch:

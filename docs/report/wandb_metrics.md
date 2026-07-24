@@ -1,10 +1,9 @@
 # W&B metrics — what is logged during fine-tuning, and how to read it
 
-When `--wandb-project` is set (or the notebooks' W&B cell runs), every fine-tuning run started by
-`scripts/run_ablation.py` → `docvlm_eval.finetune.lora_vlm.train_lora_vlm` streams a small, fixed set
-of metrics to Weights & Biases. This page is the decoder ring: **what each logged key means, on which
-x-axis, and how to interpret the curves.** All scores are in **[0, 1]** (higher = better); loss is
-unbounded (lower = better).
+When `--wandb-project` is set, both the LFM LoRA ablations and the native sub-1B training stages
+stream metrics to Weights & Biases. This page is the decoder ring: **what each logged key means, on
+which x-axis, and how to interpret the curves.** All scores are in **[0, 1]** (higher = better);
+loss is unbounded (lower = better).
 
 ## 1. The logged keys
 
@@ -149,6 +148,42 @@ The same convention applies to `gate/training_feasibility`.
 The run config records `use_kv_cache`; split summaries record `generation_backend`. Do not compare
 latency between cached and `--no-kv-cache` runs without treating the backend as the experimental
 factor.
+
+### Native student live training
+
+`scripts/pretrain_student.py` and `scripts/posttrain_student.py` accept the same
+`--wandb-project`, `--wandb-entity`, `--wandb-run`, `--wandb-group`, `--wandb-tags`, and
+`--wandb-id` options. Only rank zero initializes W&B. Local `metrics.jsonl` remains authoritative;
+the callback streams the same numeric payload without sending sample IDs or other high-cardinality
+strings.
+
+| Stage | Step metric | Live namespaces |
+| --- | --- | --- |
+| pretraining | `train/global_step` | `train/*`, `eval/*`, `adaptive/*`, `gradient_probe/*` |
+| SFT | `train/global_step` | `train/*` |
+| preference | `preference/preference_step` | `preference/*`, `reward/*`, `reward_diagnostic/*` |
+| RLVR | `rlvr/rollout_step` | `rlvr/*`, `reward/*`, `reward_diagnostic/*` |
+
+The end-to-end experiment reads stage-specific W&B fields from `pretraining`,
+`posttraining.sft`, `posttraining.preference`, and `posttraining.rlvr`. For example:
+
+```yaml
+pretraining:
+  wandb_project: docvlm-native
+  wandb_entity: sbdc
+  wandb_group: docvlm-800m-hard
+  wandb_tags: [native-student, pretraining]
+posttraining:
+  sft:
+    wandb_project: docvlm-native
+  rlvr:
+    wandb_project: docvlm-native
+```
+
+Each stage is a separate W&B run because its step axis and process lifetime differ. The compiler
+derives a stable W&B ID from the exact experiment fingerprint and stage, so an exact resumed plan
+continues the same run. A changed config or source fingerprint receives a different ID. Sweep
+compilation assigns one common suite group plus `stage`, `variant`, and `replicate` tags.
 
 ### Packed visual backend benchmark
 

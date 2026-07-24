@@ -81,6 +81,12 @@ Use `torchrun` for SFT data parallelism and `--resume latest` for exact continua
 records `run_stage: sft:<target_mode>`; SFT resume rejects a different target mode, and RLVR rejects
 checkpoints without an SFT marker.
 
+All three post-training modes accept optional W&B project, entity, run, group, tags, and run-ID
+arguments. SFT streams `train/*` against `train/global_step`; preference and RLVR use their own
+rollout counters and stream decomposed `reward/*` and `reward_diagnostic/*` values alongside policy
+loss, KL, replay, gradient, and compute telemetry. Each stage remains a separate run under one
+experiment or sweep group.
+
 ## Verifier-ranked preference optimization
 
 Run the configured DPO or IPO objective from an SFT checkpoint:

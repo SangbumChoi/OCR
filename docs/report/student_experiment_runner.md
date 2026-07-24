@@ -108,6 +108,13 @@ with exact policy execution; heldout-derived plans are rejected. See
 resolved architecture blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions
 match the experiment.
 
+W&B is optional and stage-specific. Set `wandb_project`, entity, group, run, and tags under
+`pretraining`, `posttraining.sft`, `posttraining.preference`, `posttraining.rlvr`, or `evaluation`.
+Training stages stream the same numeric records persisted in their local `metrics.jsonl`; rank zero
+is the only writer. When a project is configured, the compiler adds a deterministic stage run ID
+derived from the full experiment fingerprint, so exact resume appends to the same W&B run while a
+changed plan receives a new identity.
+
 The production synthetic list includes five single-page hard families plus `audit_packet` and
 `investment_dossier`. Those composed families supply the exact multi-page and cross-document tiers
 used by the native composition curriculum. A reduced smoke list remains valid: unavailable tiers

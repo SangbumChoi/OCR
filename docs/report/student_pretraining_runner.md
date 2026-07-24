@@ -233,7 +233,9 @@ Launch one process per GPU:
 torchrun --standalone --nproc-per-node=4 scripts/pretrain_student.py \
   --repo danelcsb/UDD \
   --tokenizer artifacts/student_tokenizer \
-  --output outputs/student_pretrain/I0_random
+  --output outputs/student_pretrain/I0_random \
+  --wandb-project docvlm-native \
+  --wandb-group I0-random
 ```
 
 The balanced sampler first draws one deterministic global batch and then assigns a disjoint local
@@ -241,6 +243,10 @@ slice to each rank. Held-out task/source/language groups are also sharded withou
 Evaluation losses are weighted by sample count and reduced across ranks. The learning-rate
 schedule advances by the globally reduced count of supervised answer tokens, not by microbatch or
 optimizer-step count.
+Only rank zero creates the W&B run. Every locally persisted training, validation, adaptive-mixture,
+and gradient-conflict metric is passed through the same optional callback, while nonnumeric sample
+metadata remains local. An explicit `--wandb-id` resumes the same external run; the end-to-end
+compiler derives that ID from the exact experiment fingerprint automatically.
 
 ## Executable curriculum
 

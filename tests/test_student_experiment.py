@@ -807,6 +807,84 @@ def test_experiment_fingerprints_local_initialization_sources(tmp_path):
     )
 
 
+def test_experiment_wires_resume_stable_wandb_runs_to_training_stages(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["blueprint"] = str(ROOT / "configs" / "sub1b_architecture.yaml")
+    raw["synthetic"]["config"] = str(ROOT / "configs" / "synth_data.yaml")
+    raw["output_root"] = str(tmp_path / "output")
+    sections = {
+        "pretrain": raw["pretraining"],
+        "sft": raw["posttraining"]["sft"],
+        "rlvr": raw["posttraining"]["rlvr"],
+        "evaluate": raw["evaluation"],
+    }
+    for stage_name, section in sections.items():
+        section.update(
+            {
+                "wandb_project": "docvlm-native",
+                "wandb_entity": "sbdc",
+                "wandb_run": f"trial--{stage_name}",
+                "wandb_group": "trial",
+                "wandb_tags": ["native-student", f"stage:{stage_name}"],
+            }
+        )
+    path = tmp_path / "tracked.yaml"
+    path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    first = build_experiment_plan(path, repo_root=ROOT, python=sys.executable)
+    second = build_experiment_plan(path, repo_root=ROOT, python=sys.executable)
+
+    for stage_name in sections:
+        first_command = next(
+            stage.command
+            for stage in first.stages
+            if stage.name == stage_name
+        )
+        second_command = next(
+            stage.command
+            for stage in second.stages
+            if stage.name == stage_name
+        )
+        assert first_command[first_command.index("--wandb-project") + 1] == (
+            "docvlm-native"
+        )
+        assert first_command[first_command.index("--wandb-group") + 1] == (
+            "trial"
+        )
+        run_id = first_command[first_command.index("--wandb-id") + 1]
+        repeated_id = second_command[
+            second_command.index("--wandb-id") + 1
+        ]
+        assert len(run_id) == 32
+        assert run_id == repeated_id
+
+
+def test_experiment_rejects_invalid_training_wandb_tags(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["blueprint"] = str(ROOT / "configs" / "sub1b_architecture.yaml")
+    raw["synthetic"]["config"] = str(ROOT / "configs" / "synth_data.yaml")
+    raw["output_root"] = str(tmp_path / "output")
+    raw["posttraining"]["rlvr"]["wandb_tags"] = "not-a-list"
+    path = tmp_path / "invalid-tracking.yaml"
+    path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="posttraining.rlvr.wandb_tags",
+    ):
+        build_experiment_plan(path, repo_root=ROOT, python=sys.executable)
+
+
 def test_experiment_rejects_transfer_arm_without_required_source(tmp_path):
     config = _write_initialization_experiment(
         tmp_path,

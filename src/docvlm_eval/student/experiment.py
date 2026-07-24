@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -284,6 +284,30 @@ def _require_mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"experiment.{key} must be a mapping")
     return value
+
+
+def _validate_wandb_options(
+    section: dict[str, Any],
+    path: str,
+) -> None:
+    for key in (
+        "wandb_project",
+        "wandb_entity",
+        "wandb_run",
+        "wandb_group",
+        "wandb_id",
+    ):
+        value = section.get(key)
+        if value is not None and (
+            not isinstance(value, str) or not value.strip()
+        ):
+            raise ValueError(f"{path}.{key} must be a non-empty string or null")
+    tags = section.get("wandb_tags")
+    if tags is not None and (
+        not isinstance(tags, list)
+        or any(not isinstance(tag, str) or not tag for tag in tags)
+    ):
+        raise ValueError(f"{path}.wandb_tags must be a list of strings")
 
 
 def _synthetic_count(synthetic: dict[str, Any], split: str) -> int:
@@ -686,6 +710,8 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             raise ValueError(
                 "continuation parent_root and output_root must differ"
             )
+    pretraining = _require_mapping(raw, "pretraining")
+    _validate_wandb_options(pretraining, "pretraining")
     posttraining = _require_mapping(raw, "posttraining")
     sft = posttraining.get("sft")
     preference = posttraining.get("preference")
@@ -696,6 +722,9 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError("experiment.posttraining.preference must be a mapping")
     if not isinstance(rlvr, dict):
         raise ValueError("experiment.posttraining.rlvr must be a mapping")
+    _validate_wandb_options(sft, "posttraining.sft")
+    _validate_wandb_options(preference, "posttraining.preference")
+    _validate_wandb_options(rlvr, "posttraining.rlvr")
     if "enabled" in sft and not isinstance(sft["enabled"], bool):
         raise ValueError("posttraining.sft.enabled must be a boolean")
     if not bool(sft.get("enabled", True)):
@@ -742,6 +771,7 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             "posttraining.preference and posttraining.rlvr are mutually exclusive"
         )
     evaluation = _require_mapping(raw, "evaluation")
+    _validate_wandb_options(evaluation, "evaluation")
     if int(evaluation.get("max_new_tokens", 0)) <= 0:
         raise ValueError("evaluation.max_new_tokens must be positive")
     if not isinstance(evaluation.get("use_kv_cache"), bool):
@@ -900,6 +930,45 @@ def _resolved_blueprint(
 def _add_optional(command: list[str], flag: str, value: Any) -> None:
     if value is not None:
         command.extend([flag, str(value)])
+
+
+def _add_wandb_options(
+    command: list[str],
+    section: dict[str, Any],
+) -> None:
+    for key, flag in (
+        ("wandb_project", "--wandb-project"),
+        ("wandb_entity", "--wandb-entity"),
+        ("wandb_run", "--wandb-run"),
+        ("wandb_group", "--wandb-group"),
+        ("wandb_id", "--wandb-id"),
+    ):
+        _add_optional(command, flag, section.get(key))
+    tags = section.get("wandb_tags") or []
+    if tags:
+        command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+
+
+def _with_default_wandb_ids(
+    stages: list[ExperimentStage],
+    experiment_fingerprint: str,
+) -> list[ExperimentStage]:
+    tracked_stages = {"pretrain", "sft", "preference", "rlvr", "evaluate"}
+    out = []
+    for stage in stages:
+        command = list(stage.command)
+        if (
+            stage.name in tracked_stages
+            and "--wandb-project" in command
+            and "--wandb-id" not in command
+        ):
+            run_id = hashlib.sha256(
+                f"{experiment_fingerprint}:{stage.name}".encode("utf-8")
+            ).hexdigest()[:32]
+            command.extend(["--wandb-id", run_id])
+            stage = replace(stage, command=tuple(command))
+        out.append(stage)
+    return out
 
 
 def build_experiment_plan(
@@ -1978,6 +2047,7 @@ def build_experiment_plan(
         )
     if bool(pretraining.get("no_grounding", False)):
         pretrain_command.append("--no-grounding")
+    _add_wandb_options(pretrain_command, pretraining)
     stages.append(
         ExperimentStage(
             "pretrain",
@@ -2028,6 +2098,7 @@ def build_experiment_plan(
     for key, flag in (("max_steps", "--max-steps"), ("num_workers", "--num-workers")):
         _add_optional(sft_command, flag, sft.get(key))
     _add_optional(sft_command, "--target-mode", sft.get("target_mode"))
+    _add_wandb_options(sft_command, sft)
     stages.append(
         ExperimentStage(
             "sft",
@@ -2058,6 +2129,7 @@ def build_experiment_plan(
             device,
         ]
         _add_optional(preference_command, "--max-steps", preference.get("max_steps"))
+        _add_wandb_options(preference_command, preference)
         stages.append(
             ExperimentStage(
                 "preference",
@@ -2105,6 +2177,7 @@ def build_experiment_plan(
                     str(_resolve_path(repo_root, rlvr["replay_samples"])),
                 ]
             )
+        _add_wandb_options(rlvr_command, rlvr)
         stages.append(
             ExperimentStage(
                 "rlvr",
@@ -2202,16 +2275,7 @@ def build_experiment_plan(
                 ),
             ]
         )
-    for key, flag in (
-        ("wandb_project", "--wandb-project"),
-        ("wandb_entity", "--wandb-entity"),
-        ("wandb_run", "--wandb-run"),
-        ("wandb_group", "--wandb-group"),
-    ):
-        _add_optional(eval_command, flag, evaluation.get(key))
-    tags = evaluation.get("wandb_tags") or []
-    if tags:
-        eval_command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+    _add_wandb_options(eval_command, evaluation)
     evaluation_dependencies = [
         final_checkpoint_stage,
         (
@@ -2279,6 +2343,7 @@ def build_experiment_plan(
             "input_fingerprints": input_fingerprints,
         }
     )
+    stages = _with_default_wandb_ids(stages, fingerprint)
     return ExperimentPlan(
         name=experiment_name,
         root=str(output_root),

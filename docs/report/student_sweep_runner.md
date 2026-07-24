@@ -171,8 +171,11 @@ Each suite root contains:
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
   generalization gap, evidence conclusion, deployment-gate status, and promotion decision.
 
-Every compiled evaluator receives the same W&B group and a unique arm-replicate run name. Native
-evaluation already logs paired axis-first keys such as `eval_by_axis/H-count/train` and
+Every compiled training stage and evaluator receives the same W&B group and a unique
+arm-replicate-stage run name. Training tags additionally include `stage:pretrain`, `stage:sft`,
+`stage:preference`, or `stage:rlvr`; tracking-only fields are excluded from matched-control
+comparisons. Native evaluation already logs paired axis-first keys such as
+`eval_by_axis/H-count/train` and
 `eval_by_axis/H-count/heldout`, allowing train and heldout curves for one suffix to share a panel.
 Canonical robustness panels use `eval_by_slice/<axis>/<value>/train` and
 `eval_by_slice/<axis>/<value>/heldout`.
