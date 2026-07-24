@@ -75,6 +75,36 @@ def test_grid_render_packs_three_pages_without_losing_page_identity():
         result.close()
 
 
+def test_complex_table_overflow_is_promoted_to_an_audited_all_page_canvas():
+    pytest.importorskip("weasyprint")
+    pytest.importorskip("fitz")
+    pytest.importorskip("bs4")
+    builder = DocBuilder(
+        "overflow table fixture",
+        ["complex-table", "full-page"],
+        "teds",
+        page="A6",
+        margin="8mm",
+    )
+    rows = [
+        [f"ROW-{index:02d}", f"VALUE-{index:02d}", f"NOTE-{index:02d}"]
+        for index in range(48)
+    ]
+    builder.table(["Item", "Value", "Note"], rows)
+    builder.want_fulltext()
+
+    image, ground_truth = builder.build(dpi=72)
+
+    render = ground_truth["render"]
+    assert render["page_count"] > 1
+    assert render["rendered_page_count"] == render["page_count"]
+    assert render["page_mode"] == "vertical"
+    assert render["auto_expanded_from_first"] is True
+    assert render["layout_audit"]["status"] == "pass"
+    assert render["layout_audit"]["missing_table_cells"] == []
+    assert image.height > render["page_sizes_px"][0][1]
+
+
 def test_builder_emits_cross_page_evidence_as_one_tall_document():
     pytest.importorskip("weasyprint")
     pytest.importorskip("fitz")

@@ -161,6 +161,11 @@ quickly but relies more on priors is not automatically better.
 Pinned source acquisition, zero-download shape analysis, fail-closed transfer validation, the
 five-arm baseline suite, and the focused structured-MLP suite are executable in
 [`student_initialization_runner.md`](student_initialization_runner.md).
+The pinned cross-architecture preflight in
+[`small_vlm_architecture_commonality.md`](small_vlm_architecture_commonality.md) compares
+SmolVLM2, FastVLM, Florence-2, InternVL3, and LFM2.5 before any copy. The current 1536-wide target
+has no copy-compatible LFM2.5 subcomponent among the seven audited transfer groups, so LFM2.5 must
+remain a logits/features teacher unless a separately controlled source-aligned geometry is used.
 The source-aligned 12-head/2-KV-head profile is not a new default: its random and transferred
 effects are isolated by the 2x2 design in
 [`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).

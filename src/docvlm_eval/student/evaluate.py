@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import random
@@ -23,6 +24,7 @@ from ..metrics.calibration import (
 from ..metrics.text import score_sample
 from ..schema import Sample
 from .data import StudentCollator, visual_model_inputs
+from .generation import has_repeated_suffix_cycle
 from .model import DocumentVLMStudent
 from .posttrain import StructuredPostTrainingDataset, posttraining_prompt_batch
 from .pretrain import _autocast_context
@@ -31,6 +33,22 @@ from .rewards import (
     parse_structured_response,
     score_structured_response,
 )
+
+
+def _supported_generation_kwargs(method: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Drop optional generation controls unsupported by custom model wrappers."""
+
+    signature = inspect.signature(method)
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return kwargs
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
 
 ROBUSTNESS_AXES = (
     "document_family",
@@ -52,6 +70,9 @@ class StructuredEvalConfig:
     precision: str = "bfloat16"
     device: str = "auto"
     seed: int = 0
+    repetition_guard_min_tokens: int = 24
+    repetition_guard_max_period: int = 16
+    repetition_guard_repetitions: int = 3
 
     def __post_init__(self) -> None:
         if self.max_new_tokens <= 0:
@@ -62,6 +83,12 @@ class StructuredEvalConfig:
             raise ValueError("use_kv_cache must be a boolean")
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
             raise ValueError("invalid evaluation precision")
+        if (
+            self.repetition_guard_min_tokens < 1
+            or self.repetition_guard_max_period < 1
+            or self.repetition_guard_repetitions < 2
+        ):
+            raise ValueError("invalid repetition guard controls")
 
 
 @dataclass(frozen=True)
@@ -97,6 +124,22 @@ def _slice_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         ),
         "answer_rate": _round(
             _mean([float(bool(row["answer"])) for row in rows])
+        ),
+        "max_token_rate": _round(
+            _mean(
+                [
+                    float(row["reached_max_new_tokens"])
+                    for row in rows
+                ]
+            )
+        ),
+        "degenerate_repetition_rate": _round(
+            _mean(
+                [
+                    float(row["degenerate_repetition"])
+                    for row in rows
+                ]
+            )
         ),
     }
 
@@ -419,13 +462,28 @@ def evaluate_structured_student(
                     None,
                 )
                 if generate_with_confidence is None:
+                    generation_kwargs = _supported_generation_kwargs(
+                        model.generate,
+                        {
+                            **visual_model_inputs(prompt_batch),
+                            "attention_mask": prompt_batch["attention_mask"],
+                            "max_new_tokens": config.max_new_tokens,
+                            "eos_token_id": int(tokenizer.eos_token_id),
+                            "use_kv_cache": config.use_kv_cache,
+                            "repetition_guard_min_tokens": (
+                                config.repetition_guard_min_tokens
+                            ),
+                            "repetition_guard_max_period": (
+                                config.repetition_guard_max_period
+                            ),
+                            "repetition_guard_repetitions": (
+                                config.repetition_guard_repetitions
+                            ),
+                        },
+                    )
                     generated = model.generate(
                         prompt_batch["input_ids"],
-                        **visual_model_inputs(prompt_batch),
-                        attention_mask=prompt_batch["attention_mask"],
-                        max_new_tokens=config.max_new_tokens,
-                        eos_token_id=int(tokenizer.eos_token_id),
-                        use_kv_cache=config.use_kv_cache,
+                        **generation_kwargs,
                     )
                     confidence = None
                 else:
@@ -436,6 +494,15 @@ def evaluate_structured_student(
                         max_new_tokens=config.max_new_tokens,
                         eos_token_id=int(tokenizer.eos_token_id),
                         use_kv_cache=config.use_kv_cache,
+                        repetition_guard_min_tokens=(
+                            config.repetition_guard_min_tokens
+                        ),
+                        repetition_guard_max_period=(
+                            config.repetition_guard_max_period
+                        ),
+                        repetition_guard_repetitions=(
+                            config.repetition_guard_repetitions
+                        ),
                     )
                     confidence = float(confidence_tensor[0].item())
             if generated.ndim != 2 or generated.shape[0] != 1:
@@ -447,6 +514,19 @@ def evaluate_structured_student(
                 completion_ids,
                 skip_special_tokens=True,
             ).strip()
+            reached_max_new_tokens = (
+                len(completion_ids) >= config.max_new_tokens
+                and (
+                    not completion_ids
+                    or completion_ids[-1] != int(tokenizer.eos_token_id)
+                )
+            )
+            degenerate_repetition = has_repeated_suffix_cycle(
+                completion_ids,
+                min_tokens=config.repetition_guard_min_tokens,
+                max_period=config.repetition_guard_max_period,
+                repetitions=config.repetition_guard_repetitions,
+            )
             reward = score_structured_response(
                 raw_prediction,
                 dataset.contexts[index],
@@ -486,6 +566,9 @@ def evaluate_structured_student(
                     "answers": sample.answers,
                     "image_path": sample.image_path,
                     "prediction": raw_prediction,
+                    "generated_tokens": len(completion_ids),
+                    "reached_max_new_tokens": reached_max_new_tokens,
+                    "degenerate_repetition": degenerate_repetition,
                     "confidence": (
                         _round(confidence) if confidence is not None else None
                     ),

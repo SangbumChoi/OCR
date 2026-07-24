@@ -117,6 +117,7 @@ def render_html(
     base_url: str = ".",
     *,
     page_mode: str = "first",
+    max_canvas_pixels: int = 100_000_000,
 ) -> RenderResult:
     """Render page 0 or an all-page vertical/grid canvas with exact offsets."""
     import fitz  # PyMuPDF
@@ -124,6 +125,8 @@ def render_html(
 
     if page_mode not in {"first", "vertical", "grid"}:
         raise ValueError("page_mode must be first, vertical, or grid")
+    if max_canvas_pixels <= 0:
+        raise ValueError("max_canvas_pixels must be positive")
     pdf = HTML(string=f"<style>{css}</style>{html}", base_url=str(base_url)).write_pdf()
     doc = fitz.open(stream=pdf, filetype="pdf")
     active_pages = tuple(
@@ -147,6 +150,9 @@ def render_html(
     ]
     if page_mode == "first":
         image = images[0]
+        if image.width * image.height > max_canvas_pixels:
+            doc.close()
+            raise RuntimeError("rendered page exceeds max_canvas_pixels")
         origins = ((0, 0),)
         gap = 0
     elif page_mode == "vertical":
@@ -155,6 +161,11 @@ def render_html(
         canvas_height = sum(page.height for page in images) + gap * (
             len(images) - 1
         )
+        if canvas_width * canvas_height > max_canvas_pixels:
+            doc.close()
+            raise RuntimeError(
+                "vertical all-page canvas exceeds max_canvas_pixels"
+            )
         image = Image.new("RGB", (canvas_width, canvas_height), (218, 221, 225))
         origins_list: list[tuple[int, int]] = []
         offset_y = 0
@@ -196,12 +207,16 @@ def render_html(
             sum(row_heights[:row]) + gap * row
             for row in range(rows)
         ]
+        canvas_width = sum(column_widths) + gap * (columns - 1)
+        canvas_height = sum(row_heights) + gap * (rows - 1)
+        if canvas_width * canvas_height > max_canvas_pixels:
+            doc.close()
+            raise RuntimeError(
+                "grid all-page canvas exceeds max_canvas_pixels"
+            )
         image = Image.new(
             "RGB",
-            (
-                sum(column_widths) + gap * (columns - 1),
-                sum(row_heights) + gap * (rows - 1),
-            ),
+            (canvas_width, canvas_height),
             (218, 221, 225),
         )
         origins_list = []
@@ -228,6 +243,76 @@ def render_html(
         _page_origins_px=origins,
         _page_sizes_px=tuple(page.size for page in images),
     )
+
+
+def audit_html_render(
+    result: RenderResult,
+    html: str,
+    *,
+    require_all_pages: bool = False,
+    require_table_cells: bool = False,
+    strict: bool = False,
+) -> dict[str, object]:
+    """Audit page coverage and table-cell survival in the rendered text layer."""
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    rendered_page_count = len(result.page_origins_px)
+    omitted_page_count = max(0, result.page_count - rendered_page_count)
+    page_texts = [
+        "\n".join(
+            line.strip()
+            for line in (page.get_text("text") or "").splitlines()
+            if line.strip()
+        )
+        for page in result._pages
+    ]
+    blank_pages = [
+        index for index, text in enumerate(page_texts) if not text
+    ]
+    source_has_visible_text = bool(" ".join(soup.stripped_strings))
+    table_cells = [
+        " ".join(cell.get_text(" ", strip=True).split())
+        for cell in soup.select("table th, table td")
+    ]
+    table_cells = [cell for cell in table_cells if cell]
+    rendered_text = " ".join(result.full_text().split())
+    missing_table_cells = sorted(
+        {
+            cell
+            for cell in table_cells
+            if cell not in rendered_text
+        }
+    )
+    failures: list[str] = []
+    if require_all_pages and omitted_page_count:
+        failures.append(f"{omitted_page_count} page(s) were not rasterized")
+    if source_has_visible_text and blank_pages:
+        failures.append(f"rendered pages have no text: {blank_pages}")
+    if require_table_cells and missing_table_cells:
+        failures.append(
+            f"{len(missing_table_cells)} table cell value(s) are absent"
+        )
+    report: dict[str, object] = {
+        "page_count": result.page_count,
+        "rendered_page_count": rendered_page_count,
+        "omitted_page_count": omitted_page_count,
+        "blank_pages": blank_pages,
+        "source_has_visible_text": source_has_visible_text,
+        "table_count": len(soup.select("table")),
+        "table_row_count": len(soup.select("table tr")),
+        "table_cell_count": len(table_cells),
+        "missing_table_cells": missing_table_cells,
+        "canvas_pixels": result.image.width * result.image.height,
+        "status": "pass" if not failures else "fail",
+        "failures": failures,
+    }
+    if strict and failures:
+        raise RuntimeError(
+            "HTML render audit failed: " + "; ".join(failures)
+        )
+    return report
 
 
 def _probe_color(index: int) -> tuple[int, int, int]:

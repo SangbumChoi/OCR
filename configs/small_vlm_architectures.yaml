@@ -1,0 +1,191 @@
+schema_version: 1
+profiles:
+  - id: smolvlm2-500m
+    model_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+    revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
+    parameters_millions: 500
+    config_url: https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/blob/7b375e1b73b11138ff12fe22c8f2822d8fe03467/config.json
+    vision:
+      family: vit
+      mixer: global_attention
+      width: 768
+      layers: 12
+      attention_heads: 12
+      patch_size: 16
+      norm: layer_norm
+      activation: gelu
+      position: learned_absolute_2d
+      dynamic_resolution: true
+    connector:
+      family: pixel_shuffle_projection
+      input_width: 768
+      output_width: 960
+      latent_tokens: 64
+      activation: linear
+    language:
+      family: llama
+      mode: decoder_only
+      mixer: global_attention
+      width: 960
+      layers: 32
+      attention_heads: 15
+      kv_heads: 5
+      head_dim: 64
+      mlp_width: 2560
+      norm: rms_norm
+      activation: swiglu
+      position: rope
+      rope_base: 100000
+      vocab_size: 49280
+
+  - id: fastvlm-0.5b
+    model_id: apple/FastVLM-0.5B
+    revision: 16375720c2d673fa583e57e9876afde27549c7d0
+    parameters_millions: 500
+    config_url: https://huggingface.co/apple/FastVLM-0.5B/blob/16375720c2d673fa583e57e9876afde27549c7d0/config.json
+    vision:
+      family: fastvithd
+      mixer: hybrid_convolution_attention
+      width: 3072
+      layers: null
+      attention_heads: null
+      patch_size: null
+      norm: layer_norm
+      activation: gelu
+      position: convolutional_hierarchy
+      dynamic_resolution: true
+    connector:
+      family: mlp2x
+      input_width: 3072
+      output_width: 896
+      latent_tokens: null
+      activation: gelu
+    language:
+      family: qwen2
+      mode: decoder_only
+      mixer: global_attention
+      width: 896
+      layers: 24
+      attention_heads: 14
+      kv_heads: 2
+      head_dim: 64
+      mlp_width: 4864
+      norm: rms_norm
+      activation: swiglu
+      position: rope
+      rope_base: 1000000
+      vocab_size: 151936
+
+  - id: florence-2-base
+    model_id: microsoft/Florence-2-base
+    revision: 5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac
+    parameters_millions: 230
+    config_url: https://huggingface.co/microsoft/Florence-2-base/blob/5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac/config.json
+    vision:
+      family: davit
+      mixer: hybrid_window_attention_convolution
+      width: 1024
+      layers: 12
+      attention_heads: 32
+      patch_size: 7
+      norm: layer_norm
+      activation: gelu
+      position: learned_absolute_2d
+      dynamic_resolution: false
+    connector:
+      family: linear_projection
+      input_width: 1024
+      output_width: 768
+      latent_tokens: 577
+      activation: linear
+    language:
+      family: bart
+      mode: encoder_decoder
+      mixer: global_attention
+      width: 768
+      layers: 12
+      attention_heads: 12
+      kv_heads: 12
+      head_dim: 64
+      mlp_width: 3072
+      norm: layer_norm
+      activation: gelu
+      position: learned_absolute_1d
+      rope_base: null
+      vocab_size: 51289
+
+  - id: internvl3-1b
+    model_id: OpenGVLab/InternVL3-1B-hf
+    revision: 014c0583a0d4bedf29fbe2dbff4f865eb998e171
+    parameters_millions: 1000
+    config_url: https://huggingface.co/OpenGVLab/InternVL3-1B-hf/blob/014c0583a0d4bedf29fbe2dbff4f865eb998e171/config.json
+    vision:
+      family: vit
+      mixer: global_attention
+      width: 1024
+      layers: 24
+      attention_heads: 16
+      patch_size: 14
+      norm: layer_norm
+      activation: gelu
+      position: learned_absolute_2d
+      dynamic_resolution: true
+    connector:
+      family: pixel_shuffle_mlp
+      input_width: 1024
+      output_width: 896
+      latent_tokens: 256
+      activation: gelu
+    language:
+      family: qwen2
+      mode: decoder_only
+      mixer: global_attention
+      width: 896
+      layers: 24
+      attention_heads: 14
+      kv_heads: 2
+      head_dim: 64
+      mlp_width: 4864
+      norm: rms_norm
+      activation: swiglu
+      position: rope
+      rope_base: 1000000
+      vocab_size: 151674
+
+  - id: lfm2.5-vl-1.6b
+    model_id: LiquidAI/LFM2.5-VL-1.6B
+    revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
+    parameters_millions: 1600
+    config_url: https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B/blob/919fde3d022e3f90a4716006f993938ee8c2eb97/config.json
+    vision:
+      family: vit
+      mixer: global_attention
+      width: 1152
+      layers: 27
+      attention_heads: 16
+      patch_size: 16
+      norm: layer_norm
+      activation: gelu
+      position: learned_absolute_2d
+      dynamic_resolution: true
+    connector:
+      family: downsample_mlp
+      input_width: 1152
+      output_width: 2048
+      latent_tokens: 256
+      activation: gelu
+    language:
+      family: lfm2
+      mode: decoder_only
+      mixer: hybrid_short_convolution_attention
+      width: 2048
+      layers: 16
+      attention_heads: 32
+      kv_heads: 8
+      head_dim: 64
+      mlp_width: 12288
+      norm: rms_norm
+      activation: swiglu
+      position: rope
+      rope_base: 1000000
+      vocab_size: 65536

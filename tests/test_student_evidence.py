@@ -160,7 +160,15 @@ def _evidence_plan(
     for stage_name, trainer_state in (
         ("pretrain", {"global_step": 1, "effective_tokens_seen": 804}),
         ("sft", {"global_step": 1, "effective_tokens_seen": 1024}),
-        ("rlvr", {"rollout_step": 1, "optimizer_step": 1}),
+        (
+            "rlvr",
+            {
+                "rollout_step": 1,
+                "optimizer_step": 1,
+                "policy_signal_steps": 1,
+                "replay_only_steps": 0,
+            },
+        ),
     ):
         checkpoint = (
             root
@@ -284,6 +292,40 @@ def test_attestation_separates_execution_contract_from_capability_claim(tmp_path
         output,
         repo_root=ROOT,
     )["valid"]
+
+
+def test_attestation_rejects_replay_only_rlvr_progress(tmp_path):
+    plan = _evidence_plan(tmp_path)
+    trainer_state = (
+        Path(plan.root)
+        / "artifacts"
+        / "rlvr"
+        / "checkpoints"
+        / "step-00000001"
+        / "trainer_state.json"
+    )
+    _write_json(
+        trainer_state,
+        {
+            "rollout_step": 1,
+            "optimizer_step": 1,
+            "policy_signal_steps": 0,
+            "replay_only_steps": 1,
+        },
+    )
+
+    attestation = build_experiment_attestation(
+        plan,
+        repo_root=ROOT,
+        output=Path(plan.root) / "replay_only_attestation.json",
+    )
+    checks = {
+        check["id"]: check for check in attestation["contract_checks"]
+    }
+
+    assert attestation["contract_status"] == "fail"
+    assert checks["rlvr_optimization_progress"]["status"] == "pass"
+    assert checks["rlvr_policy_signal_progress"]["status"] == "fail"
 
 
 def test_attestation_verification_detects_checkpoint_tampering(tmp_path):

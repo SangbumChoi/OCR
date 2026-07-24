@@ -1,0 +1,543 @@
+{
+  "common_features": [
+    {
+      "count": 3,
+      "feature": "vision.family",
+      "fraction": 0.6,
+      "target_matches": true,
+      "value": "vit"
+    },
+    {
+      "count": 3,
+      "feature": "vision.mixer",
+      "fraction": 0.6,
+      "target_matches": true,
+      "value": "global_attention"
+    },
+    {
+      "count": 5,
+      "feature": "vision.norm",
+      "fraction": 1.0,
+      "target_matches": true,
+      "value": "layer_norm"
+    },
+    {
+      "count": 5,
+      "feature": "vision.activation",
+      "fraction": 1.0,
+      "target_matches": true,
+      "value": "gelu"
+    },
+    {
+      "count": 4,
+      "feature": "vision.position",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "learned_absolute_2d"
+    },
+    {
+      "count": 4,
+      "feature": "vision.dynamic_resolution",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": true
+    },
+    {
+      "count": 3,
+      "feature": "connector.activation",
+      "fraction": 0.6,
+      "target_matches": false,
+      "value": "gelu"
+    },
+    {
+      "count": 4,
+      "feature": "language.mode",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "decoder_only"
+    },
+    {
+      "count": 4,
+      "feature": "language.mixer",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "global_attention"
+    },
+    {
+      "count": 5,
+      "feature": "language.head_dim",
+      "fraction": 1.0,
+      "target_matches": true,
+      "value": 64
+    },
+    {
+      "count": 4,
+      "feature": "language.norm",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "rms_norm"
+    },
+    {
+      "count": 4,
+      "feature": "language.activation",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "swiglu"
+    },
+    {
+      "count": 4,
+      "feature": "language.position",
+      "fraction": 0.8,
+      "target_matches": true,
+      "value": "rope"
+    },
+    {
+      "count": 3,
+      "feature": "language.rope_base",
+      "fraction": 0.6,
+      "target_matches": false,
+      "value": 1000000
+    }
+  ],
+  "compatibility": [
+    {
+      "compatibility_fraction": 0.14285714285714285,
+      "compatible_subcomponents": 1,
+      "decisions": {
+        "connector": {
+          "checks": {
+            "activation": false,
+            "family": false,
+            "input_width": false,
+            "latent_tokens": false,
+            "output_width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Connector topology defines a different visual-token interface."
+        },
+        "language.attention": {
+          "checks": {
+            "attention_heads": false,
+            "head_dim": true,
+            "kv_heads": false,
+            "mode": true,
+            "norm": true,
+            "position": true,
+            "rope_base": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Attention transfer is unsafe without identical GQA and RoPE geometry."
+        },
+        "language.mlp": {
+          "checks": {
+            "activation": true,
+            "mode": true,
+            "norm": true,
+            "source_mlp_not_narrower": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Hidden width, gating, or direction of width change is incompatible."
+        },
+        "language.token_embeddings": {
+          "checks": {
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Embedding widths differ."
+        },
+        "vision.patch_embedding": {
+          "checks": {
+            "family": true,
+            "patch_size": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Patch geometry or channel width differs."
+        },
+        "vision.position": {
+          "checks": {
+            "patch_size": true,
+            "position": true
+          },
+          "compatible": true,
+          "mode": "exact",
+          "reason": "Position weights require the same convention and patch grid."
+        },
+        "vision.transformer_blocks": {
+          "checks": {
+            "activation": true,
+            "attention_heads": false,
+            "attention_mixer": true,
+            "norm": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Use feature or relation distillation across vision widths."
+        }
+      },
+      "source": "internvl3-1b",
+      "target": "docvlm-800m",
+      "total_subcomponents": 7
+    },
+    {
+      "compatibility_fraction": 0.14285714285714285,
+      "compatible_subcomponents": 1,
+      "decisions": {
+        "connector": {
+          "checks": {
+            "activation": false,
+            "family": false,
+            "input_width": true,
+            "latent_tokens": true,
+            "output_width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Connector topology defines a different visual-token interface."
+        },
+        "language.attention": {
+          "checks": {
+            "attention_heads": false,
+            "head_dim": true,
+            "kv_heads": false,
+            "mode": true,
+            "norm": true,
+            "position": true,
+            "rope_base": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Attention transfer is unsafe without identical GQA and RoPE geometry."
+        },
+        "language.mlp": {
+          "checks": {
+            "activation": true,
+            "mode": true,
+            "norm": true,
+            "source_mlp_not_narrower": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Hidden width, gating, or direction of width change is incompatible."
+        },
+        "language.token_embeddings": {
+          "checks": {
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Embedding widths differ."
+        },
+        "vision.patch_embedding": {
+          "checks": {
+            "family": true,
+            "patch_size": false,
+            "width": true
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Patch geometry or channel width differs."
+        },
+        "vision.position": {
+          "checks": {
+            "patch_size": false,
+            "position": true
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Position weights require the same convention and patch grid."
+        },
+        "vision.transformer_blocks": {
+          "checks": {
+            "activation": true,
+            "attention_heads": true,
+            "attention_mixer": true,
+            "norm": true,
+            "width": true
+          },
+          "compatible": true,
+          "mode": "exact",
+          "reason": "Attention block semantics and geometry align."
+        }
+      },
+      "source": "smolvlm2-500m",
+      "target": "docvlm-800m",
+      "total_subcomponents": 7
+    },
+    {
+      "compatibility_fraction": 0.0,
+      "compatible_subcomponents": 0,
+      "decisions": {
+        "connector": {
+          "checks": {
+            "activation": false,
+            "family": false,
+            "input_width": false,
+            "latent_tokens": false,
+            "output_width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Connector topology defines a different visual-token interface."
+        },
+        "language.attention": {
+          "checks": {
+            "attention_heads": false,
+            "head_dim": true,
+            "kv_heads": false,
+            "mode": true,
+            "norm": true,
+            "position": true,
+            "rope_base": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Attention transfer is unsafe without identical GQA and RoPE geometry."
+        },
+        "language.mlp": {
+          "checks": {
+            "activation": true,
+            "mode": true,
+            "norm": true,
+            "source_mlp_not_narrower": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Hidden width, gating, or direction of width change is incompatible."
+        },
+        "language.token_embeddings": {
+          "checks": {
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Embedding widths differ."
+        },
+        "vision.patch_embedding": {
+          "checks": {
+            "family": false,
+            "patch_size": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Patch geometry or channel width differs."
+        },
+        "vision.position": {
+          "checks": {
+            "patch_size": false,
+            "position": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Position weights require the same convention and patch grid."
+        },
+        "vision.transformer_blocks": {
+          "checks": {
+            "activation": true,
+            "attention_heads": false,
+            "attention_mixer": false,
+            "norm": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Use feature or relation distillation across vision widths."
+        }
+      },
+      "source": "fastvlm-0.5b",
+      "target": "docvlm-800m",
+      "total_subcomponents": 7
+    },
+    {
+      "compatibility_fraction": 0.0,
+      "compatible_subcomponents": 0,
+      "decisions": {
+        "connector": {
+          "checks": {
+            "activation": false,
+            "family": false,
+            "input_width": false,
+            "latent_tokens": false,
+            "output_width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Connector topology defines a different visual-token interface."
+        },
+        "language.attention": {
+          "checks": {
+            "attention_heads": false,
+            "head_dim": true,
+            "kv_heads": false,
+            "mode": false,
+            "norm": false,
+            "position": false,
+            "rope_base": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Attention transfer is unsafe without identical GQA and RoPE geometry."
+        },
+        "language.mlp": {
+          "checks": {
+            "activation": false,
+            "mode": false,
+            "norm": false,
+            "source_mlp_not_narrower": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Hidden width, gating, or direction of width change is incompatible."
+        },
+        "language.token_embeddings": {
+          "checks": {
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Embedding widths differ."
+        },
+        "vision.patch_embedding": {
+          "checks": {
+            "family": false,
+            "patch_size": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Patch geometry or channel width differs."
+        },
+        "vision.position": {
+          "checks": {
+            "patch_size": false,
+            "position": true
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Position weights require the same convention and patch grid."
+        },
+        "vision.transformer_blocks": {
+          "checks": {
+            "activation": true,
+            "attention_heads": false,
+            "attention_mixer": false,
+            "norm": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Use feature or relation distillation across vision widths."
+        }
+      },
+      "source": "florence-2-base",
+      "target": "docvlm-800m",
+      "total_subcomponents": 7
+    },
+    {
+      "compatibility_fraction": 0.0,
+      "compatible_subcomponents": 0,
+      "decisions": {
+        "connector": {
+          "checks": {
+            "activation": false,
+            "family": false,
+            "input_width": false,
+            "latent_tokens": false,
+            "output_width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Connector topology defines a different visual-token interface."
+        },
+        "language.attention": {
+          "checks": {
+            "attention_heads": false,
+            "head_dim": true,
+            "kv_heads": true,
+            "mode": true,
+            "norm": true,
+            "position": true,
+            "rope_base": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Attention transfer is unsafe without identical GQA and RoPE geometry."
+        },
+        "language.mlp": {
+          "checks": {
+            "activation": true,
+            "mode": true,
+            "norm": true,
+            "source_mlp_not_narrower": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Hidden width, gating, or direction of width change is incompatible."
+        },
+        "language.token_embeddings": {
+          "checks": {
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Embedding widths differ."
+        },
+        "vision.patch_embedding": {
+          "checks": {
+            "family": true,
+            "patch_size": false,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Patch geometry or channel width differs."
+        },
+        "vision.position": {
+          "checks": {
+            "patch_size": false,
+            "position": true
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Position weights require the same convention and patch grid."
+        },
+        "vision.transformer_blocks": {
+          "checks": {
+            "activation": true,
+            "attention_heads": false,
+            "attention_mixer": true,
+            "norm": true,
+            "width": false
+          },
+          "compatible": false,
+          "mode": "distill_only",
+          "reason": "Use feature or relation distillation across vision widths."
+        }
+      },
+      "source": "lfm2.5-vl-1.6b",
+      "target": "docvlm-800m",
+      "total_subcomponents": 7
+    }
+  ],
+  "prevalence_threshold": 0.6,
+  "schema_version": 1,
+  "source_count": 5,
+  "target": "docvlm-800m"
+}

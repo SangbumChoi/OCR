@@ -168,7 +168,10 @@ once to the configured completion horizon and updated in place, avoiding per-tok
 and cache copies. Set
 `training.posttraining.rlvr.rollout.use_kv_cache: false` only for a full-prefix compute/latency
 ablation. The resolved rollout contract is checkpointed, so resume cannot silently change sampling
-or cache semantics. Policy and frozen-reference log-probabilities are each computed in one
+or cache semantics. The same contract includes an exact suffix-cycle guard. It emits EOS only when
+the trailing period repeats consecutively three times after the minimum completion length; it does
+not prohibit recurring table tags or labels elsewhere in a structured answer. Policy and
+frozen-reference log-probabilities are each computed in one
 teacher-forced pass over the completed sequences.
 Activation checkpointing applies only to the trainable policy's gradient-bearing log-probability
 and replay passes. No-grad rollout generation and the frozen reference remain uncheckpointed.
@@ -288,9 +291,10 @@ grounding accuracy.
 Each split writes:
 
 - `summary.json`: headline score, reward, structural validity, answer rate, latency,
-  answer-type/source/language slices, and canonical robustness slices with coverage counts;
+  maximum-token rate, degenerate-repetition rate, answer-type/source/language slices, and canonical
+  robustness slices with coverage counts;
 - `per_sample.jsonl`: raw structured output, parsed fields, standard score, reward components, and
-  structural error plus canonical robustness labels;
+  structural error plus generated-token, token-limit, repetition, and canonical robustness labels;
 - root `comparison.json`: train-minus-heldout headline, matched answer-type gaps, and matched
   robustness-slice gaps;
 - root `manifest.json`: checkpoint, tokenizer, split, and decoding provenance.
@@ -299,6 +303,8 @@ Use `--max-samples N --seed S` for a deterministic smoke subset. The evaluator u
 visual-prefix reuse and the decoder KV cache by default. Pass `--no-kv-cache` to measure the
 full-prefix ablation. Each summary records `generation_backend` so latency results cannot be
 compared across hidden generation paths.
+See [`student_generation_rendering_safeguards.md`](student_generation_rendering_safeguards.md) for
+the shared rollout controls and the separate integrity policy for long HTML tables and full pages.
 
 ### Paired W&B metrics
 

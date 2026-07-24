@@ -404,6 +404,23 @@ def _semantic_evidence(
                 {progress_key: progress, "trainer_state": state},
             )
         )
+        if stage_name == "rlvr":
+            policy_signal_steps = int(
+                state.get("policy_signal_steps", 0)
+            )
+            checks.append(
+                _check(
+                    "rlvr_policy_signal_progress",
+                    policy_signal_steps > 0,
+                    {
+                        "policy_signal_steps": policy_signal_steps,
+                        "replay_only_steps": int(
+                            state.get("replay_only_steps", 0)
+                        ),
+                        "trainer_state": state,
+                    },
+                )
+            )
         checkpoint_attestation = (
             ((proof or {}).get("student_metadata") or {}).get(
                 "parameter_attestation"

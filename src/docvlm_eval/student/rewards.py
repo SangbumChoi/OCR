@@ -13,7 +13,7 @@ from typing import Any
 from ..metrics.bank import semantic_match
 from ..metrics.grounding import iou, parse_gold_box
 from ..metrics.tables import teds_score
-from ..metrics.text import exact_match, relaxed_accuracy
+from ..metrics.text import exact_match, ned_similarity, relaxed_accuracy
 from ..schema import Sample
 
 
@@ -102,6 +102,7 @@ class RewardContext:
 class RewardConfig:
     weights: dict[str, float]
     malformed_reward: float = 0.0
+    malformed_recovery_max: float = 0.0
     rationale_verifier: str = "evidence_semantic"
 
     def __post_init__(self) -> None:
@@ -113,6 +114,14 @@ class RewardConfig:
             raise ValueError("at least one reward weight must be positive")
         if not 0 <= self.malformed_reward <= 1:
             raise ValueError("malformed_reward must be within [0, 1]")
+        if not 0 <= self.malformed_recovery_max <= 0.25:
+            raise ValueError(
+                "malformed_recovery_max must be within [0, 0.25]"
+            )
+        if self.malformed_reward + self.malformed_recovery_max >= 1:
+            raise ValueError(
+                "malformed reward and recovery ceiling must be below 1"
+            )
         if self.rationale_verifier not in {
             "evidence_semantic",
             "evidence_program_trace",
@@ -131,6 +140,9 @@ class RewardConfig:
                 for name, weight in raw["reward_mix"].items()
             },
             malformed_reward=float(raw.get("malformed_reward", 0.0)),
+            malformed_recovery_max=float(
+                raw.get("malformed_recovery_max", 0.0)
+            ),
             rationale_verifier=str(
                 raw.get("rationale_verifier", "evidence_semantic")
             ),
@@ -1003,6 +1015,21 @@ def _is_abstention(value: str) -> bool:
     return normalized in _ABSTAIN_NORMALIZED
 
 
+def _malformed_recovery_similarity(
+    response_text: str,
+    context: RewardContext,
+) -> float:
+    targets = [
+        build_structured_target(
+            answer,
+            evidence=context.gold_boxes,
+            rationale=context.gold_rationale,
+        )
+        for answer in context.answers
+    ]
+    return ned_similarity(response_text, targets) if targets else 0.0
+
+
 def score_structured_response(
     response_text: str,
     context: RewardContext,
@@ -1014,8 +1041,31 @@ def score_structured_response(
     try:
         response = parse_structured_response(response_text)
     except ValueError as exc:
+        if config.malformed_recovery_max == 0:
+            return RewardResult(
+                total=config.malformed_reward,
+                components={},
+                applicable=(),
+                structurally_valid=False,
+                error=str(exc),
+            )
+        recovery_similarity = _malformed_recovery_similarity(
+            response_text,
+            context,
+        )
+        recovery_reward = (
+            config.malformed_recovery_max * recovery_similarity
+        )
         return RewardResult(
-            total=config.malformed_reward,
+            total=config.malformed_reward + recovery_reward,
+            components={
+                "malformed_recovery_similarity": recovery_similarity,
+                "malformed_recovery_reward": recovery_reward,
+            },
+            applicable=(
+                "malformed_recovery_reward",
+                "malformed_recovery_similarity",
+            ),
             structurally_valid=False,
             error=str(exc),
         )
@@ -1109,8 +1159,12 @@ def score_structured_response(
         if active_weight > 0
         else 0.0
     )
+    bounded_total = max(0.0, min(1.0, float(total)))
+    structural_floor = (
+        config.malformed_reward + config.malformed_recovery_max
+    )
     return RewardResult(
-        total=max(0.0, min(1.0, float(total))),
+        total=structural_floor + (1.0 - structural_floor) * bounded_total,
         components=components,
         applicable=tuple(sorted(applicable)),
     )

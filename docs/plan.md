@@ -179,7 +179,15 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   representation-loss weight.
 - **Initialize:** [`report/student_initialization_runner.md`](report/student_initialization_runner.md)
   — pinned pretrained source acquisition, zero-download shape compatibility, fail-closed selective
-  transfer, joint-salience SwiGLU reduction, and matched baseline and structured-transfer suites.
+  transfer, joint-salience SwiGLU reduction, initialization lineage, and matched baseline and
+  structured-transfer suites.
+- **Preflight transfer across architectures:**
+  [`report/small_vlm_architecture_commonality.md`](report/small_vlm_architecture_commonality.md) —
+  pinned small-VLM feature commonality and component-level copy-versus-distill decisions.
+- **Guard long structured generation and rendering:**
+  [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
+  — exact suffix-cycle termination, token-limit telemetry, all-page expansion, table-cell survival,
+  and bounded-canvas checks.
 - **Test structured initialization:**
   [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md)
   — exact-shape selective transfer versus a shared-channel reduction of wider teacher MLPs.

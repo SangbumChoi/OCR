@@ -195,7 +195,13 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
         == "gold_anchored_verifier_ranked"
     )
     assert preference.sequence_reduction == "sum"
+    assert preference.repetition_guard_min_tokens == 24
+    assert preference.repetition_guard_max_period == 16
+    assert preference.repetition_guard_repetitions == 3
     assert rlvr.use_kv_cache is True
+    assert rlvr.repetition_guard_min_tokens == 24
+    assert rlvr.repetition_guard_max_period == 16
+    assert rlvr.repetition_guard_repetitions == 3
     assert rlvr.advantage_estimator == "group_standardized"
     assert sft.as_pretrain_config().optimizer == sft.optimizer
 
@@ -284,6 +290,49 @@ def test_group_rollout_cache_matches_full_prefix_sampling(tmp_path):
     assert torch.equal(cached[0], uncached[0])
     assert torch.equal(cached[1], uncached[1])
     assert cached[2] == uncached[2]
+
+
+def test_group_rollout_ends_exact_suffix_cycle(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import sample_completion_group
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    config = replace(
+        _rl_config(tmp_path, 1),
+        max_new_tokens=12,
+        repetition_guard_min_tokens=6,
+        repetition_guard_max_period=2,
+        repetition_guard_repetitions=3,
+    )
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain._top_p_sample",
+        lambda logits, top_p: torch.full(
+            (logits.shape[0], 1),
+            7,
+            dtype=torch.long,
+            device=logits.device,
+        ),
+    )
+
+    completion_ids, completion_mask, _ = sample_completion_group(
+        model,
+        {
+            "input_ids": torch.tensor([[1, 8]]),
+            "attention_mask": torch.ones(1, 2, dtype=torch.long),
+        },
+        _Tokenizer(),
+        config,
+    )
+
+    assert completion_ids.shape == (2, 6)
+    assert torch.all(completion_ids[:, :5] == 7)
+    assert torch.all(completion_ids[:, -1] == _Tokenizer.eos_token_id)
+    assert torch.all(completion_mask)
 
 
 def test_group_relative_policy_loss_uses_reward_rank_and_reference_kl():
@@ -702,6 +751,12 @@ def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):
     )
 
     assert result.final_metrics["rlvr/advantage_abs_mean"] == 0
+    assert result.policy_signal_steps == 0
+    assert result.replay_only_steps == 1
+    assert result.final_metrics["rlvr/policy_signal_step"] == 0
+    assert result.final_metrics["rlvr/policy_signal_steps"] == 0
+    assert result.final_metrics["rlvr/replay_only_step"] == 1
+    assert result.final_metrics["rlvr/replay_only_steps"] == 1
     assert result.final_metrics["rlvr/supervised_replay_applied"] == 1
     assert result.final_metrics["rlvr/supervised_replay_loss"] > 0
     assert result.final_metrics["rlvr/supervised_replay_tokens"] > 0
@@ -713,6 +768,66 @@ def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):
         (tmp_path / "replay" / "metrics.jsonl").read_text(encoding="utf-8")
     )
     assert metric["supervised_replay_sample_id"] == "post-1"
+
+
+def test_malformed_recovery_drives_an_on_policy_signal(tmp_path, monkeypatch):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_grpo
+    from docvlm_eval.student.rewards import (
+        RewardConfig,
+        build_structured_target,
+    )
+
+    target = build_structured_target("42")
+
+    def malformed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [target[:-1], "not-json"],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        malformed_group,
+    )
+    torch.manual_seed(43)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    policy = copy.deepcopy(initial)
+    result = train_grpo(
+        policy,
+        copy.deepcopy(initial),
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _rl_config(tmp_path / "malformed-recovery", 1),
+        RewardConfig(
+            weights={"answer_correctness": 1.0},
+            malformed_recovery_max=0.1,
+        ),
+    )
+
+    assert result.policy_signal_steps == 1
+    assert result.replay_only_steps == 0
+    assert result.final_metrics["rlvr/advantage_abs_mean"] > 0
+    assert result.final_metrics["rlvr/policy_signal_step"] == 1
+    assert result.final_metrics["rlvr/policy_signal_steps"] == 1
+    assert result.final_metrics["rlvr/malformed_fraction"] == 1
+    assert (
+        result.final_metrics[
+            "reward_diagnostic/malformed_recovery_similarity"
+        ]
+        > 0
+    )
+    assert any(
+        not torch.equal(initial.state_dict()[name], value)
+        for name, value in policy.state_dict().items()
+    )
 
 
 def test_symbolic_formula_reward_drives_group_advantage(tmp_path, monkeypatch):

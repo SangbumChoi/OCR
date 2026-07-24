@@ -10,6 +10,15 @@ from docvlm_eval.synth.quality import (
     collect_evidence_boxes,
     redact_evidence_quality_report,
 )
+from docvlm_eval.synth.render import audit_html_render, render_html
+
+
+_TWO_PAGE_HTML = """
+<html><body>
+  <table><tr><th>Account</th><td>Primary</td></tr></table>
+  <div style="break-before: page">Second page text</div>
+</body></html>
+"""
 
 
 def _sample(box):
@@ -89,6 +98,33 @@ def test_render_evidence_audit_skips_samples_without_spatial_supervision():
 
     assert report["status"] == "skipped_no_boxes"
     assert report["unique_boxes"] == 0
+
+
+def test_html_render_audit_reports_omitted_pages():
+    result = render_html(_TWO_PAGE_HTML, page_mode="first", dpi=72)
+    try:
+        report = audit_html_render(
+            result,
+            _TWO_PAGE_HTML,
+            require_all_pages=True,
+        )
+    finally:
+        result.close()
+
+    assert report["status"] == "fail"
+    assert report["page_count"] == 2
+    assert report["rendered_page_count"] == 1
+    assert report["omitted_page_count"] == 1
+
+
+def test_html_render_rejects_canvas_above_pixel_budget():
+    with pytest.raises(RuntimeError, match="max_canvas_pixels"):
+        render_html(
+            "<html><body>Visible page</body></html>",
+            page_mode="first",
+            dpi=72,
+            max_canvas_pixels=1,
+        )
 
 
 def test_quality_report_redaction_removes_spatial_supervision():

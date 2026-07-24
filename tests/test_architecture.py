@@ -17,6 +17,9 @@ def test_default_blueprint_is_valid_and_sub1b():
     assert blueprint["training"]["posttraining"]["rlvr"][
         "supervised_replay"
     ] == {"every_steps": 20, "loss_coefficient": 0.10}
+    assert blueprint["training"]["posttraining"]["rlvr"][
+        "malformed_recovery_max"
+    ] == 0.10
 
 
 def test_blueprint_language_mixer_fields_are_backward_compatible():
@@ -76,6 +79,16 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
         "require_attention_geometry must be a boolean" in error
         for error in errors
     )
+
+
+def test_blueprint_rejects_an_unbounded_malformed_recovery():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    rlvr = blueprint["training"]["posttraining"]["rlvr"]
+    rlvr["malformed_recovery_max"] = 0.3
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("malformed_recovery_max" in error for error in errors)
 
 
 def test_blueprint_rejects_invalid_input_pipeline_controls():
@@ -336,11 +349,13 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     preference["ipo_tau"] = 0.0
     preference["sequence_reduction"] = "median"
     preference["rollout"]["use_kv_cache"] = "yes"
+    preference["rollout"]["repetition_guard_repetitions"] = 1
     rlvr = blueprint["training"]["posttraining"]["rlvr"]
     rlvr["group_size"] = 1
     rlvr["advantage_estimator"] = "critic"
     rlvr["rollout"]["top_p"] = 2.0
     rlvr["rollout"]["use_kv_cache"] = "yes"
+    rlvr["rollout"]["repetition_guard_max_period"] = 0
     rlvr["supervised_replay"]["every_steps"] = 0
     rlvr["rationale_verifier"] = "nonempty"
     rlvr["reward_mix"]["unsupported_reward"] = 0.0
@@ -356,9 +371,17 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
         "preference.rollout.use_kv_cache must be a boolean" in error
         for error in errors
     )
+    assert any(
+        "preference.rollout.repetition_guard_repetitions" in error
+        for error in errors
+    )
     assert any("advantage_estimator" in error for error in errors)
     assert any("rollout.top_p must be within" in error for error in errors)
     assert any("rollout.use_kv_cache must be a boolean" in error for error in errors)
+    assert any(
+        "rlvr.rollout.repetition_guard_max_period" in error
+        for error in errors
+    )
     assert any("interval and coefficient" in error for error in errors)
     assert any("rationale_verifier" in error for error in errors)
     assert any("unsupported_reward" in error for error in errors)

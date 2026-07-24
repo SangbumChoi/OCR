@@ -2176,10 +2176,22 @@ class DocumentVLMStudent(nn.Module):
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
         use_kv_cache: bool = True,
+        repetition_guard_min_tokens: int = 24,
+        repetition_guard_max_period: int = 16,
+        repetition_guard_repetitions: int = 3,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        from .generation import repeated_suffix_cycle_mask
+
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
+        if (
+            repetition_guard_min_tokens < 1
+            or repetition_guard_max_period < 1
+            or repetition_guard_repetitions < 2
+        ):
+            raise ValueError("invalid repetition guard controls")
         generated = input_ids
+        completion_start = int(input_ids.shape[1])
         generated_attention_mask = attention_mask
         has_packed = any(
             value is not None
@@ -2231,16 +2243,26 @@ class DocumentVLMStudent(nn.Module):
                     visual_prefix=visual_prefix,
                 )
                 next_logits = output.logits[:, -1].float()
-            next_probability, next_token_flat = torch.softmax(
-                next_logits,
-                dim=-1,
-            ).max(dim=-1)
+            probabilities = torch.softmax(next_logits, dim=-1)
+            next_probability, next_token_flat = probabilities.max(dim=-1)
             if eos_token_id is not None:
+                repeated = repeated_suffix_cycle_mask(
+                    generated[:, completion_start:],
+                    next_token_flat,
+                    min_tokens=repetition_guard_min_tokens,
+                    max_period=repetition_guard_max_period,
+                    repetitions=repetition_guard_repetitions,
+                )
                 next_token_flat = torch.where(
-                    active,
+                    active & ~repeated,
                     next_token_flat,
                     torch.full_like(next_token_flat, eos_token_id),
                 )
+                next_probability = torch.gather(
+                    probabilities,
+                    -1,
+                    next_token_flat[:, None],
+                ).squeeze(-1)
             next_token = next_token_flat.unsqueeze(-1)
             log_probability_sum += torch.where(
                 active,
@@ -2290,6 +2312,9 @@ class DocumentVLMStudent(nn.Module):
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
         use_kv_cache: bool = True,
+        repetition_guard_min_tokens: int = 24,
+        repetition_guard_max_period: int = 16,
+        repetition_guard_repetitions: int = 3,
     ) -> torch.Tensor:
         generated, _ = self._generate_with_confidence(
             input_ids,
@@ -2303,6 +2328,9 @@ class DocumentVLMStudent(nn.Module):
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
             use_kv_cache=use_kv_cache,
+            repetition_guard_min_tokens=repetition_guard_min_tokens,
+            repetition_guard_max_period=repetition_guard_max_period,
+            repetition_guard_repetitions=repetition_guard_repetitions,
         )
         return generated
 
@@ -2320,6 +2348,9 @@ class DocumentVLMStudent(nn.Module):
         max_new_tokens: int = 64,
         eos_token_id: int | None = None,
         use_kv_cache: bool = True,
+        repetition_guard_min_tokens: int = 24,
+        repetition_guard_max_period: int = 16,
+        repetition_guard_repetitions: int = 3,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return greedy sequences and geometric-mean generated-token probabilities."""
 
@@ -2335,6 +2366,9 @@ class DocumentVLMStudent(nn.Module):
             max_new_tokens=max_new_tokens,
             eos_token_id=eos_token_id,
             use_kv_cache=use_kv_cache,
+            repetition_guard_min_tokens=repetition_guard_min_tokens,
+            repetition_guard_max_period=repetition_guard_max_period,
+            repetition_guard_repetitions=repetition_guard_repetitions,
         )
 
     def save_pretrained(

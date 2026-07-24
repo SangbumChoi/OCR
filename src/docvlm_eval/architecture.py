@@ -1082,6 +1082,21 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "training.posttraining.preference.rollout.use_kv_cache must be "
             "a boolean"
         )
+    if int(preference_rollout.get("repetition_guard_min_tokens", 0)) < 1:
+        errors.append(
+            "training.posttraining.preference.rollout."
+            "repetition_guard_min_tokens must be positive"
+        )
+    if int(preference_rollout.get("repetition_guard_max_period", 0)) < 1:
+        errors.append(
+            "training.posttraining.preference.rollout."
+            "repetition_guard_max_period must be positive"
+        )
+    if int(preference_rollout.get("repetition_guard_repetitions", 0)) < 2:
+        errors.append(
+            "training.posttraining.preference.rollout."
+            "repetition_guard_repetitions must be at least two"
+        )
     preference_optimizer = preference.get("optimizer", {})
     _validate_optimizer(
         "training.posttraining.preference.optimizer",
@@ -1180,6 +1195,19 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     malformed_reward = float(rlvr.get("malformed_reward", -1))
     if not 0 <= malformed_reward <= 1:
         errors.append("training.posttraining.rlvr.malformed_reward must be within [0, 1]")
+    malformed_recovery_max = float(
+        rlvr.get("malformed_recovery_max", -1)
+    )
+    if not 0 <= malformed_recovery_max <= 0.25:
+        errors.append(
+            "training.posttraining.rlvr.malformed_recovery_max must be "
+            "within [0, 0.25]"
+        )
+    if malformed_reward + malformed_recovery_max >= 1:
+        errors.append(
+            "training.posttraining.rlvr malformed reward and recovery "
+            "ceiling must be below 1"
+        )
     if rlvr.get("rationale_verifier") not in {
         "evidence_semantic",
         "evidence_program_trace",
@@ -1200,6 +1228,21 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     if not isinstance(rollout.get("use_kv_cache"), bool):
         errors.append(
             "training.posttraining.rlvr.rollout.use_kv_cache must be a boolean"
+        )
+    if int(rollout.get("repetition_guard_min_tokens", 0)) < 1:
+        errors.append(
+            "training.posttraining.rlvr.rollout."
+            "repetition_guard_min_tokens must be positive"
+        )
+    if int(rollout.get("repetition_guard_max_period", 0)) < 1:
+        errors.append(
+            "training.posttraining.rlvr.rollout."
+            "repetition_guard_max_period must be positive"
+        )
+    if int(rollout.get("repetition_guard_repetitions", 0)) < 2:
+        errors.append(
+            "training.posttraining.rlvr.rollout."
+            "repetition_guard_repetitions must be at least two"
         )
     supported_rewards = {
         "answer_correctness",

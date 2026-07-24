@@ -716,6 +716,31 @@ def test_generation_returns_bounded_sequence_confidence():
     assert torch.all(confidence <= 1)
 
 
+def test_generation_guard_stops_exact_suffix_cycles_without_a_token_ban():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny()).eval()
+    with torch.no_grad():
+        model.lm_head.weight.zero_()
+    input_ids = torch.tensor([[11, 12, 13]])
+
+    generated = model.generate(
+        input_ids,
+        max_new_tokens=12,
+        eos_token_id=2,
+        repetition_guard_min_tokens=3,
+        repetition_guard_max_period=2,
+        repetition_guard_repetitions=3,
+    )
+
+    assert generated[0, -1].item() == 2
+    assert generated.shape[1] < input_ids.shape[1] + 12
+    assert generated[0, input_ids.shape[1] :].tolist() == [0, 0, 2]
+
+
 def test_random_init_first_step_reaches_the_vision_tower():
     import torch
 

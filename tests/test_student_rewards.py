@@ -80,6 +80,57 @@ def test_structured_response_parser_enforces_the_grounded_contract():
         parse_structured_response('{"answer":"42","evidence":[]}')
 
 
+def test_malformed_recovery_is_dense_but_cannot_cross_the_structure_gate():
+    from docvlm_eval.student.rewards import (
+        RewardConfig,
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+
+    context = RewardContext(sample_id="recovery", answers=("42",))
+    target = build_structured_target("42")
+    config = RewardConfig(
+        weights={"answer_correctness": 1.0},
+        malformed_recovery_max=0.1,
+    )
+
+    close = score_structured_response(target[:-1], context, config)
+    far = score_structured_response("not-json", context, config)
+    valid_wrong = score_structured_response(
+        build_structured_target("17"),
+        context,
+        config,
+    )
+
+    assert not close.structurally_valid
+    assert not far.structurally_valid
+    assert close.total > far.total
+    assert close.components["malformed_recovery_similarity"] > far.components[
+        "malformed_recovery_similarity"
+    ]
+    assert close.total < 0.1
+    assert valid_wrong.structurally_valid
+    assert valid_wrong.total == pytest.approx(0.1)
+    assert valid_wrong.total > close.total
+
+
+def test_reward_config_rejects_an_unbounded_malformed_recovery():
+    from docvlm_eval.student.rewards import RewardConfig
+
+    with pytest.raises(ValueError, match="malformed_recovery_max"):
+        RewardConfig(
+            weights={"answer_correctness": 1.0},
+            malformed_recovery_max=0.3,
+        )
+    with pytest.raises(ValueError, match="recovery ceiling"):
+        RewardConfig(
+            weights={"answer_correctness": 1.0},
+            malformed_reward=0.9,
+            malformed_recovery_max=0.1,
+        )
+
+
 def test_chart_grounding_and_rationale_rewards_are_independently_reported():
     from docvlm_eval.student.rewards import (
         RewardContext,

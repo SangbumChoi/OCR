@@ -104,6 +104,11 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
             "max_new_tokens": args.max_new_tokens,
             "max_samples": args.max_samples,
             "use_kv_cache": not args.no_kv_cache,
+            "repetition_guard": {
+                "min_tokens": args.repetition_guard_min_tokens,
+                "max_period": args.repetition_guard_max_period,
+                "repetitions": args.repetition_guard_repetitions,
+            },
             "precision": args.precision,
             "temperature_calibration": {
                 "enabled": not args.no_temperature_calibration,
@@ -159,6 +164,9 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument("--repetition-guard-min-tokens", type=int, default=24)
+    parser.add_argument("--repetition-guard-max-period", type=int, default=16)
+    parser.add_argument("--repetition-guard-repetitions", type=int, default=3)
     parser.add_argument(
         "--no-kv-cache",
         action="store_true",
@@ -300,6 +308,9 @@ def main() -> None:
         precision=args.precision,
         device=device,
         seed=args.seed,
+        repetition_guard_min_tokens=args.repetition_guard_min_tokens,
+        repetition_guard_max_period=args.repetition_guard_max_period,
+        repetition_guard_repetitions=args.repetition_guard_repetitions,
     )
     run = _start_wandb(args, metadata, split_paths)
     summaries: dict[str, dict] = {}

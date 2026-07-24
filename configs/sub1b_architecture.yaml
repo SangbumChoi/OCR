@@ -350,6 +350,9 @@ training:
         temperature: 0.8
         top_p: 0.95
         use_kv_cache: true
+        repetition_guard_min_tokens: 24
+        repetition_guard_max_period: 16
+        repetition_guard_repetitions: 3
       optimizer:
         name: adamw_8bit
         eps: 0.00000001
@@ -378,12 +381,16 @@ training:
         every_steps: 20
         loss_coefficient: 0.10
       malformed_reward: 0.0
+      malformed_recovery_max: 0.10
       rationale_verifier: evidence_program_trace
       rollout:
         max_new_tokens: 128
         temperature: 0.8
         top_p: 0.95
         use_kv_cache: true
+        repetition_guard_min_tokens: 24
+        repetition_guard_max_period: 16
+        repetition_guard_repetitions: 3
       optimizer:
         name: adamw_8bit
         eps: 0.00000001

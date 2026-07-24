@@ -22,6 +22,7 @@ from .data import (
     visual_model_inputs,
 )
 from .compute import estimate_preference_step_flops, estimate_rlvr_step_flops
+from .generation import repeated_suffix_cycle_mask
 from .model import (
     DocumentVLMStudent,
     validate_checkpoint_initialization_lineage,
@@ -388,6 +389,9 @@ class RLVRConfig:
     temperature: float = 0.8
     top_p: float = 0.95
     use_kv_cache: bool = True
+    repetition_guard_min_tokens: int = 24
+    repetition_guard_max_period: int = 16
+    repetition_guard_repetitions: int = 3
     learning_rate: float = 5e-6
     weight_decay: float = 0.1
     beta1: float = 0.9
@@ -441,6 +445,12 @@ class RLVRConfig:
             raise ValueError("RLVR sampling controls are invalid")
         if not isinstance(self.use_kv_cache, bool):
             raise ValueError("RLVR use_kv_cache must be a boolean")
+        if (
+            self.repetition_guard_min_tokens < 1
+            or self.repetition_guard_max_period < 1
+            or self.repetition_guard_repetitions < 2
+        ):
+            raise ValueError("RLVR repetition guard controls are invalid")
         if self.learning_rate <= 0 or self.weight_decay < 0:
             raise ValueError("RLVR optimizer controls are invalid")
         if not 0 <= self.beta1 < 1 or not 0 <= self.beta2 < 1:
@@ -526,6 +536,15 @@ class RLVRConfig:
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
             "use_kv_cache": bool(rollout["use_kv_cache"]),
+            "repetition_guard_min_tokens": int(
+                rollout.get("repetition_guard_min_tokens", 24)
+            ),
+            "repetition_guard_max_period": int(
+                rollout.get("repetition_guard_max_period", 16)
+            ),
+            "repetition_guard_repetitions": int(
+                rollout.get("repetition_guard_repetitions", 3)
+            ),
             "learning_rate": float(optimizer["learning_rate"]),
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
@@ -578,6 +597,9 @@ class PreferenceConfig:
     temperature: float = 0.8
     top_p: float = 0.95
     use_kv_cache: bool = True
+    repetition_guard_min_tokens: int = 24
+    repetition_guard_max_period: int = 16
+    repetition_guard_repetitions: int = 3
     learning_rate: float = 5e-6
     weight_decay: float = 0.1
     beta1: float = 0.9
@@ -636,6 +658,12 @@ class PreferenceConfig:
             raise ValueError("preference sampling controls are invalid")
         if not isinstance(self.use_kv_cache, bool):
             raise ValueError("preference use_kv_cache must be a boolean")
+        if (
+            self.repetition_guard_min_tokens < 1
+            or self.repetition_guard_max_period < 1
+            or self.repetition_guard_repetitions < 2
+        ):
+            raise ValueError("preference repetition guard controls are invalid")
         if self.learning_rate <= 0 or self.weight_decay < 0:
             raise ValueError("preference optimizer controls are invalid")
         if not 0 <= self.beta1 < 1 or not 0 <= self.beta2 < 1:
@@ -703,6 +731,15 @@ class PreferenceConfig:
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
             "use_kv_cache": bool(rollout["use_kv_cache"]),
+            "repetition_guard_min_tokens": int(
+                rollout.get("repetition_guard_min_tokens", 24)
+            ),
+            "repetition_guard_max_period": int(
+                rollout.get("repetition_guard_max_period", 16)
+            ),
+            "repetition_guard_repetitions": int(
+                rollout.get("repetition_guard_repetitions", 3)
+            ),
             "learning_rate": float(optimizer["learning_rate"]),
             "weight_decay": float(optimizer["weight_decay"]),
             "beta1": float(optimizer["betas"][0]),
@@ -732,6 +769,8 @@ class PreferenceConfig:
 class RLVRState:
     rollout_step: int = 0
     optimizer_step: int = 0
+    policy_signal_steps: int = 0
+    replay_only_steps: int = 0
     student_flops_seen: int = 0
     checkpoint_recompute_flops_seen: int = 0
 
@@ -741,6 +780,8 @@ class RLVRResult:
     output_dir: str
     rollout_step: int
     optimizer_step: int
+    policy_signal_steps: int
+    replay_only_steps: int
     student_flops_seen: int
     checkpoint_recompute_flops_seen: int
     executed_student_flops_seen: int
@@ -886,6 +927,23 @@ def sample_completion_group(
                 next_logits / config.temperature,
                 config.top_p,
             ).squeeze(-1)
+            history = (
+                torch.stack(completion_tokens, dim=1)
+                if completion_tokens
+                else prompt_ids[:, :0]
+            )
+            repeated = repeated_suffix_cycle_mask(
+                history,
+                next_token,
+                min_tokens=config.repetition_guard_min_tokens,
+                max_period=config.repetition_guard_max_period,
+                repetitions=config.repetition_guard_repetitions,
+            )
+            next_token = torch.where(
+                active & repeated,
+                torch.full_like(next_token, eos),
+                next_token,
+            )
             next_token = torch.where(
                 active,
                 next_token,
@@ -1239,6 +1297,9 @@ def _rlvr_rollout_contract(
         "temperature": config.temperature,
         "top_p": config.top_p,
         "use_kv_cache": config.use_kv_cache,
+        "repetition_guard_min_tokens": config.repetition_guard_min_tokens,
+        "repetition_guard_max_period": config.repetition_guard_max_period,
+        "repetition_guard_repetitions": config.repetition_guard_repetitions,
     }
 
 
@@ -1255,6 +1316,7 @@ def _rlvr_objective_contract(
             for name, weight in sorted(reward_config.weights.items())
         },
         "malformed_reward": reward_config.malformed_reward,
+        "malformed_recovery_max": reward_config.malformed_recovery_max,
         "rationale_verifier": reward_config.rationale_verifier,
     }
 
@@ -1414,6 +1476,9 @@ def _preference_rollout_contract(
         "temperature": config.temperature,
         "top_p": config.top_p,
         "use_kv_cache": config.use_kv_cache,
+        "repetition_guard_min_tokens": config.repetition_guard_min_tokens,
+        "repetition_guard_max_period": config.repetition_guard_max_period,
+        "repetition_guard_repetitions": config.repetition_guard_repetitions,
     }
 
 
@@ -1433,6 +1498,7 @@ def _preference_objective_contract(
             for name, weight in sorted(reward_config.weights.items())
         },
         "malformed_reward": reward_config.malformed_reward,
+        "malformed_recovery_max": reward_config.malformed_recovery_max,
         "rationale_verifier": reward_config.rationale_verifier,
     }
 
@@ -2090,6 +2156,10 @@ def train_grpo(
             % config.supervised_replay_every_steps
             == 0
         )
+        policy_signal = bool(
+            float(tensors["advantage_abs_mean"].detach()) > 0.0
+        )
+        replay_only = replay_applied and not policy_signal
         replay_loss = torch.zeros((), dtype=loss.dtype, device=device)
         replay_tokens = 0
         replay_text_tokens: int | None = None
@@ -2148,9 +2218,12 @@ def train_grpo(
         ]
         state.rollout_step += 1
         state.optimizer_step += 1
+        state.policy_signal_steps += int(policy_signal)
+        state.replay_only_steps += int(replay_only)
         valid_fraction = sum(
             result.structurally_valid for result in reward_results
         ) / len(reward_results)
+        malformed_fraction = 1.0 - valid_fraction
         final_metrics = {
             f"rlvr/{name}": float(value.detach())
             for name, value in tensors.items()
@@ -2161,6 +2234,15 @@ def train_grpo(
                 "rlvr/valid_structure_fraction": valid_fraction,
                 "rlvr/rollout_step": float(state.rollout_step),
                 "rlvr/optimizer_step": float(state.optimizer_step),
+                "rlvr/policy_signal_step": float(policy_signal),
+                "rlvr/policy_signal_steps": float(
+                    state.policy_signal_steps
+                ),
+                "rlvr/replay_only_step": float(replay_only),
+                "rlvr/replay_only_steps": float(
+                    state.replay_only_steps
+                ),
+                "rlvr/malformed_fraction": malformed_fraction,
                 "rlvr/student_flops_seen": float(
                     state.student_flops_seen
                 ),
@@ -2196,6 +2278,8 @@ def train_grpo(
             if values:
                 final_metrics[f"reward/{name}"] = sum(values) / len(values)
         for diagnostic in (
+            "malformed_recovery_similarity",
+            "malformed_recovery_reward",
             "rationale_text_similarity",
             "rationale_program_fact_score",
             "program_trace_consistency",
@@ -2261,6 +2345,8 @@ def train_grpo(
         output_dir=str(output_dir),
         rollout_step=state.rollout_step,
         optimizer_step=state.optimizer_step,
+        policy_signal_steps=state.policy_signal_steps,
+        replay_only_steps=state.replay_only_steps,
         student_flops_seen=state.student_flops_seen,
         checkpoint_recompute_flops_seen=(
             state.checkpoint_recompute_flops_seen

@@ -30,6 +30,7 @@ from PIL import Image
 from .hard_layout import layout_fingerprint
 from .hard_locale import HARD_DOCUMENT_LANGUAGES, hard_text
 from .render import (
+    audit_html_render,
     prepare_color_probe_fallback,
     render_html,
     resolve_boxes,
@@ -322,7 +323,31 @@ class DocBuilder:
         html = "".join(self._html)
         css = self._full_css()
         rr = render_html(html, css, dpi=dpi, page_mode=self.page_mode)
+        auto_expanded_from_first = False
+        if (
+            self.page_mode == "first"
+            and rr.page_count > len(rr.page_origins_px)
+            and (self.table_html is not None or self._fulltext_q is not None)
+        ):
+            rr.close()
+            rr = render_html(
+                html,
+                css,
+                dpi=dpi,
+                page_mode="vertical",
+            )
+            auto_expanded_from_first = True
         try:
+            layout_audit = audit_html_render(
+                rr,
+                html,
+                require_all_pages=(
+                    self.table_html is not None
+                    or self._fulltext_q is not None
+                ),
+                require_table_cells=self.table_html is not None,
+                strict=True,
+            )
             if color_probe_fallback:
                 required_occurrences: dict[str, int] = {}
                 for _key, text, occurrence in self._spots:
@@ -390,6 +415,8 @@ class DocBuilder:
                 "color_probe_fallback_count": len(
                     rr.color_probe_fallbacks
                 ),
+                "auto_expanded_from_first": auto_expanded_from_first,
+                "layout_audit": layout_audit,
             }
             if self.layout_family is not None:
                 render["layout_family"] = self.layout_family
