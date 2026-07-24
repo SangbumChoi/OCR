@@ -49,7 +49,10 @@ Matching the real-world *and* image distribution is done on three axes, all conf
 | **Spatial-label visibility** | final-resolution box geometry and local-background pixel contrast | `validate_evidence_pixels`, `evidence_min_*` |
 
 Because the boxes come from the clean digital-native render and degradation is photometric only,
-**a degraded copy reuses the clean GT** — the heuristic that makes free, exact labels possible.
+a degraded copy can reuse the clean geometry. Reuse is no longer assumed sufficient: every
+candidate must retain visible local evidence and a minimum clean/degraded padded-crop structure
+correlation before it is written. Spotting-off ablations run the same checks against a private
+pre-ablation view, but serialize only a coordinate-free quality summary.
 
 ## 2. The ground-truth DTO (`docvlm_eval.synth.dto`)
 
@@ -69,7 +72,8 @@ DocSample
 ├─ render:  RenderSpec(source, dpi, size_px, page_size, page_count,
 │                      target_long_side, keep_aspect, tiling, aspect_ratio,
 │                      box_resolver, color_probe_fallback_count, evidence_quality)
-├─ degradation:  Degradation(preset, severity, seed, geometry_preserved)
+├─ degradation:  Degradation(preset, severity, seed, attempts, geometry_preserved,
+│                            evidence_quality)
 ├─ gen_config:   the GenConfig that produced this sample (provenance)
 └─ ablation_support: AblationSupport(spotting, rationale, multilingual, small_text,
                                      table, abstain, reading_order)   # computed from content
@@ -138,6 +142,7 @@ each case's GT image with box overlays and the derived *question → answer → 
 | **Counterfactual reliability** | factual/edited latent values + absent field | `counterfactual`, `graph_query_id`, probe metadata | `emit_counterfactual_pairs` |
 | **Box resolver robustness** | native PDF lookup vs native plus fallback | `RenderSpec.box_resolver`, fallback count | `color_probe_fallback` |
 | **Evidence quality gate** | required-key coverage, geometry, and raster visibility | `render.evidence_quality` | `validate_evidence_pixels`, `evidence_min_*` |
+| **Degradation retention gate** | degraded visibility plus clean/degraded crop structure | `degradation.evidence_quality` | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |
 
 (*A5 LoRA-placement* and *A6 HPO* are training-side — they consume this GT but need no generator
 knob.)
@@ -175,8 +180,9 @@ that weight map and sample uniformly from only the languages named by each arm.
   `render.evidence_quality`.
 - **No false multilingual labels:** hard-document render text, questions, text answers, rationales,
   fields, and graph locale must agree; unsupported locale projections and missing CJK fonts fail.
-- **Boxes survive degradation and resize:** degradation is photometric; the A7 resize rescales all
-  boxes by the same factor (`scripts/make_realistic_cases.py::_resize_with_boxes`).
+- **Boxes survive degradation and resize:** the A7 resize rescales all boxes by the same factor.
+  Degradation must preserve image geometry, local evidence visibility, and padded-crop structure;
+  runtime or quality failures use a bounded deterministic retry sequence and then fail closed.
 - **One factor at a time:** an ablation override touches only its knob family; everything else
   inherits from `base`, so a measured Δ is attributable (the staircase in `ablation_plan.md`).
 - **Reproducible:** seeded Faker + recorded `gen_config` → byte-stable regeneration.

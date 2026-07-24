@@ -36,6 +36,11 @@ base:
   evidence_min_contrast: 8.0
   evidence_min_foreground_fraction: 0.002
   evidence_min_foreground_pixels: 4
+  # Degraded copies must preserve both local visibility and clean-crop structure. Runtime or
+  # quality failures retry a deterministic seed sequence before generation fails closed.
+  validate_degraded_evidence: true
+  degraded_min_structure_correlation: 0.25
+  degrade_max_attempts: 3
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true

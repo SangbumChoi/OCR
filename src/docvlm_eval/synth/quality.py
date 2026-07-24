@@ -61,6 +61,24 @@ def collect_evidence_boxes(
     return {box: sorted(sources) for box, sources in sorted(boxes.items())}
 
 
+def redact_evidence_quality_report(report: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep audit provenance without exposing coordinates in spotting-off data."""
+    keep = {
+        "schema_version",
+        "status",
+        "image",
+        "image_size_px",
+        "thresholds",
+        "failure_count",
+        "minimum_structure_correlation",
+        "median_structure_correlation",
+        "visibility_status",
+    }
+    redacted = {key: report[key] for key in keep if key in report}
+    redacted["supervision_redacted"] = True
+    return redacted
+
+
 def _background_pixels(
     image: np.ndarray,
     box: tuple[int, int, int, int],
@@ -98,6 +116,8 @@ def audit_render_evidence(
     min_contrast: float = 8.0,
     min_foreground_fraction: float = 0.002,
     min_foreground_pixels: int = 4,
+    image_name: str = "clean",
+    raise_on_failure: bool = True,
 ) -> dict[str, Any]:
     """Validate that every emitted box contains pixels distinct from its local background.
 
@@ -187,7 +207,7 @@ def audit_render_evidence(
     report: dict[str, Any] = {
         "schema_version": 1,
         "status": "passed" if evidence_boxes else "skipped_no_boxes",
-        "image": "clean",
+        "image": image_name,
         "image_size_px": [image_width, image_height],
         "unique_boxes": len(evidence_boxes),
         "source_references": sum(len(sources) for sources in evidence_boxes.values()),
@@ -213,7 +233,155 @@ def audit_render_evidence(
             )
             for failure in failures[:5]
         )
+        if raise_on_failure:
+            raise EvidenceQualityError(
+                f"render evidence audit failed ({len(failures)} issue(s)): {preview}"
+            )
+    return report
+
+
+def _expanded_bounds(
+    box: tuple[int, int, int, int],
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int]:
+    x1, y1, x2, y2 = box
+    pad = max(2, min(8, round(min(x2 - x1, y2 - y1) * 0.15)))
+    return (
+        max(0, x1 - pad),
+        max(0, y1 - pad),
+        min(width, x2 + pad),
+        min(height, y2 + pad),
+    )
+
+
+def _structure_correlation(
+    clean: np.ndarray,
+    degraded: np.ndarray,
+    box: tuple[int, int, int, int],
+) -> float:
+    x1, y1, x2, y2 = _expanded_bounds(
+        box,
+        clean.shape[1],
+        clean.shape[0],
+    )
+    clean_crop = clean[y1:y2, x1:x2].astype(np.float64).reshape(-1)
+    degraded_crop = degraded[y1:y2, x1:x2].astype(np.float64).reshape(-1)
+    clean_centered = clean_crop - clean_crop.mean()
+    degraded_centered = degraded_crop - degraded_crop.mean()
+    denominator = float(
+        np.linalg.norm(clean_centered) * np.linalg.norm(degraded_centered)
+    )
+    if denominator <= 1e-12:
+        return 1.0 if float(np.mean(np.abs(clean_crop - degraded_crop))) < 8.0 else 0.0
+    return float(np.dot(clean_centered, degraded_centered) / denominator)
+
+
+def audit_degraded_evidence(
+    clean_image: Image.Image,
+    degraded_image: Image.Image,
+    sample: Mapping[str, Any],
+    *,
+    min_structure_correlation: float = 0.25,
+    min_contrast: float = 8.0,
+    min_foreground_fraction: float = 0.002,
+    min_foreground_pixels: int = 4,
+) -> dict[str, Any]:
+    """Require degraded evidence to remain visible and structurally tied to the clean render.
+
+    Visibility alone is insufficient because random texture can make an occluded crop look
+    non-blank. Zero-mean normalized correlation on a padded crop verifies that the original
+    evidence structure survived brightness, color, compression, and paper-texture changes.
+    """
+    if not 0 <= min_structure_correlation <= 1:
+        raise ValueError("min_structure_correlation must be within [0, 1]")
+    if clean_image.size != degraded_image.size:
         raise EvidenceQualityError(
-            f"render evidence audit failed ({len(failures)} issue(s)): {preview}"
+            "degraded evidence audit failed: clean and degraded image sizes differ "
+            f"({clean_image.size} != {degraded_image.size})"
+        )
+
+    visibility = audit_render_evidence(
+        degraded_image,
+        sample,
+        min_contrast=min_contrast,
+        min_foreground_fraction=min_foreground_fraction,
+        min_foreground_pixels=min_foreground_pixels,
+        image_name="degraded",
+        raise_on_failure=False,
+    )
+    evidence_boxes = collect_evidence_boxes(sample)
+    clean = np.asarray(clean_image.convert("L"), dtype=np.float32)
+    degraded = np.asarray(degraded_image.convert("L"), dtype=np.float32)
+    visible_by_box = {
+        tuple(observation["box"]): bool(observation.get("passed"))
+        for observation in visibility["boxes"]
+        if "box" in observation
+    }
+    observations: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    correlations: list[float] = []
+
+    for box, sources in evidence_boxes.items():
+        correlation = _structure_correlation(clean, degraded, box)
+        correlations.append(correlation)
+        visible = visible_by_box.get(box, False)
+        passed = visible and correlation >= min_structure_correlation
+        observation = {
+            "box": list(box),
+            "sources": sources,
+            "visible": visible,
+            "structure_correlation": round(correlation, 6),
+            "passed": passed,
+        }
+        observations.append(observation)
+        if not passed:
+            failures.append(
+                {
+                    **observation,
+                    "reason": (
+                        "degraded_evidence_not_visible"
+                        if not visible
+                        else "insufficient_structure_retention"
+                    ),
+                }
+            )
+
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "status": "passed" if evidence_boxes else "skipped_no_boxes",
+        "image": "degraded",
+        "image_size_px": list(degraded_image.size),
+        "unique_boxes": len(evidence_boxes),
+        "source_references": sum(len(sources) for sources in evidence_boxes.values()),
+        "thresholds": {
+            "min_structure_correlation": min_structure_correlation,
+            "min_contrast": min_contrast,
+            "min_foreground_fraction": min_foreground_fraction,
+            "min_foreground_pixels": min_foreground_pixels,
+        },
+        "minimum_structure_correlation": (
+            round(min(correlations), 6)
+            if correlations
+            else None
+        ),
+        "median_structure_correlation": (
+            round(float(np.median(correlations)), 6)
+            if correlations
+            else None
+        ),
+        "visibility_status": visibility["status"],
+        "boxes": observations,
+        "failure_count": len(failures),
+    }
+    if failures:
+        report["status"] = "failed"
+        report["failures"] = failures
+        preview = "; ".join(
+            f"{failure['reason']} {failure['box']}"
+            for failure in failures[:5]
+        )
+        raise EvidenceQualityError(
+            f"degraded evidence audit failed ({len(failures)} issue(s)): {preview}"
         )
     return report

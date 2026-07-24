@@ -11,7 +11,9 @@ faker) live in the ``[synth]`` extra and are imported lazily.
     deg = degrade(img, "scan")
 """
 
-from .degrade import PRESETS, degrade
+from .degrade import (
+    DegradationError, PRESETS, degrade, degrade_with_retries, derive_degradation_seed,
+)
 from .derive import (
     Derivation, aggregate, count_occurrences, locate, region_box, resolve, union_box, word_boxes,
 )
@@ -24,13 +26,17 @@ from .latent import (
     DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
 )
 from .render import RenderResult, render_html, resolve_boxes
-from .quality import EvidenceQualityError, audit_render_evidence, collect_evidence_boxes
+from .quality import (
+    EvidenceQualityError, audit_degraded_evidence, audit_render_evidence, collect_evidence_boxes,
+    redact_evidence_quality_report,
+)
 from .splits import SplitPolicy, validate_split_leakage
 from .supervision import apply_supervision_toggles
 from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
 
 __all__ = [
-    "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade", "PRESETS",
+    "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade",
+    "degrade_with_retries", "derive_degradation_seed", "DegradationError", "PRESETS",
     "case_to_samples", "load_case_dir", "load_realistic_samples",
     # structured GT + generation-config DTOs
     "DocSample", "GenConfig", "Field", "QAItem", "BBox", "RenderSpec", "Degradation",
@@ -42,5 +48,6 @@ __all__ = [
     "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
     "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
     "apply_supervision_toggles",
-    "EvidenceQualityError", "audit_render_evidence", "collect_evidence_boxes",
+    "EvidenceQualityError", "audit_render_evidence", "audit_degraded_evidence",
+    "collect_evidence_boxes", "redact_evidence_quality_report",
 ]

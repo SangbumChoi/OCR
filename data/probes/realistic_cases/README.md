@@ -22,10 +22,16 @@ HTML/CSS  (+ Faker, seeded -> deterministic)
   PNG  ── Augraphy (photometric: scan / photo / fax / historical) ──>  degraded.png
 ```
 
-GT boxes come straight from the renderer's text positions, so spotting boxes are pixel-exact
-for free. Degradation is **photometric only** (no geometry) so the boxes stay valid on
-`degraded.png` too. Each case emits a paired `clean.png` + `degraded.png` → feeds the
+GT boxes come straight from the renderer's text positions, so spotting boxes are pixel-exact.
+Before writing a sample, the clean raster gate rejects unresolved, clipped, or visually blank
+boxes. Degradation is **photometric only**, but geometry alone is not treated as proof: every
+degraded evidence crop must remain visible and structurally correlated with the clean crop.
+Backend and quality failures use bounded deterministic retries. Each accepted case emits a paired
+`clean.png` + `degraded.png`, with both audit reports in `gt.json`, and feeds the
 robustness-retention metric directly.
+Spotting-off ablations still run the same private checks but persist only coordinate-free summaries.
+`index.json` mirrors each sample's clean/degraded status, accepted attempt count, and minimum
+structure correlation for corpus-level filtering without opening every GT record.
 
 ## GT patterns — declare a value once, get the label for free
 
@@ -77,7 +83,7 @@ controlled by [`configs/synth_data.yaml`](../../../configs/synth_data.yaml) (`ba
 `ablation_overrides`), so each ablation arm is one `--ablation` flag:
 
 ```bash
-python scripts/make_realistic_cases.py --count 500                       # 14 * 500 = 7000 labelled docs
+python scripts/make_realistic_cases.py --count 500                       # 18 * 500 = 9000 labelled docs
 python scripts/make_realistic_cases.py --ablation A1_spotting_off        # A1 control (no bbox/rationale)
 python scripts/make_realistic_cases.py --ablation A4_ko_en --count 500   # ko/en multilingual mix
 python scripts/make_realistic_cases.py --ablation A7_dynamic_tiling      # high-res + tiling metadata
@@ -88,7 +94,8 @@ Each `gt.json` is a structured **`DocSample` DTO** (`docvlm_eval.synth.dto`) ser
 fields · spotting · qa · table_html · selection · redacted · reading_order · probes · render`) it
 carries the typed views and the **ablation factors as GT**: `fields_detailed[]`
 (`bbox`/`language`/`script`/`font_px`/`is_small`), `qa_detailed[]` (`rationale`/`answer_bbox`),
-`render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`), `degradation`, `gen_config`, and an
+`render` (`dpi`/`target_long_side`/`keep_aspect`/`tiling`/`evidence_quality`), `degradation`
+(`preset`/`seed`/`attempts`/`evidence_quality`), `gen_config`, and an
 `ablation_support` flag-set. See [`docs/report/synthetic_data_dto.md`](../../../docs/report/synthetic_data_dto.md)
 for the DTO and the factor→config mapping. Tests in
 [`tests/test_synth_patterns.py`](../../../tests/test_synth_patterns.py) and
@@ -130,7 +137,7 @@ absent from an ID card).
 
 ```bash
 pip install -e ".[synth]"          # weasyprint + pymupdf + faker + augraphy
-python scripts/make_realistic_cases.py                  # all 11 cases (clean + degraded)
+python scripts/make_realistic_cases.py                  # all 18 cases (clean + degraded)
 python scripts/make_realistic_cases.py --only id_card cheque
 python scripts/make_realistic_cases.py --no-degrade     # clean only (fast)
 ```

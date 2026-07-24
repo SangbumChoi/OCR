@@ -18,6 +18,7 @@ Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import random
@@ -30,13 +31,22 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
+from docvlm_eval.synth import (  # noqa: E402
+    DocBuilder,
+    degrade_with_retries,
+    derive_degradation_seed,
+    esc,
+)
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
 from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
 from docvlm_eval.synth.hard_locale import validate_hard_document_language  # noqa: E402
 from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
 from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
-from docvlm_eval.synth.quality import audit_render_evidence  # noqa: E402
+from docvlm_eval.synth.quality import (  # noqa: E402
+    audit_degraded_evidence,
+    audit_render_evidence,
+    redact_evidence_quality_report,
+)
 
 OUT = ROOT / "data" / "probes" / "realistic_cases"
 
@@ -240,40 +250,98 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         )
     else:
         img = builder_or_img
-    # A7 resize (with box rescale) + A1/A2 supervision toggles
+    # Preserve a private pre-ablation audit view before A1/A2 removes supervision. It is never
+    # serialized, so spotting-off arms keep the same image-quality gate without leaking boxes.
     img = _resize_with_boxes(img, gt)
+    quality_gt = copy.deepcopy(gt)
     apply_supervision_toggles(gt, CFG)
 
-    degradation = None
-    deg = None
-    if do_degrade and random.random() < CFG.degrade_prob:
-        chosen = _pick_preset(key, preset)
-        # stable per-case seed (Python's str hash is salted per-process -> not reproducible)
-        seed = CFG.seed + int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
-        deg = degrade(img, chosen, seed=seed)
-        if deg is not None:
-            degradation = Degradation(preset=chosen, severity=CFG.degrade_severity, seed=seed)
-
     doc = DocSample.from_builder_gt(
-        gt, builder=builder, gen_config=CFG, degradation=degradation,
+        gt, builder=builder, gen_config=CFG, degradation=None,
         domain=domain, acquisition=acquisition,
     )
     doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
     out = doc.to_dict()
+    quality_out = out
+    if CFG.validate_evidence_pixels or CFG.validate_degraded_evidence:
+        quality_doc = DocSample.from_builder_gt(
+            quality_gt,
+            builder=builder,
+            gen_config=CFG,
+            degradation=None,
+            domain=domain,
+            acquisition=acquisition,
+        )
+        quality_doc.languages = (
+            [CURRENT_LANG]
+            if builder is not None
+            else quality_doc.languages
+        )
+        quality_out = quality_doc.to_dict()
     if CFG.validate_evidence_pixels:
         required_spotting_keys = (
             [spot[0] for spot in builder._spots]
-            if builder is not None and CFG.emit_spotting
+            if builder is not None
             else []
         )
-        out["render"]["evidence_quality"] = audit_render_evidence(
+        clean_quality = audit_render_evidence(
             img,
-            out,
+            quality_out,
             required_spotting_keys=required_spotting_keys,
             min_contrast=CFG.evidence_min_contrast,
             min_foreground_fraction=CFG.evidence_min_foreground_fraction,
             min_foreground_pixels=CFG.evidence_min_foreground_pixels,
         )
+        out["render"]["evidence_quality"] = (
+            clean_quality
+            if CFG.emit_spotting
+            else redact_evidence_quality_report(clean_quality)
+        )
+    deg = None
+    if do_degrade and random.random() < CFG.degrade_prob:
+        chosen = _pick_preset(key, preset)
+        base_seed = derive_degradation_seed(
+            CFG.seed,
+            key,
+            CURRENT_VARIANT,
+            CURRENT_LANG,
+        )
+        degraded_quality = None
+
+        def validate_degraded(candidate: Image.Image) -> None:
+            nonlocal degraded_quality
+            if CFG.validate_degraded_evidence:
+                degraded_quality = audit_degraded_evidence(
+                    img,
+                    candidate,
+                    quality_out,
+                    min_structure_correlation=CFG.degraded_min_structure_correlation,
+                    min_contrast=CFG.evidence_min_contrast,
+                    min_foreground_fraction=CFG.evidence_min_foreground_fraction,
+                    min_foreground_pixels=CFG.evidence_min_foreground_pixels,
+                )
+
+        deg, seed, attempts = degrade_with_retries(
+            img,
+            chosen,
+            base_seed=base_seed,
+            max_attempts=CFG.degrade_max_attempts,
+            validator=validate_degraded,
+        )
+        degradation = Degradation(
+            preset=chosen,
+            severity=CFG.degrade_severity,
+            seed=seed,
+            attempts=attempts,
+        )
+        out["degradation"] = degradation.to_dict()
+        out["degraded_preset"] = chosen
+        if degraded_quality is not None:
+            out["degradation"]["evidence_quality"] = (
+                degraded_quality
+                if CFG.emit_spotting
+                else redact_evidence_quality_report(degraded_quality)
+            )
     counterfactual_index = _counterfactual_variant_index()
     if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
         out["counterfactual"] = {
@@ -304,7 +372,25 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                         "template_fingerprint"),
                     "content_fingerprint": (out.get("semantic_graph") or {}).get(
                         "content_fingerprint"),
-                    "counterfactual": out.get("counterfactual")})
+                    "counterfactual": out.get("counterfactual"),
+                    "quality": {
+                        "clean_status": (
+                            out.get("render", {})
+                            .get("evidence_quality", {})
+                            .get("status")
+                        ),
+                        "degraded_status": (
+                            out.get("degradation", {})
+                            .get("evidence_quality", {})
+                            .get("status")
+                        ),
+                        "degraded_min_structure_correlation": (
+                            out.get("degradation", {})
+                            .get("evidence_quality", {})
+                            .get("minimum_structure_correlation")
+                        ),
+                        "degradation_attempts": out.get("degradation", {}).get("attempts"),
+                    }})
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
         flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
                         ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
@@ -786,8 +872,10 @@ def case_lcd(do_degrade):
     d = ImageDraw.Draw(im)
     _seg7(d, digits, 40, 50, on=(40, 255, 150), off=(28, 40, 36))
     d.rectangle([0, 0, W - 1, H - 1], outline=(60, 70, 80), width=4)
+    display_box = [36, 46, 490, 180]
     gt = {"type": "LCD / meter / 7-seg", "stressors": ["non-font digits", "glare"],
           "anchor_metric": "exact + IoU", "fields": {"reading": digits, "_task": "Read the display."},
+          "spotting": {"reading": display_box},
           "qa": [{"key": "reading", "question": "What number is on the display?",
                   "answers": [digits], "metric": "exact", "answer_type": "special-glyph"}],
           "source": "SYNTHETIC (docvlm_eval.synth; PIL — no real 7-seg font)",
@@ -936,7 +1024,8 @@ def main():
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
           f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
           f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
-          f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels}")
+          f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels} "
+          f"degraded_gate={CFG.validate_degraded_evidence}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).

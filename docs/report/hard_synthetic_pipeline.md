@@ -120,11 +120,17 @@ python scripts/validate_synth_splits.py \
   --output docs/results/hard_split_audit.json
 ```
 
-Generation itself is fail-closed before any sample files are written. The pixel gate is configured
+Generation itself is fail-closed before any sample files are written. The clean pixel gate is configured
 by `validate_evidence_pixels`, `evidence_min_contrast`,
 `evidence_min_foreground_fraction`, and `evidence_min_foreground_pixels` in
-`configs/synth_data.yaml`. It runs on the clean final-resolution raster; photometric degraded copies
-reuse geometry only after the clean evidence contract passes.
+`configs/synth_data.yaml`. A degraded candidate then has to preserve image size, independently
+visible evidence, and a minimum clean/degraded structure correlation for every box. Augraphy
+runtime failures and rejected candidates use a bounded deterministic retry sequence controlled by
+`degrade_max_attempts`; the accepted seed, attempt count, and per-box retention statistics are
+stored under `degradation.evidence_quality`.
+Spotting-off controls are audited against a private pre-ablation box view; only the status,
+thresholds, and aggregate structure statistics are serialized, so the gate cannot become a hidden
+coordinate-supervision channel.
 
 The split validator rejects the same semantic content fingerprint across splits while reporting
 template overlap. `--require-template-isolation` additionally rejects the same graph program

@@ -21,8 +21,9 @@ documents.
 ### Axis A — Visual diversity (the *image* distribution)
 | Sub-dimension | Method | Knob |
 | --- | --- | --- |
-| document kind | 14 case templates (invoice…webtoon…UI) | `--only` / weights |
+| document kind | 18 case templates (invoice…webtoon…UI plus four hard families) | `--only` / weights |
 | acquisition / lighting | Augraphy presets (scan/photo/fax/historical/screenshot) | `degrade_presets`, `degrade_prob` |
+| degradation validity | local evidence visibility + clean/degraded crop correlation | `validate_degraded_evidence`, `degraded_min_structure_correlation`, `degrade_max_attempts` |
 | paper colour / tint | per-doc background palette | `jitter` |
 | accent / brand colour | per-doc accent for headings/totals/links | `jitter` |
 | typography | per-doc font family (sans/serif/mono mix) | `jitter`, `fonts` |
@@ -107,6 +108,12 @@ CoV > 0.1; ≥6 distinct `answer_type` families with reasoning ≥40%; ≥1 non-
   text answers, and rationales from one validated locale catalog. Remaining v2b work is 2–3 layout
   templates per case, handwriting/stamp/seal overlays, and photographed-perspective warp with
   transformed boxes.
+- **v2c (degradation evidence gate implemented):** final-resolution clean boxes are checked against
+  local background pixels; each degraded candidate must preserve both visibility and padded-crop
+  structure. A 17-family by 5-preset by 3-seed calibration observed 1,018 valid box crops; the
+  minimum valid correlation was 0.269, fixing the conservative default at 0.25. Eleven Augraphy
+  runtime failures in 255 candidates motivated bounded deterministic retries with accepted
+  seed/attempt provenance.
 - **v3:** compositional multi-page docs; cross-document reasoning; programmatic charts/diagrams with
   next-action GT; curriculum scheduling of difficulty.
 Each vN: add knob → regenerate at scale → `measure_diversity` → A0 held-out check → keep if held-out

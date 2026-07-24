@@ -148,6 +148,9 @@ def test_evidence_pixel_gate_config_validation():
     assert config.evidence_min_contrast == 8.0
     assert config.evidence_min_foreground_fraction == 0.002
     assert config.evidence_min_foreground_pixels == 4
+    assert config.validate_degraded_evidence is True
+    assert config.degraded_min_structure_correlation == 0.25
+    assert config.degrade_max_attempts == 3
 
     with pytest.raises(ValueError, match="validate_evidence_pixels must be boolean"):
         GenConfig(validate_evidence_pixels="yes")
@@ -157,6 +160,12 @@ def test_evidence_pixel_gate_config_validation():
         GenConfig(evidence_min_foreground_fraction=1.1)
     with pytest.raises(ValueError, match="evidence_min_foreground_pixels must be positive"):
         GenConfig(evidence_min_foreground_pixels=0)
+    with pytest.raises(ValueError, match="validate_degraded_evidence must be boolean"):
+        GenConfig(validate_degraded_evidence="yes")
+    with pytest.raises(ValueError, match="degraded_min_structure_correlation"):
+        GenConfig(degraded_min_structure_correlation=1.1)
+    with pytest.raises(ValueError, match="degrade_max_attempts must be positive"):
+        GenConfig(degrade_max_attempts=0)
 
 
 def test_graph_evidence_keys_resolve_to_multiple_boxes():

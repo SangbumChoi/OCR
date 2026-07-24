@@ -144,6 +144,7 @@ class Degradation:
     preset: str                          # scan|photo|fax|historical|screenshot
     severity: float = 1.0                # multiplier knob for distribution matching
     seed: int | None = None
+    attempts: int = 1
     geometry_preserved: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -198,6 +199,9 @@ class GenConfig:
     evidence_min_contrast: float = 8.0
     evidence_min_foreground_fraction: float = 0.002
     evidence_min_foreground_pixels: int = 4
+    validate_degraded_evidence: bool = True
+    degraded_min_structure_correlation: float = 0.25
+    degrade_max_attempts: int = 3
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -246,6 +250,12 @@ class GenConfig:
             raise ValueError("evidence_min_foreground_fraction must be within [0, 1]")
         if self.evidence_min_foreground_pixels < 1:
             raise ValueError("evidence_min_foreground_pixels must be positive")
+        if not isinstance(self.validate_degraded_evidence, bool):
+            raise ValueError("validate_degraded_evidence must be boolean")
+        if not 0 <= self.degraded_min_structure_correlation <= 1:
+            raise ValueError("degraded_min_structure_correlation must be within [0, 1]")
+        if self.degrade_max_attempts < 1:
+            raise ValueError("degrade_max_attempts must be positive")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
