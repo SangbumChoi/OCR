@@ -665,6 +665,7 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "multilingual",
         "reliability",
         "visual_efficiency",
+        "training_feasibility",
     }
     if not isinstance(gates, list):
         errors.append("evaluation_gates must be a list")
@@ -789,6 +790,51 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                     f"evaluation_gates.visual_efficiency.{field} "
                     "must be positive"
                 )
+        feasibility = by_id.get("training_feasibility", {})
+        if feasibility.get("required_device_type") != "cuda":
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "required_device_type must be cuda"
+            )
+        if (
+            feasibility.get(
+                "required_resolved_visual_attention_backend"
+            )
+            != "flex"
+        ):
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "required_resolved_visual_attention_backend must be flex"
+            )
+        if feasibility.get("required_precision") not in {
+            "float16",
+            "bfloat16",
+        }:
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "required_precision must be float16 or bfloat16"
+            )
+        for field in (
+            "min_benchmark_schema_version",
+            "required_micro_batch_size",
+            "min_text_tokens",
+            "min_visual_tokens_per_sample",
+            "min_warmup_steps",
+            "min_measured_steps",
+        ):
+            if int(feasibility.get(field, -1)) <= 0:
+                errors.append(
+                    f"evaluation_gates.training_feasibility.{field} "
+                    "must be positive"
+                )
+        peak_fraction = float(
+            feasibility.get("max_peak_reserved_fraction", 0)
+        )
+        if not 0 < peak_fraction < 1:
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "max_peak_reserved_fraction must be within (0, 1)"
+            )
         for field in (
             "min_median_speedup_vs_loop",
             "min_round_speedup_vs_loop",

@@ -213,6 +213,72 @@ def _visual_report(
     }
 
 
+def _training_report(
+    *,
+    status="ok",
+    peak_fraction=0.8,
+    resolved_backend="flex",
+    all_finite=True,
+    optimizer_succeeded=True,
+):
+    from docvlm_eval.student.config import (
+        StudentConfig,
+        student_config_fingerprint,
+    )
+
+    student = StudentConfig.from_blueprint(_blueprint())
+    return {
+        "schema_version": 1,
+        "scope": "full_student_multimodal_training_step",
+        "student_config_fingerprint": student_config_fingerprint(student),
+        "student_config": student.to_dict(),
+        "benchmark_config": {
+            "patch_grid": [40, 63],
+            "text_tokens": 2048,
+            "micro_batch_size": 1,
+            "warmup_steps": 1,
+            "measured_steps": 2,
+            "resolved_precision": "bfloat16",
+            "grad_accum_steps": 8,
+            "microbatches_per_probe_step": 1,
+            "short_final_batch_gradient_correction": True,
+        },
+        "environment": {
+            "device": "cuda:0",
+            "device_type": "cuda",
+            "device_name": "test-gpu",
+            "device_total_memory_bytes": 40 * 1024**3,
+        },
+        "parameter_count": 799_919_882,
+        "status": status,
+        "error_type": "OutOfMemoryError" if status != "ok" else None,
+        "error": "CUDA out of memory" if status != "ok" else None,
+        "oom": status != "ok",
+        "resolved_visual_attention_backend": resolved_backend,
+        "median_step_ms": 500.0,
+        "p95_step_ms": 520.0,
+        "steps_per_second": 2.0,
+        "all_finite": all_finite,
+        "all_optimizer_steps_succeeded": optimizer_succeeded,
+        "optimizer_state": {
+            "parameter_states": 100,
+            "tensor_bytes": 6_000_000_000,
+            "min_step": 3.0,
+            "max_step": 3.0,
+        },
+        "setup_memory": {},
+        "materialization_memory": {},
+        "steady_state_memory": {},
+        "effective_peak_memory": {
+            "peak_allocated_bytes": 30_000_000_000,
+            "peak_reserved_bytes": 32_000_000_000,
+            "peak_reserved_fraction": peak_fraction,
+            "free_bytes": 8_000_000_000,
+            "total_bytes": 40_000_000_000,
+        },
+    }
+
+
 def test_gates_do_not_turn_missing_comparisons_into_success():
     from docvlm_eval.student.gates import evaluate_deployment_gates
 
@@ -230,7 +296,7 @@ def test_gates_do_not_turn_missing_comparisons_into_success():
     assert report["counts"] == {
         "pass": 1,
         "fail": 0,
-        "insufficient_evidence": 6,
+        "insufficient_evidence": 7,
     }
 
 
@@ -254,11 +320,12 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
             },
         ),
         visual_backend_report=_visual_report(),
+        training_feasibility_report=_training_report(),
     )
 
     assert report["overall_status"] == "pass"
     assert report["counts"] == {
-        "pass": 7,
+        "pass": 8,
         "fail": 0,
         "insufficient_evidence": 0,
     }
@@ -277,6 +344,46 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
         ]
         == 1.15
     )
+    assert (
+        evidence["training_feasibility"]["effective_peak_memory"][
+            "peak_reserved_fraction"
+        ]
+        == 0.8
+    )
+
+
+@pytest.mark.parametrize(
+    ("report", "violation"),
+    [
+        (_training_report(status="error"), None),
+        (
+            _training_report(peak_fraction=0.97),
+            "peak_reserved_memory",
+        ),
+        (
+            _training_report(resolved_backend="loop"),
+            "resolved_visual_attention_backend",
+        ),
+        (
+            _training_report(all_finite=False),
+            "non_finite_training_values",
+        ),
+        (
+            _training_report(optimizer_succeeded=False),
+            "optimizer_step",
+        ),
+    ],
+)
+def test_training_feasibility_gate_fails_closed(report, violation):
+    from docvlm_eval.student.gates import (
+        evaluate_training_feasibility_gate,
+    )
+
+    gate = evaluate_training_feasibility_gate(_blueprint(), report)
+
+    assert gate["status"] == "fail"
+    if violation is not None:
+        assert violation in gate["evidence"]["violations"]
 
 
 def test_visual_efficiency_gate_rejects_fallback_and_regressions():

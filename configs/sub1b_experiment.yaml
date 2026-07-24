@@ -29,6 +29,23 @@ runtime:
     wandb_run: null
     wandb_group: visual-backend-gate
     wandb_tags: [native-student, visual-backend]
+  training_feasibility_benchmark:
+    enabled: true
+    patch_grid: [40, 63]
+    text_tokens: 2048
+    micro_batch_size: 1
+    warmup_steps: 1
+    measured_steps: 2
+    packed_attention_backend: auto
+    precision: bfloat16
+    seed: 7
+    # Block initialization unless full forward/backward/AdamW steps fit the target GPU.
+    require_deployment_gate: true
+    wandb_project: null
+    wandb_entity: null
+    wandb_run: null
+    wandb_group: training-feasibility-gate
+    wandb_tags: [native-student, full-training-step]
 
 synthetic:
   enabled: true

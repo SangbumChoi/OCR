@@ -818,6 +818,281 @@ def evaluate_visual_efficiency_gate(
     return _visual_efficiency(gate, blueprint, report)
 
 
+def _training_feasibility(
+    gate: Mapping[str, Any],
+    blueprint: Mapping[str, Any],
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    pipeline = (
+        blueprint.get("training", {})
+        .get("pretraining", {})
+        .get("input_pipeline", {})
+    )
+    optimizer = (
+        blueprint.get("training", {})
+        .get("pretraining", {})
+        .get("optimizer", {})
+    )
+    if pipeline.get("visual_sequence_mode") != "packed":
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "the full training probe currently evaluates packed visual execution",
+            {
+                "visual_sequence_mode": pipeline.get(
+                    "visual_sequence_mode"
+                )
+            },
+        )
+    if report is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a target-device full-student training-step benchmark is required",
+        )
+    minimum_schema = int(gate.get("min_benchmark_schema_version", 1))
+    try:
+        schema = int(report.get("schema_version", 0))
+    except (TypeError, ValueError):
+        schema = 0
+    if (
+        schema < minimum_schema
+        or report.get("scope")
+        != "full_student_multimodal_training_step"
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "training feasibility benchmark schema or scope is invalid",
+        )
+    expected_student = StudentConfig.from_blueprint(dict(blueprint))
+    expected_fingerprint = student_config_fingerprint(expected_student)
+    if (
+        report.get("student_config") != expected_student.to_dict()
+        or report.get("student_config_fingerprint")
+        != expected_fingerprint
+    ):
+        return _result(
+            gate,
+            "fail",
+            "training feasibility evidence was measured on a different student configuration",
+            {
+                "reported_fingerprint": report.get(
+                    "student_config_fingerprint"
+                ),
+                "expected_fingerprint": expected_fingerprint,
+            },
+        )
+    environment = report.get("environment")
+    benchmark = report.get("benchmark_config")
+    if not isinstance(environment, Mapping) or not isinstance(
+        benchmark, Mapping
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "training feasibility benchmark metadata is incomplete",
+        )
+    required_device = str(gate.get("required_device_type", "cuda"))
+    if environment.get("device_type") != required_device:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            f"training feasibility benchmark must run on {required_device}",
+            {
+                "reported_device_type": environment.get("device_type"),
+                "reported_device": environment.get("device"),
+            },
+        )
+    if report.get("status") != "ok":
+        return _result(
+            gate,
+            "fail",
+            "the full-student training micro-step failed",
+            {
+                "error_type": report.get("error_type"),
+                "error": report.get("error"),
+                "oom": report.get("oom"),
+                "failure_memory": report.get("failure_memory"),
+            },
+        )
+
+    minimum_text = int(gate.get("min_text_tokens", 1))
+    minimum_visual = int(gate.get("min_visual_tokens_per_sample", 1))
+    minimum_warmup = int(gate.get("min_warmup_steps", 0))
+    minimum_measured = int(gate.get("min_measured_steps", 1))
+    required_backend = str(
+        gate.get("required_resolved_visual_attention_backend", "flex")
+    )
+    required_precision = str(
+        gate.get("required_precision", optimizer.get("precision", "auto"))
+    )
+    required_micro_batch = int(
+        gate.get(
+            "required_micro_batch_size",
+            optimizer.get("micro_batch_size", 1),
+        )
+    )
+    required_grad_accum = int(optimizer.get("grad_accum_steps", 1))
+    maximum_peak_fraction = float(
+        gate.get("max_peak_reserved_fraction", 0.95)
+    )
+    effective_memory = report.get("effective_peak_memory")
+    optimizer_state = report.get("optimizer_state")
+    evidence = {
+        "benchmark_schema_version": schema,
+        "device": environment.get("device"),
+        "device_name": environment.get("device_name"),
+        "device_total_memory_bytes": environment.get(
+            "device_total_memory_bytes"
+        ),
+        "precision": benchmark.get("resolved_precision"),
+        "micro_batch_size": benchmark.get("micro_batch_size"),
+        "grad_accum_steps": benchmark.get("grad_accum_steps"),
+        "microbatches_per_probe_step": benchmark.get(
+            "microbatches_per_probe_step"
+        ),
+        "short_final_batch_gradient_correction": benchmark.get(
+            "short_final_batch_gradient_correction"
+        ),
+        "text_tokens": benchmark.get("text_tokens"),
+        "patch_grid": benchmark.get("patch_grid"),
+        "visual_tokens_per_sample": (
+            int(benchmark["patch_grid"][0])
+            * int(benchmark["patch_grid"][1])
+            if isinstance(benchmark.get("patch_grid"), Sequence)
+            and not isinstance(benchmark.get("patch_grid"), (str, bytes))
+            and len(benchmark["patch_grid"]) == 2
+            else None
+        ),
+        "warmup_steps": benchmark.get("warmup_steps"),
+        "measured_steps": benchmark.get("measured_steps"),
+        "resolved_visual_attention_backend": report.get(
+            "resolved_visual_attention_backend"
+        ),
+        "median_step_ms": report.get("median_step_ms"),
+        "p95_step_ms": report.get("p95_step_ms"),
+        "steps_per_second": report.get("steps_per_second"),
+        "all_finite": report.get("all_finite"),
+        "all_optimizer_steps_succeeded": report.get(
+            "all_optimizer_steps_succeeded"
+        ),
+        "optimizer_state": optimizer_state,
+        "setup_memory": report.get("setup_memory"),
+        "materialization_memory": report.get("materialization_memory"),
+        "steady_state_memory": report.get("steady_state_memory"),
+        "effective_peak_memory": effective_memory,
+        "student_config_fingerprint": report.get(
+            "student_config_fingerprint"
+        ),
+        "parameter_count": report.get("parameter_count"),
+    }
+    try:
+        peak_fraction = float(effective_memory["peak_reserved_fraction"])
+        median_ms = float(report["median_step_ms"])
+        p95_ms = float(report["p95_step_ms"])
+        state_parameters = int(optimizer_state["parameter_states"])
+        state_step = float(optimizer_state["max_step"])
+        visual_tokens = int(evidence["visual_tokens_per_sample"])
+        dose_sufficient = (
+            int(benchmark["text_tokens"]) >= minimum_text
+            and visual_tokens >= minimum_visual
+            and int(benchmark["micro_batch_size"]) == required_micro_batch
+            and int(benchmark["grad_accum_steps"]) == required_grad_accum
+            and int(benchmark["microbatches_per_probe_step"]) == 1
+            and bool(
+                benchmark["short_final_batch_gradient_correction"]
+            )
+            and int(benchmark["warmup_steps"]) >= minimum_warmup
+            and int(benchmark["measured_steps"]) >= minimum_measured
+            and benchmark["resolved_precision"] == required_precision
+        )
+        numeric_evidence = (
+            math.isfinite(peak_fraction)
+            and 0 <= peak_fraction <= 1
+            and math.isfinite(median_ms)
+            and median_ms > 0
+            and math.isfinite(p95_ms)
+            and p95_ms > 0
+            and state_parameters > 0
+            and state_step
+            >= int(benchmark["warmup_steps"])
+            + int(benchmark["measured_steps"])
+        )
+    except (KeyError, TypeError, ValueError, OverflowError):
+        dose_sufficient = False
+        numeric_evidence = False
+        peak_fraction = math.inf
+    if not dose_sufficient or not numeric_evidence:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "training benchmark dose, optimizer state, latency, or memory evidence is insufficient",
+            evidence,
+        )
+    violations = []
+    if report.get("resolved_visual_attention_backend") != required_backend:
+        violations.append("resolved_visual_attention_backend")
+    if not report.get("all_finite"):
+        violations.append("non_finite_training_values")
+    if not report.get("all_optimizer_steps_succeeded"):
+        violations.append("optimizer_step")
+    if peak_fraction > maximum_peak_fraction:
+        violations.append("peak_reserved_memory")
+    evidence.update(
+        {
+            "required_precision": required_precision,
+            "required_micro_batch_size": required_micro_batch,
+            "required_grad_accum_steps": required_grad_accum,
+            "required_resolved_visual_attention_backend": (
+                required_backend
+            ),
+            "min_text_tokens": minimum_text,
+            "min_visual_tokens_per_sample": minimum_visual,
+            "min_warmup_steps": minimum_warmup,
+            "min_measured_steps": minimum_measured,
+            "max_peak_reserved_fraction": maximum_peak_fraction,
+            "violations": violations,
+        }
+    )
+    return _result(
+        gate,
+        "fail" if violations else "pass",
+        (
+            "full-student training step violates deployment thresholds"
+            if violations
+            else "full-student forward, backward, and optimizer step fit the target device"
+        ),
+        evidence,
+    )
+
+
+def evaluate_training_feasibility_gate(
+    blueprint: Mapping[str, Any],
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Evaluate only the full-student target-device training preflight."""
+
+    gates = blueprint.get("evaluation_gates")
+    if (
+        not isinstance(gates, Sequence)
+        or isinstance(gates, (str, bytes))
+    ):
+        raise ValueError("blueprint evaluation_gates must be a sequence")
+    gate = next(
+        (
+            item
+            for item in gates
+            if isinstance(item, Mapping)
+            and item.get("id") == "training_feasibility"
+        ),
+        None,
+    )
+    if gate is None:
+        raise ValueError("blueprint has no training_feasibility gate")
+    return _training_feasibility(gate, blueprint, report)
+
+
 def evaluate_deployment_gates(
     blueprint: Mapping[str, Any],
     parameter_counts: Mapping[str, int],
@@ -828,6 +1103,7 @@ def evaluate_deployment_gates(
     baseline_rows: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     monolingual_control_comparison: Mapping[str, Any] | None = None,
     visual_backend_report: Mapping[str, Any] | None = None,
+    training_feasibility_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Evaluate every declared gate without treating missing evidence as success."""
 
@@ -878,6 +1154,11 @@ def evaluate_deployment_gates(
             result = evaluate_visual_efficiency_gate(
                 blueprint,
                 visual_backend_report,
+            )
+        elif gate_id == "training_feasibility":
+            result = evaluate_training_feasibility_gate(
+                blueprint,
+                training_feasibility_report,
             )
         else:
             result = _result(
@@ -934,6 +1215,18 @@ def load_visual_backend_report(path: str | Path) -> dict[str, Any]:
     report = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(report, dict):
         raise ValueError("visual backend benchmark root must be a mapping")
+    return report
+
+
+def load_training_feasibility_report(path: str | Path) -> dict[str, Any]:
+    """Load one full-student training report as deployment evidence."""
+
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"missing training feasibility benchmark: {path}")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict):
+        raise ValueError("training feasibility benchmark root must be a mapping")
     return report
 
 

@@ -52,8 +52,8 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 18 stages, including the target-device visual backend preflight. The CPU contract
-test disables that performance preflight and omits the full plan's public-Hub acquisition, leaving
+The full plan has 19 stages, including target-device visual-backend and full-training preflights.
+The CPU contract test disables those deployment preflights and omits the full plan's public-Hub acquisition, leaving
 16 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, and one optimizer step
 per training phase:
 
@@ -94,21 +94,31 @@ report, legacy or short benchmark, or missing dense control is `insufficient_evi
 mismatched architecture, fallback, execution error, numerical violation, or runtime regression
 is `fail`.
 
-Run only the authoritative target-GPU preflight before committing to a full training job:
+`runtime.training_feasibility_benchmark` then runs the complete 799,919,882-parameter student with
+the production micro-batch, 2,048 text tokens, a 40x63 packed visual grid, all native auxiliary
+heads, loss construction, scaled backward, gradient clipping, and AdamW. The first warmup step
+materializes optimizer state; two measured steps record steady latency. Its JSON preserves setup,
+state-materialization, and steady-state CUDA peaks, optimizer-state bytes and step counters,
+per-loss finiteness, the resolved visual backend, and failure/OOM evidence. The
+`training_feasibility` gate requires bfloat16 CUDA execution resolved to FlexAttention, all three
+optimizer steps to advance, finite losses and gradients, and effective peak reserved memory below
+95% of device memory.
+
+Run both authoritative target-GPU preflights before committing to a full training job:
 
 ```bash
 python scripts/run_student_experiment.py \
   --experiment configs/sub1b_experiment.yaml \
   --no-resume \
-  --to-stage visual_backend_benchmark
+  --to-stage training_feasibility_benchmark
 ```
 
-The production experiment enables `runtime.visual_backend_benchmark.require_deployment_gate`.
-This first stage therefore writes the benchmark, embedded gate decision, experiment state, logs,
-and optional W&B evidence, then stops nonzero unless the complete CUDA parity, backend, dose,
-paired-speed, and worst-memory contract passes. `--no-resume` forces a fresh measurement instead
-of accepting an older successful state. Blocking mode rejects a non-CUDA runtime before allocating
-the benchmark model.
+The production experiment enables `require_deployment_gate` for both stages. They write their
+benchmarks, embedded gate decisions, experiment state, logs, and optional W&B evidence, then stop
+nonzero unless both CUDA contracts pass. `--no-resume` forces fresh measurements instead of
+accepting older successful state. Blocking mode rejects a non-CUDA runtime before allocating either
+benchmark model. `initialize_student` and final evaluation depend on both artifacts, so an OOM or
+silent skipped optimizer step cannot be bypassed by continuing the expensive run.
 
 Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
 shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication

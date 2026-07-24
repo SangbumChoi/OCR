@@ -116,6 +116,7 @@ python scripts/eval_student.py \
   --checkpoint /path/to/checkpoint/student \
   --output outputs/student_eval/run \
   --visual-backend-benchmark outputs/visual_backend.json \
+  --training-feasibility-benchmark outputs/training_feasibility.json \
   --wandb-project docvlm-ablation
 ```
 
@@ -126,6 +127,7 @@ The command logs all train and heldout values in one W&B call at the same checkp
 The final `gate/visual_efficiency` value is logged only when target-device evidence is sufficient;
 `1` means parity, resolved FlexAttention, speed, and memory all passed, while `0` means a measured
 threshold failed. An absent key means the gate remained `insufficient_evidence`.
+The same convention applies to `gate/training_feasibility`.
 
 ### Packed visual backend benchmark
 
@@ -161,6 +163,34 @@ Here `<requested_backend>` is `loop`, `auto`, `flex`, `dense_adaptive`, or
 an `auto` run means the portable fallback executed; it must not be presented as a FlexAttention
 measurement. Median speedups aggregate same-round paired ratios; `min_speedup_*` is the worst of
 the three order-rotated rounds. Peak-memory ratios are likewise the worst paired round.
+
+### Full-student training feasibility benchmark
+
+[`scripts/benchmark_student_training_step.py`](../../scripts/benchmark_student_training_step.py)
+logs the full-model preflight under:
+
+```text
+training_feasibility/success
+training_feasibility/oom
+training_feasibility/gate_pass
+training_feasibility/parameter_count
+training_feasibility/median_step_ms
+training_feasibility/p95_step_ms
+training_feasibility/steps_per_second
+training_feasibility/peak_allocated_bytes
+training_feasibility/peak_reserved_bytes
+training_feasibility/peak_reserved_fraction
+training_feasibility/free_bytes
+training_feasibility/total_bytes
+training_feasibility/optimizer_parameter_states
+training_feasibility/optimizer_tensor_bytes
+training_feasibility/optimizer_max_step
+```
+
+Compare these runs only when `student_config_fingerprint`, patch grid, text-token dose,
+micro-batch, precision, and device match. `success=1` proves that the benchmark returned, while
+`gate_pass=1` additionally proves the configured CUDA/Flex, numerical, optimizer-step, and memory
+headroom contract.
 
 ## 7. Glossary — every term you'll see
 

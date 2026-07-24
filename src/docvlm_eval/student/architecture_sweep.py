@@ -408,6 +408,13 @@ def compile_architecture_sweep(
             "value": False,
         }
     )
+    shared_experiment.append(
+        {
+            "op": "replace",
+            "path": "/runtime/training_feasibility_benchmark/enabled",
+            "value": False,
+        }
+    )
     child["shared_experiment_patches"] = shared_experiment
     controls = list(child.get("matched_controls") or [])
     for path in (
@@ -423,6 +430,12 @@ def compile_architecture_sweep(
         {
             "document": "experiment",
             "path": "/runtime/visual_backend_benchmark/enabled",
+        }
+    )
+    controls.append(
+        {
+            "document": "experiment",
+            "path": "/runtime/training_feasibility_benchmark/enabled",
         }
     )
     child["matched_controls"] = controls

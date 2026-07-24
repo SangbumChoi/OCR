@@ -466,6 +466,68 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             raise ValueError(
                 "runtime.visual_backend_benchmark.parity_atol must be positive"
             )
+    training_benchmark = runtime.get("training_feasibility_benchmark") or {}
+    if not isinstance(training_benchmark, dict):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark must be a mapping"
+        )
+    for option in ("enabled", "require_deployment_gate"):
+        if option in training_benchmark and not isinstance(
+            training_benchmark[option], bool
+        ):
+            raise ValueError(
+                "runtime.training_feasibility_benchmark."
+                f"{option} must be a boolean"
+            )
+    if "wandb_tags" in training_benchmark and not isinstance(
+        training_benchmark["wandb_tags"], list
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.wandb_tags must be a list"
+        )
+    if bool(training_benchmark.get("enabled", False)):
+        patch_grid = training_benchmark.get("patch_grid")
+        if (
+            not isinstance(patch_grid, list)
+            or len(patch_grid) != 2
+            or any(
+                not isinstance(dimension, int)
+                or isinstance(dimension, bool)
+                or dimension <= 0
+                for dimension in patch_grid
+            )
+        ):
+            raise ValueError(
+                "enabled runtime.training_feasibility_benchmark requires "
+                "a positive [height, width] patch_grid"
+            )
+        for key in ("text_tokens", "micro_batch_size", "measured_steps"):
+            if int(training_benchmark.get(key, 0)) <= 0:
+                raise ValueError(
+                    "runtime.training_feasibility_benchmark."
+                    f"{key} must be positive"
+                )
+        if int(training_benchmark.get("warmup_steps", 1)) < 0:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark.warmup_steps "
+                "must be non-negative"
+            )
+        if training_benchmark.get(
+            "packed_attention_backend", "auto"
+        ) not in {"loop", "auto", "flex"}:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark."
+                "packed_attention_backend is unsupported"
+            )
+        if training_benchmark.get("precision", "auto") not in {
+            "auto",
+            "float32",
+            "float16",
+            "bfloat16",
+        }:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark.precision is unsupported"
+            )
     synthetic = _require_mapping(raw, "synthetic")
     if not bool(synthetic.get("enabled", True)):
         raise ValueError("synthetic.enabled=false is not supported by the end-to-end schema")
@@ -711,6 +773,10 @@ def build_experiment_plan(
     device = str(runtime.get("device") or "auto")
     visual_benchmark = runtime.get("visual_backend_benchmark") or {}
     visual_benchmark_enabled = bool(visual_benchmark.get("enabled", False))
+    training_benchmark = runtime.get("training_feasibility_benchmark") or {}
+    training_benchmark_enabled = bool(
+        training_benchmark.get("enabled", False)
+    )
     synthetic = raw["synthetic"]
     synth_config_path = _resolve_path(
         repo_root,
@@ -849,6 +915,26 @@ def build_experiment_plan(
             "runtime.visual_backend_benchmark.patch_grids exceed the "
             "resolved visual position grid"
         )
+    training_grid = training_benchmark.get("patch_grid") or []
+    if training_benchmark_enabled and (
+        training_grid[0] > visual_position_side
+        or training_grid[1] > visual_position_side
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.patch_grid exceeds "
+            "the resolved visual position grid"
+        )
+    if training_benchmark_enabled and int(
+        training_benchmark["text_tokens"]
+    ) > int(
+        blueprint["training"]["pretraining"]["input_pipeline"][
+            "max_text_tokens"
+        ]
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.text_tokens exceeds "
+            "the resolved pretraining maximum"
+        )
     pretraining_supervision_contract(
         PretrainConfig.from_blueprint(
             blueprint,
@@ -979,6 +1065,66 @@ def build_experiment_plan(
             )
         )
         visual_benchmark_stage_names.append("visual_backend_benchmark")
+
+    training_benchmark_stage_names: list[str] = []
+    if training_benchmark_enabled:
+        output = artifacts / "benchmarks" / "training_feasibility.json"
+        command = [
+            python,
+            script("benchmark_student_training_step.py"),
+            "--config",
+            str(resolved_blueprint_path),
+            "--patch-grid",
+            "x".join(
+                str(value) for value in training_benchmark["patch_grid"]
+            ),
+            "--text-tokens",
+            str(int(training_benchmark["text_tokens"])),
+            "--micro-batch-size",
+            str(int(training_benchmark["micro_batch_size"])),
+            "--warmup-steps",
+            str(int(training_benchmark.get("warmup_steps", 1))),
+            "--measured-steps",
+            str(int(training_benchmark["measured_steps"])),
+            "--packed-attention-backend",
+            str(
+                training_benchmark.get("packed_attention_backend")
+                or "auto"
+            ),
+            "--precision",
+            str(training_benchmark.get("precision") or "auto"),
+            "--device",
+            device,
+            "--seed",
+            str(int(training_benchmark.get("seed", 7))),
+            "--output",
+            str(output),
+        ]
+        if bool(
+            training_benchmark.get("require_deployment_gate", False)
+        ):
+            command.append("--require-deployment-gate")
+        for key, flag in (
+            ("wandb_project", "--wandb-project"),
+            ("wandb_entity", "--wandb-entity"),
+            ("wandb_run", "--wandb-run"),
+            ("wandb_group", "--wandb-group"),
+        ):
+            _add_optional(command, flag, training_benchmark.get(key))
+        tags = training_benchmark.get("wandb_tags") or []
+        if tags:
+            command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+        stages.append(
+            ExperimentStage(
+                "training_feasibility_benchmark",
+                tuple(command),
+                tuple(visual_benchmark_stage_names),
+                (Artifact(str(output)),),
+            )
+        )
+        training_benchmark_stage_names.append(
+            "training_feasibility_benchmark"
+        )
 
     checkpoint_stage_names: list[str] = []
     for component, spec in checkpoint_specs.items():
@@ -1387,6 +1533,7 @@ def build_experiment_plan(
                 "train_tokenizer",
                 *checkpoint_stage_names,
                 *visual_benchmark_stage_names,
+                *training_benchmark_stage_names,
             ),
             (
                 Artifact(str(initial_dir / "student_config.json")),
@@ -1563,6 +1710,17 @@ def build_experiment_plan(
                 str(artifacts / "benchmarks" / "visual_backend.json"),
             ]
         )
+    if training_benchmark_enabled:
+        eval_command.extend(
+            [
+                "--training-feasibility-benchmark",
+                str(
+                    artifacts
+                    / "benchmarks"
+                    / "training_feasibility.json"
+                ),
+            ]
+        )
     for key, flag in (
         ("wandb_project", "--wandb-project"),
         ("wandb_entity", "--wandb-entity"),
@@ -1582,6 +1740,7 @@ def build_experiment_plan(
                 "build_train_samples",
                 "build_heldout_samples",
                 *visual_benchmark_stage_names,
+                *training_benchmark_stage_names,
             ),
             (
                 Artifact(str(eval_dir / "manifest.json")),

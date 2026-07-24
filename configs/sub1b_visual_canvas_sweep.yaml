@@ -10,6 +10,11 @@ shared_blueprint_patches:
   - {op: replace, path: /training/pretraining/optimizer/micro_batch_size, value: 2}
   - {op: replace, path: /training/pretraining/optimizer/grad_accum_steps, value: 4}
 
+shared_experiment_patches:
+  # This sweep deliberately changes the visual execution contract; the production
+  # full-model feasibility gate is run once on the selected packed deployment recipe.
+  - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: false}
+
 matched_controls:
   - {document: experiment, path: /initialization/seed}
   - {document: experiment, path: /synthetic/count}
@@ -26,6 +31,7 @@ matched_controls:
   - {document: experiment, path: /sequence_teacher/seed}
   - {document: experiment, path: /data/components/1/hub/seed}
   - {document: experiment, path: /runtime/visual_backend_benchmark/require_deployment_gate}
+  - {document: experiment, path: /runtime/training_feasibility_benchmark/enabled}
   - {document: blueprint, path: /student/vision/patch_size}
   - {document: blueprint, path: /student/vision/max_position_tokens}
   - {document: blueprint, path: /student/connector/latent_tokens}

@@ -28,6 +28,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     )
     assert plan.stage_names == [
         "visual_backend_benchmark",
+        "training_feasibility_benchmark",
         "synthetic_train",
         "synthetic_heldout",
         "validate_synthetic_splits",
@@ -115,13 +116,34 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert visual_benchmark.artifacts[0].path.endswith(
         "artifacts/benchmarks/visual_backend.json"
     )
+    training_benchmark = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "training_feasibility_benchmark"
+    )
+    assert training_benchmark.dependencies == (
+        "visual_backend_benchmark",
+    )
+    assert training_benchmark.command[
+        training_benchmark.command.index("--patch-grid") + 1
+    ] == "40x63"
+    assert training_benchmark.command[
+        training_benchmark.command.index("--text-tokens") + 1
+    ] == "2048"
+    assert "--require-deployment-gate" in training_benchmark.command
+    assert training_benchmark.artifacts[0].path.endswith(
+        "artifacts/benchmarks/training_feasibility.json"
+    )
     initialize = next(
         stage for stage in plan.stages if stage.name == "initialize_student"
     )
     assert "visual_backend_benchmark" in initialize.dependencies
+    assert "training_feasibility_benchmark" in initialize.dependencies
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
     assert "--visual-backend-benchmark" in evaluate.command
+    assert "--training-feasibility-benchmark" in evaluate.command
     assert "visual_backend_benchmark" in evaluate.dependencies
+    assert "training_feasibility_benchmark" in evaluate.dependencies
 
 
 def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
@@ -272,6 +294,50 @@ def test_experiment_rejects_patch_grid_beyond_visual_position_side(tmp_path):
         ValueError,
         match="patch_grids exceed the resolved visual position grid",
     ):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        ({"patch_grid": [0, 2]}, "positive.*patch_grid"),
+        ({"text_tokens": 0}, "text_tokens must be positive"),
+        ({"micro_batch_size": 0}, "micro_batch_size must be positive"),
+        ({"measured_steps": 0}, "measured_steps must be positive"),
+        ({"warmup_steps": -1}, "warmup_steps must be non-negative"),
+        (
+            {"packed_attention_backend": "dense"},
+            "packed_attention_backend is unsupported",
+        ),
+        (
+            {"require_deployment_gate": "yes"},
+            "require_deployment_gate must be a boolean",
+        ),
+    ],
+)
+def test_experiment_rejects_invalid_training_feasibility_benchmark(
+    tmp_path,
+    patch,
+    message,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["runtime"]["training_feasibility_benchmark"] = {
+        "enabled": True,
+        "patch_grid": [1, 2],
+        "text_tokens": 8,
+        "micro_batch_size": 1,
+        "measured_steps": 1,
+        **patch,
+    }
+    config = tmp_path / "invalid-training-benchmark.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

@@ -339,7 +339,8 @@ python scripts/run_student_experiment.py \
 The full configuration is `configs/sub1b_experiment.yaml`. Both configurations connect independent
 hard-document train/heldout generation, leakage validation, weighted UDD mixing, cross-tokenizer
 teacher generation and quality gating, tokenizer and student creation, pretraining, SFT, RLVR, and
-split evaluation. See
+split evaluation. The full DAG also blocks initialization on target-GPU visual parity/performance
+and a production-shaped full-model forward/backward/AdamW memory probe. See
 [`docs/report/student_experiment_runner.md`](docs/report/student_experiment_runner.md).
 
 The full mixture now acquires the pinned public `danelcsb/UDD` train fold at 55% and combines it
