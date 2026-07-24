@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 from dataclasses import replace
@@ -62,24 +63,90 @@ def _initialization_lineage() -> dict:
     )
 
 
+def _fingerprint(value) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def _transfer_lineage() -> tuple[dict, str]:
+    source_files = [
+        {
+            "path": "model.pt",
+            "bytes": 4,
+            "sha256": f"sha256:{'a' * 64}",
+        }
+    ]
+    source_fingerprint = _fingerprint(source_files)
+    mappings = [
+        {
+            "target": "vision.patch_embed.weight",
+            "source": "vision.patch_embed.weight",
+            "method": "exact",
+            "target_shape": [1],
+            "source_shape": [1],
+            "target_dtype": "float32",
+            "source_dtype": "float32",
+            "copied_parameters": 1,
+            "copied_value_fingerprint": f"sha256:{'b' * 64}",
+        }
+    ]
+    report = {
+        "component": "vision",
+        "source_topology_fingerprint": f"sha256:{'c' * 64}",
+        "target_topology_fingerprint": f"sha256:{'d' * 64}",
+        "source_identity": {
+            "schema_version": 1,
+            "kind": "checkpoint_content",
+            "files": source_files,
+            "total_bytes": 4,
+            "content_fingerprint": source_fingerprint,
+        },
+        "copied_tensors": 1,
+        "copied_keys": ["vision.patch_embed.weight"],
+        "tensor_mappings": mappings,
+        "mapping_fingerprint": _fingerprint(mappings),
+        "copied_values_fingerprint": _fingerprint(
+            [mappings[0]["copied_value_fingerprint"]]
+        ),
+        "value_verified": True,
+    }
+    return (
+        build_initialization_lineage(
+            initialization_arm="I1_vision",
+            initialization_seed=5,
+            transfer_reports=[report],
+            architecture_fingerprint="sha256:test-architecture",
+        ),
+        source_fingerprint,
+    )
+
+
 def _evidence_plan(
     tmp_path: Path,
     *,
     include_initialization: bool = True,
+    initialization_lineage: dict | None = None,
+    input_fingerprints: dict | None = None,
 ) -> ExperimentPlan:
     root = tmp_path / "run"
     initial = root / "artifacts" / "initial" / "metadata.json"
+    lineage = initialization_lineage or _initialization_lineage()
     stages = []
     if include_initialization:
         _write_json(
             initial,
             {
-                "initialization_arm": "I0_random",
-                "initialization_seed": 5,
+                "initialization_arm": lineage["initialization_arm"],
+                "initialization_seed": lineage["initialization_seed"],
                 "parameter_counts": {"total": 587_019},
                 "parameter_attestation": _parameter_attestation(),
-                "transfer_reports": [],
-                "initialization_lineage": _initialization_lineage(),
+                "transfer_reports": lineage["transfer_reports"],
+                "initialization_lineage": lineage,
             },
         )
         stages.append(
@@ -110,7 +177,7 @@ def _evidence_plan(
                     "pretraining" if stage_name == "pretrain" else stage_name
                 ),
                 "parameter_attestation": _parameter_attestation(),
-                "initialization_lineage": _initialization_lineage(),
+                "initialization_lineage": lineage,
             },
         )
         pointer = root / "artifacts" / stage_name / "latest_checkpoint.txt"
@@ -167,7 +234,10 @@ def _evidence_plan(
         components=(),
         stages=tuple(stages),
         fingerprint="sha256:evidence-test",
-        input_fingerprints={"source_code": {"sha256": "sha256:test"}},
+        input_fingerprints={
+            "source_code": {"sha256": "sha256:test"},
+            **(input_fingerprints or {}),
+        },
     )
     runner = ExperimentRunner(plan, repo_root=ROOT)
     signatures = runner.signatures()
@@ -341,3 +411,54 @@ def test_attestation_rejects_training_lineage_drift(tmp_path):
 
     assert attestation["contract_status"] == "fail"
     assert lineage_check["status"] == "fail"
+
+
+def test_attestation_binds_transfer_lineage_to_planned_source_content(
+    tmp_path,
+):
+    lineage, source_fingerprint = _transfer_lineage()
+    matching = _evidence_plan(
+        tmp_path / "matching",
+        initialization_lineage=lineage,
+        input_fingerprints={
+            "initialization_vision_source": {
+                "content_fingerprint": source_fingerprint,
+                "sha256": source_fingerprint,
+            }
+        },
+    )
+    matching_attestation = build_experiment_attestation(
+        matching,
+        repo_root=ROOT,
+    )
+    matching_check = next(
+        check
+        for check in matching_attestation["contract_checks"]
+        if check["id"] == "selective_transfer_source_identity"
+    )
+
+    mismatching = _evidence_plan(
+        tmp_path / "mismatching",
+        initialization_lineage=lineage,
+        input_fingerprints={
+            "initialization_vision_source": {
+                "content_fingerprint": f"sha256:{'e' * 64}",
+                "sha256": f"sha256:{'e' * 64}",
+            }
+        },
+    )
+    mismatching_attestation = build_experiment_attestation(
+        mismatching,
+        repo_root=ROOT,
+    )
+    mismatching_check = next(
+        check
+        for check in mismatching_attestation["contract_checks"]
+        if check["id"] == "selective_transfer_source_identity"
+    )
+
+    assert matching_check["status"] == "pass"
+    assert matching_check["evidence"]["sources"][0]["matches"] is True
+    assert mismatching_attestation["contract_status"] == "fail"
+    assert mismatching_check["status"] == "fail"
+    assert mismatching_check["evidence"]["sources"][0]["matches"] is False

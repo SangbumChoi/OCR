@@ -118,14 +118,19 @@ teacher and copies only exact-shape tensors. It includes canonical name adapters
 Hugging Face SigLIP, Llama-style, and LFM2 checkpoints. Every run records source and target topology
 fingerprints, an ordered canonical source-to-target mapping for every copied tensor, copied
 parameter count, missing source keys, and shape mismatches. Token-row and structured-channel
-reductions also record their selection fingerprint. There is intentionally no arbitrary
-hidden-width cropping or interpolation: unsupported width mismatches remain random and may instead
-provide logits or features during distillation.
+reductions also record their selection fingerprint. The builder content-addresses the exact source
+files immediately before loading and verifies every target-dtype copied payload against the target
+tensor after the write. There is intentionally no arbitrary hidden-width cropping or interpolation:
+unsupported width mismatches remain random and may instead provide logits or features during
+distillation.
 
 The initial checkpoint seals the arm, seed, runtime architecture fingerprint, and transfer reports
-into one `initialization_lineage` SHA-256. Native pretraining, SFT, preference, and RLVR checkpoints
-inherit it automatically, and resume fails when it is absent or differs. The experiment evidence
-attestation independently requires the same lineage through the final checkpoint.
+into one schema-version-2 `initialization_lineage` SHA-256. Native pretraining, SFT, preference, and
+RLVR checkpoints inherit it automatically, and resume fails when it is absent or differs. The
+experiment evidence attestation independently requires the same lineage through the final
+checkpoint and binds each embedded source identity to the planned local source or pinned Hub
+acquisition manifest. Legacy schema-version-1 checkpoints remain loadable but do not satisfy this
+evidence gate.
 
 Example selective initialization:
 

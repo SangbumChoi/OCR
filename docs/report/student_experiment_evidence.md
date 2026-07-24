@@ -48,22 +48,31 @@ The initial native checkpoint records a content-addressed `initialization_lineag
 body contains the initialization arm and seed, the runtime architecture fingerprint, and every
 selective-transfer report. Each nonempty transfer report contains:
 
+- the SHA-256 and byte size of every source config, index, and weight file actually consumed;
 - SHA-256 fingerprints of the canonical source and target tensor topologies;
 - one ordered source-to-target record per copied tensor, including shapes, dtypes, copy method,
   and copied parameter count;
 - a token-row or structured-channel selection fingerprint whenever copying is not exact;
-- a SHA-256 over the complete ordered mapping manifest.
+- a target-dtype value fingerprint for every copied tensor or selected token-row payload;
+- a SHA-256 over the complete ordered mapping manifest and copied-value list.
 
 The experiment plan separately content-addresses local source checkpoints, token maps, or pinned
-Hub acquisition manifests. Together, those input records and the transfer mapping identify which
-source artifact topology populated each student tensor without hashing multi-gigabyte values a
-second time during initialization.
+Hub acquisition manifests. Initialization hashes the source checkpoint again immediately before
+loading it and binds that use-time identity into the transfer report. Each copy is converted to
+the target dtype, hashed, written, read back from the target tensor, and hashed again. Experiment
+attestation requires the use-time source identity to match the planned local checkpoint or the
+acquisition manifest. This closes both the plan-to-use source gap and the source-to-target value
+gap instead of proving only names and shapes.
 
 Native checkpoint loading validates the lineage and every nested transfer mapping. Subsequent
 pretraining, SFT, preference, and RLVR saves inherit the same lineage automatically. Exact resume
 rejects a checkpoint with a missing or different lineage. Experiment attestation requires the
 initial record and every configured training checkpoint to carry the same fingerprint, so a final
 model cannot silently lose or replace its initialization provenance.
+
+This stronger contract is `initialization_lineage` schema version 2. Schema version 1 remains
+loadable and inheritable for checkpoint compatibility, but it cannot pass current execution
+evidence because it does not attest source-file content or copied values.
 
 ## Create and verify
 

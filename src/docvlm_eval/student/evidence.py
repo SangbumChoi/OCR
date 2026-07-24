@@ -252,7 +252,8 @@ def _semantic_evidence(
             _check(
                 "initialize_student_lineage_attestation",
                 reference_lineage_source == "initialization_metadata"
-                and reference_lineage is not None,
+                and reference_lineage is not None
+                and reference_lineage.get("schema_version") == 2,
                 {
                     "source": reference_lineage_source,
                     "lineage_fingerprint": reference_lineage_fingerprint,
@@ -268,6 +269,88 @@ def _semantic_evidence(
                 },
             )
         )
+    transfer_source_records = []
+    transfer_source_identity_passed = reference_lineage is not None
+    for report in (reference_lineage or {}).get("transfer_reports", []):
+        component = str(report.get("component") or "")
+        source_identity = report.get("source_identity") or {}
+        observed_fingerprint = source_identity.get(
+            "content_fingerprint"
+        )
+        plan_record = plan.input_fingerprints.get(
+            f"initialization_{component}_source"
+        )
+        expected_fingerprint = None
+        if isinstance(plan_record, dict):
+            expected_fingerprint = (
+                plan_record.get("content_fingerprint")
+                or plan_record.get("sha256")
+            )
+        manifest_path = (
+            root
+            / "artifacts"
+            / "initialization_sources"
+            / f"{component}_checkpoint.json"
+        )
+        expected_source = "experiment_input"
+        source_records_match = True
+        if manifest_path.is_file():
+            manifest = _read_json(manifest_path)
+            manifest_files = {
+                str(record.get("path")): record
+                for record in manifest.get("files", [])
+                if isinstance(record, dict)
+            }
+            observed_files = source_identity.get("files") or []
+            source_records_match = bool(observed_files) and all(
+                manifest_files.get(str(record.get("path"))) == record
+                for record in observed_files
+                if isinstance(record, dict)
+            )
+            expected_fingerprint = (
+                observed_fingerprint
+                if source_records_match
+                else manifest.get("content_fingerprint")
+            )
+            expected_source = "acquisition_manifest"
+        source_matches = (
+            isinstance(observed_fingerprint, str)
+            and observed_fingerprint.startswith("sha256:")
+            and source_records_match
+            and (
+                expected_fingerprint is None
+                or observed_fingerprint == expected_fingerprint
+            )
+            and component in {"vision", "language", "connector"}
+        )
+        if "initialize_student" in stage_names:
+            source_matches = (
+                source_matches
+                and isinstance(expected_fingerprint, str)
+            )
+        transfer_source_identity_passed = (
+            transfer_source_identity_passed and source_matches
+        )
+        transfer_source_records.append(
+            {
+                "component": component,
+                "observed_content_fingerprint": observed_fingerprint,
+                "expected_content_fingerprint": expected_fingerprint,
+                "expected_source": expected_source,
+                "source_records_match": source_records_match,
+                "matches": source_matches,
+            }
+        )
+    checks.append(
+        _check(
+            "selective_transfer_source_identity",
+            transfer_source_identity_passed,
+            {
+                "transfer_report_count": len(transfer_source_records),
+                "sources": transfer_source_records,
+            },
+        )
+    )
 
     if "initialize_student" in stage_names:
         initialization_matches = (
@@ -366,6 +449,7 @@ def _semantic_evidence(
             _check(
                 f"{stage_name}_initialization_lineage",
                 checkpoint_lineage is not None
+                and checkpoint_lineage.get("schema_version") == 2
                 and reference_lineage_fingerprint is not None
                 and checkpoint_lineage.get("fingerprint")
                 == reference_lineage_fingerprint,

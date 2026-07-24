@@ -52,6 +52,7 @@ def main() -> None:
 
     from docvlm_eval.student.model import DocumentVLMStudent, count_unique_parameters
     from docvlm_eval.student.checkpoint import (
+        checkpoint_content_identity,
         load_checkpoint_attention_geometry,
         load_checkpoint_state,
     )
@@ -103,6 +104,9 @@ def main() -> None:
             f"Skipping language source: {args.init_arm} has zero language transfer"
         )
     if active_sources["vision"]:
+        vision_identity = checkpoint_content_identity(
+            active_sources["vision"]
+        )
         reports.append(
             selective_transfer(
                 model,
@@ -110,12 +114,16 @@ def main() -> None:
                 {"vision": arm["vision_transfer"]},
                 family=args.vision_family,
                 shape_policy=str(arm.get("shape_policy", "exact")),
+                source_identity=vision_identity,
                 require_attention_geometry=bool(
                     arm.get("require_attention_geometry", False)
                 ),
             ).to_dict()
         )
     if active_sources["language"]:
+        language_identity = checkpoint_content_identity(
+            active_sources["language"]
+        )
         token_map = None
         if args.token_map:
             raw_token_map = json.loads(args.token_map.read_text(encoding="utf-8"))
@@ -128,6 +136,7 @@ def main() -> None:
                 family=args.language_family,
                 token_map=token_map,
                 shape_policy=str(arm.get("shape_policy", "exact")),
+                source_identity=language_identity,
                 source_attention_geometry=(
                     load_checkpoint_attention_geometry(
                         active_sources["language"],

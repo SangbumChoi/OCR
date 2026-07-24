@@ -815,6 +815,63 @@ def test_student_checkpoint_propagates_and_validates_initialization_lineage(
         DocumentVLMStudent.from_pretrained(trained)
 
 
+def test_student_checkpoint_loads_legacy_lineage_without_upgrading_it(
+    tmp_path,
+):
+    import hashlib
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    model.save_pretrained(
+        tmp_path,
+        metadata={
+            "initialization_arm": "I0_random",
+            "initialization_seed": 3,
+            "transfer_reports": [],
+        },
+    )
+    metadata_path = tmp_path / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    lineage = metadata["initialization_lineage"]
+    legacy_body = {
+        **{
+            key: lineage[key]
+            for key in (
+                "initialization_arm",
+                "initialization_seed",
+                "architecture_fingerprint",
+                "transfer_reports",
+            )
+        },
+        "schema_version": 1,
+    }
+    payload = json.dumps(
+        legacy_body,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    metadata["initialization_lineage"] = {
+        **legacy_body,
+        "fingerprint": f"sha256:{hashlib.sha256(payload).hexdigest()}",
+    }
+    metadata_path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = DocumentVLMStudent.from_pretrained(tmp_path)
+    inherited = tmp_path / "inherited"
+    loaded.save_pretrained(inherited, metadata={"run_stage": "pretraining"})
+    inherited_metadata = json.loads(
+        (inherited / "metadata.json").read_text(encoding="utf-8")
+    )
+
+    assert inherited_metadata["initialization_lineage"]["schema_version"] == 1
+
+
 def test_parameter_attestation_tracks_trainability_and_fails_at_limit():
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import (
@@ -863,6 +920,22 @@ def test_student_checkpoint_rejects_stale_parameter_attestation(tmp_path):
 
     with pytest.raises(ValueError, match="does not match runtime model"):
         DocumentVLMStudent.from_pretrained(tmp_path)
+
+
+def test_checkpoint_content_identity_changes_with_source_values(tmp_path):
+    import torch
+
+    from docvlm_eval.student.checkpoint import checkpoint_content_identity
+
+    checkpoint = tmp_path / "source.pt"
+    torch.save({"weight": torch.zeros(4)}, checkpoint)
+    first = checkpoint_content_identity(checkpoint)
+    torch.save({"weight": torch.ones(4)}, checkpoint)
+    second = checkpoint_content_identity(checkpoint)
+
+    assert first["kind"] == "checkpoint_content"
+    assert first["files"][0]["path"] == "source.pt"
+    assert first["content_fingerprint"] != second["content_fingerprint"]
 
 
 def test_full_meta_model_matches_the_blueprint_estimator():
@@ -1541,6 +1614,25 @@ def test_student_builder_records_the_realized_component_transfer_dose(tmp_path):
     assert report["target_component_parameters"] > 0
     assert report["realized_component_parameter_fraction"] >= 0.8
     assert report["minimum_component_parameter_fraction"] == 0.8
+    assert report["source_identity"]["kind"] == "checkpoint_content"
+    assert report["source_identity"]["content_fingerprint"].startswith(
+        "sha256:"
+    )
+    assert report["value_verified"] is True
+    assert report["copied_values_fingerprint"].startswith("sha256:")
+    assert metadata["initialization_lineage"]["schema_version"] == 2
+    metadata["initialization_lineage"]["transfer_reports"][0][
+        "source_identity"
+    ]["files"][0]["sha256"] = f"sha256:{'0' * 64}"
+    (output / "metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ValueError,
+        match="source content fingerprint mismatch",
+    ):
+        DocumentVLMStudent.from_pretrained(output)
 
 
 def test_student_builder_routes_strict_structured_arm_and_records_groups(
@@ -1622,6 +1714,14 @@ def test_student_builder_routes_strict_structured_arm_and_records_groups(
     assert language_report["structured_tensors"] == 3
     assert language_report["structured_parameters"] > 0
     assert len(language_report["structured_groups"]) == 1
+    assert language_report["source_identity"][
+        "content_fingerprint"
+    ].startswith("sha256:")
+    assert language_report["value_verified"] is True
+    assert all(
+        mapping["copied_value_fingerprint"].startswith("sha256:")
+        for mapping in language_report["tensor_mappings"]
+    )
 
 
 def test_student_builder_skips_sources_for_inactive_components(tmp_path):
@@ -1762,11 +1862,18 @@ def test_external_embedding_transfer_requires_identity_map():
             "selection_fingerprint": report.tensor_mappings[0][
                 "selection_fingerprint"
             ],
+            "copied_value_fingerprint": report.tensor_mappings[0][
+                "copied_value_fingerprint"
+            ],
         }
     ]
     assert report.tensor_mappings[0]["selection_fingerprint"].startswith(
         "sha256:"
     )
+    assert report.tensor_mappings[0][
+        "copied_value_fingerprint"
+    ].startswith("sha256:")
+    assert report.value_verified is True
 
 
 def test_auxiliary_heads_are_real_architecture_switches():

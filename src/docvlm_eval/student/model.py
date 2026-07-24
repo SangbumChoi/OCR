@@ -2434,8 +2434,15 @@ class DocumentVLMStudent(nn.Module):
             )
             if (
                 derived_lineage is not None
-                and derived_lineage["fingerprint"]
-                != lineage["fingerprint"]
+                and any(
+                    derived_lineage[field] != lineage[field]
+                    for field in (
+                        "initialization_arm",
+                        "initialization_seed",
+                        "architecture_fingerprint",
+                        "transfer_reports",
+                    )
+                )
             ):
                 raise ValueError(
                     "checkpoint initialization metadata does not match "
@@ -2557,9 +2564,13 @@ def build_initialization_lineage(
     from .transfer import validate_transfer_report_attestation
 
     for report in canonical_reports:
-        validate_transfer_report_attestation(report)
+        validate_transfer_report_attestation(
+            report,
+            require_source_identity=True,
+            require_value_attestation=True,
+        )
     body = {
-        "schema_version": 1,
+        "schema_version": 2,
         "initialization_arm": initialization_arm,
         "initialization_seed": initialization_seed,
         "architecture_fingerprint": architecture_fingerprint,
@@ -2592,14 +2603,52 @@ def validate_initialization_lineage(
         raise ValueError(
             "checkpoint initialization_lineage fields are incomplete"
         )
-    rebuilt = build_initialization_lineage(
-        initialization_arm=lineage["initialization_arm"],
-        initialization_seed=lineage["initialization_seed"],
-        transfer_reports=lineage["transfer_reports"],
-        architecture_fingerprint=lineage["architecture_fingerprint"],
-    )
-    if lineage["schema_version"] != 1:
+    schema_version = lineage["schema_version"]
+    if schema_version not in {1, 2}:
         raise ValueError("unsupported initialization_lineage schema")
+    if schema_version == 2:
+        rebuilt = build_initialization_lineage(
+            initialization_arm=lineage["initialization_arm"],
+            initialization_seed=lineage["initialization_seed"],
+            transfer_reports=lineage["transfer_reports"],
+            architecture_fingerprint=lineage[
+                "architecture_fingerprint"
+            ],
+        )
+    else:
+        if (
+            not isinstance(lineage["initialization_arm"], str)
+            or not lineage["initialization_arm"]
+            or isinstance(lineage["initialization_seed"], bool)
+            or not isinstance(lineage["initialization_seed"], int)
+            or not isinstance(lineage["transfer_reports"], list)
+            or not isinstance(
+                lineage["architecture_fingerprint"],
+                str,
+            )
+            or not lineage["architecture_fingerprint"].startswith(
+                "sha256:"
+            )
+        ):
+            raise ValueError("legacy initialization_lineage is invalid")
+        from .transfer import validate_transfer_report_attestation
+
+        for report in lineage["transfer_reports"]:
+            validate_transfer_report_attestation(report)
+        body = {
+            key: lineage[key]
+            for key in (
+                "schema_version",
+                "initialization_arm",
+                "initialization_seed",
+                "architecture_fingerprint",
+                "transfer_reports",
+            )
+        }
+        rebuilt = {
+            **body,
+            "fingerprint": _canonical_json_fingerprint(body),
+        }
     if lineage["fingerprint"] != rebuilt["fingerprint"]:
         raise ValueError("checkpoint initialization_lineage fingerprint mismatch")
     if (

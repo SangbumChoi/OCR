@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,86 @@ def _load_one(path: Path) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ValueError(f"{path} does not contain a state dictionary")
     return loaded
+
+
+def _checkpoint_files(path: Path) -> tuple[Path, list[Path]]:
+    if path.is_file():
+        return path.parent, [path]
+    if not path.is_dir():
+        raise FileNotFoundError(path)
+    configs = [
+        path / name
+        for name in ("student_config.json", "config.json")
+        if (path / name).is_file()
+    ]
+    for name in ("model.pt", "model.safetensors", "pytorch_model.bin"):
+        candidate = path / name
+        if candidate.is_file():
+            return path, [*configs, candidate]
+    for index_name in (
+        "model.safetensors.index.json",
+        "pytorch_model.bin.index.json",
+    ):
+        index_path = path / index_name
+        if not index_path.is_file():
+            continue
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        shards = sorted(
+            {
+                path / str(value)
+                for value in (index.get("weight_map") or {}).values()
+            }
+        )
+        if not shards:
+            raise ValueError(f"{index_path} has no weight_map shards")
+        missing = [str(shard) for shard in shards if not shard.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"checkpoint index references missing shards: {missing[:3]}"
+            )
+        return path, [*configs, index_path, *shards]
+    raise FileNotFoundError(f"no supported checkpoint weights found under {path}")
+
+
+def checkpoint_content_identity(
+    path: str | Path,
+) -> dict[str, Any]:
+    """Hash exactly the config and weight files consumed by checkpoint loading."""
+
+    checkpoint = Path(path)
+    root, files = _checkpoint_files(checkpoint)
+    records = []
+    for candidate in sorted(set(files)):
+        digest = hashlib.sha256()
+        with candidate.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        records.append(
+            {
+                "path": (
+                    candidate.name
+                    if checkpoint.is_file()
+                    else str(candidate.relative_to(root))
+                ),
+                "bytes": candidate.stat().st_size,
+                "sha256": f"sha256:{digest.hexdigest()}",
+            }
+        )
+    payload = json.dumps(
+        records,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return {
+        "schema_version": 1,
+        "kind": "checkpoint_content",
+        "files": records,
+        "total_bytes": sum(record["bytes"] for record in records),
+        "content_fingerprint": (
+            f"sha256:{hashlib.sha256(payload).hexdigest()}"
+        ),
+    }
 
 
 def load_checkpoint_state(path: str | Path) -> dict[str, Any]:

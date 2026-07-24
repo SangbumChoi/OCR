@@ -20,11 +20,13 @@ construction before parameter allocation, included in the stage signature, and w
 initial checkpoint metadata.
 
 All initialization arms also emit a fingerprinted `initialization_lineage`. For transferred arms,
-it contains canonical source/target topology hashes and the exact source-to-target tensor mapping;
-local source checkpoints, pinned Hub manifests, and token maps remain separately content-addressed
-experiment inputs. Native checkpoint I/O propagates the lineage through pretraining and every
-post-training stage, while exact resume and final evidence attestation reject missing or changed
-lineage.
+schema version 2 contains the use-time source-file identity, canonical source/target topology
+hashes, exact source-to-target tensor mapping, and verified target-dtype copied-value hashes. Local
+source checkpoints, pinned Hub manifests, and token maps remain separately content-addressed
+experiment inputs. Evidence requires the embedded source identity to match that independent plan
+or acquisition record. Native checkpoint I/O propagates the lineage through pretraining and every
+post-training stage, while exact resume and final evidence attestation reject missing, legacy, or
+changed lineage.
 
 External generation inputs are content-addressed. The plan records the byte count and SHA-256 of
 `synthetic.config`; changing that YAML invalidates the experiment fingerprint and every dependent

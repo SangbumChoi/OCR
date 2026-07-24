@@ -25,6 +25,7 @@ from .checkpoint_acquisition import (
     checkpoint_manifest_valid,
     checkpoint_path_from_manifest,
 )
+from .checkpoint import checkpoint_content_identity
 from .config import StudentConfig
 from .continuation import resolve_continuation_contract
 from .distillation import DistillationConfig
@@ -208,42 +209,17 @@ def _resolve_path(root: Path, value: str | Path) -> Path:
 
 
 def _checkpoint_path_fingerprint(path: Path) -> dict[str, Any]:
-    if path.is_file():
-        return _file_fingerprint(path)
-    if not path.is_dir():
-        raise ValueError(f"initialization checkpoint does not exist: {path}")
-    names = {
-        "config.json",
-        "student_config.json",
-        "model.pt",
-        "model.safetensors",
-        "model.safetensors.index.json",
-        "pytorch_model.bin",
-        "pytorch_model.bin.index.json",
-    }
-    files = [
-        candidate
-        for candidate in path.rglob("*")
-        if candidate.is_file()
-        and (
-            candidate.name in names
-            or candidate.name.startswith("model-")
-            or candidate.name.startswith("pytorch_model-")
-        )
-    ]
-    if not files:
+    try:
+        identity = checkpoint_content_identity(path)
+    except FileNotFoundError as error:
         raise ValueError(
-            f"initialization checkpoint has no supported files: {path}"
-        )
-    records = []
-    for candidate in sorted(files):
-        record = _file_fingerprint(candidate)
-        record["path"] = str(candidate.relative_to(path))
-        records.append(record)
+            f"initialization checkpoint does not exist or is incomplete: {path}"
+        ) from error
     return {
         "path": str(path),
-        "files": len(records),
-        "sha256": _fingerprint(records),
+        **identity,
+        "file_count": len(identity["files"]),
+        "sha256": identity["content_fingerprint"],
     }
 
 

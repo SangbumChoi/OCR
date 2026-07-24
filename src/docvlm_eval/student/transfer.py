@@ -29,6 +29,7 @@ class TransferReport:
     fractions: dict[str, float]
     shape_policy: str
     require_attention_geometry: bool
+    source_identity: dict[str, Any] | None = None
     source_attention_geometry: dict[str, int | float] | None = None
     target_attention_geometry: dict[str, int | float] | None = None
     attention_geometry_compatible: bool | None = None
@@ -47,6 +48,8 @@ class TransferReport:
     copied_keys: list[str] = field(default_factory=list)
     tensor_mappings: list[dict[str, Any]] = field(default_factory=list)
     mapping_fingerprint: str = ""
+    copied_values_fingerprint: str = ""
+    value_verified: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -76,6 +79,20 @@ def _topology_fingerprint(
     return _json_fingerprint(topology)
 
 
+def _tensor_value_fingerprint(
+    tensor: torch.Tensor,
+) -> str | None:
+    if tensor.device.type == "meta":
+        return None
+    values = tensor.detach().contiguous().view(torch.uint8).reshape(-1)
+    digest = hashlib.sha256()
+    chunk_bytes = 4 * 1024 * 1024
+    for start in range(0, values.numel(), chunk_bytes):
+        chunk = values[start : start + chunk_bytes].cpu()
+        digest.update(chunk.numpy().tobytes())
+    return f"sha256:{digest.hexdigest()}"
+
+
 def _tensor_mapping(
     *,
     target_key: str,
@@ -85,6 +102,7 @@ def _tensor_mapping(
     source_tensor: torch.Tensor,
     copied_parameters: int,
     selection_fingerprint: str | None = None,
+    copied_value_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     mapping: dict[str, Any] = {
         "target": target_key,
@@ -98,11 +116,16 @@ def _tensor_mapping(
     }
     if selection_fingerprint is not None:
         mapping["selection_fingerprint"] = selection_fingerprint
+    if copied_value_fingerprint is not None:
+        mapping["copied_value_fingerprint"] = copied_value_fingerprint
     return mapping
 
 
 def validate_transfer_report_attestation(
     report: Any,
+    *,
+    require_source_identity: bool = False,
+    require_value_attestation: bool = False,
 ) -> dict[str, Any]:
     """Validate the topology and source-to-target manifest of a transfer report."""
 
@@ -123,6 +146,17 @@ def validate_transfer_report_attestation(
         raise ValueError("transfer report tensor_mappings must be a list")
     if report["mapping_fingerprint"] != _json_fingerprint(mappings):
         raise ValueError("transfer report mapping fingerprint mismatch")
+    copied_value_fingerprints = [
+        mapping.get("copied_value_fingerprint")
+        for mapping in mappings
+    ]
+    if (
+        require_value_attestation
+        or "copied_values_fingerprint" in report
+    ) and report.get("copied_values_fingerprint") != _json_fingerprint(
+        copied_value_fingerprints
+    ):
+        raise ValueError("transfer report copied-values fingerprint mismatch")
     if int(report.get("copied_tensors", -1)) != len(mappings):
         raise ValueError(
             "transfer report copied_tensors does not match its mappings"
@@ -167,6 +201,57 @@ def validate_transfer_report_attestation(
                     "non-exact transfer mapping selection fingerprint "
                     "is missing"
                 )
+        value_fingerprint = mapping.get("copied_value_fingerprint")
+        if require_value_attestation and (
+            not isinstance(value_fingerprint, str)
+            or not value_fingerprint.startswith("sha256:")
+        ):
+            raise ValueError(
+                "transfer mapping copied-value fingerprint is missing"
+            )
+    if require_value_attestation and report.get("value_verified") is not True:
+        raise ValueError("transfer report values were not verified")
+    source_identity = report.get("source_identity")
+    if require_source_identity and not isinstance(source_identity, dict):
+        raise ValueError("transfer report source identity is missing")
+    if source_identity is not None:
+        files = source_identity.get("files")
+        if (
+            source_identity.get("schema_version") != 1
+            or source_identity.get("kind") != "checkpoint_content"
+            or not isinstance(files, list)
+            or not files
+        ):
+            raise ValueError("transfer report source identity is invalid")
+        paths: list[str] = []
+        for record in files:
+            if (
+                not isinstance(record, dict)
+                or not isinstance(record.get("path"), str)
+                or not record["path"]
+                or not isinstance(record.get("bytes"), int)
+                or record["bytes"] < 0
+                or not isinstance(record.get("sha256"), str)
+                or not record["sha256"].startswith("sha256:")
+            ):
+                raise ValueError(
+                    "transfer report source file identity is invalid"
+                )
+            paths.append(record["path"])
+        if len(paths) != len(set(paths)):
+            raise ValueError(
+                "transfer report source file identities are duplicated"
+            )
+        if source_identity.get("content_fingerprint") != _json_fingerprint(
+            files
+        ):
+            raise ValueError(
+                "transfer report source content fingerprint mismatch"
+            )
+        if int(source_identity.get("total_bytes", -1)) != sum(
+            record["bytes"] for record in files
+        ):
+            raise ValueError("transfer report source byte count mismatch")
     return report
 
 
@@ -489,6 +574,7 @@ def selective_transfer(
     token_map: Mapping[int, int] | None = None,
     copy_token_embeddings: bool | None = None,
     shape_policy: str = "exact",
+    source_identity: Mapping[str, Any] | None = None,
     source_attention_geometry: Mapping[str, int | float] | None = None,
     require_attention_geometry: bool = False,
 ) -> TransferReport:
@@ -532,6 +618,18 @@ def selective_transfer(
         fractions=normalized_fractions,
         shape_policy=shape_policy,
         require_attention_geometry=require_attention_geometry,
+        source_identity=(
+            json.loads(
+                json.dumps(
+                    source_identity,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            )
+            if source_identity is not None
+            else None
+        ),
         source_attention_geometry=source_geometry,
         target_attention_geometry=target_geometry,
         attention_geometry_compatible=geometry_compatible,
@@ -608,6 +706,15 @@ def selective_transfer(
                     dtype=target_tensor.dtype,
                 )
                 target_tensor.index_copy_(0, target_ids, rows)
+                copied_value_fingerprint = _tensor_value_fingerprint(rows)
+                target_rows = target_tensor.index_select(0, target_ids)
+                if (
+                    copied_value_fingerprint
+                    != _tensor_value_fingerprint(target_rows)
+                ):
+                    raise RuntimeError(
+                        "token-row transfer value verification failed"
+                    )
                 report.copied_tensors += 1
                 report.token_rows_copied = len(valid_pairs)
                 report.copied_parameters += len(valid_pairs) * target_tensor.shape[1]
@@ -623,6 +730,9 @@ def selective_transfer(
                             len(valid_pairs) * target_tensor.shape[1]
                         ),
                         selection_fingerprint=_json_fingerprint(valid_pairs),
+                        copied_value_fingerprint=(
+                            copied_value_fingerprint
+                        ),
                     )
                 )
             continue
@@ -705,9 +815,16 @@ def selective_transfer(
                     }
                 )
                 continue
-        target_tensor.copy_(
-            source_tensor.to(device=target_tensor.device, dtype=target_tensor.dtype)
+        copied_value = source_tensor.to(
+            device=target_tensor.device,
+            dtype=target_tensor.dtype,
         )
+        copied_value_fingerprint = _tensor_value_fingerprint(copied_value)
+        target_tensor.copy_(copied_value)
+        if copied_value_fingerprint != _tensor_value_fingerprint(
+            target_tensor
+        ):
+            raise RuntimeError("tensor transfer value verification failed")
         report.copied_tensors += 1
         if structured:
             report.structured_tensors += 1
@@ -734,8 +851,19 @@ def selective_transfer(
                 source_tensor=original_source_tensor,
                 copied_parameters=target_tensor.numel(),
                 selection_fingerprint=structured_selection_fingerprint,
+                copied_value_fingerprint=copied_value_fingerprint,
             )
         )
     student.load_state_dict(target)
     report.mapping_fingerprint = _json_fingerprint(report.tensor_mappings)
+    report.copied_values_fingerprint = _json_fingerprint(
+        [
+            mapping.get("copied_value_fingerprint")
+            for mapping in report.tensor_mappings
+        ]
+    )
+    report.value_verified = all(
+        isinstance(mapping.get("copied_value_fingerprint"), str)
+        for mapping in report.tensor_mappings
+    )
     return report
