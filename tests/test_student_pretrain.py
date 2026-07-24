@@ -230,6 +230,7 @@ def test_compute_budget_repeats_epochs_and_resumes_exactly(tmp_path):
         stop_at_student_flops=True,
         total_student_flops=first_batch_flops + 1,
         schedule_unit="student_flops",
+        gradient_checkpointing=True,
     )
     resumed_config = replace(
         config,
@@ -253,6 +254,15 @@ def test_compute_budget_repeats_epochs_and_resumes_exactly(tmp_path):
     assert resumed_result.global_step == 2
     assert result.student_flops_seen >= config.total_student_flops
     assert result.student_flops_seen == resumed_result.student_flops_seen
+    assert result.checkpoint_recompute_flops_seen > 0
+    assert (
+        result.checkpoint_recompute_flops_seen
+        == resumed_result.checkpoint_recompute_flops_seen
+    )
+    assert result.executed_student_flops_seen == (
+        result.student_flops_seen
+        + result.checkpoint_recompute_flops_seen
+    )
     assert result.schedule_unit == "student_flops"
     for name, expected in uninterrupted.state_dict().items():
         assert torch.equal(expected, resumed.state_dict()[name]), name
@@ -542,6 +552,13 @@ def test_pretrain_config_is_read_from_the_blueprint(tmp_path):
     assert config.stop_at_total_tokens is True
     assert config.token_unit == "effective"
     assert config.visual_tokens_per_image == 64
+    assert config.gradient_checkpointing is True
+    assert config.gradient_checkpointing_components == (
+        "vision",
+        "connector",
+        "language",
+    )
+    assert config.gradient_checkpointing_use_reentrant is False
     assert config.loss_weights["teacher_kl"] == 0.0
     assert [stage.id for stage in config.curriculum.stages] == [
         "perception_bootstrap",

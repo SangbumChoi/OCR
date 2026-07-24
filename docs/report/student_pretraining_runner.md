@@ -53,6 +53,20 @@ python scripts/pretrain_student.py \
 
 Use `--max-steps` for a smoke run before allocating the full token budget.
 
+## Activation checkpointing
+
+`training.activation_checkpointing` is one shared contract for pretraining, SFT, RLVR, and the
+full-student feasibility benchmark. The production blueprint enables non-reentrant block
+checkpointing for `vision`, `connector`, and `language`. Forward values remain unchanged, while
+backward recomputes each selected block instead of retaining its internal activations. Evaluation,
+teacher inference, and autoregressive generation do not checkpoint because autograd is disabled.
+
+Components are independently selectable for memory/throughput ablations. `use_reentrant: false`
+is the production setting because packed FlexAttention uses captured execution plans and selective
+distillation can retain intermediate features. Every training checkpoint records the resolved
+contract, and exact resume rejects a change rather than continuing with a different memory and
+compute regime.
+
 ## Executable token budget
 
 The full blueprint sets `epochs: null`, `stop_at_total_tokens: true`, and
@@ -61,13 +75,17 @@ The full blueprint sets `epochs: null`, `stop_at_total_tokens: true`, and
 token is either a non-padding text token or one of the connector's 64 resampled visual-prefix
 tokens. The accounting deliberately does not call every raw image patch a decoder token.
 
-Every optimizer update records four cumulative counters:
+Every optimizer update records six cumulative counters:
 
 - `train/tokens_seen`: supervised answer tokens;
 - `train/text_tokens_seen`: all non-padding prompt and answer tokens;
 - `train/effective_tokens_seen`: text plus resampled visual-prefix tokens.
 - `train/student_flops_seen`: analytical dense student training FLOPs for the actual padded
   microbatch shapes.
+- `train/checkpoint_recompute_flops_seen`: estimated block-forward FLOPs re-executed by activation
+  checkpointing.
+- `train/executed_student_flops_seen`: the sum of algorithmic student FLOPs and checkpoint
+  recomputation.
 
 `train/budget_tokens_seen` selects one of those counters through `token_unit` and drives both the
 cosine schedule and the hard stopping condition. Since an optimizer update is atomic, the final
@@ -82,6 +100,11 @@ the compute counter. `training_compute_fraction` does the same for curriculum bo
 fields are part of the checkpoint resume contract, so a resumed run cannot silently change its
 compute estimand or budget. The complete fixed-compute design is documented in
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
+
+`student_flops_seen` deliberately remains the scientific, implementation-independent estimand used
+for compute matching. Changing checkpoint placement therefore does not silently grant an arm more
+model optimization. The two additional counters expose the runtime compute cost of that memory
+choice, and all three counters resume exactly from checkpoint state.
 
 ## Fail-closed supervision
 
@@ -240,14 +263,15 @@ Each checkpoint contains:
 - epoch, batch cursor, optimizer step, and supervised/text/effective token counts;
 - cumulative actual-shape student FLOPs, dense visual tokens, valid visual tokens, and visual
   sample count;
-- tokenizer, curriculum, and token-budget contracts plus a `latest_checkpoint.txt` pointer.
+- tokenizer, curriculum, token-budget, and gradient-checkpointing contracts plus a
+  `latest_checkpoint.txt` pointer.
 
 Rotation is a stable hash of tokenizer-independent sample ID, epoch, and augmentation seed.
 Combined with the deterministic balanced sampler and `persistent_workers=False`, an interrupted run
 reconstructs the same next batch and augmentation. A tokenizer mismatch is rejected before state
 loading, as is a changed curriculum, token unit, visual-prefix count, or training horizon. Exact
-continuation also requires the original `torchrun` world size because every rank has its own saved
-RNG stream and sampler slice.
+continuation also rejects a changed activation-checkpointing selection and requires the original
+`torchrun` world size because every rank has its own saved RNG stream and sampler slice.
 
 ## Loss and metric boundary
 

@@ -26,6 +26,7 @@ def test_cpu_training_probe_executes_full_optimizer_step():
             measured_steps=1,
             packed_attention_backend="loop",
             precision="float32",
+            gradient_checkpointing=True,
             device="cpu",
             seed=13,
         ),
@@ -47,6 +48,22 @@ def test_cpu_training_probe_executes_full_optimizer_step():
     assert report["scope"] == "full_student_multimodal_training_step"
     assert report["status"] == "ok"
     assert report["resolved_visual_attention_backend"] == "loop"
+    assert report["gradient_checkpointing"] == {
+        "enabled": True,
+        "components": ["vision", "connector", "language"],
+        "use_reentrant": False,
+    }
+    assert report["training_flops_per_microbatch"]["algorithmic"] > 0
+    assert (
+        report["training_flops_per_microbatch"]["checkpoint_recompute"]
+        > 0
+    )
+    assert report["training_flops_per_microbatch"]["executed"] == (
+        report["training_flops_per_microbatch"]["algorithmic"]
+        + report["training_flops_per_microbatch"][
+            "checkpoint_recompute"
+        ]
+    )
     assert report["all_finite"] is True
     assert report["all_optimizer_steps_succeeded"] is True
     assert report["optimizer_state"]["parameter_states"] > 0

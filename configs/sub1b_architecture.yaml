@@ -95,6 +95,13 @@ initialization_arms:
     purpose: "Separates useful inherited features from wholesale checkpoint dependence."
 
 training:
+  activation_checkpointing:
+    enabled: true
+    components: [vision, connector, language]
+    # Non-reentrant checkpointing supports packed-attention closures and is the
+    # recommended PyTorch path for nested autograd and selective feature capture.
+    use_reentrant: false
+
   pretraining:
     objective: "Learn document perception, reading order, alignment, and multilingual emission."
     input_pipeline:
@@ -324,6 +331,9 @@ evaluation_gates:
     required_device_type: cuda
     required_resolved_visual_attention_backend: flex
     required_precision: bfloat16
+    require_gradient_checkpointing: true
+    required_gradient_checkpointing_components: [vision, connector, language]
+    required_gradient_checkpointing_use_reentrant: false
     min_benchmark_schema_version: 1
     required_micro_batch_size: 1
     min_text_tokens: 2048

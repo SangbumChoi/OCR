@@ -70,6 +70,13 @@ class SFTConfig:
     schedule_unit: str = "tokens"
     max_grad_norm: float = 1.0
     precision: str = "bfloat16"
+    gradient_checkpointing: bool = False
+    gradient_checkpointing_components: tuple[str, ...] = (
+        "vision",
+        "connector",
+        "language",
+    )
+    gradient_checkpointing_use_reentrant: bool = False
     checkpoint_every_steps: int = 500
     eval_every_steps: int = 0
     log_every_steps: int = 10
@@ -119,6 +126,16 @@ class SFTConfig:
             )
         ):
             raise ValueError("SFT student-FLOP schedule is invalid")
+        if (
+            not self.gradient_checkpointing_components
+            or len(set(self.gradient_checkpointing_components))
+            != len(self.gradient_checkpointing_components)
+            or not set(self.gradient_checkpointing_components)
+            <= {"vision", "connector", "language"}
+        ):
+            raise ValueError(
+                "SFT gradient checkpointing components are invalid"
+            )
 
     @classmethod
     def from_blueprint(
@@ -129,6 +146,7 @@ class SFTConfig:
     ) -> "SFTConfig":
         raw = blueprint["training"]["posttraining"]["sft"]
         optimizer = raw["optimizer"]
+        checkpointing = blueprint["training"]["activation_checkpointing"]
         values = {
             "output_dir": str(output_dir),
             "target_mode": str(raw["target_mode"]),
@@ -170,6 +188,15 @@ class SFTConfig:
             ),
             "max_grad_norm": float(optimizer["max_grad_norm"]),
             "precision": str(optimizer["precision"]),
+            "gradient_checkpointing": bool(
+                checkpointing["enabled"]
+            ),
+            "gradient_checkpointing_components": tuple(
+                str(value) for value in checkpointing["components"]
+            ),
+            "gradient_checkpointing_use_reentrant": bool(
+                checkpointing["use_reentrant"]
+            ),
             "checkpoint_every_steps": int(optimizer["checkpoint_every_steps"]),
             "eval_every_steps": int(optimizer["eval_every_steps"]),
             "log_every_steps": int(optimizer["log_every_steps"]),
@@ -199,6 +226,13 @@ class SFTConfig:
             grad_accum_steps=self.grad_accum_steps,
             max_grad_norm=self.max_grad_norm,
             precision=self.precision,
+            gradient_checkpointing=self.gradient_checkpointing,
+            gradient_checkpointing_components=(
+                self.gradient_checkpointing_components
+            ),
+            gradient_checkpointing_use_reentrant=(
+                self.gradient_checkpointing_use_reentrant
+            ),
             checkpoint_every_steps=self.checkpoint_every_steps,
             eval_every_steps=self.eval_every_steps,
             log_every_steps=self.log_every_steps,
@@ -343,6 +377,13 @@ class RLVRConfig:
     supervised_replay_loss_coefficient: float = 0.0
     max_grad_norm: float = 1.0
     precision: str = "bfloat16"
+    gradient_checkpointing: bool = False
+    gradient_checkpointing_components: tuple[str, ...] = (
+        "vision",
+        "connector",
+        "language",
+    )
+    gradient_checkpointing_use_reentrant: bool = False
     checkpoint_every_steps: int = 100
     log_every_steps: int = 1
     seed: int = 23
@@ -391,6 +432,16 @@ class RLVRConfig:
             raise ValueError("RLVR checkpoint/log intervals are invalid")
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
             raise ValueError("invalid RLVR precision")
+        if (
+            not self.gradient_checkpointing_components
+            or len(set(self.gradient_checkpointing_components))
+            != len(self.gradient_checkpointing_components)
+            or not set(self.gradient_checkpointing_components)
+            <= {"vision", "connector", "language"}
+        ):
+            raise ValueError(
+                "RLVR gradient checkpointing components are invalid"
+            )
         if not self.reference_id:
             raise ValueError("RLVR reference_id cannot be empty")
 
@@ -406,6 +457,7 @@ class RLVRConfig:
         raw = blueprint["training"]["posttraining"]["rlvr"]
         optimizer = raw["optimizer"]
         rollout = raw["rollout"]
+        checkpointing = blueprint["training"]["activation_checkpointing"]
         supervised_replay = raw.get("supervised_replay") or {}
         values = {
             "output_dir": str(output_dir),
@@ -440,6 +492,15 @@ class RLVRConfig:
             ),
             "max_grad_norm": float(optimizer["max_grad_norm"]),
             "precision": str(optimizer["precision"]),
+            "gradient_checkpointing": bool(
+                checkpointing["enabled"]
+            ),
+            "gradient_checkpointing_components": tuple(
+                str(value) for value in checkpointing["components"]
+            ),
+            "gradient_checkpointing_use_reentrant": bool(
+                checkpointing["use_reentrant"]
+            ),
             "checkpoint_every_steps": int(optimizer["checkpoint_every_steps"]),
             "log_every_steps": int(optimizer["log_every_steps"]),
             "seed": int(optimizer["seed"]),
@@ -454,6 +515,7 @@ class RLVRState:
     rollout_step: int = 0
     optimizer_step: int = 0
     student_flops_seen: int = 0
+    checkpoint_recompute_flops_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -462,6 +524,8 @@ class RLVRResult:
     rollout_step: int
     optimizer_step: int
     student_flops_seen: int
+    checkpoint_recompute_flops_seen: int
+    executed_student_flops_seen: int
     last_checkpoint: str
     final_metrics: dict[str, float]
 
@@ -739,6 +803,9 @@ def _save_rlvr_checkpoint(
             "trainer_state": asdict(state),
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "reference_id": config.reference_id,
+            "gradient_checkpointing": (
+                model.gradient_checkpointing_state
+            ),
             "supervised_replay": _supervised_replay_contract(config),
             "compute_budget": _rlvr_budget_contract(config),
         },
@@ -796,6 +863,13 @@ def _load_rlvr_checkpoint(
         raise ValueError("RLVR tokenizer fingerprint mismatch")
     if metadata.get("reference_id") != config.reference_id:
         raise ValueError("RLVR frozen reference mismatch")
+    if (
+        metadata.get("gradient_checkpointing")
+        != model.gradient_checkpointing_state
+    ):
+        raise ValueError(
+            "RLVR gradient-checkpointing contract mismatch"
+        )
     if metadata.get("supervised_replay") != _supervised_replay_contract(config):
         raise ValueError("RLVR supervised replay contract mismatch")
     if metadata.get("compute_budget") != _rlvr_budget_contract(config):
@@ -841,6 +915,20 @@ def train_grpo(
     torch.manual_seed(config.seed)
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    policy.configure_gradient_checkpointing(
+        enabled=config.gradient_checkpointing,
+        components=config.gradient_checkpointing_components,
+        use_reentrant=(
+            config.gradient_checkpointing_use_reentrant
+        ),
+    )
+    reference.configure_gradient_checkpointing(
+        enabled=False,
+        components=config.gradient_checkpointing_components,
+        use_reentrant=(
+            config.gradient_checkpointing_use_reentrant
+        ),
+    )
     policy.to(device).train()
     reference.to(device).eval()
     for parameter in reference.parameters():
@@ -994,8 +1082,16 @@ def train_grpo(
             completion_tokens=int(completion_ids.shape[1]),
             group_size=config.group_size,
             replay_text_tokens=replay_text_tokens,
+            checkpoint_components=(
+                config.gradient_checkpointing_components
+                if config.gradient_checkpointing
+                else ()
+            ),
         )
         state.student_flops_seen += step_flops["total"]
+        state.checkpoint_recompute_flops_seen += step_flops[
+            "checkpoint_recompute"
+        ]
         state.rollout_step += 1
         state.optimizer_step += 1
         valid_fraction = sum(
@@ -1015,6 +1111,19 @@ def train_grpo(
                     state.student_flops_seen
                 ),
                 "rlvr/step_student_flops": float(step_flops["total"]),
+                "rlvr/checkpoint_recompute_flops_seen": float(
+                    state.checkpoint_recompute_flops_seen
+                ),
+                "rlvr/executed_student_flops_seen": float(
+                    state.student_flops_seen
+                    + state.checkpoint_recompute_flops_seen
+                ),
+                "rlvr/step_checkpoint_recompute_flops": float(
+                    step_flops["checkpoint_recompute"]
+                ),
+                "rlvr/step_executed_student_flops": float(
+                    step_flops["executed_total"]
+                ),
                 "rlvr/total_loss": float(total_loss),
                 "rlvr/supervised_replay_applied": float(replay_applied),
                 "rlvr/supervised_replay_loss": float(replay_loss.detach()),
@@ -1078,6 +1187,13 @@ def train_grpo(
         rollout_step=state.rollout_step,
         optimizer_step=state.optimizer_step,
         student_flops_seen=state.student_flops_seen,
+        checkpoint_recompute_flops_seen=(
+            state.checkpoint_recompute_flops_seen
+        ),
+        executed_student_flops_seen=(
+            state.student_flops_seen
+            + state.checkpoint_recompute_flops_seen
+        ),
         last_checkpoint=str(last_checkpoint),
         final_metrics=final_metrics,
     )

@@ -71,11 +71,14 @@ from .architecture_sweep import (
 )
 from .compute import (
     ForwardFlops,
+    TrainingFlops,
     compute_profile,
     estimate_batch_training_flops,
+    estimate_batch_training_flops_breakdown,
     estimate_forward_flops,
     estimate_rlvr_step_flops,
     estimate_training_flops,
+    estimate_training_flops_breakdown,
     visual_tokens_for_canvas,
 )
 from .tokenizer import DocumentTokenizer
@@ -153,6 +156,7 @@ __all__ = [
     "SweepRunner",
     "UDDStudentDataset",
     "VisionConfig",
+    "TrainingFlops",
     "student_model_inputs",
     "build_structured_target",
     "build_weighted_mixture",
@@ -180,10 +184,12 @@ __all__ = [
     "train_student",
     "evaluate_structured_student",
     "estimate_batch_training_flops",
+    "estimate_batch_training_flops_breakdown",
     "evaluate_deployment_gates",
     "estimate_forward_flops",
     "estimate_rlvr_step_flops",
     "estimate_training_flops",
+    "estimate_training_flops_breakdown",
     "load_evaluation_artifacts",
     "load_visual_backend_report",
     "wandb_metrics_for_split",

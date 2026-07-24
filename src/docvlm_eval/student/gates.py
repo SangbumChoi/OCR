@@ -916,6 +916,26 @@ def _training_feasibility(
                 "failure_memory": report.get("failure_memory"),
             },
         )
+    checkpointing = blueprint["training"]["activation_checkpointing"]
+    expected_checkpointing = {
+        "enabled": bool(checkpointing["enabled"]),
+        "components": list(checkpointing["components"]),
+        "use_reentrant": bool(checkpointing["use_reentrant"]),
+    }
+    if report.get("gradient_checkpointing") != expected_checkpointing:
+        return _result(
+            gate,
+            "fail",
+            "training feasibility evidence used a different gradient-checkpointing contract",
+            {
+                "reported_gradient_checkpointing": report.get(
+                    "gradient_checkpointing"
+                ),
+                "expected_gradient_checkpointing": (
+                    expected_checkpointing
+                ),
+            },
+        )
 
     minimum_text = int(gate.get("min_text_tokens", 1))
     minimum_visual = int(gate.get("min_visual_tokens_per_sample", 1))
@@ -939,6 +959,7 @@ def _training_feasibility(
     )
     effective_memory = report.get("effective_peak_memory")
     optimizer_state = report.get("optimizer_state")
+    training_flops = report.get("training_flops_per_microbatch")
     evidence = {
         "benchmark_schema_version": schema,
         "device": environment.get("device"),
@@ -977,7 +998,11 @@ def _training_feasibility(
         "all_optimizer_steps_succeeded": report.get(
             "all_optimizer_steps_succeeded"
         ),
+        "gradient_checkpointing": report.get(
+            "gradient_checkpointing"
+        ),
         "optimizer_state": optimizer_state,
+        "training_flops_per_microbatch": training_flops,
         "setup_memory": report.get("setup_memory"),
         "materialization_memory": report.get("materialization_memory"),
         "steady_state_memory": report.get("steady_state_memory"),
@@ -993,6 +1018,11 @@ def _training_feasibility(
         p95_ms = float(report["p95_step_ms"])
         state_parameters = int(optimizer_state["parameter_states"])
         state_step = float(optimizer_state["max_step"])
+        algorithmic_flops = int(training_flops["algorithmic"])
+        checkpoint_recompute_flops = int(
+            training_flops["checkpoint_recompute"]
+        )
+        executed_flops = int(training_flops["executed"])
         visual_tokens = int(evidence["visual_tokens_per_sample"])
         dose_sufficient = (
             int(benchmark["text_tokens"]) >= minimum_text
@@ -1006,6 +1036,26 @@ def _training_feasibility(
             and int(benchmark["warmup_steps"]) >= minimum_warmup
             and int(benchmark["measured_steps"]) >= minimum_measured
             and benchmark["resolved_precision"] == required_precision
+            and bool(benchmark["gradient_checkpointing"])
+            == bool(gate["require_gradient_checkpointing"])
+            and list(
+                benchmark["gradient_checkpointing_components"]
+            )
+            == list(
+                gate[
+                    "required_gradient_checkpointing_components"
+                ]
+            )
+            and bool(
+                benchmark[
+                    "gradient_checkpointing_use_reentrant"
+                ]
+            )
+            == bool(
+                gate[
+                    "required_gradient_checkpointing_use_reentrant"
+                ]
+            )
         )
         numeric_evidence = (
             math.isfinite(peak_fraction)
@@ -1018,6 +1068,14 @@ def _training_feasibility(
             and state_step
             >= int(benchmark["warmup_steps"])
             + int(benchmark["measured_steps"])
+            and algorithmic_flops > 0
+            and (
+                checkpoint_recompute_flops > 0
+                if bool(gate["require_gradient_checkpointing"])
+                else checkpoint_recompute_flops == 0
+            )
+            and executed_flops
+            == algorithmic_flops + checkpoint_recompute_flops
         )
     except (KeyError, TypeError, ValueError, OverflowError):
         dose_sufficient = False
@@ -1046,6 +1104,19 @@ def _training_feasibility(
             "required_grad_accum_steps": required_grad_accum,
             "required_resolved_visual_attention_backend": (
                 required_backend
+            ),
+            "require_gradient_checkpointing": bool(
+                gate["require_gradient_checkpointing"]
+            ),
+            "required_gradient_checkpointing_components": list(
+                gate[
+                    "required_gradient_checkpointing_components"
+                ]
+            ),
+            "required_gradient_checkpointing_use_reentrant": bool(
+                gate[
+                    "required_gradient_checkpointing_use_reentrant"
+                ]
             ),
             "min_text_tokens": minimum_text,
             "min_visual_tokens_per_sample": minimum_visual,

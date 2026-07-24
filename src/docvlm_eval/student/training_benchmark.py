@@ -12,6 +12,7 @@ from typing import Any, Literal
 import torch
 
 from .config import StudentConfig, student_config_fingerprint
+from .compute import estimate_batch_training_flops_breakdown
 from .model import DocumentVLMStudent
 from .pretrain import (
     PretrainingModule,
@@ -34,6 +35,13 @@ class TrainingBenchmarkConfig:
     measured_steps: int = 2
     packed_attention_backend: Backend = "auto"
     precision: Precision = "auto"
+    gradient_checkpointing: bool = False
+    gradient_checkpointing_components: tuple[str, ...] = (
+        "vision",
+        "connector",
+        "language",
+    )
+    gradient_checkpointing_use_reentrant: bool = False
     device: str = "auto"
     seed: int = 7
 
@@ -60,6 +68,16 @@ class TrainingBenchmarkConfig:
             raise ValueError("unsupported packed_attention_backend")
         if self.precision not in {"auto", "float32", "float16", "bfloat16"}:
             raise ValueError("unsupported precision")
+        if (
+            not self.gradient_checkpointing_components
+            or len(set(self.gradient_checkpointing_components))
+            != len(self.gradient_checkpointing_components)
+            or not set(self.gradient_checkpointing_components)
+            <= {"vision", "connector", "language"}
+        ):
+            raise ValueError(
+                "gradient checkpointing components are invalid"
+            )
 
 
 def _resolve_device(name: str) -> torch.device:
@@ -348,6 +366,8 @@ def run_training_feasibility_benchmark(
         "error": None,
         "oom": False,
         "resolved_visual_attention_backend": None,
+        "gradient_checkpointing": None,
+        "training_flops_per_microbatch": None,
         "setup_memory": None,
         "materialization_memory": None,
         "steady_state_memory": None,
@@ -368,6 +388,16 @@ def run_training_feasibility_benchmark(
         _reset_peak_memory(device)
     try:
         student = DocumentVLMStudent(student_config)
+        student.configure_gradient_checkpointing(
+            enabled=config.gradient_checkpointing,
+            components=config.gradient_checkpointing_components,
+            use_reentrant=(
+                config.gradient_checkpointing_use_reentrant
+            ),
+        )
+        report["gradient_checkpointing"] = (
+            student.gradient_checkpointing_state
+        )
         module = PretrainingModule(student).to(device)
         module.train()
         report["parameter_count"] = _unique_parameter_count(module)
@@ -385,6 +415,18 @@ def run_training_feasibility_benchmark(
             config,
             device,
             contrastive=contrastive,
+        )
+        training_flops = estimate_batch_training_flops_breakdown(
+            student_config,
+            batch,
+            checkpoint_components=(
+                config.gradient_checkpointing_components
+                if config.gradient_checkpointing
+                else ()
+            ),
+        )
+        report["training_flops_per_microbatch"] = (
+            training_flops.to_dict()
         )
         _synchronize(device)
         report["setup_memory"] = _memory_snapshot(device)

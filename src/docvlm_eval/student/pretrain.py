@@ -17,7 +17,7 @@ import torch.nn as nn
 
 from .data import student_model_inputs
 from .curriculum import CurriculumSchedule, planned_optimizer_steps
-from .compute import estimate_batch_training_flops
+from .compute import estimate_batch_training_flops_breakdown
 from .distillation import DistillationLoss, NativeStudentTeacher, TeacherSignals
 from .model import DocumentVLMStudent
 
@@ -49,6 +49,13 @@ class PretrainConfig:
     grad_accum_steps: int = 8
     max_grad_norm: float = 1.0
     precision: str = "auto"
+    gradient_checkpointing: bool = False
+    gradient_checkpointing_components: tuple[str, ...] = (
+        "vision",
+        "connector",
+        "language",
+    )
+    gradient_checkpointing_use_reentrant: bool = False
     checkpoint_every_steps: int = 1000
     eval_every_steps: int = 1000
     log_every_steps: int = 10
@@ -116,6 +123,18 @@ class PretrainConfig:
             )
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
             raise ValueError("precision must be auto, float32, bfloat16, or float16")
+        supported_checkpointing = {"vision", "connector", "language"}
+        if (
+            not self.gradient_checkpointing_components
+            or len(set(self.gradient_checkpointing_components))
+            != len(self.gradient_checkpointing_components)
+            or not set(self.gradient_checkpointing_components)
+            <= supported_checkpointing
+        ):
+            raise ValueError(
+                "gradient checkpointing components must be a unique "
+                "non-empty subset of vision, connector, language"
+            )
         if self.checkpoint_every_steps < 0 or self.eval_every_steps < 0:
             raise ValueError("checkpoint and evaluation intervals must be non-negative")
         if self.log_every_steps <= 0:
@@ -154,6 +173,7 @@ class PretrainConfig:
         **overrides: Any,
     ) -> "PretrainConfig":
         raw = blueprint["training"]["pretraining"]["optimizer"]
+        checkpointing = blueprint["training"]["activation_checkpointing"]
         values = {
             "output_dir": str(output_dir),
             "epochs": (
@@ -189,6 +209,15 @@ class PretrainConfig:
             "grad_accum_steps": int(raw["grad_accum_steps"]),
             "max_grad_norm": float(raw["max_grad_norm"]),
             "precision": str(raw["precision"]),
+            "gradient_checkpointing": bool(
+                checkpointing["enabled"]
+            ),
+            "gradient_checkpointing_components": tuple(
+                str(value) for value in checkpointing["components"]
+            ),
+            "gradient_checkpointing_use_reentrant": bool(
+                checkpointing["use_reentrant"]
+            ),
             "checkpoint_every_steps": int(raw["checkpoint_every_steps"]),
             "eval_every_steps": int(raw["eval_every_steps"]),
             "log_every_steps": int(raw["log_every_steps"]),
@@ -268,6 +297,7 @@ class TrainerState:
     text_tokens_seen: int = 0
     effective_tokens_seen: int = 0
     student_flops_seen: int = 0
+    checkpoint_recompute_flops_seen: int = 0
     dense_visual_tokens_seen: int = 0
     executed_visual_tokens_seen: int = 0
     valid_visual_tokens_seen: int = 0
@@ -283,6 +313,8 @@ class TrainingResult:
     text_tokens_seen: int
     effective_tokens_seen: int
     student_flops_seen: int
+    checkpoint_recompute_flops_seen: int
+    executed_student_flops_seen: int
     dense_visual_tokens_seen: int
     executed_visual_tokens_seen: int
     valid_visual_tokens_seen: int
@@ -667,6 +699,9 @@ def _save_checkpoint(
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "world_size": context.world_size,
             "run_stage": config.run_stage,
+            "gradient_checkpointing": (
+                module.student.gradient_checkpointing_state
+            ),
             "curriculum_fingerprint": config.curriculum.fingerprint,
             "curriculum_total_steps": (
                 curriculum_total_steps if config.curriculum.stages else None
@@ -718,6 +753,7 @@ def _load_checkpoint(
     context: _DistributedContext,
     expected_tokenizer_fingerprint: str | None,
     expected_run_stage: str,
+    expected_gradient_checkpointing: dict[str, Any],
     expected_curriculum_fingerprint: str | None,
     expected_curriculum_total_steps: int,
     expected_token_budget: dict[str, Any],
@@ -742,6 +778,12 @@ def _load_checkpoint(
         raise ValueError(
             f"resume checkpoint run stage {saved_run_stage!r} does not match "
             f"{expected_run_stage!r}"
+        )
+    saved_checkpointing = metadata.get("gradient_checkpointing")
+    if saved_checkpointing != expected_gradient_checkpointing:
+        raise ValueError(
+            "resume checkpoint gradient-checkpointing contract does not "
+            "match the active training configuration"
         )
     saved_curriculum = metadata.get("curriculum_fingerprint")
     if saved_curriculum != expected_curriculum_fingerprint:
@@ -877,6 +919,13 @@ def train_student(
     if context.is_main:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    student.configure_gradient_checkpointing(
+        enabled=config.gradient_checkpointing,
+        components=config.gradient_checkpointing_components,
+        use_reentrant=(
+            config.gradient_checkpointing_use_reentrant
+        ),
+    )
     module = PretrainingModule(student, distillation_loss).to(context.device)
     if teacher is not None:
         teacher.model.to(context.device)
@@ -924,6 +973,7 @@ def train_student(
             context,
             config.tokenizer_fingerprint,
             config.run_stage,
+            module.student.gradient_checkpointing_state,
             config.curriculum.fingerprint,
             curriculum_horizon,
             _budget_contract(config),
@@ -965,6 +1015,7 @@ def train_student(
     accumulated_losses: dict[str, float] = {}
     accumulated_microbatches = 0
     accumulated_student_flops = 0
+    accumulated_checkpoint_recompute_flops = 0
     accumulated_dense_visual_tokens = 0
     accumulated_valid_visual_tokens = 0
     accumulated_samples = 0
@@ -1049,9 +1100,18 @@ def train_student(
                 batch,
                 config.visual_tokens_per_image,
             )
-            accumulated_student_flops += estimate_batch_training_flops(
+            batch_flops = estimate_batch_training_flops_breakdown(
                 module.student.config,
                 batch,
+                checkpoint_components=(
+                    config.gradient_checkpointing_components
+                    if config.gradient_checkpointing
+                    else ()
+                ),
+            )
+            accumulated_student_flops += batch_flops.algorithmic
+            accumulated_checkpoint_recompute_flops += (
+                batch_flops.checkpoint_recompute
             )
             dense_visual, valid_visual, visual_samples = _batch_visual_counts(
                 batch,
@@ -1083,6 +1143,13 @@ def train_student(
                 context,
             )
             state.student_flops_seen += global_student_flops
+            global_checkpoint_recompute_flops = _all_reduce_int(
+                accumulated_checkpoint_recompute_flops,
+                context,
+            )
+            state.checkpoint_recompute_flops_seen += (
+                global_checkpoint_recompute_flops
+            )
             global_dense_visual_tokens = _all_reduce_int(
                 accumulated_dense_visual_tokens,
                 context,
@@ -1134,6 +1201,13 @@ def train_student(
                     "train/student_flops_seen": float(
                         state.student_flops_seen
                     ),
+                    "train/checkpoint_recompute_flops_seen": float(
+                        state.checkpoint_recompute_flops_seen
+                    ),
+                    "train/executed_student_flops_seen": float(
+                        state.student_flops_seen
+                        + state.checkpoint_recompute_flops_seen
+                    ),
                     "train/dense_visual_tokens_per_sample": (
                         state.dense_visual_tokens_seen
                         / state.visual_samples_seen
@@ -1175,6 +1249,7 @@ def train_student(
             accumulated_losses = {}
             accumulated_microbatches = 0
             accumulated_student_flops = 0
+            accumulated_checkpoint_recompute_flops = 0
             accumulated_dense_visual_tokens = 0
             accumulated_valid_visual_tokens = 0
             accumulated_samples = 0
@@ -1309,6 +1384,13 @@ def train_student(
         text_tokens_seen=state.text_tokens_seen,
         effective_tokens_seen=state.effective_tokens_seen,
         student_flops_seen=state.student_flops_seen,
+        checkpoint_recompute_flops_seen=(
+            state.checkpoint_recompute_flops_seen
+        ),
+        executed_student_flops_seen=(
+            state.student_flops_seen
+            + state.checkpoint_recompute_flops_seen
+        ),
         dense_visual_tokens_seen=state.dense_visual_tokens_seen,
         executed_visual_tokens_seen=state.executed_visual_tokens_seen,
         valid_visual_tokens_seen=state.valid_visual_tokens_seen,

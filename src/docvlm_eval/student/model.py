@@ -10,6 +10,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from .config import ConnectorConfig, LanguageConfig, StudentConfig, VisionConfig
 from .losses import decode_normalized_box, generalized_box_iou_loss
@@ -26,6 +27,21 @@ class _PackedAttentionPlan:
 
 _COMPILED_FLEX_ATTENTION: Any = None
 _FLEX_DISABLED_DEVICES: set[str] = set()
+
+
+def _checkpointed(
+    function,
+    *args: torch.Tensor,
+    enabled: bool,
+    use_reentrant: bool,
+) -> torch.Tensor:
+    if enabled and torch.is_grad_enabled():
+        return torch_checkpoint(
+            function,
+            *args,
+            use_reentrant=use_reentrant,
+        )
+    return function(*args)
 
 
 def _compiled_flex_attention():
@@ -314,6 +330,8 @@ class VisionTower(nn.Module):
         self.blocks = nn.ModuleList([VisionBlock(config) for _ in range(config.layers)])
         self.norm = nn.LayerNorm(config.width)
         self.last_packed_attention_backend = "none"
+        self.gradient_checkpointing = False
+        self.checkpoint_use_reentrant = False
 
     def _position_ids(
         self,
@@ -396,7 +414,13 @@ class VisionTower(nn.Module):
         x = x + self.position_embedding[position_ids].unsqueeze(0).to(x.dtype)
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
-            x = block(x, patch_mask)
+            x = _checkpointed(
+                block,
+                x,
+                patch_mask,
+                enabled=self.gradient_checkpointing and self.training,
+                use_reentrant=self.checkpoint_use_reentrant,
+            )
             x = x * patch_mask.unsqueeze(-1)
             if capture_layers is not None and index in capture_layers:
                 features[index] = x
@@ -464,7 +488,15 @@ class VisionTower(nn.Module):
         )
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
-            x = block.forward_packed(x, plan)
+            x = _checkpointed(
+                lambda value, block=block: block.forward_packed(
+                    value,
+                    plan,
+                ),
+                x,
+                enabled=self.gradient_checkpointing and self.training,
+                use_reentrant=self.checkpoint_use_reentrant,
+            )
             if capture_layers is not None and index in capture_layers:
                 features[index] = x
         x = self.norm(x)
@@ -611,6 +643,8 @@ class GatedResampler(nn.Module):
         self.latents = nn.Parameter(torch.empty(config.latent_tokens, config.output_width))
         self.layers = nn.ModuleList([ResamplerLayer(config) for _ in range(config.layers)])
         self.last_packed_attention_backend = "none"
+        self.gradient_checkpointing = False
+        self.checkpoint_use_reentrant = False
 
     def forward(
         self,
@@ -619,7 +653,17 @@ class GatedResampler(nn.Module):
     ) -> torch.Tensor:
         latents = self.latents.unsqueeze(0).expand(vision_tokens.shape[0], -1, -1)
         for layer in self.layers:
-            latents = layer(latents, vision_tokens, vision_mask)
+            latents = _checkpointed(
+                lambda latent_values, source, layer=layer: layer(
+                    latent_values,
+                    source,
+                    vision_mask,
+                ),
+                latents,
+                vision_tokens,
+                enabled=self.gradient_checkpointing and self.training,
+                use_reentrant=self.checkpoint_use_reentrant,
+            )
         return latents
 
     def forward_packed(
@@ -649,7 +693,15 @@ class GatedResampler(nn.Module):
             device=vision_tokens.device,
         )
         for layer in self.layers:
-            latents = layer.forward_packed(latents, vision_tokens, plan)
+            latents = _checkpointed(
+                lambda latent_values, source, layer=layer: (
+                    layer.forward_packed(latent_values, source, plan)
+                ),
+                latents,
+                vision_tokens,
+                enabled=self.gradient_checkpointing and self.training,
+                use_reentrant=self.checkpoint_use_reentrant,
+            )
         self.last_packed_attention_backend = (
             "flex" if plan.use_flex else "loop"
         )
@@ -788,6 +840,8 @@ class LanguageDecoder(nn.Module):
             config.width // config.attention_heads,
             config.rope_base,
         )
+        self.gradient_checkpointing = False
+        self.checkpoint_use_reentrant = False
 
     def forward(
         self,
@@ -812,7 +866,18 @@ class LanguageDecoder(nn.Module):
         cos, sin = self.rotary(x.shape[1], x.device, x.dtype)
         features: dict[int, torch.Tensor] = {}
         for index, block in enumerate(self.blocks):
-            x = block(x, attention_bias, is_causal, cos, sin)
+            x = _checkpointed(
+                lambda value, block=block: block(
+                    value,
+                    attention_bias,
+                    is_causal,
+                    cos,
+                    sin,
+                ),
+                x,
+                enabled=self.gradient_checkpointing and self.training,
+                use_reentrant=self.checkpoint_use_reentrant,
+            )
             if capture_layers is not None and index in capture_layers:
                 features[index] = x
         x = self.norm(x)
@@ -872,6 +937,13 @@ class DocumentVLMStudent(nn.Module):
             nn.Linear(config.vision.width, 4) if heads.orientation else None
         )
         self.last_visual_attention_backend = "none"
+        self._gradient_checkpointing_enabled = False
+        self._gradient_checkpointing_components = (
+            "vision",
+            "connector",
+            "language",
+        )
+        self._gradient_checkpointing_use_reentrant = False
         self.box_head = (
             nn.Linear(config.language.width, 4) if heads.box_regression else None
         )
@@ -879,6 +951,56 @@ class DocumentVLMStudent(nn.Module):
         self.apply(self._init_weights)
         nn.init.normal_(self.connector.latents, std=0.02)
         nn.init.zeros_(self.vision.position_embedding)
+
+    def configure_gradient_checkpointing(
+        self,
+        *,
+        enabled: bool,
+        components: tuple[str, ...] = (
+            "vision",
+            "connector",
+            "language",
+        ),
+        use_reentrant: bool = False,
+    ) -> None:
+        """Configure component-level block recomputation for training."""
+
+        supported = {"vision", "connector", "language"}
+        requested = set(components)
+        if len(requested) != len(components):
+            raise ValueError(
+                "gradient checkpointing components must be unique"
+            )
+        if not requested <= supported:
+            raise ValueError(
+                "unsupported gradient checkpointing components: "
+                f"{sorted(requested - supported)}"
+            )
+        if enabled and not requested:
+            raise ValueError(
+                "enabled gradient checkpointing requires at least one component"
+            )
+        self._gradient_checkpointing_enabled = bool(enabled)
+        self._gradient_checkpointing_components = tuple(components)
+        self._gradient_checkpointing_use_reentrant = bool(
+            use_reentrant
+        )
+        for name in supported:
+            module = getattr(self, name)
+            module.gradient_checkpointing = enabled and name in requested
+            module.checkpoint_use_reentrant = bool(use_reentrant)
+
+    @property
+    def gradient_checkpointing_state(self) -> dict[str, Any]:
+        return {
+            "enabled": self._gradient_checkpointing_enabled,
+            "components": list(
+                self._gradient_checkpointing_components
+            ),
+            "use_reentrant": (
+                self._gradient_checkpointing_use_reentrant
+            ),
+        }
 
     @staticmethod
     def _init_weights(module: nn.Module) -> None:

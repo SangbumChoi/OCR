@@ -5,9 +5,11 @@ import pytest
 from docvlm_eval.student.compute import (
     compute_profile,
     estimate_batch_training_flops,
+    estimate_batch_training_flops_breakdown,
     estimate_forward_flops,
     estimate_rlvr_step_flops,
     estimate_training_flops,
+    estimate_training_flops_breakdown,
     visual_tokens_for_canvas,
 )
 from docvlm_eval.student.config import StudentConfig
@@ -70,6 +72,42 @@ def test_batch_training_flops_use_dense_padded_shapes():
     )
 
 
+def test_checkpoint_recompute_is_reported_without_changing_compute_budget():
+    torch = pytest.importorskip("torch")
+    config = StudentConfig.tiny()
+    batch = {
+        "input_ids": torch.ones(2, 24, dtype=torch.long),
+        "pixel_values": torch.ones(2, 3, 32, 32),
+    }
+    baseline = estimate_batch_training_flops_breakdown(config, batch)
+    checkpointed = estimate_batch_training_flops_breakdown(
+        config,
+        batch,
+        checkpoint_components=("vision", "connector", "language"),
+    )
+    language_only = estimate_training_flops_breakdown(
+        config,
+        text_tokens=24,
+        vision_tokens=0,
+        batch_size=2,
+        checkpoint_components=("language",),
+    )
+
+    assert checkpointed.algorithmic == baseline.algorithmic
+    assert checkpointed.checkpoint_recompute > 0
+    assert checkpointed.executed == (
+        checkpointed.algorithmic + checkpointed.checkpoint_recompute
+    )
+    assert language_only.checkpoint_recompute > 0
+    with pytest.raises(ValueError, match="unique subset"):
+        estimate_training_flops_breakdown(
+            config,
+            text_tokens=24,
+            vision_tokens=16,
+            checkpoint_components=("language", "language"),
+        )
+
+
 def test_rlvr_compute_tracks_generation_and_replay():
     config = StudentConfig.tiny()
     short = estimate_rlvr_step_flops(
@@ -93,6 +131,7 @@ def test_rlvr_compute_tracks_generation_and_replay():
         completion_tokens=2,
         group_size=2,
         replay_text_tokens=32,
+        checkpoint_components=("vision", "connector", "language"),
     )
 
     assert long["rollout"] > short["rollout"]
@@ -100,6 +139,10 @@ def test_rlvr_compute_tracks_generation_and_replay():
     assert long["total"] > short["total"]
     assert replay["supervised_replay"] > 0
     assert replay["total"] > short["total"]
+    assert replay["checkpoint_recompute"] > 0
+    assert replay["executed_total"] == (
+        replay["total"] + replay["checkpoint_recompute"]
+    )
 
 
 def test_profile_exposes_phase_accounting_convention():
@@ -110,6 +153,7 @@ def test_profile_exposes_phase_accounting_convention():
         rlvr_completion_tokens=4,
         rlvr_group_size=2,
         rlvr_replay_every_steps=2,
+        checkpoint_components=("vision", "connector", "language"),
     )
 
     assert profile["vision_tokens"] == 16
@@ -117,4 +161,11 @@ def test_profile_exposes_phase_accounting_convention():
         3 * profile["forward_flops"]["total"]
     )
     assert profile["rlvr"]["expected_replay_per_step"] > 0
+    assert profile["checkpoint_recompute_flops_per_sample"] > 0
+    assert profile["executed_training_flops_per_sample"] > (
+        profile["training_flops_per_sample"]
+    )
+    assert profile["rlvr"]["expected_executed_total_per_step"] > (
+        profile["rlvr"]["expected_total_per_step"]
+    )
     assert profile["convention"]["multiply_add"] == "two_flops"

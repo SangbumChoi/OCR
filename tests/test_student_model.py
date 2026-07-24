@@ -51,6 +51,98 @@ def test_tiny_student_multimodal_forward_and_auxiliary_losses():
     assert output.loss is not None and torch.isfinite(output.loss)
 
 
+def test_gradient_checkpointing_preserves_forward_and_backward(monkeypatch):
+    import torch
+
+    import docvlm_eval.student.model as student_model
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    torch.manual_seed(37)
+    config = StudentConfig.tiny()
+    model = DocumentVLMStudent(config).train()
+    input_ids = torch.randint(0, config.language.vocab_size, (1, 8))
+    pixels = torch.randn(1, 3, 24, 32)
+    baseline = model(
+        input_ids=input_ids,
+        pixel_values=pixels,
+        attention_mask=torch.ones_like(input_ids),
+        labels=input_ids,
+    )
+    expected_logits = baseline.logits.detach()
+    expected_loss = baseline.loss.detach()
+    model.zero_grad(set_to_none=True)
+
+    calls = 0
+    original = student_model.torch_checkpoint
+
+    def counted_checkpoint(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        student_model,
+        "torch_checkpoint",
+        counted_checkpoint,
+    )
+    model.configure_gradient_checkpointing(
+        enabled=True,
+        components=("vision", "connector", "language"),
+        use_reentrant=False,
+    )
+    checkpointed = model(
+        input_ids=input_ids,
+        pixel_values=pixels,
+        attention_mask=torch.ones_like(input_ids),
+        labels=input_ids,
+    )
+    checkpointed.loss.backward()
+
+    assert calls == (
+        config.vision.layers
+        + config.connector.layers
+        + config.language.layers
+    )
+    assert torch.equal(checkpointed.logits, expected_logits)
+    assert torch.equal(checkpointed.loss.detach(), expected_loss)
+    assert model.vision.patch_embed.weight.grad is not None
+    assert model.connector.latents.grad is not None
+    assert model.language.token_embedding.weight.grad is not None
+    assert model.gradient_checkpointing_state == {
+        "enabled": True,
+        "components": ["vision", "connector", "language"],
+        "use_reentrant": False,
+    }
+
+
+def test_gradient_checkpointing_state_preserves_disabled_contract():
+    import pytest
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    model.configure_gradient_checkpointing(
+        enabled=False,
+        components=("language", "vision"),
+        use_reentrant=True,
+    )
+
+    assert model.gradient_checkpointing_state == {
+        "enabled": False,
+        "components": ["language", "vision"],
+        "use_reentrant": True,
+    }
+    assert model.language.gradient_checkpointing is False
+    assert model.vision.gradient_checkpointing is False
+    with pytest.raises(ValueError, match="unique"):
+        model.configure_gradient_checkpointing(
+            enabled=True,
+            components=("language", "language"),
+        )
+
+
 def test_visual_position_ids_are_stable_across_batch_canvas_widths():
     import torch
 

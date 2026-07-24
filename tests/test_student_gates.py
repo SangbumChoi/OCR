@@ -242,6 +242,13 @@ def _training_report(
             "grad_accum_steps": 8,
             "microbatches_per_probe_step": 1,
             "short_final_batch_gradient_correction": True,
+            "gradient_checkpointing": True,
+            "gradient_checkpointing_components": [
+                "vision",
+                "connector",
+                "language",
+            ],
+            "gradient_checkpointing_use_reentrant": False,
         },
         "environment": {
             "device": "cuda:0",
@@ -255,6 +262,16 @@ def _training_report(
         "error": "CUDA out of memory" if status != "ok" else None,
         "oom": status != "ok",
         "resolved_visual_attention_backend": resolved_backend,
+        "gradient_checkpointing": {
+            "enabled": True,
+            "components": ["vision", "connector", "language"],
+            "use_reentrant": False,
+        },
+        "training_flops_per_microbatch": {
+            "algorithmic": 3_000_000_000,
+            "checkpoint_recompute": 900_000_000,
+            "executed": 3_900_000_000,
+        },
         "median_step_ms": 500.0,
         "p95_step_ms": 520.0,
         "steps_per_second": 2.0,

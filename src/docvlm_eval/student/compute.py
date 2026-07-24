@@ -31,6 +31,25 @@ class ForwardFlops:
         return {**asdict(self), "total": self.total}
 
 
+@dataclass(frozen=True)
+class TrainingFlops:
+    """Separate scientific compute from checkpoint implementation overhead."""
+
+    algorithmic: int
+    checkpoint_recompute: int = 0
+
+    @property
+    def executed(self) -> int:
+        return self.algorithmic + self.checkpoint_recompute
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "algorithmic": self.algorithmic,
+            "checkpoint_recompute": self.checkpoint_recompute,
+            "executed": self.executed,
+        }
+
+
 def visual_tokens_for_canvas(
     image_long_side: int,
     patch_size: int,
@@ -48,27 +67,40 @@ def visual_tokens_for_canvas(
     return patch_side * patch_side
 
 
-def _vision_flops(config: StudentConfig, tokens: int, batch_size: int) -> int:
+def _vision_block_flops(
+    config: StudentConfig,
+    tokens: int,
+    batch_size: int,
+) -> int:
     if tokens == 0:
         return 0
     vision = config.vision
     width = vision.width
     hidden = int(width * vision.mlp_ratio)
+    attention_projections = 8 * tokens * width * width
+    attention_products = 4 * tokens * tokens * width
+    mlp = 4 * tokens * width * hidden
+    return batch_size * vision.layers * (
+        attention_projections + attention_products + mlp
+    )
+
+
+def _vision_flops(config: StudentConfig, tokens: int, batch_size: int) -> int:
+    if tokens == 0:
+        return 0
+    vision = config.vision
     patch_projection = (
         2
         * tokens
-        * width
+        * vision.width
         * 3
         * vision.patch_size
         * vision.patch_size
     )
-    attention_projections = 8 * tokens * width * width
-    attention_products = 4 * tokens * tokens * width
-    mlp = 4 * tokens * width * hidden
-    blocks = vision.layers * (
-        attention_projections + attention_products + mlp
+    return (
+        batch_size * patch_projection
+        + _vision_block_flops(config, tokens, batch_size)
     )
-    return batch_size * (patch_projection + blocks)
 
 
 def _connector_flops(
@@ -219,10 +251,73 @@ def estimate_training_flops(
     ).total
 
 
+def estimate_training_flops_breakdown(
+    config: StudentConfig,
+    *,
+    text_tokens: int,
+    vision_tokens: int,
+    batch_size: int = 1,
+    checkpoint_components: tuple[str, ...] = (),
+) -> TrainingFlops:
+    """Estimate algorithmic training FLOPs and checkpoint recomputation."""
+
+    supported = {"vision", "connector", "language"}
+    requested = set(checkpoint_components)
+    if len(requested) != len(checkpoint_components) or not requested <= supported:
+        raise ValueError(
+            "checkpoint components must be a unique subset of "
+            "vision, connector, language"
+        )
+    forward = estimate_forward_flops(
+        config,
+        text_tokens=text_tokens,
+        vision_tokens=vision_tokens,
+        batch_size=batch_size,
+    )
+    has_image = vision_tokens > 0
+    sequence_tokens = text_tokens + (
+        config.connector.latent_tokens if has_image else 0
+    )
+    recompute = 0
+    if "vision" in requested and has_image:
+        recompute += _vision_block_flops(
+            config,
+            vision_tokens,
+            batch_size,
+        )
+    if "connector" in requested and has_image:
+        recompute += _connector_flops(
+            config,
+            vision_tokens,
+            batch_size,
+        )
+    if "language" in requested:
+        recompute += _language_flops(
+            config,
+            sequence_tokens,
+            batch_size,
+        )
+    return TrainingFlops(
+        algorithmic=3 * forward.total,
+        checkpoint_recompute=recompute,
+    )
+
+
 def estimate_batch_training_flops(
     config: StudentConfig,
     batch: dict[str, Any],
 ) -> int:
+    return estimate_batch_training_flops_breakdown(config, batch).algorithmic
+
+
+def estimate_batch_training_flops_breakdown(
+    config: StudentConfig,
+    batch: dict[str, Any],
+    *,
+    checkpoint_components: tuple[str, ...] = (),
+) -> TrainingFlops:
+    """Account for actual batch shapes and optional block recomputation."""
+
     input_ids = batch.get("input_ids")
     if input_ids is None or getattr(input_ids, "ndim", 0) != 2:
         raise ValueError("compute accounting requires rank-2 input_ids")
@@ -249,14 +344,21 @@ def estimate_batch_training_flops(
             for length in lengths
         ):
             raise ValueError("packed sample exceeds the visual position budget")
-        return sum(
-            estimate_training_flops(
+        per_sample = [
+            estimate_training_flops_breakdown(
                 config,
                 text_tokens=int(input_ids.shape[1]),
                 vision_tokens=length,
                 batch_size=1,
+                checkpoint_components=checkpoint_components,
             )
             for length in lengths
+        ]
+        return TrainingFlops(
+            algorithmic=sum(item.algorithmic for item in per_sample),
+            checkpoint_recompute=sum(
+                item.checkpoint_recompute for item in per_sample
+            ),
         )
     if pixel_values is None:
         vision_tokens = 0
@@ -268,11 +370,12 @@ def estimate_batch_training_flops(
         vision_tokens = math.ceil(height / patch) * math.ceil(width / patch)
         if vision_tokens > config.vision.max_position_tokens:
             raise ValueError("batch exceeds the visual position budget")
-    return estimate_training_flops(
+    return estimate_training_flops_breakdown(
         config,
         text_tokens=int(input_ids.shape[1]),
         vision_tokens=vision_tokens,
         batch_size=int(input_ids.shape[0]),
+        checkpoint_components=checkpoint_components,
     )
 
 
@@ -284,6 +387,7 @@ def estimate_rlvr_step_flops(
     completion_tokens: int,
     group_size: int,
     replay_text_tokens: int | None = None,
+    checkpoint_components: tuple[str, ...] = (),
 ) -> dict[str, int]:
     """Estimate one rollout, policy/reference scoring, and optional replay."""
 
@@ -313,17 +417,26 @@ def estimate_rlvr_step_flops(
         vision_tokens=vision_tokens,
         batch_size=group_size,
     ).total
-    policy_update = 3 * full_group
+    policy_update_breakdown = estimate_training_flops_breakdown(
+        config,
+        text_tokens=scored_tokens,
+        vision_tokens=vision_tokens,
+        batch_size=group_size,
+        checkpoint_components=checkpoint_components,
+    )
+    policy_update = policy_update_breakdown.algorithmic
     reference_scoring = full_group
-    replay = (
-        estimate_training_flops(
+    replay_breakdown = (
+        estimate_training_flops_breakdown(
             config,
             text_tokens=replay_text_tokens,
             vision_tokens=vision_tokens,
+            checkpoint_components=checkpoint_components,
         )
         if replay_text_tokens is not None
-        else 0
+        else TrainingFlops(algorithmic=0)
     )
+    replay = replay_breakdown.algorithmic
     result = {
         "rollout": rollout,
         "policy_update": policy_update,
@@ -331,6 +444,13 @@ def estimate_rlvr_step_flops(
         "supervised_replay": replay,
     }
     result["total"] = sum(result.values())
+    result["checkpoint_recompute"] = (
+        policy_update_breakdown.checkpoint_recompute
+        + replay_breakdown.checkpoint_recompute
+    )
+    result["executed_total"] = (
+        result["total"] + result["checkpoint_recompute"]
+    )
     return result
 
 
@@ -343,6 +463,7 @@ def compute_profile(
     rlvr_completion_tokens: int = 128,
     rlvr_group_size: int = 8,
     rlvr_replay_every_steps: int = 20,
+    checkpoint_components: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     vision_tokens = visual_tokens_for_canvas(
         image_long_side,
@@ -360,34 +481,61 @@ def compute_profile(
         prompt_tokens=rlvr_prompt_tokens,
         completion_tokens=rlvr_completion_tokens,
         group_size=rlvr_group_size,
+        checkpoint_components=checkpoint_components,
     )
-    replay = estimate_training_flops(
+    training = estimate_training_flops_breakdown(
         config,
         text_tokens=text_tokens,
         vision_tokens=vision_tokens,
+        checkpoint_components=checkpoint_components,
     )
+    replay = training.algorithmic
+    replay_recompute = training.checkpoint_recompute
     expected_replay = (
         replay // rlvr_replay_every_steps
         if rlvr_replay_every_steps > 0
         else 0
     )
     expected_rlvr = rlvr_without_replay["total"] + expected_replay
+    expected_rlvr_recompute = (
+        rlvr_without_replay["checkpoint_recompute"]
+        + (
+            replay_recompute // rlvr_replay_every_steps
+            if rlvr_replay_every_steps > 0
+            else 0
+        )
+    )
     return {
         "image_long_side": image_long_side,
         "vision_tokens": vision_tokens,
         "latent_tokens": config.connector.latent_tokens,
         "text_tokens": text_tokens,
         "forward_flops": forward.to_dict(),
-        "training_flops_per_sample": 3 * forward.total,
+        "training_flops_per_sample": training.algorithmic,
+        "checkpoint_recompute_flops_per_sample": (
+            training.checkpoint_recompute
+        ),
+        "executed_training_flops_per_sample": training.executed,
         "rlvr": {
             **rlvr_without_replay,
             "expected_replay_per_step": expected_replay,
             "expected_total_per_step": int(expected_rlvr),
+            "expected_checkpoint_recompute_per_step": int(
+                expected_rlvr_recompute
+            ),
+            "expected_executed_total_per_step": int(
+                expected_rlvr + expected_rlvr_recompute
+            ),
         },
         "convention": {
             "multiply_add": "two_flops",
             "training_multiplier": 3,
             "attention": "dense_masked",
+            "student_flops_seen": (
+                "algorithmic forward plus backward; checkpoint "
+                "recomputation is reported separately"
+            ),
+            "checkpoint_components": list(checkpoint_components),
             "excluded": [
                 "normalization",
                 "activation",

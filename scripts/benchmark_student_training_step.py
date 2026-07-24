@@ -92,6 +92,12 @@ def _wandb_log(args: argparse.Namespace, report: dict[str, Any]) -> None:
             payload[f"training_feasibility/optimizer_{key}"] = (
                 optimizer_state[key]
             )
+    training_flops = report.get("training_flops_per_microbatch") or {}
+    for key in ("algorithmic", "checkpoint_recompute", "executed"):
+        if training_flops.get(key) is not None:
+            payload[
+                f"training_feasibility/{key}_flops_per_microbatch"
+            ] = training_flops[key]
     run.log(payload)
     run.summary["training_feasibility_report"] = report
     run.summary["training_feasibility_gate_status"] = report[
@@ -148,6 +154,7 @@ def main() -> None:
     pretraining = blueprint["training"]["pretraining"]
     pipeline = pretraining["input_pipeline"]
     optimizer = pretraining["optimizer"]
+    checkpointing = blueprint["training"]["activation_checkpointing"]
     config = TrainingBenchmarkConfig(
         patch_grid=args.patch_grid,
         text_tokens=(
@@ -167,6 +174,13 @@ def main() -> None:
             or str(pipeline["packed_attention_backend"])
         ),
         precision=args.precision or str(optimizer["precision"]),
+        gradient_checkpointing=bool(checkpointing["enabled"]),
+        gradient_checkpointing_components=tuple(
+            str(value) for value in checkpointing["components"]
+        ),
+        gradient_checkpointing_use_reentrant=bool(
+            checkpointing["use_reentrant"]
+        ),
         device=args.device,
         seed=args.seed if args.seed is not None else int(optimizer["seed"]),
     )

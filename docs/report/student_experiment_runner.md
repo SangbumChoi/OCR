@@ -102,7 +102,8 @@ state-materialization, and steady-state CUDA peaks, optimizer-state bytes and st
 per-loss finiteness, the resolved visual backend, and failure/OOM evidence. The
 `training_feasibility` gate requires bfloat16 CUDA execution resolved to FlexAttention, all three
 optimizer steps to advance, finite losses and gradients, and effective peak reserved memory below
-95% of device memory.
+95% of device memory. It also requires the benchmark to use the exact production
+`vision`/`connector`/`language` non-reentrant activation-checkpointing contract.
 
 Run both authoritative target-GPU preflights before committing to a full training job:
 

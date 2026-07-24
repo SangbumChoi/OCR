@@ -392,6 +392,39 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 errors.append(f"{arm_id}.{key} must be between 0 and 1")
 
     training = blueprint["training"]
+    checkpointing = training.get("activation_checkpointing")
+    if not isinstance(checkpointing, dict):
+        errors.append(
+            "training.activation_checkpointing must be a mapping"
+        )
+    else:
+        if not isinstance(checkpointing.get("enabled"), bool):
+            errors.append(
+                "training.activation_checkpointing.enabled must be a boolean"
+            )
+        if not isinstance(
+            checkpointing.get("use_reentrant"), bool
+        ):
+            errors.append(
+                "training.activation_checkpointing.use_reentrant "
+                "must be a boolean"
+            )
+        components = checkpointing.get("components")
+        supported_components = {"vision", "connector", "language"}
+        if (
+            not isinstance(components, list)
+            or not components
+            or any(
+                not isinstance(component, str)
+                or component not in supported_components
+                for component in components
+            )
+            or len(set(components)) != len(components)
+        ):
+            errors.append(
+                "training.activation_checkpointing.components must be "
+                "a unique non-empty subset of vision, connector, language"
+            )
     supported_pretraining_losses = {
         "autoregressive",
         "teacher_kl",
@@ -813,6 +846,53 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 "evaluation_gates.training_feasibility."
                 "required_precision must be float16 or bfloat16"
+            )
+        if not isinstance(
+            feasibility.get("require_gradient_checkpointing"), bool
+        ):
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "require_gradient_checkpointing must be a boolean"
+            )
+        required_checkpoint_components = feasibility.get(
+            "required_gradient_checkpointing_components"
+        )
+        if (
+            not isinstance(required_checkpoint_components, list)
+            or not required_checkpoint_components
+            or len(set(required_checkpoint_components))
+            != len(required_checkpoint_components)
+            or not set(required_checkpoint_components)
+            <= {"vision", "connector", "language"}
+        ):
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "required_gradient_checkpointing_components are invalid"
+            )
+        if not isinstance(
+            feasibility.get(
+                "required_gradient_checkpointing_use_reentrant"
+            ),
+            bool,
+        ):
+            errors.append(
+                "evaluation_gates.training_feasibility."
+                "required_gradient_checkpointing_use_reentrant "
+                "must be a boolean"
+            )
+        if isinstance(checkpointing, dict) and (
+            feasibility.get("require_gradient_checkpointing")
+            != checkpointing.get("enabled")
+            or required_checkpoint_components
+            != checkpointing.get("components")
+            or feasibility.get(
+                "required_gradient_checkpointing_use_reentrant"
+            )
+            != checkpointing.get("use_reentrant")
+        ):
+            errors.append(
+                "training feasibility gate checkpointing requirements "
+                "must match training.activation_checkpointing"
             )
         for field in (
             "min_benchmark_schema_version",

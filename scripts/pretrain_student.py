@@ -280,6 +280,8 @@ def main() -> None:
             f"{result.token_unit}_tokens={result.budget_tokens_seen:,} "
             f"supervised_tokens={result.tokens_seen:,} "
             f"student_flops={result.student_flops_seen:,} "
+            f"executed_student_flops="
+            f"{result.executed_student_flops_seen:,} "
             f"checkpoint={result.last_checkpoint}"
         )
 

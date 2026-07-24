@@ -74,6 +74,7 @@ The SFT sampler shuffles deterministically and exhausts every example once per e
 single-process final batch may be smaller. Distributed runs pad only enough examples to keep all
 ranks on equal batch counts. The inherited pretraining auxiliary and distillation losses are
 explicitly zeroed, so SFT optimizes only supervised autoregressive tokens.
+SFT inherits the production component-level activation-checkpointing contract used by pretraining.
 
 Use `torchrun` for SFT data parallelism and `--resume latest` for exact continuation. The checkpoint
 records `run_stage: sft:<target_mode>`; SFT resume rejects a different target mode, and RLVR rejects
@@ -99,6 +100,12 @@ replay buffer, so results must be described as single-update GRPO.
 The visual tower and connector run once per image during autoregressive rollout; the fixed visual
 prefix is reused across every group member and generated token. Policy and frozen-reference
 log-probabilities are each computed in one teacher-forced pass over the completed sequences.
+Activation checkpointing applies only to the trainable policy's gradient-bearing log-probability
+and replay passes. No-grad rollout generation and the frozen reference remain uncheckpointed.
+`rlvr/student_flops_seen` remains the algorithmic compute-matching counter, while
+`rlvr/checkpoint_recompute_flops_seen` and `rlvr/executed_student_flops_seen` expose the additional
+policy recomputation. Per-step forms are logged as `rlvr/step_checkpoint_recompute_flops` and
+`rlvr/step_executed_student_flops`.
 
 Every 20 rollout updates by default, the optimizer also receives an evidence-linked supervised
 cross-entropy anchor with coefficient 0.10. This preserves structured answering and supplies a
@@ -156,7 +163,8 @@ anchor can still provide a supervised update.
 RLVR checkpoints contain policy weights, optimizer and AMP scaler state, Python/Torch/CUDA RNG
 state, rollout and optimizer cursors, student FLOPs consumed, tokenizer fingerprint, and a
 frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, replay
-contract, or compute-budget contract. Setting `max_steps: null`, `stop_at_student_flops: true`, and
+contract, compute-budget contract, or activation-checkpointing contract. Setting `max_steps: null`,
+`stop_at_student_flops: true`, and
 `total_student_flops` makes the compute budget the production stop; this is used by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 

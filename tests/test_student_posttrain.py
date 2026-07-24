@@ -117,6 +117,28 @@ def _rl_config(
     )
 
 
+def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
+    from docvlm_eval.architecture import load_blueprint
+    from docvlm_eval.student.posttrain import RLVRConfig, SFTConfig
+
+    blueprint = load_blueprint("configs/sub1b_architecture.yaml")
+    sft = SFTConfig.from_blueprint(blueprint, tmp_path / "sft")
+    rlvr = RLVRConfig.from_blueprint(
+        blueprint,
+        tmp_path / "rlvr",
+        reference_id="reference",
+    )
+
+    for config in (sft, rlvr):
+        assert config.gradient_checkpointing is True
+        assert config.gradient_checkpointing_components == (
+            "vision",
+            "connector",
+            "language",
+        )
+        assert config.gradient_checkpointing_use_reentrant is False
+
+
 def test_structured_posttraining_dataset_exposes_ablation_targets():
     import json
 
@@ -546,7 +568,10 @@ def test_rlvr_student_flop_budget_stops_after_crossing_target(
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _rl_config(tmp_path / "probe", 1),
+        replace(
+            _rl_config(tmp_path / "probe", 1),
+            gradient_checkpointing=True,
+        ),
         rewards,
     )
     result = train_grpo(
@@ -560,15 +585,24 @@ def test_rlvr_student_flop_budget_stops_after_crossing_target(
             max_steps=None,
             total_student_flops=probe.student_flops_seen + 1,
             stop_at_student_flops=True,
+            gradient_checkpointing=True,
         ),
         rewards,
     )
 
     assert result.rollout_step == 2
     assert result.student_flops_seen >= probe.student_flops_seen + 1
+    assert result.checkpoint_recompute_flops_seen > 0
+    assert result.executed_student_flops_seen == (
+        result.student_flops_seen
+        + result.checkpoint_recompute_flops_seen
+    )
     state = json.loads(
         (
             Path(result.last_checkpoint) / "trainer_state.json"
         ).read_text(encoding="utf-8")
     )
     assert state["student_flops_seen"] == result.student_flops_seen
+    assert state["checkpoint_recompute_flops_seen"] == (
+        result.checkpoint_recompute_flops_seen
+    )
