@@ -1,10 +1,9 @@
-# CPU smoke test for the complete native-student experiment DAG.
-# This uses the same stage contracts as the full experiment with one tiny model and one step.
+# CPU smoke test for two or more attested failure-driven curriculum rounds.
 
 schema_version: 1
-name: docvlm-tiny-smoke
+name: docvlm-tiny-curriculum
 blueprint: configs/sub1b_architecture.yaml
-output_root: outputs/docvlm-tiny-smoke
+output_root: outputs/docvlm-tiny-curriculum
 
 runtime:
   device: cpu
@@ -19,17 +18,20 @@ synthetic:
   cases: [hard_table]
   count: 1
   train_count: null
-  validation_count: null
+  validation_count: 1
   heldout_count: null
   difficulty_level: 2
   train_seed: 17
-  validation_seed: null
+  validation_seed: 1707
   heldout_seed: 17017
   no_degrade: true
   variant: clean
   training_policy_plan: null
   adaptation_policy:
-    enabled: false
+    enabled: true
+    config: configs/sub1b_synthesis_policy.yaml
+    budget: 1
+    seed: 91
 
 data:
   components:
@@ -109,6 +111,6 @@ evaluation:
     max_temperature: 20.0
     seed: 47
   wandb_project: null
-  wandb_tags: [native-student, smoke]
+  wandb_tags: [native-student, curriculum-smoke]
   baseline_evaluation: null
   monolingual_control_evaluation: null

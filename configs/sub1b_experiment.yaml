@@ -132,6 +132,9 @@ initialization:
   language_source: null
   token_map: null
 
+continuation:
+  enabled: false
+
 pretraining:
   teacher_checkpoint: null
   epochs: null

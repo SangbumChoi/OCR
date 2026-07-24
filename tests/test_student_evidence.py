@@ -1,6 +1,9 @@
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
+
+import yaml
 
 from docvlm_eval.student.evidence import (
     build_experiment_attestation,
@@ -11,6 +14,7 @@ from docvlm_eval.student.experiment import (
     ExperimentPlan,
     ExperimentRunner,
     ExperimentStage,
+    build_experiment_plan,
 )
 
 
@@ -25,26 +29,32 @@ def _write_json(path: Path, value: dict) -> None:
     )
 
 
-def _evidence_plan(tmp_path: Path) -> ExperimentPlan:
+def _evidence_plan(
+    tmp_path: Path,
+    *,
+    include_initialization: bool = True,
+) -> ExperimentPlan:
     root = tmp_path / "run"
     initial = root / "artifacts" / "initial" / "metadata.json"
-    _write_json(
-        initial,
-        {
-            "initialization_arm": "I0_random",
-            "initialization_seed": 5,
-            "parameter_counts": {"total": 587_019},
-            "transfer_reports": [],
-        },
-    )
-    stages = [
-        ExperimentStage(
-            "initialize_student",
-            (sys.executable, "-c", "pass"),
-            (),
-            (Artifact(str(initial)),),
+    stages = []
+    if include_initialization:
+        _write_json(
+            initial,
+            {
+                "initialization_arm": "I0_random",
+                "initialization_seed": 5,
+                "parameter_counts": {"total": 587_019},
+                "transfer_reports": [],
+            },
         )
-    ]
+        stages.append(
+            ExperimentStage(
+                "initialize_student",
+                (sys.executable, "-c", "pass"),
+                (),
+                (Artifact(str(initial)),),
+            )
+        )
     for stage_name, trainer_state in (
         ("pretrain", {"global_step": 1, "effective_tokens_seen": 804}),
         ("sft", {"global_step": 1, "effective_tokens_seen": 1024}),
@@ -69,7 +79,7 @@ def _evidence_plan(tmp_path: Path) -> ExperimentPlan:
             ExperimentStage(
                 stage_name,
                 (sys.executable, "-c", "pass"),
-                (stages[-1].name,),
+                (stages[-1].name,) if stages else (),
                 (Artifact(str(pointer)),),
             )
         )
@@ -190,3 +200,35 @@ def test_attestation_verification_detects_checkpoint_tampering(tmp_path):
         result["observed_attestation_sha256"]
         != result["expected_attestation_sha256"]
     )
+
+
+def test_attestation_uses_blueprint_budget_for_continuation(tmp_path):
+    plan = _evidence_plan(tmp_path, include_initialization=False)
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "blueprint-reference")
+    config = tmp_path / "blueprint-reference.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    blueprint_reference = build_experiment_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+    plan = replace(plan, resolved_blueprint=blueprint_reference.resolved_blueprint)
+
+    attestation = build_experiment_attestation(plan, repo_root=ROOT)
+
+    budget = next(
+        check
+        for check in attestation["contract_checks"]
+        if check["id"] == "deployment_parameter_budget"
+    )
+    assert budget["status"] == "pass"
+    assert budget["evidence"] == {
+        "actual_parameters": 587_019,
+        "max_parameters_exclusive": 1_000_000_000,
+        "source": "resolved_blueprint",
+    }

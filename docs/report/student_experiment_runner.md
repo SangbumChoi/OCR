@@ -9,6 +9,12 @@ of the next synthetic train batch. The full configuration first benchmarks packe
 active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
 and peak memory as a checked run artifact.
 
+To execute that plan for multiple rounds while preserving the complete student and tokenizer, use
+[`student_curriculum_runner.md`](student_curriculum_runner.md). Its continuation DAG skips
+acquisition, tokenizer construction, initialization, and pretraining only after a full-hash parent
+attestation validates the exact checkpoint, tokenizer, validation-derived policy, and replay
+source.
+
 Random initialization is reproducible: `initialization.seed` is validated, passed to model
 construction before parameter allocation, included in the stage signature, and written into the
 initial checkpoint metadata.
@@ -34,7 +40,9 @@ experiment DAG.
 
 The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
-actual loaded model count. Generalization, grounding, counterfactual reasoning, and reliability
+actual initialization count for a base run. A continuation without an initialization stage uses
+the independently estimated count from its validated resolved blueprint. Generalization,
+grounding, counterfactual reasoning, and reliability
 require a matched reference-checkpoint evaluation, while multilingual retention requires a
 per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight JSON
 and requires matched loop/candidate measurements from the exact resolved student configuration.

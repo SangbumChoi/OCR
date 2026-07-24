@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from ..architecture import estimate_parameters
 from .experiment import (
     ExperimentPlan,
     ExperimentRunner,
@@ -140,9 +141,15 @@ def _semantic_evidence(
         _read_json(initialization_path) if initialization_path.is_file() else None
     )
     evidence["initialization"] = initialization
-    parameter_total = int(
+    initialized_parameter_total = int(
         ((initialization or {}).get("parameter_counts") or {}).get("total", 0)
     )
+    if initialized_parameter_total > 0:
+        parameter_total = initialized_parameter_total
+        parameter_source = "initialization_metadata"
+    else:
+        parameter_total = int(estimate_parameters(plan.resolved_blueprint)["total"])
+        parameter_source = "resolved_blueprint"
     checks.append(
         _check(
             "deployment_parameter_budget",
@@ -150,6 +157,7 @@ def _semantic_evidence(
             {
                 "actual_parameters": parameter_total,
                 "max_parameters_exclusive": 1_000_000_000,
+                "source": parameter_source,
             },
         )
     )

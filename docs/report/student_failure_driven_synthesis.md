@@ -103,5 +103,7 @@ python scripts/plan_student_synthesis.py \
 ```
 
 This is a cross-run curriculum: run \(t\) produces the authorized allocation for run \(t+1\).
-It does not adapt against the final heldout set and does not allow student predictions to replace
-exact generator ground truth.
+[`student_curriculum_runner.md`](student_curriculum_runner.md) executes the complete attested loop
+without rebuilding the tokenizer, reinitializing the model, or repeating pretraining. It does not
+adapt against the final heldout set and does not allow student predictions to replace exact
+generator ground truth.

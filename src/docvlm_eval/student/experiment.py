@@ -26,6 +26,7 @@ from .checkpoint_acquisition import (
     checkpoint_path_from_manifest,
 )
 from .config import StudentConfig
+from .continuation import resolve_continuation_contract
 from .distillation import DistillationConfig
 from .mixture import MixtureComponent, validate_components
 from .pretrain import PretrainConfig, pretraining_supervision_contract
@@ -684,6 +685,31 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError("experiment.initialization must be a mapping")
     if int(initialization.get("seed", 0)) < 0:
         raise ValueError("initialization.seed must be non-negative")
+    continuation = raw.get("continuation") or {"enabled": False}
+    if not isinstance(continuation, dict):
+        raise ValueError("experiment.continuation must be a mapping")
+    if "enabled" in continuation and not isinstance(
+        continuation["enabled"],
+        bool,
+    ):
+        raise ValueError("continuation.enabled must be a boolean")
+    if bool(continuation.get("enabled", False)):
+        if not synthetic.get("training_policy_plan"):
+            raise ValueError(
+                "enabled continuation requires synthetic.training_policy_plan"
+            )
+        if not bool(adaptation.get("enabled", False)):
+            raise ValueError(
+                "enabled continuation requires synthetic adaptation_policy "
+                "for the next round"
+            )
+        if _resolve_path(
+            repo_root,
+            continuation.get("parent_root") or "",
+        ) == output_root:
+            raise ValueError(
+                "continuation parent_root and output_root must differ"
+            )
     posttraining = _require_mapping(raw, "posttraining")
     sft = posttraining.get("sft")
     preference = posttraining.get("preference")
@@ -913,7 +939,9 @@ def build_experiment_plan(
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError("experiment root must be a mapping")
-    name, output_root, blueprint_path = _validate_spec(raw, repo_root)
+    experiment_name, output_root, blueprint_path = _validate_spec(raw, repo_root)
+    continuation_spec = raw.get("continuation") or {"enabled": False}
+    continuation_enabled = bool(continuation_spec.get("enabled", False))
     runtime = raw.get("runtime") or {}
     device = str(runtime.get("device") or "auto")
     visual_benchmark = runtime.get("visual_backend_benchmark") or {}
@@ -995,6 +1023,12 @@ def build_experiment_plan(
     rlvr_dir = artifacts / "rlvr"
     eval_dir = artifacts / "evaluation"
     next_synthesis_plan = artifacts / "synthetic" / "next_train_plan.json"
+    continuation_dir = artifacts / "continuation"
+    continuation_manifest = continuation_dir / "manifest.json"
+    curriculum_samples = continuation_dir / "train_with_replay.jsonl"
+    curriculum_samples_manifest = (
+        continuation_dir / "train_with_replay.manifest.json"
+    )
     leakage_report = artifacts / "data" / "split_leakage.json"
     resolved_blueprint_path = output_root / "resolved_blueprint.yaml"
     component_root = artifacts / "data" / "components"
@@ -1069,6 +1103,40 @@ def build_experiment_plan(
         sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
         sequence_target_seed=int(sequence_teacher.get("seed", 7)),
     )
+    continuation_contract = (
+        resolve_continuation_contract(
+            continuation_spec,
+            repo_root=repo_root,
+            blueprint=blueprint,
+        )
+        if continuation_enabled
+        else None
+    )
+    if continuation_contract is not None:
+        if (
+            training_policy_plan_path is None
+            or training_policy_plan_path.resolve()
+            != Path(
+                continuation_contract.training_policy_plan
+            ).resolve()
+        ):
+            raise ValueError(
+                "continuation training policy plan must be the exact parent "
+                "next_train_plan.json"
+            )
+        input_fingerprints["continuation_contract"] = (
+            continuation_contract.to_dict()
+        )
+        for control_name in (
+            "experiment_plan.json",
+            "experiment_spec.json",
+            "run_summary.json",
+        ):
+            input_fingerprints[f"continuation_parent_{control_name}"] = (
+                _file_fingerprint(
+                    Path(continuation_contract.parent_root) / control_name
+                )
+            )
     visual_benchmark_lengths = (
         [
             height * width
@@ -1174,6 +1242,33 @@ def build_experiment_plan(
 
     def script(name: str) -> str:
         return str((repo_root / "scripts" / name).resolve())
+
+    if continuation_contract is not None:
+        stages.append(
+            ExperimentStage(
+                "attest_continuation",
+                (
+                    python,
+                    script("attest_student_continuation.py"),
+                    "--parent-root",
+                    continuation_contract.parent_root,
+                    "--round-index",
+                    str(continuation_contract.round_index),
+                    "--replay-fraction",
+                    str(continuation_contract.replay_fraction),
+                    "--replay-seed",
+                    str(continuation_contract.replay_seed),
+                    "--optimizer-policy",
+                    continuation_contract.optimizer_policy,
+                    "--blueprint",
+                    str(resolved_blueprint_path),
+                    "--output",
+                    str(continuation_manifest),
+                ),
+                (),
+                (Artifact(str(continuation_manifest)),),
+            )
+        )
 
     visual_benchmark_stage_names: list[str] = []
     if visual_benchmark_enabled:
@@ -1409,7 +1504,12 @@ def build_experiment_plan(
                 ExperimentStage(
                     f"synthetic_{split}",
                     tuple(command),
-                    (),
+                    (
+                        ("attest_continuation",)
+                        if split == "train"
+                        and continuation_contract is not None
+                        else ()
+                    ),
                     (
                         Artifact(str(output / "index.json")),
                         Artifact(str(output / "gen_config.json")),
@@ -1531,8 +1631,8 @@ def build_experiment_plan(
                 ]
             )
 
-    for name, spec in hub_specs.items():
-        output = acquired_paths[name]
+    for component_name, spec in hub_specs.items():
+        output = acquired_paths[component_name]
         command = [
             python,
             script("acquire_student_data.py"),
@@ -1560,7 +1660,7 @@ def build_experiment_plan(
             command.extend(["--language", value])
         stages.append(
             ExperimentStage(
-                f"acquire_component_{name}",
+                f"acquire_component_{component_name}",
                 tuple(command),
                 (),
                 (
@@ -1716,6 +1816,54 @@ def build_experiment_plan(
         training_data = distilled_data
         training_data_dependency = "apply_teacher_targets"
 
+    if continuation_contract is not None:
+        pretraining_only = {
+            "build_synthetic_udd",
+            "build_validation_udd",
+            "mix_pretraining_data",
+            "export_teacher_requests",
+            "generate_teacher_predictions",
+            "apply_teacher_targets",
+        }
+        stages = [
+            stage
+            for stage in stages
+            if stage.name not in pretraining_only
+            and not stage.name.startswith("acquire_component_")
+            and not (
+                stage.name.startswith("acquire_")
+                and stage.name.endswith("_checkpoint")
+            )
+        ]
+        stages.append(
+            ExperimentStage(
+                "build_curriculum_samples",
+                (
+                    python,
+                    script("build_student_curriculum_samples.py"),
+                    "--current-samples",
+                    str(train_samples),
+                    "--replay-samples",
+                    continuation_contract.replay_samples,
+                    "--replay-fraction",
+                    str(continuation_contract.replay_fraction),
+                    "--replay-seed",
+                    str(continuation_contract.replay_seed),
+                    "--parent-round-index",
+                    str(continuation_contract.parent_round_index),
+                    "--output",
+                    str(curriculum_samples),
+                    "--manifest-output",
+                    str(curriculum_samples_manifest),
+                ),
+                ("attest_continuation", "build_train_samples"),
+                (
+                    Artifact(str(curriculum_samples)),
+                    Artifact(str(curriculum_samples_manifest)),
+                ),
+            )
+        )
+
     tokenizer_command = [
         python,
         script("train_student_tokenizer.py"),
@@ -1853,6 +2001,25 @@ def build_experiment_plan(
         )
     )
 
+    active_tokenizer = tokenizer_dir
+    posttraining_samples = train_samples
+    sft_checkpoint = "@student:pretrain"
+    sft_dependencies: tuple[str, ...] = (
+        "pretrain",
+        "build_train_samples",
+    )
+    if continuation_contract is not None:
+        stages = [
+            stage
+            for stage in stages
+            if stage.name
+            not in {"train_tokenizer", "initialize_student", "pretrain"}
+        ]
+        active_tokenizer = Path(continuation_contract.tokenizer)
+        posttraining_samples = curriculum_samples
+        sft_checkpoint = continuation_contract.checkpoint
+        sft_dependencies = ("build_curriculum_samples",)
+
     posttraining = raw.get("posttraining") or {}
     sft = posttraining.get("sft") or {}
     sft_command = [
@@ -1862,11 +2029,11 @@ def build_experiment_plan(
         "--config",
         str(resolved_blueprint_path),
         "--samples",
-        str(train_samples),
+        str(posttraining_samples),
         "--tokenizer",
-        str(tokenizer_dir),
+        str(active_tokenizer),
         "--checkpoint",
-        "@student:pretrain",
+        sft_checkpoint,
         "--output",
         str(sft_dir),
         "--device",
@@ -1879,7 +2046,7 @@ def build_experiment_plan(
         ExperimentStage(
             "sft",
             tuple(sft_command),
-            ("pretrain", "build_train_samples"),
+            sft_dependencies,
             (Artifact(str(sft_dir / "latest_checkpoint.txt")),),
         )
     )
@@ -1894,9 +2061,9 @@ def build_experiment_plan(
             "--config",
             str(resolved_blueprint_path),
             "--samples",
-            str(train_samples),
+            str(posttraining_samples),
             "--tokenizer",
-            str(tokenizer_dir),
+            str(active_tokenizer),
             "--checkpoint",
             "@student:sft",
             "--output",
@@ -1924,9 +2091,9 @@ def build_experiment_plan(
             "--config",
             str(resolved_blueprint_path),
             "--samples",
-            str(train_samples),
+            str(posttraining_samples),
             "--tokenizer",
-            str(tokenizer_dir),
+            str(active_tokenizer),
             "--checkpoint",
             "@student:sft",
             "--output",
@@ -1969,9 +2136,9 @@ def build_experiment_plan(
         "--config",
         str(resolved_blueprint_path),
         "--split",
-        f"train={train_samples}",
+        f"train={posttraining_samples}",
         "--tokenizer",
-        str(tokenizer_dir),
+        str(active_tokenizer),
         "--checkpoint",
         f"@student:{final_checkpoint_stage}",
         "--output",
@@ -2061,7 +2228,11 @@ def build_experiment_plan(
         eval_command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
     evaluation_dependencies = [
         final_checkpoint_stage,
-        "build_train_samples",
+        (
+            "build_curriculum_samples"
+            if continuation_contract is not None
+            else "build_train_samples"
+        ),
         "build_heldout_samples",
         *visual_benchmark_stage_names,
         *training_benchmark_stage_names,
@@ -2123,7 +2294,7 @@ def build_experiment_plan(
         }
     )
     return ExperimentPlan(
-        name=name,
+        name=experiment_name,
         root=str(output_root),
         blueprint=str(resolved_blueprint_path),
         resolved_blueprint=blueprint,
