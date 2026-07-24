@@ -104,6 +104,23 @@ eval_by_axis/ece_calibrated/<split> ← temperature-scaled ECE on the same split
 > "for grounding specifically, how do train and heldout compare?"). Pick whichever W&B panel grouping
 > you want — the values are identical.
 
+### Pair historical train and heldout metrics in one workspace
+
+Existing runs that predate `eval_by_axis` do not need to be rerun. After authenticating with W&B,
+create a saved workspace view that pairs every common `eval/train_<axis>` and
+`eval/heldout_<axis>` key in one line plot:
+
+```bash
+pip install wandb wandb-workspaces
+python scripts/configure_wandb_eval_workspace.py \
+  --entity sbdc \
+  --project docvlm-ablation
+```
+
+The script discovers the project's metric keys, creates panels only when both splits exist, fixes
+the score range to 0–1, and prints the saved workspace URL. It also accepts the legacy
+`eval/held_<axis>` spelling, while preferring the canonical `heldout` key when both exist.
+
 ### Native student checkpoint evaluation
 
 [`scripts/eval_student.py`](../../scripts/eval_student.py) uses the same paired naming contract for
