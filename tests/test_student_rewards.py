@@ -286,6 +286,67 @@ def test_program_trace_verifier_accepts_fraction_percent_equivalence():
     assert wrong_scale.components["rationale_program_fact_score"] < 1.0
 
 
+def test_program_trace_verifier_reexecutes_scientific_inference():
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+    from docvlm_eval.synth.latent import (
+        GraphNode,
+        GraphQuery,
+        LatentDocumentGraph,
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id="scientific-reward-trace",
+        template_family="scientific-reward-trace-v1",
+        nodes=[
+            GraphNode("treatment", "mean", 80, "Treatment mean"),
+            GraphNode("control", "mean", 100, "Control mean"),
+            GraphNode("treatment_se", "uncertainty", 3, "Treatment SE"),
+            GraphNode("control_se", "uncertainty", 2, "Control SE"),
+        ],
+        queries=[
+            GraphQuery(
+                "decision",
+                "Supported difference?",
+                "significance_decision",
+                ("treatment", "control", "treatment_se", "control_se"),
+                "H-science-inference",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "threshold": 1.96,
+                    "outputs": ["not supported", "supported"],
+                },
+            )
+        ],
+    )
+    resolved = graph.resolve("decision")
+    context = RewardContext(
+        sample_id="scientific-program-trace",
+        answers=(resolved.answer,),
+        gold_boxes=((0.1, 0.2, 0.5, 0.6),),
+        gold_rationale=resolved.rationale,
+        reasoning_trace=resolved.reasoning_trace,
+    )
+
+    result = score_structured_response(
+        build_structured_target(
+            resolved.answer,
+            evidence=context.gold_boxes,
+            rationale=resolved.rationale,
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+
+    assert result.components["rationale_program_fact_score"] == 1.0
+    assert result.components["program_trace_consistency"] == 1.0
+    assert result.components["grounded_rationale_consistency"] == 1.0
+
+
 def test_reward_context_rejects_a_tampered_program_trace():
     from docvlm_eval.schema import Sample
     from docvlm_eval.student.rewards import RewardContext

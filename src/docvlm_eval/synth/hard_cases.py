@@ -7,6 +7,7 @@ for a caller-provided RNG and expose a five-level curriculum coordinate.
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from functools import partial
@@ -567,13 +568,20 @@ def hard_science_case(
     language: str = "en",
     layout_family: str = "classic-v1",
 ) -> HardCase:
-    """Two-column research result with control-relative effect and best-condition selection."""
+    """Research result with exact effect, uncertainty, and inference programs."""
 
     text = partial(hard_text, language)
     difficulty = _difficulty(
         level,
-        skills=("scientific-table", "control-comparison", "effect-size", "claim-verification"),
-        base_hops=3,
+        skills=(
+            "scientific-table",
+            "control-comparison",
+            "effect-size",
+            "confidence-interval",
+            "statistical-inference",
+            "claim-verification",
+        ),
+        base_hops=5,
         cross_region=True,
     )
     conditions = [
@@ -583,13 +591,23 @@ def hard_science_case(
         text("condition_ab"),
     ]
     control = rng.randrange(92, 112)
+    stderr = [
+        value / 10
+        for value in rng.sample(range(12, 49), k=len(conditions))
+    ]
+    pooled_b = math.sqrt(stderr[0] ** 2 + stderr[2] ** 2)
+    b_supported = rng.random() < 0.5
+    b_effect = (
+        math.ceil(2.3 * pooled_b)
+        if b_supported
+        else max(1, math.floor(1.2 * pooled_b))
+    )
     means = [
         control,
         control - rng.randrange(10, 22),
-        control - rng.randrange(5, 16),
+        control - b_effect,
         control - rng.randrange(22, 36),
     ]
-    stderr = [round(rng.uniform(1.2, 4.8), 1) for _ in conditions]
     nodes: list[GraphNode] = []
     rows: list[list[str]] = []
     spots: list[tuple[int, int]] = []
@@ -605,7 +623,17 @@ def hard_science_case(
                 {"field_key": f"results_r{index}c1"},
             )
         )
-        spots.append((index, 1))
+        nodes.append(
+            GraphNode(
+                f"se_{index}",
+                "experimental-uncertainty",
+                se,
+                text("uncertainty_label", condition=condition),
+                "standard error",
+                {"field_key": f"results_r{index}c2"},
+            )
+        )
+        spots.extend(((index, 1), (index, 2)))
     queries = [
         GraphQuery(
             "control_value",
@@ -641,6 +669,46 @@ def hard_science_case(
             "H-science-comparison",
             answer_format="decimal:1",
         ),
+        GraphQuery(
+            "combination_interval",
+            text("science_q_ci"),
+            "confidence_interval",
+            ("mean_3", "se_3"),
+            "H-science-confidence-interval",
+            metric="anls",
+            answer_format="text",
+            parameters={
+                "critical_value": 1.96,
+                "decimal_places": 1,
+                "separator": text("science_interval_separator"),
+            },
+        ),
+        GraphQuery(
+            "most_precise_condition",
+            text("science_q_precision"),
+            "argmin",
+            tuple(f"se_{index}" for index in range(4)),
+            "H-science-uncertainty",
+            metric="anls",
+            answer_format="text",
+            parameters={"outputs": conditions},
+        ),
+        GraphQuery(
+            "compound_b_significance",
+            text("science_q_significance", condition=conditions[2]),
+            "significance_decision",
+            ("mean_2", "mean_0", "se_2", "se_0"),
+            "H-science-inference",
+            metric="anls",
+            answer_format="text",
+            parameters={
+                "threshold": 1.96,
+                "outputs": [
+                    text("science_not_supported"),
+                    text("science_supported"),
+                ],
+            },
+        ),
     ]
     graph = LatentDocumentGraph(
         graph_id=f"hard-science-{rng.randrange(1_000_000_000)}",
@@ -650,15 +718,30 @@ def hard_science_case(
             queries[0],
             *([queries[2]] if level >= 2 else []),
             *([queries[1]] if level >= 3 else []),
-            *([queries[3]] if level >= 5 else []),
+            *([queries[4], queries[5]] if level >= 4 else []),
+            *([queries[3], queries[6]] if level >= 5 else []),
         ],
-        metadata={"control_node": "mean_0", "reported_uncertainty": "standard error"},
+        metadata={
+            "control_node": "mean_0",
+            "reported_uncertainty": "standard error",
+            "confidence_level": 0.95,
+            "critical_value": 1.96,
+            "significance_rule": "two-sided absolute z threshold",
+            "authored_compound_b_supported": b_supported,
+        },
         language=language,
     )
     layout = hard_layout_spec("hard_science", layout_family)
     b = DocBuilder(
         "scientific research paper",
-        ["two-column-paper", "scientific-table", "effect-size", "claim-verification"],
+        [
+            "two-column-paper",
+            "scientific-table",
+            "effect-size",
+            "uncertainty",
+            "statistical-inference",
+            "claim-verification",
+        ],
         "relaxed accuracy",
         page=layout.page,
         css=layout.css,
@@ -686,6 +769,7 @@ def hard_science_case(
         b.line("M. Rivera, J. Chen, and S. Okafor", cls="authors")
         b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
         b.line(text("science_equation"), cls="equation")
+        b.line(text("science_inference"), cls="equation")
         add_table()
         b.line(text("science_caption"), cls="caption")
     elif layout.family == "compact-v1":
@@ -695,6 +779,7 @@ def hard_science_case(
         b.raw(f"<div class=abstract>{text('science_abstract')}</div></div>")
         b.raw("<div class=paper-results>")
         b.line(text("science_equation"), cls="equation")
+        b.line(text("science_inference"), cls="equation")
         add_table()
         b.line(text("science_caption"), cls="caption")
         b.raw("</div></section>")
@@ -707,6 +792,7 @@ def hard_science_case(
         b.raw("</section>")
         b.raw(f"<div class=abstract>{text('science_abstract')}</div>")
         b.line(text("science_equation"), cls="equation")
+        b.line(text("science_inference"), cls="equation")
     b.task(text("science_task"))
     _attach(b, graph, difficulty)
     b.want_fulltext(text("fulltext"))

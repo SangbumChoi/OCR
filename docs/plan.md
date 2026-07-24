@@ -279,6 +279,10 @@ added factor lifting the score a step, ending well above the baseline.
   A programmatic parallel-process diagram links every visible arrow rate to executable path
   products, parallel-path aggregation, topology lookup, and expected-count targets across three
   semantic-preserving layouts and five difficulty levels.
+  Scientific result pages ground every mean and standard error separately, generate unambiguous
+  confidence-interval and precision questions, and balance supported versus unsupported
+  pooled-standard-error significance claims. Their interval and decision programs are independently
+  re-executed by production RLVR rather than accepted from authored rationale text.
   Every executable graph query now preserves a fingerprinted reasoning trace through QA and sample
   conversion. Production RLVR independently re-executes that trace and combines evidence overlap,
   semantic rationale similarity, required-number recall, and hallucinated-number precision; a

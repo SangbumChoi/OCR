@@ -257,7 +257,8 @@ This graph supports exact supervision for:
 - investment documents: period, currency, entity, metric, provenance, and derived ratios;
 - multilingual pages: script mixing, bidirectional spans, vertical text, transliteration, and
   locale-specific numeric formats;
-- scientific documents: figure-panel references, citations, equations, captions, and claims.
+- scientific documents: figure-panel references, citations, equations, captions, mean/uncertainty
+  extraction, confidence intervals, pooled-error significance decisions, and claims.
 
 Difficulty is controlled by evidence count, spatial dispersion, distractor similarity, operation
 depth, answer type, visual degradation, and whether the answer is absent. Train and held-out splits

@@ -94,6 +94,97 @@ def test_weighted_paths_are_executable():
     assert resolved.reasoning_trace["answer_value"] == pytest.approx(0.2)
 
 
+def test_scientific_interval_and_significance_programs_are_executable():
+    graph = LatentDocumentGraph(
+        graph_id="scientific-inference",
+        template_family="scientific-inference-v1",
+        nodes=[
+            GraphNode("treatment", "mean", 80, "Treatment mean"),
+            GraphNode("control", "mean", 100, "Control mean"),
+            GraphNode("treatment_se", "uncertainty", 3, "Treatment SE"),
+            GraphNode("control_se", "uncertainty", 2, "Control SE"),
+        ],
+        queries=[
+            GraphQuery(
+                "interval",
+                "95% interval?",
+                "confidence_interval",
+                ("treatment", "treatment_se"),
+                "H-science-confidence-interval",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "critical_value": 1.96,
+                    "decimal_places": 1,
+                    "separator": " to ",
+                },
+            ),
+            GraphQuery(
+                "decision",
+                "Supported difference?",
+                "significance_decision",
+                ("treatment", "control", "treatment_se", "control_se"),
+                "H-science-inference",
+                metric="anls",
+                answer_format="text",
+                parameters={
+                    "threshold": 1.96,
+                    "outputs": ["not supported", "supported"],
+                },
+            ),
+        ],
+    )
+
+    interval = graph.resolve("interval")
+    decision = graph.resolve("decision")
+
+    assert interval.answer == "74.1 to 85.9"
+    assert interval.reasoning_trace["answer_value"] == "74.1 to 85.9"
+    assert "5.9" in interval.rationale
+    assert decision.answer == "supported"
+    assert decision.reasoning_trace["answer_value"] == "supported"
+    assert "-5.55" in decision.rationale
+
+
+def test_scientific_generator_authors_both_inference_decisions():
+    decisions = set()
+    for seed in range(32):
+        case = HARD_CASE_FACTORIES["hard_science"](
+            random.Random(seed),
+            5,
+            "en",
+        )
+        graph = case.builder.semantic_graph
+        standard_errors = [
+            row
+            for row in graph["nodes"]
+            if row["node_id"].startswith("se_")
+        ]
+        assert len({row["value"] for row in standard_errors}) == len(
+            standard_errors
+        )
+        precise = next(
+            row
+            for row in graph["queries"]
+            if row["query_id"] == "most_precise_condition"
+        )
+        minimum = min(standard_errors, key=lambda row: row["value"])
+        expected_condition = minimum["label"].removesuffix(" standard error")
+        assert precise["resolved"]["answer"] == expected_condition
+        query = next(
+            row
+            for row in graph["queries"]
+            if row["query_id"] == "compound_b_significance"
+        )
+        decision = query["resolved"]["answer"]
+        decisions.add(decision)
+        assert (
+            decision == "supported"
+        ) is graph["metadata"]["authored_compound_b_supported"]
+
+    assert decisions == {"supported", "not supported"}
+
+
 @pytest.mark.parametrize("level", [1, 3, 5])
 def test_hard_case_programs_validate_at_every_curriculum_level(level):
     for name, factory in HARD_CASE_FACTORIES.items():

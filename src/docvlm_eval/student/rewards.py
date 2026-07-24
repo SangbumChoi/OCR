@@ -195,6 +195,8 @@ _TRACE_OPERATIONS = {
     "ratio",
     "percent_change",
     "relative_reduction",
+    "confidence_interval",
+    "significance_decision",
     "argmax",
     "argmin",
     "weighted_sum",
@@ -323,6 +325,76 @@ def _evaluate_reasoning_trace(trace: dict[str, Any]) -> Any:
         if operation == "relative_reduction":
             return (numeric[1] - numeric[0]) / abs(numeric[1]) * 100.0
         return (numeric[0] - numeric[1]) / abs(numeric[1]) * 100.0
+    if operation == "confidence_interval":
+        if len(numeric) != 2:
+            raise ValueError(
+                "confidence_interval reasoning trace requires two inputs"
+            )
+        mean, standard_error = numeric
+        if standard_error < 0:
+            raise ValueError(
+                "confidence_interval standard error cannot be negative"
+            )
+        critical = _trace_number(
+            parameters.get("critical_value"),
+            "confidence interval critical value",
+        )
+        places = parameters.get("decimal_places")
+        separator = parameters.get("separator")
+        if critical <= 0:
+            raise ValueError(
+                "confidence interval critical value must be positive"
+            )
+        if not isinstance(places, int) or not 0 <= places <= 6:
+            raise ValueError(
+                "confidence interval decimal_places must be within [0, 6]"
+            )
+        if (
+            not isinstance(separator, str)
+            or not separator
+            or len(separator) > 16
+        ):
+            raise ValueError(
+                "confidence interval separator must be a short string"
+            )
+        margin = critical * standard_error
+        return (
+            f"{mean - margin:.{places}f}"
+            f"{separator}"
+            f"{mean + margin:.{places}f}"
+        )
+    if operation == "significance_decision":
+        if len(numeric) != 4:
+            raise ValueError(
+                "significance_decision reasoning trace requires four inputs"
+            )
+        mean_left, mean_right, se_left, se_right = numeric
+        if se_left < 0 or se_right < 0:
+            raise ValueError(
+                "significance_decision standard errors cannot be negative"
+            )
+        pooled = math.sqrt(se_left**2 + se_right**2)
+        if pooled == 0:
+            raise ValueError(
+                "significance_decision pooled standard error cannot be zero"
+            )
+        threshold = _trace_number(
+            parameters.get("threshold"),
+            "significance threshold",
+        )
+        outputs = parameters.get("outputs")
+        if threshold <= 0:
+            raise ValueError("significance threshold must be positive")
+        if (
+            not isinstance(outputs, list)
+            or len(outputs) != 2
+            or any(not isinstance(item, str) or not item for item in outputs)
+        ):
+            raise ValueError(
+                "significance_decision requires two text outputs"
+            )
+        z_score = (mean_left - mean_right) / pooled
+        return outputs[int(abs(z_score) >= threshold)]
     if operation in {"argmax", "argmin"}:
         if not numeric:
             raise ValueError(

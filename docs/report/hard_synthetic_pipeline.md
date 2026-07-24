@@ -26,8 +26,9 @@ scientific-paper verification.
    Counterfactual factual/edited variants share that homography so geometry cannot reveal the role.
 
 The operation registry currently covers direct lookup, sum, mean, difference, ratio, percent
-change, relative reduction, extrema, weighted sum, path products, and sums of independent path
-products. This is deliberately small and auditable: no teacher model invents hard labels.
+change, relative reduction, confidence intervals, pooled-standard-error significance decisions,
+extrema, weighted sum, path products, and sums of independent path products. This is deliberately
+small and auditable: no teacher model invents hard labels.
 
 ## Multilingual projection
 
@@ -75,7 +76,7 @@ Each `gt.json` records:
 | `hard_table` | dense regional operating table plus an external budget field | lookup, sums, profit, argmax, cross-region budget subtraction | eleven-box evidence for a table-to-summary calculation |
 | `hard_chart` | labelled temporal bar chart | lookup, percent change, argmax, multi-year mean | exact temporal chart aggregation |
 | `hard_investment` | direct beneficial-ownership schedule | relation lookup, path product, sum of path products | effective ownership across two independent paths |
-| `hard_science` | paper title, abstract, equation, result table, caption | lookup, argmin, control-relative reduction, treatment comparison | quantitative claim verification against the stated equation |
+| `hard_science` | paper title, abstract, inference rules, mean/SE result table, caption | lookup, argmin, control-relative reduction, confidence interval, pooled-SE significance | exact uncertainty interpretation and quantitative claim verification |
 | `investment_dossier` | audited filing, exchange snapshot, and external analyst memo | weighted valuation, percent change, discrepancy checks, decision lookup | three-source claim verification and next action |
 | `hard_diagram` | directed parallel-assay workflow with exact edge labels | lookup, topology, path product, sum of paths, weighted expected count | six- and seven-box process reasoning |
 
@@ -84,6 +85,26 @@ levels add aggregation or relational paths. Level 5 enables multi-path or cross-
 and the largest distractor budget. The profile records reasoning hops, distractor count, visual
 density, cross-region status, and required skills, so curriculum sampling does not infer
 difficulty from task names.
+
+### Executable scientific inference
+
+`hard_science` treats uncertainty as first-class evidence instead of decorative table text. Every
+condition has separately grounded mean and standard-error nodes. Standard errors are sampled
+without ties, so the narrowest-interval question has exactly one valid answer. Level 4 introduces
+an exact `mean +/- 1.96 x SE` confidence-interval program and an uncertainty-based precision
+comparison. Level 5 adds a two-sided decision program:
+
+```text
+pooled_se = sqrt(se_treatment^2 + se_control^2)
+z = (mean_treatment - mean_control) / pooled_se
+supported = abs(z) >= 1.96
+```
+
+The authoring distribution deliberately balances supported and unsupported claims while keeping a
+margin from the threshold. The resolved answer, concise rationale, four evidence nodes, typed
+inputs, operation parameters, and trace fingerprint survive benchmark conversion. Production
+RLVR independently recomputes the interval or decision and fails closed on a changed input,
+threshold, output label, or answer.
 
 ## Semantic-preserving layouts
 
