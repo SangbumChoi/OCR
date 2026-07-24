@@ -40,9 +40,11 @@ experiment DAG.
 
 The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
-actual initialization count for a base run. A continuation without an initialization stage uses
-the independently estimated count from its validated resolved blueprint. Generalization,
-grounding, counterfactual reasoning, and reliability
+actual runtime count embedded in the latest native checkpoint. A continuation without an
+initialization stage therefore proves its size from the inherited training checkpoint rather than
+substituting a blueprint estimate. Initialization, pretraining, SFT, preference, and RLVR
+checkpoints must report the same tensor-shape fingerprint and parameter decomposition.
+Generalization, grounding, counterfactual reasoning, and reliability
 require a matched reference-checkpoint evaluation, while multilingual retention requires a
 per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight JSON
 and requires matched loop/candidate measurements from the exact resolved student configuration.

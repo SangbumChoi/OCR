@@ -37,6 +37,13 @@ Both commands use [`docvlm_eval.student`](../../src/docvlm_eval/student), which 
 vision tower, gated resampler, GQA decoder, causal multimodal loss, auxiliary heads, generation,
 checkpoint round-trip, and selective initialization.
 
+Every native `save_pretrained` call independently recounts the instantiated module graph before
+writing a checkpoint. `metadata.json` records component and total parameters, trainable/frozen
+counts, the removable task-head contribution, deployment count with those heads removed, and a
+SHA-256 over every named tensor's shape and dtype. Saving fails when the runtime total is not
+strictly below one billion. Loading a checkpoint with this record recomputes the immutable topology
+and rejects a stale count, fingerprint, deployment decomposition, or budget result.
+
 `student.connector.family` selects the default `gated_resampler` or the 767,942,922-parameter
 `average_pool_projector` control. Their compute-matched decision rule is specified in
 [`student_connector_family_sweep.md`](student_connector_family_sweep.md).

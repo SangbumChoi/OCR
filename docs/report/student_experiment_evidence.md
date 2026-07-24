@@ -10,9 +10,10 @@ Every attestation reports:
 
 - `contract_status`: whether the current code and experiment configuration match every completed
   stage signature, all declared artifacts still exist, every evidence file matches its digest, the
-  model is below one billion parameters, optimization advanced in pretraining and each configured
-  post-training stage, evaluation used the final checkpoint, and both train and heldout generation
-  produced samples;
+  runtime model is below one billion parameters, every native checkpoint preserves the same
+  parameter count and tensor-shape fingerprint, optimization advanced in pretraining and each
+  configured post-training stage, evaluation used the final checkpoint, and both train and
+  heldout generation produced samples;
 - `capability_status`: the independent result from `artifacts/evaluation/gates.json`, including
   matched-reference quality, multilingual retention, reliability, target-device visual efficiency,
   and full-student training feasibility;
@@ -22,6 +23,24 @@ Every attestation reports:
 This means the one-step CPU experiment can prove orchestration, checkpoint handoffs, gradient
 updates, RLVR replay, and heldout evaluation without making a quality claim. Missing baselines or
 target-GPU measurements remain `insufficient_evidence`, never an implicit pass.
+
+## Runtime parameter evidence
+
+Blueprint arithmetic is a design check, not deployment evidence. Every native student checkpoint
+therefore carries a `parameter_attestation` generated directly from the instantiated PyTorch
+module. It includes:
+
+- unique component and total `numel()` counts;
+- trainable and frozen parameter counts;
+- temporary task-head and task-head-free deployment counts;
+- a SHA-256 over named tensor shapes and dtypes;
+- the exclusive one-billion-parameter limit and measured result.
+
+Checkpoint saving fails at or above the limit. Loading recomputes the immutable fields and rejects
+stale metadata. Experiment attestation uses the latest runtime record and requires matching records
+for every configured training checkpoint. A continuation may use its inherited pretraining, SFT,
+preference, or RLVR checkpoint, but a resolved-blueprint estimate alone can no longer pass the
+execution contract.
 
 ## Create and verify
 

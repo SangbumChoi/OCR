@@ -206,8 +206,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Attest execution evidence:**
   [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
   source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,
-  resume-safe cumulative stage state, and a strict separation between pipeline execution and
-  deployment-capability claims.
+  resume-safe cumulative stage state, runtime parameter/trainability/deployment-count attestation
+  at every native checkpoint, and a strict separation between pipeline execution and
+  deployment-capability claims. Blueprint estimates alone cannot prove the sub-1B deployment
+  contract.
 - **Run matched ablations:** [`report/student_sweep_runner.md`](report/student_sweep_runner.md) —
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta

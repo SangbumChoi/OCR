@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass, field
@@ -2341,6 +2342,12 @@ class DocumentVLMStudent(nn.Module):
         output_dir: str | Path,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        metadata_payload = dict(metadata or {})
+        if "parameter_attestation" in metadata_payload:
+            raise ValueError(
+                "parameter_attestation is reserved for runtime measurement"
+            )
+        metadata_payload["parameter_attestation"] = parameter_attestation(self)
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
         (output / "student_config.json").write_text(
@@ -2348,11 +2355,10 @@ class DocumentVLMStudent(nn.Module):
             encoding="utf-8",
         )
         torch.save(self.state_dict(), output / "model.pt")
-        if metadata is not None:
-            (output / "metadata.json").write_text(
-                json.dumps(metadata, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+        (output / "metadata.json").write_text(
+            json.dumps(metadata_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     @classmethod
     def from_pretrained(
@@ -2373,6 +2379,12 @@ class DocumentVLMStudent(nn.Module):
             weights_only=True,
         )
         model.load_state_dict(state)
+        metadata_path = checkpoint / "metadata.json"
+        if metadata_path.is_file():
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            recorded = metadata.get("parameter_attestation")
+            if recorded is not None:
+                validate_parameter_attestation(model, recorded)
         return model
 
 
@@ -2410,3 +2422,99 @@ def count_unique_parameters(model: nn.Module) -> dict[str, int]:
     counts["task_heads"] = sum(parameter.numel() for parameter in head_parameters.values())
     counts["total"] = sum(parameter.numel() for parameter in model.parameters())
     return counts
+
+
+def _parameter_architecture_fingerprint(model: nn.Module) -> str:
+    records = [
+        {
+            "name": name,
+            "shape": list(parameter.shape),
+            "dtype": str(parameter.dtype),
+        }
+        for name, parameter in model.named_parameters()
+    ]
+    payload = json.dumps(
+        records,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def parameter_attestation(
+    model: nn.Module,
+    *,
+    max_parameters_exclusive: int = 1_000_000_000,
+) -> dict[str, Any]:
+    """Measure and fail closed on the native student's deployment budget."""
+
+    maximum = int(max_parameters_exclusive)
+    if maximum <= 0:
+        raise ValueError("max_parameters_exclusive must be positive")
+    counts = count_unique_parameters(model)
+    trainable = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    )
+    frozen = counts["total"] - trainable
+    within_budget = 0 < counts["total"] < maximum
+    if not within_budget:
+        raise ValueError(
+            f"runtime model size {counts['total']:,} is not below "
+            f"{maximum:,}"
+        )
+    return {
+        "schema_version": 1,
+        "source": "runtime_numel",
+        "architecture_fingerprint": _parameter_architecture_fingerprint(model),
+        "parameter_counts": counts,
+        "trainability": {
+            "trainable_parameters": trainable,
+            "frozen_parameters": frozen,
+            "trainable_fraction": trainable / counts["total"],
+        },
+        "deployment": {
+            "parameters_including_task_heads": counts["total"],
+            "temporary_task_head_parameters": counts["task_heads"],
+            "parameters_without_task_heads": (
+                counts["total"] - counts["task_heads"]
+            ),
+        },
+        "budget": {
+            "max_parameters_exclusive": maximum,
+            "within_budget": within_budget,
+        },
+    }
+
+
+def validate_parameter_attestation(
+    model: nn.Module,
+    recorded: Any,
+) -> dict[str, Any]:
+    """Recompute immutable checkpoint topology and reject stale attestations."""
+
+    if not isinstance(recorded, dict):
+        raise ValueError("checkpoint parameter_attestation must be a mapping")
+    budget = recorded.get("budget")
+    if not isinstance(budget, dict):
+        raise ValueError("checkpoint parameter_attestation budget is missing")
+    observed = parameter_attestation(
+        model,
+        max_parameters_exclusive=int(
+            budget.get("max_parameters_exclusive", 0)
+        ),
+    )
+    for attestation_field in (
+        "source",
+        "architecture_fingerprint",
+        "parameter_counts",
+        "deployment",
+        "budget",
+    ):
+        if recorded.get(attestation_field) != observed[attestation_field]:
+            raise ValueError(
+                "checkpoint parameter_attestation does not match runtime "
+                f"model field {attestation_field}"
+            )
+    return observed

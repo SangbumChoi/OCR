@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..architecture import estimate_parameters
 from .experiment import (
     ExperimentPlan,
     ExperimentRunner,
@@ -141,33 +140,104 @@ def _semantic_evidence(
         _read_json(initialization_path) if initialization_path.is_file() else None
     )
     evidence["initialization"] = initialization
-    initialized_parameter_total = int(
-        ((initialization or {}).get("parameter_counts") or {}).get("total", 0)
-    )
-    if initialized_parameter_total > 0:
-        parameter_total = initialized_parameter_total
-        parameter_source = "initialization_metadata"
-    else:
-        parameter_total = int(estimate_parameters(plan.resolved_blueprint)["total"])
-        parameter_source = "resolved_blueprint"
-    checks.append(
-        _check(
-            "deployment_parameter_budget",
-            0 < parameter_total < 1_000_000_000,
-            {
-                "actual_parameters": parameter_total,
-                "max_parameters_exclusive": 1_000_000_000,
-                "source": parameter_source,
-            },
-        )
-    )
 
     stage_names = set(plan.stage_names)
+    training_proofs: dict[str, dict[str, Any] | None] = {}
+    attestation_candidates: list[tuple[str, Any]] = []
+    initial_attestation = (initialization or {}).get(
+        "parameter_attestation"
+    )
+    if initial_attestation is not None:
+        attestation_candidates.append(
+            ("initialization_metadata", initial_attestation)
+        )
     for stage_name in _TRAINING_STAGES:
         if stage_name not in stage_names:
             continue
         proof = _training_proof(root, stage_name)
+        training_proofs[stage_name] = proof
         evidence["training"][stage_name] = proof
+        checkpoint_attestation = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "parameter_attestation"
+            )
+        )
+        if checkpoint_attestation is not None:
+            attestation_candidates.append(
+                (f"{stage_name}_checkpoint", checkpoint_attestation)
+            )
+
+    parameter_source, runtime_attestation = (
+        attestation_candidates[-1]
+        if attestation_candidates
+        else ("missing_runtime_attestation", None)
+    )
+    runtime_attestation = (
+        runtime_attestation
+        if isinstance(runtime_attestation, dict)
+        else {}
+    )
+    parameter_counts = runtime_attestation.get("parameter_counts")
+    parameter_counts = (
+        parameter_counts if isinstance(parameter_counts, dict) else {}
+    )
+    parameter_total = int(parameter_counts.get("total", 0))
+    architecture_fingerprint = runtime_attestation.get(
+        "architecture_fingerprint"
+    )
+    runtime_budget = runtime_attestation.get("budget")
+    runtime_budget = (
+        runtime_budget if isinstance(runtime_budget, dict) else {}
+    )
+    runtime_attested = (
+        runtime_attestation.get("source") == "runtime_numel"
+        and isinstance(architecture_fingerprint, str)
+        and architecture_fingerprint.startswith("sha256:")
+        and runtime_budget.get("within_budget") is True
+        and 0 < parameter_total < 1_000_000_000
+    )
+    checks.append(
+        _check(
+            "deployment_parameter_budget",
+            runtime_attested,
+            {
+                "actual_parameters": parameter_total,
+                "max_parameters_exclusive": 1_000_000_000,
+                "source": parameter_source,
+                "architecture_fingerprint": architecture_fingerprint,
+            },
+        )
+    )
+
+    if "initialize_student" in stage_names:
+        initialization_matches = (
+            isinstance(initial_attestation, dict)
+            and initial_attestation.get("source") == "runtime_numel"
+            and initial_attestation.get("parameter_counts") == parameter_counts
+            and initial_attestation.get("architecture_fingerprint")
+            == architecture_fingerprint
+            and initial_attestation.get("deployment")
+            == runtime_attestation.get("deployment")
+            and (initial_attestation.get("budget") or {}).get(
+                "within_budget"
+            )
+            is True
+        )
+        checks.append(
+            _check(
+                "initialize_student_parameter_attestation",
+                initialization_matches,
+                {
+                    "source": "initialization_metadata",
+                    "parameter_attestation": initial_attestation,
+                },
+            )
+        )
+
+    for stage_name in _TRAINING_STAGES:
+        if stage_name not in stage_names:
+            continue
+        proof = training_proofs[stage_name]
         state = (proof or {}).get("trainer_state") or {}
         if stage_name in {"pretrain", "sft"}:
             progress = int(state.get("global_step", 0))
@@ -189,6 +259,35 @@ def _semantic_evidence(
                 f"{stage_name}_optimization_progress",
                 progress > 0,
                 {progress_key: progress, "trainer_state": state},
+            )
+        )
+        checkpoint_attestation = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "parameter_attestation"
+            )
+        )
+        checkpoint_matches = (
+            isinstance(checkpoint_attestation, dict)
+            and checkpoint_attestation.get("source") == "runtime_numel"
+            and checkpoint_attestation.get("parameter_counts")
+            == parameter_counts
+            and checkpoint_attestation.get("architecture_fingerprint")
+            == architecture_fingerprint
+            and checkpoint_attestation.get("deployment")
+            == runtime_attestation.get("deployment")
+            and (
+                checkpoint_attestation.get("budget") or {}
+            ).get("within_budget")
+            is True
+        )
+        checks.append(
+            _check(
+                f"{stage_name}_parameter_attestation",
+                checkpoint_matches,
+                {
+                    "source": f"{stage_name}_checkpoint",
+                    "parameter_attestation": checkpoint_attestation,
+                },
             )
         )
 

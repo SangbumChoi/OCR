@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -750,6 +751,63 @@ def test_student_checkpoint_round_trip(tmp_path):
     assert loaded.config == model.config
     assert torch.equal(expected, loaded(ids).logits)
     assert (tmp_path / "metadata.json").exists()
+    metadata = json.loads(
+        (tmp_path / "metadata.json").read_text(encoding="utf-8")
+    )
+    attestation = metadata["parameter_attestation"]
+    assert attestation["source"] == "runtime_numel"
+    assert attestation["parameter_counts"]["total"] < 1_000_000_000
+    assert attestation["budget"]["within_budget"] is True
+
+
+def test_parameter_attestation_tracks_trainability_and_fails_at_limit():
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import (
+        DocumentVLMStudent,
+        parameter_attestation,
+    )
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    frozen = next(model.vision.parameters())
+    frozen.requires_grad_(False)
+
+    attestation = parameter_attestation(model)
+    total = attestation["parameter_counts"]["total"]
+
+    assert attestation["trainability"]["frozen_parameters"] == frozen.numel()
+    assert (
+        attestation["trainability"]["trainable_parameters"]
+        + attestation["trainability"]["frozen_parameters"]
+        == total
+    )
+    assert (
+        attestation["deployment"]["parameters_without_task_heads"]
+        + attestation["deployment"]["temporary_task_head_parameters"]
+        == total
+    )
+    with pytest.raises(ValueError, match="is not below"):
+        parameter_attestation(
+            model,
+            max_parameters_exclusive=total,
+        )
+
+
+def test_student_checkpoint_rejects_stale_parameter_attestation(tmp_path):
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny())
+    model.save_pretrained(tmp_path)
+    metadata_path = tmp_path / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parameter_attestation"]["parameter_counts"]["total"] += 1
+    metadata_path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not match runtime model"):
+        DocumentVLMStudent.from_pretrained(tmp_path)
 
 
 def test_full_meta_model_matches_the_blueprint_estimator():

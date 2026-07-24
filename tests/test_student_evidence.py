@@ -29,6 +29,29 @@ def _write_json(path: Path, value: dict) -> None:
     )
 
 
+def _parameter_attestation(total: int = 587_019) -> dict:
+    return {
+        "schema_version": 1,
+        "source": "runtime_numel",
+        "architecture_fingerprint": "sha256:test-architecture",
+        "parameter_counts": {"total": total},
+        "trainability": {
+            "trainable_parameters": total,
+            "frozen_parameters": 0,
+            "trainable_fraction": 1.0,
+        },
+        "deployment": {
+            "parameters_including_task_heads": total,
+            "temporary_task_head_parameters": 100,
+            "parameters_without_task_heads": total - 100,
+        },
+        "budget": {
+            "max_parameters_exclusive": 1_000_000_000,
+            "within_budget": True,
+        },
+    }
+
+
 def _evidence_plan(
     tmp_path: Path,
     *,
@@ -44,6 +67,7 @@ def _evidence_plan(
                 "initialization_arm": "I0_random",
                 "initialization_seed": 5,
                 "parameter_counts": {"total": 587_019},
+                "parameter_attestation": _parameter_attestation(),
                 "transfer_reports": [],
             },
         )
@@ -70,7 +94,12 @@ def _evidence_plan(
         _write_json(checkpoint / "trainer_state.json", trainer_state)
         _write_json(
             checkpoint / "student" / "metadata.json",
-            {"run_stage": "pretraining" if stage_name == "pretrain" else stage_name},
+            {
+                "run_stage": (
+                    "pretraining" if stage_name == "pretrain" else stage_name
+                ),
+                "parameter_attestation": _parameter_attestation(),
+            },
         )
         pointer = root / "artifacts" / stage_name / "latest_checkpoint.txt"
         pointer.parent.mkdir(parents=True, exist_ok=True)
@@ -202,7 +231,7 @@ def test_attestation_verification_detects_checkpoint_tampering(tmp_path):
     )
 
 
-def test_attestation_uses_blueprint_budget_for_continuation(tmp_path):
+def test_attestation_uses_runtime_checkpoint_budget_for_continuation(tmp_path):
     plan = _evidence_plan(tmp_path, include_initialization=False)
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
@@ -230,5 +259,42 @@ def test_attestation_uses_blueprint_budget_for_continuation(tmp_path):
     assert budget["evidence"] == {
         "actual_parameters": 587_019,
         "max_parameters_exclusive": 1_000_000_000,
-        "source": "resolved_blueprint",
+        "source": "rlvr_checkpoint",
+        "architecture_fingerprint": "sha256:test-architecture",
     }
+
+
+def test_attestation_rejects_missing_runtime_parameter_measurement(tmp_path):
+    plan = _evidence_plan(tmp_path)
+    initialization = (
+        Path(plan.root) / "artifacts" / "initial" / "metadata.json"
+    )
+    initialization_payload = json.loads(
+        initialization.read_text(encoding="utf-8")
+    )
+    initialization_payload.pop("parameter_attestation")
+    _write_json(initialization, initialization_payload)
+    for stage_name in ("pretrain", "sft", "rlvr"):
+        metadata = (
+            Path(plan.root)
+            / "artifacts"
+            / stage_name
+            / "checkpoints"
+            / "step-00000001"
+            / "student"
+            / "metadata.json"
+        )
+        payload = json.loads(metadata.read_text(encoding="utf-8"))
+        payload.pop("parameter_attestation")
+        _write_json(metadata, payload)
+
+    attestation = build_experiment_attestation(plan, repo_root=ROOT)
+    budget = next(
+        check
+        for check in attestation["contract_checks"]
+        if check["id"] == "deployment_parameter_budget"
+    )
+
+    assert attestation["contract_status"] == "fail"
+    assert budget["status"] == "fail"
+    assert budget["evidence"]["source"] == "missing_runtime_attestation"
