@@ -771,89 +771,110 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         errors.append(
             "training.posttraining.sft.optimizer.betas must contain two values in [0, 1)"
         )
-    dpo = posttraining.get("dpo")
-    if not isinstance(dpo, dict):
-        errors.append("training.posttraining.dpo must be a mapping")
-        dpo = {}
-    if dpo.get("preference_source") != "reference_verifier_ranked":
+    preference = posttraining.get("preference")
+    if not isinstance(preference, dict):
+        errors.append("training.posttraining.preference must be a mapping")
+        preference = {}
+    if preference.get("objective") not in {"dpo", "ipo"}:
         errors.append(
-            "training.posttraining.dpo.preference_source must be "
+            "training.posttraining.preference.objective must be dpo or ipo"
+        )
+    if preference.get("preference_source") != "reference_verifier_ranked":
+        errors.append(
+            "training.posttraining.preference.preference_source must be "
             "reference_verifier_ranked"
         )
-    if dpo.get("reference_policy") != "sft_checkpoint":
+    if preference.get("reference_policy") != "sft_checkpoint":
         errors.append(
-            "training.posttraining.dpo.reference_policy must be sft_checkpoint"
+            "training.posttraining.preference.reference_policy must be "
+            "sft_checkpoint"
         )
-    if int(dpo.get("group_size", 0)) < 2:
+    if int(preference.get("group_size", 0)) < 2:
         errors.append(
-            "training.posttraining.dpo.group_size must be at least two"
+            "training.posttraining.preference.group_size must be at least two"
         )
-    if float(dpo.get("minimum_reward_margin", -1)) < 0:
+    if float(preference.get("minimum_reward_margin", -1)) < 0:
         errors.append(
-            "training.posttraining.dpo.minimum_reward_margin must be "
+            "training.posttraining.preference.minimum_reward_margin must be "
             "non-negative"
         )
-    if float(dpo.get("beta", 0)) <= 0:
-        errors.append("training.posttraining.dpo.beta must be positive")
-    if dpo.get("sequence_reduction") not in {"sum", "mean"}:
+    if float(preference.get("dpo_beta", 0)) <= 0:
         errors.append(
-            "training.posttraining.dpo.sequence_reduction must be sum or mean"
+            "training.posttraining.preference.dpo_beta must be positive"
         )
-    dpo_rollout = dpo.get("rollout", {})
-    if int(dpo_rollout.get("max_new_tokens", 0)) <= 0:
+    if float(preference.get("ipo_tau", 0)) <= 0:
         errors.append(
-            "training.posttraining.dpo.rollout.max_new_tokens must be positive"
+            "training.posttraining.preference.ipo_tau must be positive"
         )
-    if float(dpo_rollout.get("temperature", 0)) <= 0:
+    if preference.get("sequence_reduction") not in {"sum", "mean"}:
         errors.append(
-            "training.posttraining.dpo.rollout.temperature must be positive"
+            "training.posttraining.preference.sequence_reduction must be "
+            "sum or mean"
         )
-    if not 0 < float(dpo_rollout.get("top_p", 0)) <= 1:
+    preference_rollout = preference.get("rollout", {})
+    if int(preference_rollout.get("max_new_tokens", 0)) <= 0:
         errors.append(
-            "training.posttraining.dpo.rollout.top_p must be within (0, 1]"
+            "training.posttraining.preference.rollout.max_new_tokens must be "
+            "positive"
         )
-    if not isinstance(dpo_rollout.get("use_kv_cache"), bool):
+    if float(preference_rollout.get("temperature", 0)) <= 0:
         errors.append(
-            "training.posttraining.dpo.rollout.use_kv_cache must be a boolean"
+            "training.posttraining.preference.rollout.temperature must be "
+            "positive"
         )
-    dpo_optimizer = dpo.get("optimizer", {})
+    if not 0 < float(preference_rollout.get("top_p", 0)) <= 1:
+        errors.append(
+            "training.posttraining.preference.rollout.top_p must be within "
+            "(0, 1]"
+        )
+    if not isinstance(preference_rollout.get("use_kv_cache"), bool):
+        errors.append(
+            "training.posttraining.preference.rollout.use_kv_cache must be "
+            "a boolean"
+        )
+    preference_optimizer = preference.get("optimizer", {})
     for field in ("learning_rate", "max_grad_norm", "log_every_steps"):
-        if float(dpo_optimizer.get(field, 0)) <= 0:
+        if float(preference_optimizer.get(field, 0)) <= 0:
             errors.append(
-                f"training.posttraining.dpo.optimizer.{field} must be positive"
+                "training.posttraining.preference.optimizer."
+                f"{field} must be positive"
             )
-    dpo_max_steps = dpo_optimizer.get("max_steps")
-    dpo_stop_flops = bool(
-        dpo_optimizer.get("stop_at_student_flops", False)
+    preference_max_steps = preference_optimizer.get("max_steps")
+    preference_stop_flops = bool(
+        preference_optimizer.get("stop_at_student_flops", False)
     )
-    dpo_total_flops = dpo_optimizer.get("total_student_flops")
-    if dpo_max_steps is None:
-        if not dpo_stop_flops:
+    preference_total_flops = preference_optimizer.get("total_student_flops")
+    if preference_max_steps is None:
+        if not preference_stop_flops:
             errors.append(
-                "training.posttraining.dpo.optimizer.max_steps can be null "
-                "only with a student-FLOP stop"
+                "training.posttraining.preference.optimizer.max_steps can "
+                "be null only with a student-FLOP stop"
             )
-    elif int(dpo_max_steps) <= 0:
+    elif int(preference_max_steps) <= 0:
         errors.append(
-            "training.posttraining.dpo.optimizer.max_steps must be positive"
+            "training.posttraining.preference.optimizer.max_steps must be "
+            "positive"
         )
-    if dpo_total_flops is not None and int(dpo_total_flops) <= 0:
-        errors.append(
-            "training.posttraining.dpo.optimizer.total_student_flops "
-            "must be positive"
-        )
-    if dpo_stop_flops and dpo_total_flops is None:
-        errors.append(
-            "training.posttraining.dpo.optimizer.stop_at_student_flops "
-            "requires total_student_flops"
-        )
-    dpo_betas = dpo_optimizer.get("betas", ())
-    if len(dpo_betas) != 2 or any(
-        not 0 <= float(beta) < 1 for beta in dpo_betas
+    if (
+        preference_total_flops is not None
+        and int(preference_total_flops) <= 0
     ):
         errors.append(
-            "training.posttraining.dpo.optimizer.betas must contain two "
-            "values in [0, 1)"
+            "training.posttraining.preference.optimizer.total_student_flops "
+            "must be positive"
+        )
+    if preference_stop_flops and preference_total_flops is None:
+        errors.append(
+            "training.posttraining.preference.optimizer."
+            "stop_at_student_flops requires total_student_flops"
+        )
+    preference_betas = preference_optimizer.get("betas", ())
+    if len(preference_betas) != 2 or any(
+        not 0 <= float(beta) < 1 for beta in preference_betas
+    ):
+        errors.append(
+            "training.posttraining.preference.optimizer.betas must contain "
+            "two values in [0, 1)"
         )
 
     rlvr = posttraining["rlvr"]

@@ -14,8 +14,8 @@ mechanism, the likely failure mode below one billion parameters, and one of four
 - **reference**: useful baseline or evidence, not currently worth default complexity;
 - **reject**: conflicts with measured results, deployment budget, or trustworthy supervision.
 
-Decision totals: **29 adopt**, **40 ablate**, **28 reference**, **3 reject**.
-The sources span **58 organizations**, **2014-2025**, and expose **220 distinct adjustable knobs**.
+Decision totals: **29 adopt**, **41 ablate**, **27 reference**, **3 reject**.
+The sources span **58 organizations**, **2014-2025**, and expose **221 distinct adjustable knobs**.
 
 ## Recommended end-to-end stack
 
@@ -159,7 +159,7 @@ The sources span **58 organizations**, **2014-2025**, and expose **220 distinct 
 | --- | --- | --- | --- | --- | --- | --- |
 | R01 | InstructGPT PPO with human preferences | [OpenAI, 2022](https://arxiv.org/abs/2203.02155) | Establishes the SFT, reward-model, and KL-regularized PPO alignment pipeline. | A learned scalar reward is expensive and vulnerable to visual hallucination and reward misspecification. | **reference** | `ppo_clip`, `kl_coefficient`, `reward_model` |
 | R02 | Direct Preference Optimization | [Stanford University, 2023](https://arxiv.org/abs/2305.18290) | Optimizes preferences without an explicit reward model or online policy rollouts. | Requires reliable chosen-rejected pairs and does not exploit exact document rewards directly. | **ablate** | `dpo_beta`, `preference_source` |
-| R03 | Identity Preference Optimization | [Google DeepMind, 2023](https://arxiv.org/abs/2310.12036) | Provides a regularized preference objective with a direct theoretical target. | Offline pair quality still dominates and multimodal grounding errors may be invisible to preferences. | **reference** | `ipo_tau`, `preference_source` |
+| R03 | Identity Preference Optimization | [Google DeepMind, 2023](https://arxiv.org/abs/2310.12036) | Provides a regularized preference objective with a direct theoretical target. | Offline pair quality still dominates and multimodal grounding errors may be invisible to preferences. | **ablate** | `preference_objective`, `ipo_tau`, `preference_source` |
 | R04 | Kahneman-Tversky Optimization | [Contextual AI, 2024](https://arxiv.org/abs/2402.01306) | Learns from binary desirable or undesirable outputs without paired preferences. | Binary labels discard how much a box, table, or numeric answer is wrong. | **reference** | `kto_beta`, `desirable_undesirable_ratio` |
 | R05 | Odds Ratio Preference Optimization | [KAIST, 2024](https://arxiv.org/abs/2403.07691) | Combines supervised likelihood with an odds-ratio preference term in one stage. | Token likelihood can dominate structured document correctness and preference calibration. | **reference** | `orpo_lambda`, `preference_mix` |
 | R06 | Simple Preference Optimization | [Princeton University, 2024](https://arxiv.org/abs/2405.14734) | Uses a reference-free margin objective with length normalization. | Length normalization does not solve wrong evidence or visually ungrounded rationales. | **reference** | `simpo_beta`, `reward_margin`, `length_normalization` |

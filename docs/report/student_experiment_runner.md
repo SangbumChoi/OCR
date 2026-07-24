@@ -3,7 +3,7 @@
 [`scripts/run_student_experiment.py`](../../scripts/run_student_experiment.py) compiles one validated
 YAML experiment into a resumable stage DAG. It connects hard-document synthesis, semantic split
 validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer distillation,
-tokenizer training, student initialization, pretraining, grounded SFT, optional DPO or RLVR, and
+tokenizer training, student initialization, pretraining, grounded SFT, optional preference optimization or RLVR, and
 train/heldout generation evaluation. The full configuration first benchmarks packed visual attention on the
 active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
 and peak memory as a checked run artifact.
@@ -27,8 +27,9 @@ capabilities; the compiler content-addresses that file and passes it to the RLVR
 Set `posttraining.rlvr.enabled: false` with all RLVR runtime overrides null to compile an SFT-only
 DAG. In that mode evaluation loads `@student:sft` directly. Non-null disabled-stage overrides fail
 before data generation so an intended RLVR treatment cannot disappear silently.
-Set `posttraining.dpo.enabled: true` and disable RLVR to insert verifier-ranked DPO between SFT and
-evaluation. DPO and RLVR are mutually exclusive in one experiment DAG.
+Set `posttraining.preference.enabled: true` and disable RLVR to insert verifier-ranked DPO or IPO
+between SFT and evaluation. Preference optimization and RLVR are mutually exclusive in one
+experiment DAG.
 
 The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
 `insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
@@ -169,7 +170,7 @@ the physical corpus stable while allowing mixture probabilities to change explic
 
 Every stage has a command signature, dependencies, and required artifacts. Successful stages are
 skipped only when their state signature still matches and every artifact remains valid. Interrupted
-pretraining, SFT, DPO, and RLVR stages automatically pass `--resume latest` only when the
+pretraining, SFT, preference, and RLVR stages automatically pass `--resume latest` only when the
 interrupted state has the same signature and a checkpoint pointer exists. A changed upstream
 checkpoint starts the dependent stage fresh.
 

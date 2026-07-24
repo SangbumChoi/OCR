@@ -151,12 +151,13 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   transfer, and the matched random/vision/language/dual/selective suite.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
-  rewards, visual-prefix-cached rollout, verifier-ranked DPO, single-update GRPO, periodic
+  rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, single-update GRPO, periodic
   supervised multimodal replay, bounded symbolic formula equivalence, exact checkpoint resume, and
   train/heldout generation evaluation.
 - **Isolate post-training choices:**
   [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) — paired
-  SFT-target, reward, advantage-estimator, and compute-matched DPO-versus-GRPO comparisons.
+  SFT-target, reward, advantage-estimator, compute-matched DPO-versus-GRPO, and matched
+  DPO-versus-IPO comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.

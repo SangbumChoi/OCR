@@ -6,7 +6,7 @@ from docvlm_eval.student.compute import (
     compute_profile,
     estimate_batch_training_flops,
     estimate_batch_training_flops_breakdown,
-    estimate_dpo_step_flops,
+    estimate_preference_step_flops,
     estimate_forward_flops,
     estimate_language_kv_cache_bytes,
     estimate_rlvr_step_flops,
@@ -253,9 +253,9 @@ def test_rlvr_compute_counts_one_shared_visual_encoding_per_group():
     assert two["reference_scoring"] < 2 * one["reference_scoring"]
 
 
-def test_dpo_compute_counts_reference_rollout_and_optional_pair_update():
+def test_preference_compute_counts_reference_rollout_and_optional_pair_update():
     config = StudentConfig.tiny()
-    accepted = estimate_dpo_step_flops(
+    accepted = estimate_preference_step_flops(
         config,
         vision_tokens=16,
         prompt_tokens=24,
@@ -263,7 +263,7 @@ def test_dpo_compute_counts_reference_rollout_and_optional_pair_update():
         candidate_group_size=3,
         checkpoint_components=("language",),
     )
-    skipped = estimate_dpo_step_flops(
+    skipped = estimate_preference_step_flops(
         config,
         vision_tokens=16,
         prompt_tokens=24,
@@ -271,7 +271,7 @@ def test_dpo_compute_counts_reference_rollout_and_optional_pair_update():
         candidate_group_size=3,
         accepted_pair=False,
     )
-    uncached = estimate_dpo_step_flops(
+    uncached = estimate_preference_step_flops(
         config,
         vision_tokens=16,
         prompt_tokens=24,

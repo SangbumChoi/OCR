@@ -119,22 +119,26 @@ def _rl_config(
     )
 
 
-def _dpo_config(
+def _preference_config(
     output,
     max_steps,
     resume=None,
     *,
-    beta=0.1,
+    objective="dpo",
+    dpo_beta=0.1,
+    ipo_tau=0.1,
     margin=0.05,
 ):
-    from docvlm_eval.student.posttrain import DPOConfig
+    from docvlm_eval.student.posttrain import PreferenceConfig
 
-    return DPOConfig(
+    return PreferenceConfig(
         output_dir=str(output),
         max_steps=max_steps,
+        objective=objective,
         group_size=2,
         minimum_reward_margin=margin,
-        beta=beta,
+        dpo_beta=dpo_beta,
+        ipo_tau=ipo_tau,
         sequence_reduction="sum",
         max_new_tokens=2,
         temperature=1.0,
@@ -155,13 +159,13 @@ def _dpo_config(
 
 def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
     from docvlm_eval.architecture import load_blueprint
-    from docvlm_eval.student.posttrain import DPOConfig, RLVRConfig, SFTConfig
+    from docvlm_eval.student.posttrain import PreferenceConfig, RLVRConfig, SFTConfig
 
     blueprint = load_blueprint("configs/sub1b_architecture.yaml")
     sft = SFTConfig.from_blueprint(blueprint, tmp_path / "sft")
-    dpo = DPOConfig.from_blueprint(
+    preference = PreferenceConfig.from_blueprint(
         blueprint,
-        tmp_path / "dpo",
+        tmp_path / "preference",
         reference_id="reference",
     )
     rlvr = RLVRConfig.from_blueprint(
@@ -170,7 +174,7 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
         reference_id="reference",
     )
 
-    for config in (sft, dpo, rlvr):
+    for config in (sft, preference, rlvr):
         assert config.gradient_checkpointing is True
         assert config.gradient_checkpointing_components == (
             "vision",
@@ -178,8 +182,9 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
             "language",
         )
         assert config.gradient_checkpointing_use_reentrant is False
-    assert dpo.preference_source == "reference_verifier_ranked"
-    assert dpo.sequence_reduction == "sum"
+    assert preference.objective == "dpo"
+    assert preference.preference_source == "reference_verifier_ranked"
+    assert preference.sequence_reduction == "sum"
     assert rlvr.use_kv_cache is True
     assert rlvr.advantage_estimator == "group_standardized"
 
@@ -387,6 +392,31 @@ def test_direct_preference_loss_and_pair_selection_follow_verifier_rank():
     )
 
 
+def test_ipo_regresses_log_ratio_margin_to_finite_target():
+    import torch
+
+    from docvlm_eval.student.posttrain import preference_optimization_loss
+
+    policy = torch.zeros(2, 2, requires_grad=True)
+    reference = torch.zeros(2, 2)
+    loss, metrics = preference_optimization_loss(
+        policy,
+        reference,
+        torch.ones(2, 2, dtype=torch.bool),
+        objective="ipo",
+        dpo_beta=0.1,
+        ipo_tau=0.1,
+        sequence_reduction="sum",
+    )
+    loss.backward()
+
+    assert float(metrics["target_log_ratio_margin"]) == pytest.approx(5.0)
+    assert float(loss.detach()) == pytest.approx(25.0)
+    assert policy.grad is not None
+    assert policy.grad[0].mean() < 0
+    assert policy.grad[1].mean() > 0
+
+
 def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     tmp_path,
     monkeypatch,
@@ -395,7 +425,7 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
 
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
-    from docvlm_eval.student.posttrain import train_dpo
+    from docvlm_eval.student.posttrain import train_preference
     from docvlm_eval.student.rewards import RewardConfig, build_structured_target
 
     target = build_structured_target("42")
@@ -416,13 +446,13 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     torch.manual_seed(47)
     initial = DocumentVLMStudent(StudentConfig.tiny())
     policy = copy.deepcopy(initial)
-    result = train_dpo(
+    result = train_preference(
         policy,
         copy.deepcopy(initial),
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _dpo_config(tmp_path / "tied", 1),
+        _preference_config(tmp_path / "tied", 1),
         RewardConfig(weights={"answer_correctness": 1.0}),
     )
 
@@ -431,14 +461,16 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     assert result.accepted_pairs == 0
     assert result.skipped_pairs == 1
     assert result.student_flops_seen > 0
-    assert result.final_metrics["dpo/accepted_pair"] == 0
+    assert result.final_metrics["preference/accepted_pair"] == 0
     for name, expected in initial.state_dict().items():
         assert torch.equal(expected, policy.state_dict()[name]), name
 
 
-def test_dpo_checkpoint_resume_matches_uninterrupted_updates(
+@pytest.mark.parametrize("objective", ["dpo", "ipo"])
+def test_preference_checkpoint_resume_matches_uninterrupted_updates(
     tmp_path,
     monkeypatch,
+    objective,
 ):
     from dataclasses import replace
 
@@ -446,7 +478,7 @@ def test_dpo_checkpoint_resume_matches_uninterrupted_updates(
 
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
-    from docvlm_eval.student.posttrain import train_dpo
+    from docvlm_eval.student.posttrain import train_preference
     from docvlm_eval.student.rewards import RewardConfig, build_structured_target
 
     correct = build_structured_target("42")
@@ -478,51 +510,65 @@ def test_dpo_checkpoint_resume_matches_uninterrupted_updates(
     reference_full = copy.deepcopy(initial)
     reference_resumed = copy.deepcopy(initial)
 
-    full_result = train_dpo(
+    full_result = train_preference(
         full,
         reference_full,
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _dpo_config(tmp_path / "full-dpo", 2),
+        _preference_config(
+            tmp_path / f"full-{objective}",
+            2,
+            objective=objective,
+        ),
         rewards,
     )
-    first_result = train_dpo(
+    first_result = train_preference(
         resumed,
         reference_resumed,
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _dpo_config(tmp_path / "resumed-dpo", 1),
+        _preference_config(
+            tmp_path / f"resumed-{objective}",
+            1,
+            objective=objective,
+        ),
         rewards,
     )
     with pytest.raises(ValueError, match="objective contract mismatch"):
-        train_dpo(
+        train_preference(
             copy.deepcopy(resumed),
             copy.deepcopy(reference_resumed),
             _dataset(),
             _collator(),
             _Tokenizer(),
             replace(
-                _dpo_config(
-                    tmp_path / "resumed-dpo",
+                _preference_config(
+                    tmp_path / f"resumed-{objective}",
                     2,
                     "latest",
+                    objective=objective,
                 ),
-                beta=0.2,
+                **(
+                    {"dpo_beta": 0.2}
+                    if objective == "dpo"
+                    else {"ipo_tau": 0.2}
+                ),
             ),
             rewards,
         )
-    resumed_result = train_dpo(
+    resumed_result = train_preference(
         resumed,
         reference_resumed,
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _dpo_config(
-            tmp_path / "resumed-dpo",
+        _preference_config(
+            tmp_path / f"resumed-{objective}",
             2,
             "latest",
+            objective=objective,
         ),
         rewards,
     )

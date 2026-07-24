@@ -1,22 +1,21 @@
-# Verifier-ranked DPO versus on-policy GRPO by three paired replicates.
+# DPO versus IPO on identical verifier-ranked pairs by three paired replicates.
 
 schema_version: 1
-name: docvlm-preference-method-ablation
+name: docvlm-preference-objective-ablation
 base_experiment: configs/sub1b_experiment.yaml
-output_root: outputs/sweeps/docvlm-preference-method-ablation
-baseline: grpo
+output_root: outputs/sweeps/docvlm-preference-objective-ablation
+baseline: dpo
 
 shared_experiment_patches:
+  - {op: replace, path: /posttraining/preference/enabled, value: true}
+  - {op: replace, path: /posttraining/rlvr/enabled, value: false}
   - {op: add, path: /evaluation/wandb_tags/-, value: posttraining-ablation}
-  - {op: add, path: /evaluation/wandb_tags/-, value: preference-method-ablation}
+  - {op: add, path: /evaluation/wandb_tags/-, value: preference-objective-ablation}
 
 shared_blueprint_patches:
   - {op: replace, path: /training/posttraining/preference/optimizer/max_steps, value: null}
   - {op: replace, path: /training/posttraining/preference/optimizer/total_student_flops, value: 192000000000000000}
   - {op: replace, path: /training/posttraining/preference/optimizer/stop_at_student_flops, value: true}
-  - {op: replace, path: /training/posttraining/rlvr/optimizer/max_steps, value: null}
-  - {op: replace, path: /training/posttraining/rlvr/optimizer/total_student_flops, value: 192000000000000000}
-  - {op: replace, path: /training/posttraining/rlvr/optimizer/stop_at_student_flops, value: true}
 
 matched_controls:
   - {document: experiment, path: /initialization/seed}
@@ -31,8 +30,9 @@ matched_controls:
   - {document: experiment, path: /pretraining/max_steps}
   - {document: experiment, path: /posttraining/sft/max_steps}
   - {document: experiment, path: /posttraining/sft/target_mode}
+  - {document: experiment, path: /posttraining/preference/enabled}
   - {document: experiment, path: /posttraining/preference/max_steps}
-  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/enabled}
   - {document: experiment, path: /evaluation/max_samples}
   - {document: experiment, path: /evaluation/seed}
   - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
@@ -45,28 +45,23 @@ matched_controls:
   - {document: blueprint, path: /training/posttraining/sft/optimizer/total_tokens}
   - {document: blueprint, path: /training/posttraining/preference/preference_source}
   - {document: blueprint, path: /training/posttraining/preference/reference_policy}
-  - {document: blueprint, path: /training/posttraining/preference/objective}
   - {document: blueprint, path: /training/posttraining/preference/group_size}
   - {document: blueprint, path: /training/posttraining/preference/minimum_reward_margin}
   - {document: blueprint, path: /training/posttraining/preference/dpo_beta}
   - {document: blueprint, path: /training/posttraining/preference/ipo_tau}
   - {document: blueprint, path: /training/posttraining/preference/sequence_reduction}
   - {document: blueprint, path: /training/posttraining/preference/rollout}
-  - {document: blueprint, path: /training/posttraining/preference/optimizer}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/max_steps}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/total_student_flops}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/stop_at_student_flops}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/learning_rate}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/weight_decay}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/betas}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/max_grad_norm}
+  - {document: blueprint, path: /training/posttraining/preference/optimizer/precision}
   - {document: blueprint, path: /training/posttraining/preference/optimizer/seed}
-  - {document: blueprint, path: /training/posttraining/rlvr/algorithm}
-  - {document: blueprint, path: /training/posttraining/rlvr/update_policy}
-  - {document: blueprint, path: /training/posttraining/rlvr/reference_policy}
-  - {document: blueprint, path: /training/posttraining/rlvr/group_size}
-  - {document: blueprint, path: /training/posttraining/rlvr/advantage_estimator}
-  - {document: blueprint, path: /training/posttraining/rlvr/kl_coefficient}
-  - {document: blueprint, path: /training/posttraining/rlvr/advantage_epsilon}
-  - {document: blueprint, path: /training/posttraining/rlvr/supervised_replay}
-  - {document: blueprint, path: /training/posttraining/rlvr/rollout}
   - {document: blueprint, path: /training/posttraining/rlvr/reward_mix}
   - {document: blueprint, path: /training/posttraining/rlvr/malformed_reward}
-  - {document: blueprint, path: /training/posttraining/rlvr/optimizer}
-  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
 
 replicate_controls:
   - {document: experiment, path: /initialization/seed}
@@ -79,7 +74,6 @@ replicate_controls:
   - {document: blueprint, path: /training/pretraining/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/preference/optimizer/seed}
-  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
 
 replicates:
   - id: seed_0
@@ -95,7 +89,6 @@ replicates:
       - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
       - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
       - {op: replace, path: /training/posttraining/preference/optimizer/seed, value: 23}
-      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
 
   - id: seed_1
     experiment_patches:
@@ -110,7 +103,6 @@ replicates:
       - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
       - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
       - {op: replace, path: /training/posttraining/preference/optimizer/seed, value: 123}
-      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
 
   - id: seed_2
     experiment_patches:
@@ -125,14 +117,14 @@ replicates:
       - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
       - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
       - {op: replace, path: /training/posttraining/preference/optimizer/seed, value: 223}
-      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
 
 variants:
-  - id: grpo
-    hypothesis: "Tests on-policy verifier optimization with group-standardized advantages."
-
   - id: dpo
-    hypothesis: "Tests offline preference learning from verifier-ranked frozen-reference candidates."
-    experiment_patches:
-      - {op: replace, path: /posttraining/preference/enabled, value: true}
-      - {op: replace, path: /posttraining/rlvr/enabled, value: false}
+    hypothesis: "Tests the unbounded log-sigmoid preference objective."
+
+  - id: ipo
+    hypothesis: "Tests finite-margin identity preference optimization."
+    blueprint_patches:
+      - op: replace
+        path: /training/posttraining/preference/objective
+        value: ipo

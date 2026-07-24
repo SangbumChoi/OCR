@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Four matched sweeps isolate the required post-training questions without conflating SFT targets,
+Five matched sweeps isolate the required post-training questions without conflating SFT targets,
 RLVR rewards, advantage estimators, and preference-learning methods:
 
 1. [`configs/sub1b_sft_target_sweep.yaml`](../../configs/sub1b_sft_target_sweep.yaml)
@@ -14,6 +14,8 @@ RLVR rewards, advantage estimators, and preference-learning methods:
    holds the full reward fixed and compares standardized GRPO advantages with RLOO.
 4. [`configs/sub1b_preference_method_sweep.yaml`](../../configs/sub1b_preference_method_sweep.yaml)
    compares on-policy GRPO with verifier-ranked DPO under a fixed algorithmic student-FLOP budget.
+5. [`configs/sub1b_preference_objective_sweep.yaml`](../../configs/sub1b_preference_objective_sweep.yaml)
+   compares DPO with IPO on identical verifier-ranked pairs and fixed compute.
 
 Each design has three paired stochastic replicates. These configurations are executable experiment
 contracts, not evidence that one target, reward, or estimator is better. Heldout claims require
@@ -101,6 +103,14 @@ comparison rather than a pure objective ablation. See
 [`student_preference_method_sweep.md`](student_preference_method_sweep.md) for the exact objective,
 compute convention, skipped-pair accounting, and promotion rule.
 
+## Preference-objective estimand
+
+The six-run objective sweep holds the frozen-reference candidate stream, verifier, rollout,
+optimizer, and compute budget fixed. It changes only the preference loss between DPO's
+log-sigmoid objective and IPO's finite log-ratio target. See
+[`student_preference_objective_sweep.md`](student_preference_objective_sweep.md) for equations,
+exact-resume guards, and the interpretation boundary.
+
 ## Paired controls and outputs
 
 Within each replicate, arms share model initialization, authored train and heldout documents,
@@ -117,8 +127,10 @@ and deployment gates. W&B runs use separate groups:
 - `docvlm-rlvr-reward-ablation`, tagged `rlvr-reward-ablation`;
 - `docvlm-rlvr-advantage-ablation`, tagged `rlvr-advantage-ablation`;
 - `docvlm-preference-method-ablation`, tagged `preference-method-ablation`.
+- `docvlm-preference-objective-ablation`, tagged `preference-objective-ablation`.
 
-The baselines are `evidence_linked`, `full_reward`, `group_standardized`, and `grpo`, respectively.
+The baselines are `evidence_linked`, `full_reward`, `group_standardized`, `grpo`, and `dpo`,
+respectively.
 Consequently, an arm-minus-baseline interval supports one policy only after checking per-family,
 per-language, grounding, reliability, and train-minus-heldout results.
 

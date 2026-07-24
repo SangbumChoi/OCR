@@ -258,12 +258,14 @@ training:
         multilingual_and_reading_order: 0.15
         reliability_and_abstention: 0.10
         general_multimodal_replay: 0.05
-    dpo:
+    preference:
+      objective: dpo
       preference_source: reference_verifier_ranked
       reference_policy: sft_checkpoint
       group_size: 8
       minimum_reward_margin: 0.05
-      beta: 0.10
+      dpo_beta: 0.10
+      ipo_tau: 0.10
       sequence_reduction: sum
       rollout:
         max_new_tokens: 128

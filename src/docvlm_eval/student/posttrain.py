@@ -21,7 +21,7 @@ from .data import (
     student_model_inputs,
     visual_model_inputs,
 )
-from .compute import estimate_dpo_step_flops, estimate_rlvr_step_flops
+from .compute import estimate_preference_step_flops, estimate_rlvr_step_flops
 from .model import DocumentVLMStudent
 from .pretrain import (
     PretrainConfig,
@@ -526,15 +526,17 @@ class RLVRConfig:
 
 
 @dataclass(frozen=True)
-class DPOConfig:
+class PreferenceConfig:
     output_dir: str
     max_steps: int | None = 1000
     total_student_flops: int | None = None
     stop_at_student_flops: bool = False
+    objective: str = "dpo"
     preference_source: str = "reference_verifier_ranked"
     group_size: int = 8
     minimum_reward_margin: float = 0.05
-    beta: float = 0.1
+    dpo_beta: float = 0.1
+    ipo_tau: float = 0.1
     sequence_reduction: str = "sum"
     max_new_tokens: int = 128
     temperature: float = 0.8
@@ -563,44 +565,50 @@ class DPOConfig:
 
     def __post_init__(self) -> None:
         if self.max_steps is not None and self.max_steps <= 0:
-            raise ValueError("DPO max_steps must be positive when set")
+            raise ValueError("preference max_steps must be positive when set")
         if self.max_steps is None and not self.stop_at_student_flops:
             raise ValueError(
-                "DPO max_steps can be null only with a student-FLOP stop"
+                "preference max_steps can be null only with a student-FLOP stop"
             )
         if self.total_student_flops is not None and self.total_student_flops <= 0:
-            raise ValueError("DPO total_student_flops must be positive")
+            raise ValueError("preference total_student_flops must be positive")
         if self.stop_at_student_flops and self.total_student_flops is None:
             raise ValueError(
-                "DPO student-FLOP stop requires total_student_flops"
+                "preference student-FLOP stop requires total_student_flops"
             )
+        if self.objective not in {"dpo", "ipo"}:
+            raise ValueError("preference objective must be dpo or ipo")
         if self.preference_source != "reference_verifier_ranked":
-            raise ValueError("unsupported DPO preference source")
+            raise ValueError("unsupported preference source")
         if self.group_size < 2 or self.max_new_tokens <= 0:
             raise ValueError(
-                "DPO candidate group must contain at least two completions"
+                "preference candidate group must contain at least two completions"
             )
-        if self.minimum_reward_margin < 0 or self.beta <= 0:
-            raise ValueError("DPO margin and beta controls are invalid")
+        if (
+            self.minimum_reward_margin < 0
+            or self.dpo_beta <= 0
+            or self.ipo_tau <= 0
+        ):
+            raise ValueError("preference margin and regularization are invalid")
         if self.sequence_reduction not in {"sum", "mean"}:
-            raise ValueError("DPO sequence reduction must be sum or mean")
+            raise ValueError("preference sequence reduction must be sum or mean")
         if self.temperature <= 0 or not 0 < self.top_p <= 1:
-            raise ValueError("DPO sampling controls are invalid")
+            raise ValueError("preference sampling controls are invalid")
         if not isinstance(self.use_kv_cache, bool):
-            raise ValueError("DPO use_kv_cache must be a boolean")
+            raise ValueError("preference use_kv_cache must be a boolean")
         if self.learning_rate <= 0 or self.weight_decay < 0:
-            raise ValueError("DPO optimizer controls are invalid")
+            raise ValueError("preference optimizer controls are invalid")
         if not 0 <= self.beta1 < 1 or not 0 <= self.beta2 < 1:
-            raise ValueError("DPO optimizer betas must be within [0, 1)")
+            raise ValueError("preference optimizer betas must be within [0, 1)")
         if self.checkpoint_every_steps < 0 or self.log_every_steps <= 0:
-            raise ValueError("DPO checkpoint/log intervals are invalid")
+            raise ValueError("preference checkpoint/log intervals are invalid")
         if self.precision not in {
             "auto",
             "float32",
             "bfloat16",
             "float16",
         }:
-            raise ValueError("invalid DPO precision")
+            raise ValueError("invalid preference precision")
         if (
             not self.gradient_checkpointing_components
             or len(set(self.gradient_checkpointing_components))
@@ -609,10 +617,10 @@ class DPOConfig:
             <= {"vision", "connector", "language"}
         ):
             raise ValueError(
-                "DPO gradient checkpointing components are invalid"
+                "preference gradient checkpointing components are invalid"
             )
         if not self.reference_id:
-            raise ValueError("DPO reference_id cannot be empty")
+            raise ValueError("preference reference_id cannot be empty")
 
     @classmethod
     def from_blueprint(
@@ -622,8 +630,8 @@ class DPOConfig:
         *,
         reference_id: str,
         **overrides: Any,
-    ) -> "DPOConfig":
-        raw = blueprint["training"]["posttraining"]["dpo"]
+    ) -> "PreferenceConfig":
+        raw = blueprint["training"]["posttraining"]["preference"]
         optimizer = raw["optimizer"]
         rollout = raw["rollout"]
         checkpointing = blueprint["training"]["activation_checkpointing"]
@@ -642,12 +650,14 @@ class DPOConfig:
             "stop_at_student_flops": bool(
                 optimizer.get("stop_at_student_flops", False)
             ),
+            "objective": str(raw["objective"]),
             "preference_source": str(raw["preference_source"]),
             "group_size": int(raw["group_size"]),
             "minimum_reward_margin": float(
                 raw["minimum_reward_margin"]
             ),
-            "beta": float(raw["beta"]),
+            "dpo_beta": float(raw["dpo_beta"]),
+            "ipo_tau": float(raw["ipo_tau"]),
             "sequence_reduction": str(raw["sequence_reduction"]),
             "max_new_tokens": int(rollout["max_new_tokens"]),
             "temperature": float(rollout["temperature"]),
@@ -698,7 +708,7 @@ class RLVRResult:
 
 
 @dataclass
-class DPOState:
+class PreferenceState:
     preference_step: int = 0
     optimizer_step: int = 0
     accepted_pairs: int = 0
@@ -708,7 +718,7 @@ class DPOState:
 
 
 @dataclass(frozen=True)
-class DPOResult:
+class PreferenceResult:
     output_dir: str
     preference_step: int
     optimizer_step: int
@@ -794,7 +804,7 @@ def sample_completion_group(
     model: DocumentVLMStudent,
     prompt_batch: dict[str, Any],
     tokenizer: Any,
-    config: RLVRConfig | DPOConfig,
+    config: RLVRConfig | PreferenceConfig,
 ) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
     """Sample one group of completions for one document prompt."""
 
@@ -982,24 +992,30 @@ def select_preference_pair(
     return chosen, rejected, margin
 
 
-def direct_preference_loss(
+def preference_optimization_loss(
     policy_log_probs: torch.Tensor,
     reference_log_probs: torch.Tensor,
     completion_mask: torch.Tensor,
     *,
-    beta: float,
+    objective: str,
+    dpo_beta: float,
+    ipo_tau: float,
     sequence_reduction: str,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """DPO loss for one chosen/rejected pair ordered along batch dimension."""
+    """DPO or IPO loss for one chosen/rejected pair."""
 
     if policy_log_probs.shape != reference_log_probs.shape:
         raise ValueError("policy and reference log-probability shapes must match")
     if completion_mask.shape != policy_log_probs.shape:
         raise ValueError("completion mask must align with token log probabilities")
     if policy_log_probs.shape[0] != 2:
-        raise ValueError("DPO requires one chosen and one rejected sequence")
-    if beta <= 0:
-        raise ValueError("DPO beta must be positive")
+        raise ValueError(
+            "preference optimization requires chosen and rejected sequences"
+        )
+    if objective not in {"dpo", "ipo"}:
+        raise ValueError("preference objective must be dpo or ipo")
+    if dpo_beta <= 0 or ipo_tau <= 0:
+        raise ValueError("preference regularization must be positive")
     mask = completion_mask.to(policy_log_probs.dtype)
     token_counts = mask.sum(dim=1).clamp_min(1)
     policy_sequences = (policy_log_probs * mask).sum(dim=1)
@@ -1008,26 +1024,59 @@ def direct_preference_loss(
         policy_sequences = policy_sequences / token_counts
         reference_sequences = reference_sequences / token_counts
     elif sequence_reduction != "sum":
-        raise ValueError("DPO sequence reduction must be sum or mean")
+        raise ValueError("preference sequence reduction must be sum or mean")
     policy_log_ratio = policy_sequences[0] - policy_sequences[1]
     reference_log_ratio = reference_sequences[0] - reference_sequences[1]
-    preference_logit = beta * (
-        policy_log_ratio - reference_log_ratio
-    )
-    loss = -F.logsigmoid(preference_logit)
+    log_ratio_margin = policy_log_ratio - reference_log_ratio
+    if objective == "dpo":
+        preference_logit = dpo_beta * log_ratio_margin
+        target_log_ratio_margin = torch.zeros_like(log_ratio_margin)
+        loss = -F.logsigmoid(preference_logit)
+    else:
+        target_log_ratio_margin = torch.full_like(
+            log_ratio_margin,
+            1.0 / (2.0 * ipo_tau),
+        )
+        preference_logit = log_ratio_margin
+        loss = (log_ratio_margin - target_log_ratio_margin).square()
     return loss, {
         "loss": loss,
         "preference_logit": preference_logit,
+        "log_ratio_margin": log_ratio_margin,
+        "target_log_ratio_margin": target_log_ratio_margin,
         "policy_log_ratio": policy_log_ratio,
         "reference_log_ratio": reference_log_ratio,
-        "implicit_reward_margin": beta
-        * (policy_log_ratio - reference_log_ratio),
-        "preference_accuracy": (preference_logit > 0).to(
+        "scaled_log_ratio_margin": (
+            dpo_beta if objective == "dpo" else ipo_tau
+        )
+        * log_ratio_margin,
+        "preference_accuracy": (log_ratio_margin > 0).to(
             policy_log_probs.dtype
         ),
         "chosen_sequence_log_prob": policy_sequences[0],
         "rejected_sequence_log_prob": policy_sequences[1],
     }
+
+
+def direct_preference_loss(
+    policy_log_probs: torch.Tensor,
+    reference_log_probs: torch.Tensor,
+    completion_mask: torch.Tensor,
+    *,
+    beta: float,
+    sequence_reduction: str,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Backward-compatible DPO objective wrapper."""
+
+    return preference_optimization_loss(
+        policy_log_probs,
+        reference_log_probs,
+        completion_mask,
+        objective="dpo",
+        dpo_beta=beta,
+        ipo_tau=0.1,
+        sequence_reduction=sequence_reduction,
+    )
 
 
 def supervised_replay_loss(
@@ -1238,8 +1287,8 @@ def _load_rlvr_checkpoint(
     )
 
 
-def _dpo_rollout_contract(
-    config: DPOConfig,
+def _preference_rollout_contract(
+    config: PreferenceConfig,
 ) -> dict[str, int | float | bool]:
     return {
         "group_size": config.group_size,
@@ -1250,14 +1299,16 @@ def _dpo_rollout_contract(
     }
 
 
-def _dpo_objective_contract(
-    config: DPOConfig,
+def _preference_objective_contract(
+    config: PreferenceConfig,
     reward_config: RewardConfig,
 ) -> dict[str, Any]:
     return {
+        "objective": config.objective,
         "preference_source": config.preference_source,
         "minimum_reward_margin": config.minimum_reward_margin,
-        "beta": config.beta,
+        "dpo_beta": config.dpo_beta,
+        "ipo_tau": config.ipo_tau,
         "sequence_reduction": config.sequence_reduction,
         "reward_weights": {
             name: float(weight)
@@ -1267,8 +1318,8 @@ def _dpo_objective_contract(
     }
 
 
-def _dpo_budget_contract(
-    config: DPOConfig,
+def _preference_budget_contract(
+    config: PreferenceConfig,
 ) -> dict[str, int | bool | None]:
     return {
         "total_student_flops": config.total_student_flops,
@@ -1276,12 +1327,12 @@ def _dpo_budget_contract(
     }
 
 
-def _save_dpo_checkpoint(
+def _save_preference_checkpoint(
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
     scaler: torch.amp.GradScaler,
-    state: DPOState,
-    config: DPOConfig,
+    state: PreferenceState,
+    config: PreferenceConfig,
     reward_config: RewardConfig,
 ) -> Path:
     output = Path(config.output_dir)
@@ -1289,21 +1340,23 @@ def _save_dpo_checkpoint(
     checkpoints.mkdir(parents=True, exist_ok=True)
     target = checkpoints / f"step-{state.preference_step:08d}"
     if target.exists():
-        raise FileExistsError(f"refusing to overwrite DPO checkpoint {target}")
+        raise FileExistsError(
+            f"refusing to overwrite preference checkpoint {target}"
+        )
     temporary = Path(tempfile.mkdtemp(prefix=".checkpoint-", dir=checkpoints))
     model.save_pretrained(
         temporary / "student",
         metadata={
-            "run_stage": "dpo",
+            "run_stage": f"preference:{config.objective}",
             "trainer_state": asdict(state),
             "tokenizer_fingerprint": config.tokenizer_fingerprint,
             "reference_id": config.reference_id,
             "gradient_checkpointing": (
                 model.gradient_checkpointing_state
             ),
-            "rollout": _dpo_rollout_contract(config),
-            "objective": _dpo_objective_contract(config, reward_config),
-            "compute_budget": _dpo_budget_contract(config),
+            "rollout": _preference_rollout_contract(config),
+            "objective": _preference_objective_contract(config, reward_config),
+            "compute_budget": _preference_budget_contract(config),
         },
     )
     torch.save(
@@ -1331,49 +1384,51 @@ def _save_dpo_checkpoint(
     return target
 
 
-def _resolve_dpo_resume(config: DPOConfig) -> Path | None:
+def _resolve_preference_resume(config: PreferenceConfig) -> Path | None:
     if config.resume_from is None:
         return None
     if config.resume_from != "latest":
         return Path(config.resume_from)
     pointer = Path(config.output_dir) / "latest_checkpoint.txt"
     if not pointer.exists():
-        raise FileNotFoundError(f"no DPO checkpoint pointer at {pointer}")
+        raise FileNotFoundError(
+            f"no preference checkpoint pointer at {pointer}"
+        )
     return Path(pointer.read_text(encoding="utf-8").strip())
 
 
-def _load_dpo_checkpoint(
+def _load_preference_checkpoint(
     path: Path,
     model: DocumentVLMStudent,
     optimizer: torch.optim.Optimizer,
     scaler: torch.amp.GradScaler,
-    config: DPOConfig,
+    config: PreferenceConfig,
     reward_config: RewardConfig,
     device: torch.device,
-) -> DPOState:
+) -> PreferenceState:
     metadata = json.loads(
         (path / "student" / "metadata.json").read_text(encoding="utf-8")
     )
-    if metadata.get("run_stage") != "dpo":
-        raise ValueError("resume checkpoint is not a DPO checkpoint")
+    if metadata.get("run_stage") != f"preference:{config.objective}":
+        raise ValueError("resume checkpoint is not the requested preference objective")
     if metadata.get("tokenizer_fingerprint") != config.tokenizer_fingerprint:
-        raise ValueError("DPO tokenizer fingerprint mismatch")
+        raise ValueError("preference tokenizer fingerprint mismatch")
     if metadata.get("reference_id") != config.reference_id:
-        raise ValueError("DPO frozen reference mismatch")
+        raise ValueError("preference frozen reference mismatch")
     if (
         metadata.get("gradient_checkpointing")
         != model.gradient_checkpointing_state
     ):
-        raise ValueError("DPO gradient-checkpointing contract mismatch")
-    if metadata.get("rollout") != _dpo_rollout_contract(config):
-        raise ValueError("DPO rollout contract mismatch")
-    if metadata.get("objective") != _dpo_objective_contract(
+        raise ValueError("preference gradient-checkpointing contract mismatch")
+    if metadata.get("rollout") != _preference_rollout_contract(config):
+        raise ValueError("preference rollout contract mismatch")
+    if metadata.get("objective") != _preference_objective_contract(
         config,
         reward_config,
     ):
-        raise ValueError("DPO objective contract mismatch")
-    if metadata.get("compute_budget") != _dpo_budget_contract(config):
-        raise ValueError("DPO compute-budget contract mismatch")
+        raise ValueError("preference objective contract mismatch")
+    if metadata.get("compute_budget") != _preference_budget_contract(config):
+        raise ValueError("preference compute-budget contract mismatch")
     model.load_state_dict(
         torch.load(
             path / "student" / "model.pt",
@@ -1392,7 +1447,7 @@ def _load_dpo_checkpoint(
     random.setstate(payload["python_rng_state"])
     if torch.cuda.is_available() and payload.get("cuda_rng_state") is not None:
         torch.cuda.set_rng_state_all(payload["cuda_rng_state"])
-    return DPOState(
+    return PreferenceState(
         **json.loads((path / "trainer_state.json").read_text(encoding="utf-8"))
     )
 
@@ -1419,16 +1474,16 @@ def _prompt_vision_tokens(
     )
 
 
-def train_dpo(
+def train_preference(
     policy: DocumentVLMStudent,
     reference: DocumentVLMStudent,
     dataset: StructuredPostTrainingDataset,
     collator: StudentCollator,
     tokenizer: Any,
-    config: DPOConfig,
+    config: PreferenceConfig,
     reward_config: RewardConfig,
-) -> DPOResult:
-    """Run resumable verifier-ranked DPO from a frozen SFT reference."""
+) -> PreferenceResult:
+    """Run resumable verifier-ranked preference optimization."""
 
     device = _device(config.device)
     random.seed(config.seed)
@@ -1462,10 +1517,10 @@ def train_dpo(
         "cuda",
         enabled=_uses_fp16(device, config.precision),
     )
-    state = DPOState()
-    resume_path = _resolve_dpo_resume(config)
+    state = PreferenceState()
+    resume_path = _resolve_preference_resume(config)
     if resume_path is not None:
-        state = _load_dpo_checkpoint(
+        state = _load_preference_checkpoint(
             resume_path,
             policy,
             optimizer,
@@ -1544,11 +1599,13 @@ def train_dpo(
                         pair_ids,
                         pair_mask,
                     )
-                loss, tensors = direct_preference_loss(
+                loss, tensors = preference_optimization_loss(
                     policy_log_probs,
                     reference_log_probs,
                     pair_mask,
-                    beta=config.beta,
+                    objective=config.objective,
+                    dpo_beta=config.dpo_beta,
+                    ipo_tau=config.ipo_tau,
                     sequence_reduction=config.sequence_reduction,
                 )
             optimizer.zero_grad(set_to_none=True)
@@ -1565,7 +1622,7 @@ def train_dpo(
         else:
             state.skipped_pairs += 1
         vision_tokens = _prompt_vision_tokens(prompt_batch, policy)
-        step_flops = estimate_dpo_step_flops(
+        step_flops = estimate_preference_step_flops(
             policy.config,
             vision_tokens=vision_tokens,
             prompt_tokens=int(prompt_batch["input_ids"].shape[1]),
@@ -1588,49 +1645,51 @@ def train_dpo(
             result.structurally_valid for result in reward_results
         ) / len(reward_results)
         final_metrics = {
-            f"dpo/{name}": float(value.detach())
+            f"preference/{name}": float(value.detach())
             for name, value in tensors.items()
         }
         for name in (
             "loss",
             "preference_logit",
+            "log_ratio_margin",
+            "target_log_ratio_margin",
             "policy_log_ratio",
             "reference_log_ratio",
-            "implicit_reward_margin",
+            "scaled_log_ratio_margin",
             "preference_accuracy",
             "chosen_sequence_log_prob",
             "rejected_sequence_log_prob",
         ):
-            final_metrics.setdefault(f"dpo/{name}", 0.0)
+            final_metrics.setdefault(f"preference/{name}", 0.0)
         final_metrics.update(
             {
-                "dpo/accepted_pair": float(accepted),
-                "dpo/verifier_reward_margin": verifier_margin,
-                "dpo/reward_mean": float(rewards.mean()),
-                "dpo/reward_std": float(
+                "preference/accepted_pair": float(accepted),
+                "preference/verifier_reward_margin": verifier_margin,
+                "preference/reward_mean": float(rewards.mean()),
+                "preference/reward_std": float(
                     rewards.std(unbiased=False)
                 ),
-                "dpo/valid_structure_fraction": valid_fraction,
-                "dpo/gradient_norm": float(gradient_norm),
-                "dpo/preference_step": float(state.preference_step),
-                "dpo/optimizer_step": float(state.optimizer_step),
-                "dpo/accepted_pairs": float(state.accepted_pairs),
-                "dpo/skipped_pairs": float(state.skipped_pairs),
-                "dpo/student_flops_seen": float(
+                "preference/valid_structure_fraction": valid_fraction,
+                "preference/gradient_norm": float(gradient_norm),
+                "preference/preference_step": float(state.preference_step),
+                "preference/optimizer_step": float(state.optimizer_step),
+                "preference/accepted_pairs": float(state.accepted_pairs),
+                "preference/skipped_pairs": float(state.skipped_pairs),
+                "preference/student_flops_seen": float(
                     state.student_flops_seen
                 ),
-                "dpo/step_student_flops": float(step_flops["total"]),
-                "dpo/checkpoint_recompute_flops_seen": float(
+                "preference/step_student_flops": float(step_flops["total"]),
+                "preference/checkpoint_recompute_flops_seen": float(
                     state.checkpoint_recompute_flops_seen
                 ),
-                "dpo/executed_student_flops_seen": float(
+                "preference/executed_student_flops_seen": float(
                     state.student_flops_seen
                     + state.checkpoint_recompute_flops_seen
                 ),
-                "dpo/step_checkpoint_recompute_flops": float(
+                "preference/step_checkpoint_recompute_flops": float(
                     step_flops["checkpoint_recompute"]
                 ),
-                "dpo/step_executed_student_flops": float(
+                "preference/step_executed_student_flops": float(
                     step_flops["executed_total"]
                 ),
             }
@@ -1650,15 +1709,17 @@ def train_dpo(
             _append_metric(
                 output_dir,
                 {
-                    "kind": "dpo",
+                    "kind": "preference",
                     "sample_id": dataset.samples[sample_index].sample_id,
+                    "objective": config.objective,
                     "preference_source": config.preference_source,
                     "sequence_reduction": config.sequence_reduction,
                     **final_metrics,
                 },
             )
             print(
-                f"[dpo] step={state.preference_step} "
+                f"[preference] step={state.preference_step} "
+                f"objective={config.objective} "
                 f"optimizer_step={state.optimizer_step} "
                 f"student_flops={state.student_flops_seen:,} "
                 f"reward_margin={verifier_margin:.4f} "
@@ -1669,7 +1730,7 @@ def train_dpo(
             config.checkpoint_every_steps > 0
             and state.preference_step % config.checkpoint_every_steps == 0
         ):
-            last_checkpoint = _save_dpo_checkpoint(
+            last_checkpoint = _save_preference_checkpoint(
                 policy,
                 optimizer,
                 scaler,
@@ -1681,7 +1742,7 @@ def train_dpo(
         last_checkpoint is None
         or last_checkpoint.name != f"step-{state.preference_step:08d}"
     ):
-        last_checkpoint = _save_dpo_checkpoint(
+        last_checkpoint = _save_preference_checkpoint(
             policy,
             optimizer,
             scaler,
@@ -1689,7 +1750,7 @@ def train_dpo(
             config,
             reward_config,
         )
-    return DPOResult(
+    return PreferenceResult(
         output_dir=str(output_dir),
         preference_step=state.preference_step,
         optimizer_step=state.optimizer_step,

@@ -624,7 +624,7 @@ def estimate_rlvr_step_flops(
     return result
 
 
-def estimate_dpo_step_flops(
+def estimate_preference_step_flops(
     config: StudentConfig,
     *,
     vision_tokens: int,
@@ -635,7 +635,7 @@ def estimate_dpo_step_flops(
     checkpoint_components: tuple[str, ...] = (),
     accepted_pair: bool = True,
 ) -> dict[str, int]:
-    """Estimate reference rollout and an optional two-sequence DPO update."""
+    """Estimate reference rollout and an optional preference-pair update."""
 
     rollout = estimate_rlvr_step_flops(
         config,

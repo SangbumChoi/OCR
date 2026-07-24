@@ -224,14 +224,14 @@ def test_experiment_can_evaluate_the_sft_checkpoint_without_rlvr(tmp_path):
     )
 
 
-def test_experiment_can_run_dpo_from_sft_and_evaluate_its_checkpoint(tmp_path):
+def test_experiment_can_run_preference_stage_from_sft(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
             encoding="utf-8"
         )
     )
     raw["output_root"] = str(tmp_path / "output")
-    raw["posttraining"]["dpo"] = {
+    raw["posttraining"]["preference"] = {
         "enabled": True,
         "max_steps": 1,
     }
@@ -242,34 +242,36 @@ def test_experiment_can_run_dpo_from_sft_and_evaluate_its_checkpoint(tmp_path):
         "replay_loss_coefficient": None,
         "replay_samples": None,
     }
-    config = tmp_path / "dpo.yaml"
+    config = tmp_path / "preference.yaml"
     config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
     plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
-    assert "dpo" in plan.stage_names
+    assert "preference" in plan.stage_names
     assert "rlvr" not in plan.stage_names
-    dpo = next(stage for stage in plan.stages if stage.name == "dpo")
-    assert dpo.dependencies == ("sft",)
-    assert "@student:sft" in dpo.command
+    preference = next(
+        stage for stage in plan.stages if stage.name == "preference"
+    )
+    assert preference.dependencies == ("sft",)
+    assert "@student:sft" in preference.command
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
-    assert "@student:dpo" in evaluate.command
+    assert "@student:preference" in evaluate.command
     assert evaluate.dependencies == (
-        "dpo",
+        "preference",
         "build_train_samples",
         "build_heldout_samples",
     )
 
 
-def test_experiment_rejects_simultaneous_dpo_and_rlvr(tmp_path):
+def test_experiment_rejects_simultaneous_preference_and_rlvr(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
             encoding="utf-8"
         )
     )
     raw["output_root"] = str(tmp_path / "output")
-    raw["posttraining"]["dpo"]["enabled"] = True
-    raw["posttraining"]["dpo"]["max_steps"] = 1
+    raw["posttraining"]["preference"]["enabled"] = True
+    raw["posttraining"]["preference"]["max_steps"] = 1
     config = tmp_path / "invalid-preference-stages.yaml"
     config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
@@ -292,18 +294,18 @@ def test_experiment_rejects_ignored_disabled_rlvr_overrides(tmp_path):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
-def test_experiment_rejects_ignored_disabled_dpo_overrides(tmp_path):
+def test_experiment_rejects_ignored_disabled_preference_overrides(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
             encoding="utf-8"
         )
     )
     raw["output_root"] = str(tmp_path / "output")
-    raw["posttraining"]["dpo"]["max_steps"] = 1
-    config = tmp_path / "invalid-disabled-dpo.yaml"
+    raw["posttraining"]["preference"]["max_steps"] = 1
+    config = tmp_path / "invalid-disabled-preference.yaml"
     config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="disabled DPO cannot set"):
+    with pytest.raises(ValueError, match="disabled preference cannot set"):
         build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 

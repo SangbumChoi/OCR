@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run structured SFT, verifier-ranked DPO, or RLVR for the native student."""
+"""Run structured SFT, verifier-ranked preferences, or RLVR."""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ from docvlm_eval.benchmarks import load_jsonl
 from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 from docvlm_eval.student.model import DocumentVLMStudent
 from docvlm_eval.student.posttrain import (
-    DPOConfig,
+    PreferenceConfig,
     RLVRConfig,
     SFTConfig,
     StructuredPostTrainingDataset,
-    train_dpo,
+    train_preference,
     train_grpo,
     train_sft,
 )
@@ -68,7 +68,7 @@ def _device(args) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["sft", "dpo", "rlvr"])
+    parser.add_argument("stage", choices=["sft", "preference", "rlvr"])
     parser.add_argument(
         "--config",
         type=Path,
@@ -182,14 +182,14 @@ def main() -> None:
         map_location=device,
     )
     reward_config = RewardConfig.from_blueprint(blueprint)
-    if args.stage == "dpo":
-        config = DPOConfig.from_blueprint(
+    if args.stage == "preference":
+        config = PreferenceConfig.from_blueprint(
             blueprint,
             args.output,
             reference_id=reference_id,
             **overrides,
         )
-        result = train_dpo(
+        result = train_preference(
             policy,
             reference,
             dataset,
@@ -199,7 +199,8 @@ def main() -> None:
             reward_config,
         )
         print(
-            f"Finished DPO preference_step={result.preference_step} "
+            f"Finished {config.objective.upper()} "
+            f"preference_step={result.preference_step} "
             f"optimizer_step={result.optimizer_step} "
             f"accepted_pairs={result.accepted_pairs} "
             f"student_flops={result.student_flops_seen:,} "

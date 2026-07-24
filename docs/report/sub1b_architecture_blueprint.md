@@ -179,10 +179,10 @@ with replacement. See
 
 ### Preference optimization and RL with verifiable rewards
 
-Run verifier-ranked DPO or GRPO from the SFT checkpoint. DPO ranks frozen-reference candidates and
-updates on a sufficiently separated best/worst pair; GRPO samples from the evolving policy and
-applies one group-relative update. All default rewards are computed from authored or normalized
-ground truth:
+Run verifier-ranked DPO, IPO, or GRPO from the SFT checkpoint. DPO and IPO rank frozen-reference
+candidates and update on a sufficiently separated best/worst pair; GRPO samples from the evolving
+policy and applies one group-relative update. All default rewards are computed from authored or
+normalized ground truth:
 
 - answer exactness and normalized text similarity;
 - box IoU for evidence and spotting;
@@ -292,6 +292,8 @@ checkpointed objective contract. The compute-matched comparison is specified in
 [`student_rlvr_advantage_sweep.md`](student_rlvr_advantage_sweep.md).
 Verifier-ranked DPO and on-policy GRPO are separately compared at a fixed algorithmic student-FLOP
 budget in [`student_preference_method_sweep.md`](student_preference_method_sweep.md).
+DPO and IPO are compared on identical preference pairs in
+[`student_preference_objective_sweep.md`](student_preference_objective_sweep.md).
 
 Final deployment acceptance joins those two evidence streams. `eval_student.py` verifies the
 benchmark's complete student configuration and canonical fingerprint, CUDA runtime, benchmark

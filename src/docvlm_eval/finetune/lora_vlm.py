@@ -11,7 +11,7 @@ and intentionally small (peft + a plain torch loop). Used by ``scripts/run_ablat
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 # capability -> module bucket (mirrors the hypotheses in research_novelty.md / ablation_plan.md)
@@ -19,7 +19,9 @@ PLACEMENT_GROUPS = ("vision", "connector", "llm_attn", "llm_mlp", "all")
 
 _VISION_PAT = re.compile(r"vis(ual|ion)|patch|siglip|navit|aimv2", re.I)
 _CONNECTOR_PAT = re.compile(r"merger|projector|connector|mlp1|multi_modal|abstractor|resampler", re.I)
+_ATTN_PATH = re.compile(r"(^|\.)(self_?attn|attention|attn)(\.|$)", re.I)
 _ATTN_LEAF = re.compile(r"(^|\.)(q|k|v|o|qkv|out|wq|wk|wv|wo)_?proj$", re.I)
+_MLP_PATH = re.compile(r"(^|\.)(mlp|feed_?forward|ffn)(\.|$)", re.I)
 _MLP_LEAF = re.compile(
     r"(^|\.)(gate|up|down)_?proj$|(^|\.)(fc1|fc2|w1|w2|w3)$",
     re.I,
@@ -65,11 +67,29 @@ def resolve_lora_targets(
             targets.append(name)
         elif group == "connector" and bkt == "connector":
             targets.append(name)
-        elif group == "llm_attn" and bkt == "llm" and _ATTN_LEAF.search(leaf):
+        elif (
+            group == "llm_attn"
+            and bkt == "llm"
+            and _ATTN_PATH.search(name)
+            and _ATTN_LEAF.search(leaf)
+        ):
             targets.append(name)
-        elif group == "llm_mlp" and bkt == "llm" and _MLP_LEAF.search(leaf):
+        elif (
+            group == "llm_mlp"
+            and bkt == "llm"
+            and (_MLP_PATH.search(name) or _MLP_LEAF.search(leaf))
+        ):
             targets.append(name)
     return sorted(set(targets))
+
+
+def _linear_module_summary(named_modules: Iterable[tuple[str, Any]]) -> str:
+    """Compact module-name evidence for actionable placement failures."""
+    import torch
+
+    names = [name for name, mod in named_modules if name and isinstance(mod, torch.nn.Linear)]
+    leaves = sorted({name.rsplit(".", 1)[-1] for name in names})
+    return f"{len(names)} linear modules; leaves={leaves[:32]}"
 
 
 # ----------------------------------------------------------------------------- training (GPU)
@@ -192,7 +212,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
     project's aggregate summary. ``max_samples`` caps the eval set — the arm path regenerates
     realistic_cases at --count (thousands of samples), so without a cap the suite eval would score the
     whole TRAINING set (slow + memorization-tainted). None/0 = score all."""
-    import sys, time
+    import sys
+    import time
     from pathlib import Path
 
     import torch
@@ -226,7 +247,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
                 out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
             text = proc.batch_decode(out[:, n:], skip_special_tokens=True)[0].strip()
         except torch.cuda.OutOfMemoryError:        # skip the offending sample, keep scoring the rest
-            torch.cuda.empty_cache(); text = ""
+            torch.cuda.empty_cache()
+            text = ""
         preds[s.sample_id] = Prediction(sample_id=s.sample_id, prediction=text, raw=text)
         if i == 1 or i % every == 0 or i == len(samples):
             print(f"    [eval {tag}] {i}/{len(samples)} ({(time.time()-t0):.0f}s)", flush=True)
@@ -258,7 +280,8 @@ def _wandb_init(cfg: "LoraVLMConfig"):
     try:
         import wandb
     except ImportError:
-        print("[wandb] not installed (pip install wandb) -> training without logging"); return None
+        print("[wandb] not installed (pip install wandb) -> training without logging")
+        return None
     try:
         if wandb.run is not None:           # close any run left open by a previous size, THEN init a
             wandb.finish()                  # fresh one — this replaces the now-deprecated reinit=True
@@ -273,7 +296,8 @@ def _wandb_init(cfg: "LoraVLMConfig"):
         return run
     except Exception as e:                  # not logged in / offline / no API key -> continue, no crash
         print(f"[wandb] init failed ({type(e).__name__}: {e}); set WANDB_API_KEY or run "
-              f"`wandb login` -> training WITHOUT logging"); return None
+              f"`wandb login` -> training WITHOUT logging")
+        return None
 
 
 def train_lora_vlm(cfg: LoraVLMConfig,
@@ -302,9 +326,19 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     model = _auto_vlm().from_pretrained(cfg.model_id, torch_dtype=dt,
                                         trust_remote_code=True).to(device)
 
-    targets = resolve_lora_targets(model.named_modules(), cfg.placement)
+    named_modules = list(model.named_modules())
+    targets = resolve_lora_targets(named_modules, cfg.placement)
     if not targets:
-        raise RuntimeError(f"no LoRA targets for placement={cfg.placement!r} on {cfg.model_id}")
+        summary = _linear_module_summary(named_modules)
+        raise RuntimeError(
+            f"no LoRA targets for placement={cfg.placement!r} on {cfg.model_id}; {summary}. "
+            "Confirm that the Colab checkout is current and inspect the model's module names."
+        )
+    print(
+        f"[lora_vlm.train] placement={cfg.placement} resolved {len(targets)} targets; "
+        f"sample={targets[:8]}",
+        flush=True,
+    )
     model = get_peft_model(model, LoraConfig(
         r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
         bias="none", target_modules=targets, task_type="CAUSAL_LM"))
@@ -315,7 +349,11 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         model.enable_input_require_grads()     # needed so grads flow with a frozen embedding + PEFT
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
-    rows = [json.loads(l) for l in Path(cfg.train_jsonl).read_text().splitlines() if l.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(cfg.train_jsonl).read_text().splitlines()
+        if line.strip()
+    ]
     rows = [r for r in rows if r.get("answers")]
     if not rows:
         raise RuntimeError(f"no trainable rows (with answers) in {cfg.train_jsonl}")
@@ -364,7 +402,8 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     run = _wandb_init(cfg)
     if run:        # distinct namespaces so define_metric globs don't collide: loss vs step, eval vs epoch
         import wandb
-        wandb.define_metric("train/global_step"); wandb.define_metric("epoch")
+        wandb.define_metric("train/global_step")
+        wandb.define_metric("epoch")
         wandb.define_metric("train/loss", step_metric="train/global_step")
         wandb.define_metric("epoch/*", step_metric="epoch")
         wandb.define_metric("eval/*", step_metric="epoch")
@@ -376,10 +415,12 @@ def train_lora_vlm(cfg: LoraVLMConfig,
           f"(grad_accum={cfg.grad_accum} -> ~{max(total // cfg.grad_accum, 1)} optimizer steps) | "
           f"img_cap={cfg.max_image_long_side} grad_ckpt={cfg.grad_checkpointing}", flush=True)
     t0 = time.time()
-    gstep = 0; last_eval: dict = {}
+    gstep = 0
+    last_eval: dict = {}
     try:
         for epoch in range(cfg.epochs):
-            model.train(); losses = []
+            model.train()
+            losses = []
             for batch in dl:
                 out = model(**batch)
                 if out.loss is None:
@@ -387,11 +428,14 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                                        "model's forward; check the processor chat-template / image keys")
                 (out.loss / cfg.grad_accum).backward()
                 if (gstep + 1) % cfg.grad_accum == 0:
-                    opt.step(); opt.zero_grad()
+                    opt.step()
+                    opt.zero_grad()
                 losses.append(float(out.loss.detach()))
                 gstep += 1
                 if gstep == 1 or gstep % cfg.log_every == 0 or gstep >= total:
-                    el = time.time() - t0; rate = gstep / max(el, 1e-9); eta = (total - gstep) / max(rate, 1e-9)
+                    el = time.time() - t0
+                    rate = gstep / max(el, 1e-9)
+                    eta = (total - gstep) / max(rate, 1e-9)
                     print(f"    step {gstep}/{total} (ep {epoch+1}/{cfg.epochs}) loss={losses[-1]:.3f} "
                           f"| {rate:.2f} it/s | elapsed {el/60:.1f}m | eta {eta/60:.1f}m", flush=True)
                     if run:
@@ -417,8 +461,10 @@ def train_lora_vlm(cfg: LoraVLMConfig,
             if gstep >= cap:
                 break
 
-        out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
-        model.save_pretrained(out_dir); proc.save_pretrained(out_dir)
+        out_dir = Path(cfg.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(out_dir)
+        proc.save_pretrained(out_dir)
     finally:
         if run:                                            # always close, even on OOM/crash, so the
             run.finish()                                   # next sweep size's wandb.init() is clean
@@ -429,7 +475,7 @@ def _load_for_eval(model_id: str, adapter_path: str | None, dtype: str = "bfloat
     """Load the (optionally LoRA-adapted) model + processor ONCE -> (model, proc, device)."""
     device, dt = _device_dtype(dtype)
     print(f"[lora_vlm.eval] loading {model_id}"
-          + (f" + adapter" if adapter_path else "") + f" on {device}/{dt}"
+          + (" + adapter" if adapter_path else "") + f" on {device}/{dt}"
           + ("" if device == "cuda" else "  (CPU — eval will be slow)"), flush=True)
     from transformers import AutoProcessor
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)

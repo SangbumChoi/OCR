@@ -37,14 +37,14 @@ The default uses summed completion-token log probabilities, `beta: 0.10`, and a 
 margin of `0.05`. The policy and reference each score the accepted pair in one teacher-forced
 pass. One image encoding is reused across both sequences.
 
-Run one DPO job directly:
+Run one DPO job directly with `training.posttraining.preference.objective: dpo`:
 
 ```bash
-python scripts/posttrain_student.py dpo \
+python scripts/posttrain_student.py preference \
   --samples data/posttraining/train.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/checkpoints/step-00002000/student \
-  --output outputs/student_dpo/verifier_ranked
+  --output outputs/student_preference/verifier_ranked
 ```
 
 ## Matched method comparison
@@ -97,8 +97,9 @@ resumed and uninterrupted policy weights exactly.
 This is a method-level estimand, not a pure loss-function ablation. GRPO samples from the evolving
 policy; DPO builds preferences from the frozen SFT reference. A DPO loss advantage could therefore
 come from the offline candidate distribution, lower-variance pair updates, or the objective itself.
-A later factorial study can cross candidate source with objective only if this comparison shows a
-material, repeatable difference.
+The separate
+[`student_preference_objective_sweep.md`](student_preference_objective_sweep.md) holds candidate
+source fixed and directly compares DPO with IPO.
 
 Promotion requires a paired heldout-score interval above zero without a worse train-minus-heldout
 gap, plus non-regressive grounding, multilingual, reliability, and structural-validity slices.

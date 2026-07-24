@@ -200,11 +200,12 @@ def test_blueprint_rejects_inconsistent_token_budget_contract():
 def test_blueprint_rejects_invalid_posttraining_contracts():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["posttraining"]["sft"]["target_mode"] = "hidden_reasoning"
-    dpo = blueprint["training"]["posttraining"]["dpo"]
-    dpo["group_size"] = 1
-    dpo["beta"] = 0.0
-    dpo["sequence_reduction"] = "median"
-    dpo["rollout"]["use_kv_cache"] = "yes"
+    preference = blueprint["training"]["posttraining"]["preference"]
+    preference["group_size"] = 1
+    preference["dpo_beta"] = 0.0
+    preference["ipo_tau"] = 0.0
+    preference["sequence_reduction"] = "median"
+    preference["rollout"]["use_kv_cache"] = "yes"
     rlvr = blueprint["training"]["posttraining"]["rlvr"]
     rlvr["group_size"] = 1
     rlvr["advantage_estimator"] = "critic"
@@ -217,10 +218,11 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
 
     assert any("sft.target_mode is invalid" in error for error in errors)
     assert any("group_size must be at least two" in error for error in errors)
-    assert any("dpo.beta must be positive" in error for error in errors)
-    assert any("dpo.sequence_reduction" in error for error in errors)
+    assert any("preference.dpo_beta must be positive" in error for error in errors)
+    assert any("preference.ipo_tau must be positive" in error for error in errors)
+    assert any("preference.sequence_reduction" in error for error in errors)
     assert any(
-        "dpo.rollout.use_kv_cache must be a boolean" in error
+        "preference.rollout.use_kv_cache must be a boolean" in error
         for error in errors
     )
     assert any("advantage_estimator" in error for error in errors)

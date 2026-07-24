@@ -16,6 +16,11 @@ TREE = [
     ("model.language_model.layers.0.self_attn.o_proj", "L"),  # llm attn
     ("model.language_model.layers.0.mlp.gate_proj", "L"),     # llm mlp
     ("model.language_model.layers.0.mlp.down_proj", "L"),     # llm mlp
+    ("model.language_model.layers.1.conv.in_proj", "L"),       # LFM short convolution
+    ("model.language_model.layers.1.conv.out_proj", "L"),      # not attention
+    ("model.language_model.layers.1.feed_forward.w1", "L"),    # LFM MLP
+    ("model.language_model.layers.1.feed_forward.w2", "L"),
+    ("model.language_model.layers.1.feed_forward.w3", "L"),
     ("lm_head", "x"),                                         # not Linear here -> ignored
 ]
 
@@ -47,7 +52,14 @@ def test_llm_attn_group_is_attn_leaves_on_llm_side_only():
 def test_llm_mlp_group():
     m = R("llm_mlp")
     assert set(m) == {"model.language_model.layers.0.mlp.gate_proj",
-                      "model.language_model.layers.0.mlp.down_proj"}
+                      "model.language_model.layers.0.mlp.down_proj",
+                      "model.language_model.layers.1.feed_forward.w1",
+                      "model.language_model.layers.1.feed_forward.w2",
+                      "model.language_model.layers.1.feed_forward.w3"}
+
+
+def test_lfm_short_conv_projections_are_not_mislabeled_as_attention():
+    assert "model.language_model.layers.1.conv.out_proj" not in R("llm_attn")
 
 
 def test_all_group_is_every_linear():
