@@ -42,7 +42,10 @@ def main() -> None:
     import torch
     from huggingface_hub import HfApi, get_safetensors_metadata
 
-    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.model import (
+        DocumentVLMStudent,
+        count_unique_parameters,
+    )
     from docvlm_eval.student.transfer import selective_transfer
 
     spec = HubCheckpointSpec(
@@ -90,10 +93,9 @@ def main() -> None:
         {args.component: args.fraction},
         family=spec.family,
     ).to_dict()
-    student_parameters = sum(
-        parameter.numel()
-        for parameter in student.parameters()
-    )
+    parameter_counts = count_unique_parameters(student)
+    student_parameters = parameter_counts["total"]
+    component_parameters = parameter_counts[args.component]
     result = {
         "schema_version": 1,
         "repo_id": spec.repo_id,
@@ -116,6 +118,10 @@ def main() -> None:
         "compatible_tensors": report["copied_tensors"],
         "compatible_parameters": report["copied_parameters"],
         "student_fraction": report["copied_parameters"] / student_parameters,
+        "component_parameters": component_parameters,
+        "component_fraction": (
+            report["copied_parameters"] / component_parameters
+        ),
         "shape_mismatches": len(report["skipped_shape"]),
         "missing_source": len(report["missing_source"]),
         "report": report,

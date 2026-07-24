@@ -880,6 +880,35 @@ def test_selective_transfer_depth_maps_exact_shape_blocks_only():
     assert report.copied_parameters > 0
 
 
+def test_siglip_transfer_maps_attention_output_projection():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    target = student.state_dict()
+    source = {
+        "vision_model.encoder.layers.0.self_attn.out_proj.weight": (
+            torch.full_like(
+                target["vision.blocks.0.attn.o_proj.weight"],
+                3.0,
+            )
+        ),
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"vision": 1.0},
+        family="siglip",
+    )
+
+    assert torch.all(student.vision.blocks[0].attn.o_proj.weight == 3)
+    assert "vision.blocks.0.attn.o_proj.weight" in report.copied_keys
+
+
 def test_lfm2_hybrid_transfer_maps_attention_convolution_and_mlp():
     import torch
 
@@ -1019,6 +1048,140 @@ def test_student_builder_rejects_a_required_zero_parameter_transfer(tmp_path):
 
     assert result.returncode != 0
     assert "copied zero parameters" in result.stderr
+
+
+def test_student_builder_rejects_a_nonzero_but_underdosed_transfer(tmp_path):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny(vocab_size=260))
+    checkpoint = tmp_path / "underdosed.pt"
+    torch.save(
+        {
+            "vision.norm.weight": model.state_dict()[
+                "vision.norm.weight"
+            ].clone()
+        },
+        checkpoint,
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_sub1b_student.py"),
+            "--tiny",
+            "--tiny-vocab-size",
+            "260",
+            "--device",
+            "cpu",
+            "--init-arm",
+            "I1_vision",
+            "--vision-source",
+            str(checkpoint),
+            "--vision-family",
+            "student",
+            "--save",
+            str(tmp_path / "student"),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "parameter dose is below" in result.stderr
+    assert "'component': 'vision'" in result.stderr
+
+
+def test_student_builder_records_the_realized_component_transfer_dose(tmp_path):
+    import json
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny(vocab_size=260))
+    checkpoint = tmp_path / "compatible.pt"
+    torch.save(model.state_dict(), checkpoint)
+    output = tmp_path / "student"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_sub1b_student.py"),
+            "--tiny",
+            "--tiny-vocab-size",
+            "260",
+            "--device",
+            "cpu",
+            "--init-arm",
+            "I1_vision",
+            "--vision-source",
+            str(checkpoint),
+            "--vision-family",
+            "student",
+            "--save",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metadata = json.loads(
+        (output / "metadata.json").read_text(encoding="utf-8")
+    )
+    report = metadata["transfer_reports"][0]
+    assert report["component"] == "vision"
+    assert report["target_component_parameters"] > 0
+    assert report["realized_component_parameter_fraction"] >= 0.8
+    assert report["minimum_component_parameter_fraction"] == 0.8
+
+
+def test_student_builder_skips_sources_for_inactive_components(tmp_path):
+    import json
+
+    import torch
+
+    checkpoint = tmp_path / "unused.pt"
+    torch.save({"incompatible.weight": torch.ones(1)}, checkpoint)
+    output = tmp_path / "student"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_sub1b_student.py"),
+            "--tiny",
+            "--tiny-vocab-size",
+            "260",
+            "--device",
+            "cpu",
+            "--init-arm",
+            "I0_random",
+            "--vision-source",
+            str(checkpoint),
+            "--language-source",
+            str(checkpoint),
+            "--save",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metadata = json.loads(
+        (output / "metadata.json").read_text(encoding="utf-8")
+    )
+    assert metadata["transfer_reports"] == []
+    assert "Skipping vision source" in result.stdout
+    assert "Skipping language source" in result.stdout
 
 
 def test_box_iou_losses_are_zero_for_an_exact_match():

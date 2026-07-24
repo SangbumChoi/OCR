@@ -76,28 +76,33 @@ initialization_arms:
     vision_transfer: 0.0
     language_transfer: 0.0
     connector_transfer: 0.0
+    minimum_component_parameter_fraction: {}
     purpose: "Measures what the data and objectives learn without inherited representations."
   - id: I1_vision
     vision_transfer: 1.0
     language_transfer: 0.0
     connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.80}
     source: "SigLIP2-compatible vision checkpoint"
     purpose: "Tests whether visual transfer supplies the sample efficiency needed for OCR."
   - id: I2_language
     vision_transfer: 0.0
     language_transfer: 1.0
     connector_transfer: 0.0
+    minimum_component_parameter_fraction: {language: 0.15}
     source: "Width-compatible multilingual language checkpoint"
     purpose: "Tests inherited language and reasoning without inherited document perception."
   - id: I3_dual
     vision_transfer: 1.0
     language_transfer: 1.0
     connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.80, language: 0.15}
     purpose: "Transfers both towers while learning multimodal alignment from a random connector."
   - id: I4_selective
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.40, language: 0.075}
     policy: "Copy alternating depth-matched blocks; optionally distill selected depth anchors and logits with a native teacher."
     purpose: "Separates useful inherited features from wholesale checkpoint dependence."
 

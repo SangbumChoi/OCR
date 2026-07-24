@@ -58,6 +58,7 @@ def canonicalize_source_state(
                 key,
             )
             key = key.replace(".self_attn.", ".attn.")
+            key = key.replace(".attn.out_proj.", ".attn.o_proj.")
             key = key.replace(".layer_norm1.", ".norm1.")
             key = key.replace(".layer_norm2.", ".norm2.")
             key = key.replace(".mlp.fc1.", ".mlp.fc1.")

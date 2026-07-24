@@ -30,10 +30,11 @@ python scripts/analyze_transfer_compatibility.py \
   --family llama --component language --fraction 0.5
 ```
 
-At the pinned revisions, the `I4_selective` half-depth policy finds 87 vision tensors containing
-38,985,984 parameters and 61 language tensors containing 56,679,936 parameters. The combined
-95,665,920 parameters are about 12% of the student. These are compatibility counts, not evidence of
-quality improvement; the matched sweep must establish that.
+At the pinned revisions, the `I4_selective` half-depth policy finds 99 vision tensors containing
+42,529,536 parameters and 61 language tensors containing 56,679,936 parameters. This is 48.0% of
+the student vision tower and 8.4% of the language tower, or 99,209,472 parameters (12.4% of the
+whole student). Full-depth compatibility is 95.9% for vision and 16.0% for language. These are
+compatibility counts, not evidence of quality improvement; the matched sweep must establish that.
 
 ## Acquisition contract
 
@@ -71,8 +72,20 @@ depth-maps the selected blocks, and copies only exact-shape tensors. The LFM2 ad
 attention, gated short convolution, norms, and SwiGLU projections for hybrid students. It records
 copied keys and parameters,
 missing source keys, and shape mismatches in `artifacts/initial/metadata.json`. A non-random arm
-fails if any required component copies zero parameters. The connector remains random in all
-shipped arms.
+fails if any required component copies zero parameters. It also checks the realized copied
+parameters against a component-relative floor declared by the arm:
+
+| Arm | Minimum vision dose | Minimum language dose |
+| --- | ---: | ---: |
+| `I1_vision` | 80% | n/a |
+| `I2_language` | n/a | 15% |
+| `I3_dual` | 80% | 15% |
+| `I4_selective` | 40% | 7.5% |
+
+These conservative floors sit below the pinned compatibility counts but reject a source,
+canonicalization, or architecture change that leaves only a token number of copied tensors.
+Metadata records the target component size, realized component fraction, and required floor for
+each report. The connector remains random in all shipped arms.
 
 Token embeddings and the tied output head require an explicit target-to-source token identity map.
 Matching width or row count alone is not accepted as proof that two vocabulary rows mean the same

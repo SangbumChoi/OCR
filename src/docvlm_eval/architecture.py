@@ -587,6 +587,51 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             value = float(arm.get(key, -1.0))
             if not 0.0 <= value <= 1.0:
                 errors.append(f"{arm_id}.{key} must be between 0 and 1")
+        minimum_fractions = arm.get(
+            "minimum_component_parameter_fraction",
+        )
+        if not isinstance(minimum_fractions, dict):
+            errors.append(
+                f"{arm_id}.minimum_component_parameter_fraction "
+                "must be a mapping"
+            )
+            continue
+        unknown_components = set(minimum_fractions) - {
+            "vision",
+            "language",
+            "connector",
+        }
+        if unknown_components:
+            errors.append(
+                f"{arm_id}.minimum_component_parameter_fraction has "
+                f"unknown components: {sorted(unknown_components)}"
+            )
+        for component in ("vision", "language", "connector"):
+            transfer = float(arm.get(f"{component}_transfer", 0.0))
+            minimum = minimum_fractions.get(component)
+            if transfer > 0 and minimum is None:
+                errors.append(
+                    f"{arm_id} requires a minimum parameter fraction "
+                    f"for transferred component {component}"
+                )
+                continue
+            if minimum is None:
+                continue
+            if (
+                not isinstance(minimum, (int, float))
+                or isinstance(minimum, bool)
+                or not math.isfinite(float(minimum))
+                or not 0.0 <= float(minimum) <= 1.0
+            ):
+                errors.append(
+                    f"{arm_id}.minimum_component_parameter_fraction."
+                    f"{component} must be within [0, 1]"
+                )
+            elif transfer == 0 and float(minimum) != 0:
+                errors.append(
+                    f"{arm_id} cannot require {component} transfer "
+                    "when its transfer fraction is zero"
+                )
 
     training = blueprint["training"]
     checkpointing = training.get("activation_checkpointing")

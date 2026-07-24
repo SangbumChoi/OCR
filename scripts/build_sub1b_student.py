@@ -83,18 +83,32 @@ def main() -> None:
         raise SystemExit(f"unknown initialization arm {args.init_arm!r}")
     arm = arms[args.init_arm]
     reports = []
-    if args.device == "meta" and (args.vision_source or args.language_source):
+    active_sources = {
+        "vision": args.vision_source if arm["vision_transfer"] > 0 else None,
+        "language": (
+            args.language_source if arm["language_transfer"] > 0 else None
+        ),
+    }
+    if args.device == "meta" and any(active_sources.values()):
         raise SystemExit("weight transfer requires a materialized cpu/cuda model")
-    if args.vision_source:
+    if args.vision_source and active_sources["vision"] is None:
+        print(
+            f"Skipping vision source: {args.init_arm} has zero vision transfer"
+        )
+    if args.language_source and active_sources["language"] is None:
+        print(
+            f"Skipping language source: {args.init_arm} has zero language transfer"
+        )
+    if active_sources["vision"]:
         reports.append(
             selective_transfer(
                 model,
-                load_checkpoint_state(args.vision_source),
+                load_checkpoint_state(active_sources["vision"]),
                 {"vision": arm["vision_transfer"]},
                 family=args.vision_family,
             ).to_dict()
         )
-    if args.language_source:
+    if active_sources["language"]:
         token_map = None
         if args.token_map:
             raw_token_map = json.loads(args.token_map.read_text(encoding="utf-8"))
@@ -102,11 +116,35 @@ def main() -> None:
         reports.append(
             selective_transfer(
                 model,
-                load_checkpoint_state(args.language_source),
+                load_checkpoint_state(active_sources["language"]),
                 {"language": arm["language_transfer"]},
                 family=args.language_family,
                 token_map=token_map,
             ).to_dict()
+        )
+    minimum_fractions = arm["minimum_component_parameter_fraction"]
+    for report in reports:
+        active_components = [
+            component
+            for component in ("vision", "language", "connector")
+            if float(report["fractions"].get(component, 0.0)) > 0
+        ]
+        if len(active_components) != 1:
+            raise SystemExit(
+                "each transfer report must contain exactly one active component"
+            )
+        component = active_components[0]
+        component_parameters = int(counts[component])
+        realized_fraction = (
+            int(report["copied_parameters"]) / component_parameters
+            if component_parameters
+            else 0.0
+        )
+        report["component"] = component
+        report["target_component_parameters"] = component_parameters
+        report["realized_component_parameter_fraction"] = realized_fraction
+        report["minimum_component_parameter_fraction"] = float(
+            minimum_fractions.get(component, 0.0)
         )
     if args.init_arm != "I0_random":
         required = []
@@ -134,6 +172,33 @@ def main() -> None:
             raise SystemExit(
                 "selective transfer copied zero parameters for required "
                 f"components: {empty_components}"
+            )
+        underdosed_components = []
+        for component in ("vision", "language"):
+            if not arm[f"{component}_transfer"]:
+                continue
+            report = next(
+                item for item in reports if item["component"] == component
+            )
+            if (
+                report["realized_component_parameter_fraction"]
+                < report["minimum_component_parameter_fraction"]
+            ):
+                underdosed_components.append(
+                    {
+                        "component": component,
+                        "realized": report[
+                            "realized_component_parameter_fraction"
+                        ],
+                        "minimum": report[
+                            "minimum_component_parameter_fraction"
+                        ],
+                    }
+                )
+        if underdosed_components:
+            raise SystemExit(
+                "selective transfer parameter dose is below the required "
+                f"component fraction: {underdosed_components}"
             )
 
     if args.save:

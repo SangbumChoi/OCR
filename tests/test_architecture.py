@@ -48,11 +48,25 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     blueprint = deepcopy(load_blueprint(CONFIG))
     blueprint["training"]["posttraining"]["rlvr"]["reward_mix"]["box_iou"] = 0.5
     blueprint["initialization_arms"][0]["vision_transfer"] = 1.5
+    blueprint["initialization_arms"][1][
+        "minimum_component_parameter_fraction"
+    ]["vision"] = 1.5
+    blueprint["initialization_arms"][2][
+        "minimum_component_parameter_fraction"
+    ] = {}
 
     _, errors = validate_blueprint(blueprint)
 
     assert any("reward_mix weights sum" in error for error in errors)
     assert any("vision_transfer must be between" in error for error in errors)
+    assert any(
+        "minimum_component_parameter_fraction.vision" in error
+        for error in errors
+    )
+    assert any(
+        "requires a minimum parameter fraction" in error
+        for error in errors
+    )
 
 
 def test_blueprint_rejects_invalid_input_pipeline_controls():
