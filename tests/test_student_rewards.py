@@ -1,7 +1,7 @@
 import pytest
 
 
-def _config():
+def _config(rationale_verifier="evidence_semantic"):
     from docvlm_eval.student.rewards import RewardConfig
 
     return RewardConfig(
@@ -14,7 +14,44 @@ def _config():
             "formula_equivalence": 0.10,
             "grounded_rationale_consistency": 0.10,
             "calibrated_abstention": 0.05,
-        }
+        },
+        rationale_verifier=rationale_verifier,
+    )
+
+
+def _program_context():
+    from docvlm_eval.student.rewards import RewardContext
+    from docvlm_eval.synth.latent import (
+        GraphNode,
+        GraphQuery,
+        LatentDocumentGraph,
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id="reward-trace",
+        template_family="reward-trace-v1",
+        nodes=[
+            GraphNode("left", "cell", 10, "left"),
+            GraphNode("right", "cell", 20, "right"),
+        ],
+        queries=[
+            GraphQuery(
+                "total",
+                "What is the total?",
+                "sum",
+                ("left", "right"),
+                "H-sum",
+                answer_format="integer",
+            )
+        ],
+    )
+    resolved = graph.resolve("total")
+    return RewardContext(
+        sample_id="program-trace",
+        answers=(resolved.answer,),
+        gold_boxes=((0.1, 0.2, 0.5, 0.6),),
+        gold_rationale=resolved.rationale,
+        reasoning_trace=resolved.reasoning_trace,
     )
 
 
@@ -123,6 +160,149 @@ def test_reward_config_rejects_an_unverified_rationale_method():
             weights={"answer_correctness": 1.0},
             rationale_verifier="nonempty",
         )
+
+
+def test_program_trace_verifier_rewards_exact_intermediate_facts():
+    from docvlm_eval.student.rewards import (
+        build_structured_target,
+        score_structured_response,
+    )
+
+    context = _program_context()
+    result = score_structured_response(
+        build_structured_target(
+            "30",
+            evidence=context.gold_boxes,
+            rationale=context.gold_rationale,
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+
+    assert result.components["rationale_program_fact_score"] == 1.0
+    assert result.components["program_trace_consistency"] == 1.0
+    assert result.components["grounded_rationale_consistency"] == 1.0
+
+
+def test_program_trace_verifier_penalizes_wrong_or_hallucinated_numbers():
+    from docvlm_eval.student.rewards import (
+        build_structured_target,
+        score_structured_response,
+    )
+
+    context = _program_context()
+    exact = score_structured_response(
+        build_structured_target(
+            "30",
+            evidence=context.gold_boxes,
+            rationale=context.gold_rationale,
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+    wrong = score_structured_response(
+        build_structured_target(
+            "30",
+            evidence=context.gold_boxes,
+            rationale="Add 10 and 20 to obtain 31 after adjustment by 7.",
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+
+    assert wrong.components["rationale_program_fact_score"] < 1.0
+    assert (
+        wrong.components["grounded_rationale_consistency"]
+        < exact.components["grounded_rationale_consistency"]
+    )
+    assert wrong.total < exact.total
+
+
+def test_program_trace_verifier_accepts_fraction_percent_equivalence():
+    from docvlm_eval.student.rewards import (
+        RewardContext,
+        build_structured_target,
+        score_structured_response,
+    )
+    from docvlm_eval.synth.latent import (
+        GraphEdge,
+        GraphNode,
+        GraphQuery,
+        LatentDocumentGraph,
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id="percent-trace",
+        template_family="percent-trace-v1",
+        nodes=[
+            GraphNode("a", "stage", "A"),
+            GraphNode("b", "stage", "B"),
+            GraphNode("c", "stage", "C"),
+        ],
+        edges=[
+            GraphEdge("ab", "a", "passes", "b", 0.5),
+            GraphEdge("bc", "b", "passes", "c", 0.4),
+        ],
+        queries=[
+            GraphQuery(
+                "yield",
+                "Yield?",
+                "path_product",
+                ("ab", "bc"),
+                "H-path",
+                answer_format="fraction_percent",
+            )
+        ],
+    )
+    resolved = graph.resolve("yield")
+    context = RewardContext(
+        sample_id="percent-trace",
+        answers=(resolved.answer,),
+        gold_boxes=((0.1, 0.2, 0.5, 0.6),),
+        gold_rationale=resolved.rationale,
+        reasoning_trace=resolved.reasoning_trace,
+    )
+    result = score_structured_response(
+        build_structured_target(
+            resolved.answer,
+            evidence=context.gold_boxes,
+            rationale="50% times 40% gives 20%.",
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+
+    assert result.components["rationale_program_fact_score"] == 1.0
+
+    wrong_scale = score_structured_response(
+        build_structured_target(
+            resolved.answer,
+            evidence=context.gold_boxes,
+            rationale="0.5% times 0.4% gives 0.2%.",
+        ),
+        context,
+        _config("evidence_program_trace"),
+    )
+    assert wrong_scale.components["rationale_program_fact_score"] < 1.0
+
+
+def test_reward_context_rejects_a_tampered_program_trace():
+    from docvlm_eval.schema import Sample
+    from docvlm_eval.student.rewards import RewardContext
+
+    context = _program_context()
+    tampered = dict(context.reasoning_trace)
+    tampered["answer_value"] = 31
+    sample = Sample(
+        "tampered",
+        "image.png",
+        "Total?",
+        ["30"],
+        meta={"reasoning_trace": tampered},
+    )
+
+    with pytest.raises(ValueError, match="fingerprint"):
+        RewardContext.from_sample(sample)
 
 
 def test_box_reward_penalizes_extra_box_spraying():

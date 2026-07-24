@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -41,6 +43,7 @@ class RewardContext:
     answer_type: str = "default"
     gold_boxes: tuple[tuple[float, float, float, float], ...] = ()
     gold_rationale: str = ""
+    reasoning_trace: dict[str, Any] | None = None
     abstain_expected: bool = False
     table_expected: bool = False
     chart_expected: bool = False
@@ -67,6 +70,12 @@ class RewardContext:
                     boxes.append(_normalize_box(box, image_size))
         probe = meta.get("probe") if isinstance(meta.get("probe"), dict) else {}
         answer_type = sample.answer_type.lower()
+        raw_trace = meta.get("reasoning_trace")
+        reasoning_trace = (
+            _validate_reasoning_trace(raw_trace)
+            if raw_trace is not None
+            else None
+        )
         return cls(
             sample_id=sample.sample_id,
             answers=tuple(str(answer) for answer in sample.answers),
@@ -74,6 +83,7 @@ class RewardContext:
             answer_type=sample.answer_type,
             gold_boxes=tuple(dict.fromkeys(boxes)),
             gold_rationale=str(meta.get("rationale") or ""),
+            reasoning_trace=reasoning_trace,
             abstain_expected=(
                 answer_type == "probe:abstain"
                 or str(probe.get("kind") or "").lower() == "abstain"
@@ -103,9 +113,13 @@ class RewardConfig:
             raise ValueError("at least one reward weight must be positive")
         if not 0 <= self.malformed_reward <= 1:
             raise ValueError("malformed_reward must be within [0, 1]")
-        if self.rationale_verifier != "evidence_semantic":
+        if self.rationale_verifier not in {
+            "evidence_semantic",
+            "evidence_program_trace",
+        }:
             raise ValueError(
-                "rationale_verifier must be evidence_semantic"
+                "rationale_verifier must be evidence_semantic or "
+                "evidence_program_trace"
             )
 
     @classmethod
@@ -173,6 +187,379 @@ _ABSTAIN_NORMALIZED = {
     re.sub(r"\s+", " ", value.lower()).strip(" .[]")
     for value in _ABSTAIN_FORMS
 }
+_TRACE_OPERATIONS = {
+    "value",
+    "sum",
+    "mean",
+    "difference",
+    "ratio",
+    "percent_change",
+    "relative_reduction",
+    "argmax",
+    "argmin",
+    "weighted_sum",
+    "path_product",
+    "sum_products",
+}
+_TRACE_FIELDS = {
+    "schema_version",
+    "operation",
+    "inputs",
+    "parameters",
+    "answer_value",
+    "answer",
+    "required_numeric_facts",
+    "trace_fingerprint",
+}
+_NUMERIC_LITERAL = re.compile(
+    r"(?<![\w.])(?P<currency>[$€£¥₩])?"
+    r"(?P<value>[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
+    r"(?P<percent>\s*%)?"
+)
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _trace_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{label} must be finite")
+    return result
+
+
+def _trace_inputs(
+    trace: dict[str, Any],
+    input_type: str,
+) -> list[dict[str, Any]]:
+    inputs = trace["inputs"]
+    if any(item["input_type"] != input_type for item in inputs):
+        raise ValueError(
+            f"reasoning trace operation requires {input_type} inputs"
+        )
+    return inputs
+
+
+def _evaluate_reasoning_trace(trace: dict[str, Any]) -> Any:
+    operation = trace["operation"]
+    parameters = trace["parameters"]
+    if operation in {"path_product", "sum_products"}:
+        inputs = _trace_inputs(trace, "edge")
+        weights = {
+            item["id"]: _trace_number(
+                item.get("weight"),
+                f"reasoning trace edge {item['id']} weight",
+            )
+            for item in inputs
+        }
+        if operation == "path_product":
+            if not weights:
+                raise ValueError("path_product reasoning trace requires edges")
+            return math.prod(weights.values())
+        paths = parameters.get("paths")
+        if not isinstance(paths, list) or not paths:
+            raise ValueError("sum_products reasoning trace requires paths")
+        products: list[float] = []
+        for path in paths:
+            if not isinstance(path, list) or not path:
+                raise ValueError(
+                    "sum_products reasoning trace paths must be non-empty lists"
+                )
+            try:
+                products.append(
+                    math.prod(weights[str(edge_id)] for edge_id in path)
+                )
+            except KeyError as exc:
+                raise ValueError(
+                    "sum_products reasoning trace references an unknown edge"
+                ) from exc
+        return sum(products)
+
+    inputs = _trace_inputs(trace, "node")
+    values = [item.get("value") for item in inputs]
+    labels = [str(item.get("label") or item["id"]) for item in inputs]
+    if operation == "value":
+        if len(values) != 1:
+            raise ValueError("value reasoning trace requires one input")
+        return values[0]
+    numeric = [
+        _trace_number(value, f"reasoning trace input {item['id']}")
+        for item, value in zip(inputs, values)
+    ]
+    if operation == "sum":
+        if not numeric:
+            raise ValueError("sum reasoning trace requires inputs")
+        return sum(numeric)
+    if operation == "mean":
+        if not numeric:
+            raise ValueError("mean reasoning trace requires inputs")
+        return sum(numeric) / len(numeric)
+    if operation in {
+        "difference",
+        "ratio",
+        "percent_change",
+        "relative_reduction",
+    }:
+        if len(numeric) != 2:
+            raise ValueError(
+                f"{operation} reasoning trace requires two inputs"
+            )
+        if operation == "difference":
+            return numeric[0] - numeric[1]
+        if numeric[1] == 0:
+            raise ValueError(
+                f"{operation} reasoning trace denominator cannot be zero"
+            )
+        if operation == "ratio":
+            return numeric[0] / numeric[1]
+        if operation == "relative_reduction":
+            return (numeric[1] - numeric[0]) / abs(numeric[1]) * 100.0
+        return (numeric[0] - numeric[1]) / abs(numeric[1]) * 100.0
+    if operation in {"argmax", "argmin"}:
+        if not numeric:
+            raise ValueError(
+                f"{operation} reasoning trace requires inputs"
+            )
+        index = (max if operation == "argmax" else min)(
+            range(len(numeric)),
+            key=numeric.__getitem__,
+        )
+        outputs = parameters.get("outputs")
+        if outputs is not None:
+            if not isinstance(outputs, list) or len(outputs) != len(numeric):
+                raise ValueError(
+                    f"{operation} reasoning trace outputs must match inputs"
+                )
+            return outputs[index]
+        return labels[index]
+    if operation == "weighted_sum":
+        weights = parameters.get("weights")
+        if not isinstance(weights, list) or len(weights) != len(numeric):
+            raise ValueError(
+                "weighted_sum reasoning trace requires one weight per input"
+            )
+        return sum(
+            value * _trace_number(weight, "reasoning trace weight")
+            for value, weight in zip(numeric, weights)
+        )
+    raise ValueError(f"unsupported reasoning trace operation {operation!r}")
+
+
+def _trace_values_equal(left: Any, right: Any) -> bool:
+    if (
+        not isinstance(left, bool)
+        and not isinstance(right, bool)
+        and isinstance(left, (int, float))
+        and isinstance(right, (int, float))
+    ):
+        return math.isclose(
+            float(left),
+            float(right),
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        )
+    return left == right
+
+
+def _validate_reasoning_trace(raw: Any) -> dict[str, Any]:
+    """Validate trace integrity and independently recompute its program result."""
+
+    if not isinstance(raw, dict) or set(raw) != _TRACE_FIELDS:
+        raise ValueError(
+            "reasoning_trace must contain the complete schema_version 1 trace"
+        )
+    if raw["schema_version"] != 1:
+        raise ValueError("reasoning_trace.schema_version must be 1")
+    operation = raw["operation"]
+    if operation not in _TRACE_OPERATIONS:
+        raise ValueError(f"unsupported reasoning_trace operation {operation!r}")
+    inputs = raw["inputs"]
+    if not isinstance(inputs, list) or not 1 <= len(inputs) <= 64:
+        raise ValueError(
+            "reasoning_trace.inputs must contain between 1 and 64 inputs"
+        )
+    input_ids: set[str] = set()
+    for item in inputs:
+        if not isinstance(item, dict):
+            raise ValueError("reasoning_trace inputs must be objects")
+        input_id = item.get("id")
+        input_type = item.get("input_type")
+        if (
+            not isinstance(input_id, str)
+            or not input_id
+            or input_id in input_ids
+            or input_type not in {"node", "edge"}
+        ):
+            raise ValueError(
+                "reasoning_trace inputs require unique IDs and valid types"
+            )
+        input_ids.add(input_id)
+    if not isinstance(raw["parameters"], dict):
+        raise ValueError("reasoning_trace.parameters must be an object")
+    if len(_stable_json(raw["parameters"])) > 16_384:
+        raise ValueError("reasoning_trace.parameters exceeds the size limit")
+    if not isinstance(raw["answer"], str) or not raw["answer"]:
+        raise ValueError("reasoning_trace.answer must be a non-empty string")
+    answer_value = raw["answer_value"]
+    if isinstance(answer_value, bool) or not isinstance(
+        answer_value,
+        (str, int, float),
+    ):
+        raise ValueError(
+            "reasoning_trace.answer_value must be text or a finite number"
+        )
+    if isinstance(answer_value, (int, float)):
+        _trace_number(answer_value, "reasoning_trace.answer_value")
+    facts = raw["required_numeric_facts"]
+    if not isinstance(facts, list) or len(facts) > 64:
+        raise ValueError(
+            "reasoning_trace.required_numeric_facts must be a bounded list"
+        )
+    for fact in facts:
+        if (
+            not isinstance(fact, dict)
+            or set(fact) != {"value", "percent"}
+            or not isinstance(fact["percent"], bool)
+        ):
+            raise ValueError(
+                "reasoning_trace numeric facts require value and percent"
+            )
+        _trace_number(fact["value"], "reasoning_trace numeric fact")
+    fingerprint = raw["trace_fingerprint"]
+    payload = {key: value for key, value in raw.items() if key != "trace_fingerprint"}
+    expected_fingerprint = hashlib.sha256(
+        _stable_json(payload).encode("utf-8")
+    ).hexdigest()
+    if fingerprint != expected_fingerprint:
+        raise ValueError("reasoning_trace fingerprint does not match its payload")
+    recomputed = _evaluate_reasoning_trace(raw)
+    if not _trace_values_equal(recomputed, answer_value):
+        raise ValueError(
+            "reasoning_trace answer_value does not match the recomputed program"
+        )
+    return dict(raw)
+
+
+def _numeric_facts(text: str) -> list[dict[str, Any]]:
+    facts: list[dict[str, Any]] = []
+    for match in _NUMERIC_LITERAL.finditer(text):
+        facts.append(
+            {
+                "value": float(match.group("value").replace(",", "")),
+                "percent": bool(match.group("percent")),
+            }
+        )
+    return facts
+
+
+def _facts_match(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_value = float(left["value"])
+    right_value = float(right["value"])
+    left_percent = bool(left.get("percent"))
+    right_percent = bool(right.get("percent"))
+    if left_percent == right_percent:
+        candidate = left_value
+    elif left_percent:
+        candidate = left_value / 100.0
+    else:
+        candidate = left_value
+        right_value /= 100.0
+    return math.isclose(
+        candidate,
+        right_value,
+        rel_tol=1e-6,
+        abs_tol=1e-6,
+    )
+
+
+def _deduplicate_facts(
+    facts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    for fact in facts:
+        if not any(_facts_match(fact, existing) for existing in unique):
+            unique.append(fact)
+    return unique
+
+
+def _allowed_trace_facts(trace: dict[str, Any]) -> list[dict[str, Any]]:
+    facts = list(trace["required_numeric_facts"])
+    for item in trace["inputs"]:
+        if item["input_type"] == "node":
+            value = item.get("value")
+            if (
+                not isinstance(value, bool)
+                and isinstance(value, (int, float))
+            ):
+                facts.append({"value": float(value), "percent": False})
+            facts.extend(_numeric_facts(str(item.get("label") or "")))
+        else:
+            facts.append(
+                {
+                    "value": _trace_number(
+                        item.get("weight"),
+                        "reasoning trace edge weight",
+                    ),
+                    "percent": False,
+                }
+            )
+
+    def collect(value: Any) -> None:
+        if isinstance(value, bool) or value is None:
+            return
+        if isinstance(value, (int, float)):
+            facts.append({"value": float(value), "percent": False})
+        elif isinstance(value, str):
+            facts.extend(_numeric_facts(value))
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+
+    collect(trace["parameters"])
+    collect(trace["answer_value"])
+    facts.extend(_numeric_facts(trace["answer"]))
+    return _deduplicate_facts(facts)
+
+
+def _program_fact_score(
+    rationale: str,
+    trace: dict[str, Any],
+) -> float:
+    predicted = _deduplicate_facts(_numeric_facts(rationale))
+    required = _deduplicate_facts(trace["required_numeric_facts"])
+    allowed = _allowed_trace_facts(trace)
+    recall = (
+        sum(
+            any(_facts_match(fact, candidate) for candidate in predicted)
+            for fact in required
+        )
+        / len(required)
+        if required
+        else 1.0
+    )
+    precision = (
+        sum(
+            any(_facts_match(fact, candidate) for candidate in allowed)
+            for fact in predicted
+        )
+        / len(predicted)
+        if predicted
+        else float(not required)
+    )
+    if recall + precision == 0:
+        return 0.0
+    return 2 * recall * precision / (recall + precision)
 
 
 def parse_structured_response(text: str) -> StructuredResponse:
@@ -537,15 +924,32 @@ def score_structured_response(
                 else 0.0
             )
             components["rationale_text_similarity"] = rationale_similarity
-            components["grounded_rationale_consistency"] = (
-                box_score * rationale_similarity
-            )
-            applicable.update(
-                {
-                    "grounded_rationale_consistency",
-                    "rationale_text_similarity",
-                }
-            )
+            applicable.add("rationale_text_similarity")
+            if config.rationale_verifier == "evidence_semantic":
+                components["grounded_rationale_consistency"] = (
+                    box_score * rationale_similarity
+                )
+                applicable.add("grounded_rationale_consistency")
+            elif context.reasoning_trace is not None:
+                program_fact_score = _program_fact_score(
+                    response.rationale,
+                    context.reasoning_trace,
+                )
+                consistency = (
+                    box_score * rationale_similarity * program_fact_score
+                )
+                components["rationale_program_fact_score"] = (
+                    program_fact_score
+                )
+                components["program_trace_consistency"] = consistency
+                components["grounded_rationale_consistency"] = consistency
+                applicable.update(
+                    {
+                        "grounded_rationale_consistency",
+                        "program_trace_consistency",
+                        "rationale_program_fact_score",
+                    }
+                )
     if context.table_expected:
         components["table_tree_similarity"] = teds_score(
             response.answer,

@@ -222,7 +222,7 @@ normalized ground truth:
 - tree similarity for tables;
 - tolerance-aware numeric accuracy for charts;
 - symbolic or normalized equivalence for formulas;
-- rationale-to-evidence consistency;
+- rationale-to-evidence consistency with independently executable program traces;
 - abstention utility on absent, unreadable, and contradictory inputs.
 
 Final-answer and rationale rewards stay separate. Structural validity is a gate, not a bonus. Every
@@ -232,6 +232,13 @@ The default applies one evidence-linked replay anchor every 20 rollout updates w
 0.10. A separate replay JSONL can replace the active RLVR set, allowing general multimodal examples
 to protect capabilities outside the reward dataset.
 
+The default rationale verifier is `evidence_program_trace`. Synthetic graph queries preserve a
+fingerprinted trace containing their operation, typed inputs, parameters, result, formatted answer,
+and required numeric facts. The post-training loader independently re-executes the trace and fails
+closed on tampering or disagreement. Grounded rationale reward then requires evidence overlap,
+semantic agreement, required-fact recall, and hallucinated-number precision. The semantic-only
+verifier remains an explicit matched control in the RLVR reward sweep.
+
 ## Data construction for hard document reasoning
 
 The generator should author a latent document graph before rendering:
@@ -239,7 +246,7 @@ The generator should author a latent document graph before rendering:
 ```text
 entities -> fields/cells/marks -> relations -> layout -> pixels
                                   |
-                                  +-> questions, evidence, rationale, answer
+                                  +-> questions, evidence, rationale, trace, answer
 ```
 
 This graph supports exact supervision for:

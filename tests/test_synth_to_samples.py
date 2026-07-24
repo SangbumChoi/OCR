@@ -113,6 +113,16 @@ def test_loader_labels_the_rendered_fallback_as_clean(tmp_path):
 
 
 def test_multiple_evidence_boxes_reach_posttraining_metadata():
+    trace = {
+        "schema_version": 1,
+        "operation": "sum",
+        "inputs": [],
+        "parameters": {},
+        "answer_value": 30,
+        "answer": "30",
+        "required_numeric_facts": [],
+        "trace_fingerprint": "f" * 64,
+    }
     gt = {
         "type": "hard table",
         "languages": ["en"],
@@ -124,6 +134,7 @@ def test_multiple_evidence_boxes_reach_posttraining_metadata():
                 "answer_type": "H-table",
                 "metric": "relaxed_acc",
                 "rationale": "10 + 20 = 30.",
+                "reasoning_trace": trace,
                 "evidence_bboxes": [[1, 2, 3, 4], [5, 6, 7, 8]],
             }
         ],
@@ -136,6 +147,7 @@ def test_multiple_evidence_boxes_reach_posttraining_metadata():
     )[0]
     assert sample.meta["boxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]
     assert sample.meta["rationale"] == "10 + 20 = 30."
+    assert sample.meta["reasoning_trace"] == trace
     assert sample.meta["document_family"] == "hard table"
     assert sample.meta["evidence_count"] == 2
     assert sample.meta["degradation"] == "degraded"

@@ -740,7 +740,7 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
         compile_root=tmp_path / "compiled",
     )
 
-    assert len(plan.variants) == 12
+    assert len(plan.variants) == 15
     assert plan.baseline == "full_reward"
     for variant in plan.variants:
         evaluate = next(
@@ -755,6 +755,13 @@ def test_rlvr_reward_sweep_compiles_sft_and_reward_controls(tmp_path):
         reward_mix = variant.plan.resolved_blueprint["training"][
             "posttraining"
         ]["rlvr"]["reward_mix"]
+        rationale_verifier = variant.plan.resolved_blueprint["training"][
+            "posttraining"
+        ]["rlvr"]["rationale_verifier"]
+        if variant.arm_id == "semantic_rationale":
+            assert rationale_verifier == "evidence_semantic"
+        elif variant.arm_id == "full_reward":
+            assert rationale_verifier == "evidence_program_trace"
         if variant.arm_id == "correctness_only":
             assert reward_mix["answer_correctness"] == 1.0
             assert all(

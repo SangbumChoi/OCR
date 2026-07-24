@@ -177,7 +177,7 @@ become zeros:
 | `table_tree_similarity` | table/TEDS sample | TEDS |
 | `chart_numeric_tolerance` | numeric/chart sample | tolerance-aware numeric accuracy |
 | `formula_equivalence` | formula/LaTeX sample | bounded symbolic equivalence with exact-normalized fast path |
-| `grounded_rationale_consistency` | evidence and authored rationale exist | evidence IoU multiplied by deterministic rationale semantic match |
+| `grounded_rationale_consistency` | evidence, authored rationale, and a valid program trace exist | evidence IoU multiplied by rationale semantic match and program-fact F1 |
 | `calibrated_abstention` | all samples | abstain iff the sample requires abstention |
 
 Formula verification first applies deterministic LaTeX normalization, then parses elementary
@@ -186,17 +186,31 @@ algebra, trigonometry, and equations with
 It accepts expansions, factorizations, constant-scaled equations, and standard identities. Inputs
 are capped by character, command, symbol, operation, and expression-tree limits. Unknown commands,
 malformed LaTeX, integrals, sums, products, derivatives, limits, and parser failures receive zero
-equivalence reward. This is intentionally narrower than a theorem prover. The rationale verifier
-requires both cited-region overlap and lexical/numeric agreement with the authored rationale.
-`reward_diagnostic/rationale_text_similarity` and the corresponding evaluation component expose
-the text contribution independently. This remains a deterministic proxy, not proof of causal
-faithfulness.
+equivalence reward. This is intentionally narrower than a theorem prover.
+
+The production `evidence_program_trace` rationale verifier consumes the exact operation, typed
+node or edge inputs, parameters, recomputed result, formatted answer, and required numeric facts
+authored by the latent document graph. It verifies the trace fingerprint and independently
+re-executes the operation before training. A malformed, tampered, dangling, non-finite, or
+result-inconsistent trace fails sample construction. For a valid trace, rationale fact recall
+penalizes omitted operands or results, fact precision penalizes hallucinated numbers, and explicit
+percentages match their fraction equivalents. The final grounded score is evidence IoU multiplied
+by semantic rationale similarity and numeric-fact F1. Trace-free samples do not receive this
+component under the strict verifier; other applicable rewards are still normalized normally.
+`evidence_semantic` remains available only as the paired ablation control.
+
+`reward_diagnostic/rationale_text_similarity`,
+`reward_diagnostic/rationale_program_fact_score`, and
+`reward_diagnostic/program_trace_consistency` expose each contribution independently. The program
+trace proves arithmetic consistency with the authored latent graph, not that the generated prose
+caused the final answer.
 
 `metrics.jsonl` reports the estimator, total reward, reward variance, advantage scale, policy loss,
-reference KL, total loss, gradient norm, structural-validity fraction, rationale similarity, replay
-application/loss/token count, the replay sample ID, cumulative and per-step analytical student
-FLOPs, and every applicable reward component independently. A group with no reward variance
-receives zero policy advantage; a scheduled replay anchor can still provide a supervised update.
+reference KL, total loss, gradient norm, structural-validity fraction, rationale semantic
+similarity, program-fact F1, program-trace consistency, replay application/loss/token count, the
+replay sample ID, cumulative and per-step analytical student FLOPs, and every applicable reward
+component independently. A group with no reward variance receives zero policy advantage; a
+scheduled replay anchor can still provide a supervised update.
 
 ## Resume and operational boundary
 
@@ -212,8 +226,8 @@ additionally guards the replay contract. Setting `max_steps: null`,
 Native preference optimization and RLVR currently run in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not
 large enough. Distributed rollout, optimizer sharding, KV caching, multi-epoch off-policy replay,
-and semantic rationale entailment remain future measured extensions. The implemented collapse
-constraints are frozen-reference KL and periodic supervised replay.
+and learned semantic rationale entailment remain future measured extensions. Exact arithmetic
+trace verification, frozen-reference KL, and periodic supervised replay are implemented.
 
 ## Held-out generation evaluation
 

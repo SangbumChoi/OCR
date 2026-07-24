@@ -274,6 +274,10 @@ added factor lifting the score a step, ending well above the baseline.
   A programmatic parallel-process diagram links every visible arrow rate to executable path
   products, parallel-path aggregation, topology lookup, and expected-count targets across three
   semantic-preserving layouts and five difficulty levels.
+  Every executable graph query now preserves a fingerprinted reasoning trace through QA and sample
+  conversion. Production RLVR independently re-executes that trace and combines evidence overlap,
+  semantic rationale similarity, required-number recall, and hallucinated-number precision; a
+  three-seed semantic-only verifier arm provides the matched control.
   Clean and degraded rasters are fail-closed on local evidence visibility; degraded copies also
   require clean-crop structure retention under bounded deterministic retries.
 - **Ablate & combine:** [`report/ablation_plan.md`](report/ablation_plan.md)

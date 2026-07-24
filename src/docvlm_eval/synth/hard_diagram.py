@@ -245,6 +245,7 @@ def _query_records(graph: LatentDocumentGraph) -> list[dict[str, Any]]:
                 "rationale": resolved.rationale,
                 "evidence_keys": list(resolved.evidence_keys),
                 "graph_query_id": query.query_id,
+                "reasoning_trace": resolved.reasoning_trace,
                 "languages": ["en"],
             }
         )

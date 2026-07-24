@@ -1704,15 +1704,20 @@ def train_preference(
             ]
             if values:
                 final_metrics[f"reward/{name}"] = sum(values) / len(values)
-        rationale_similarities = [
-            result.components["rationale_text_similarity"]
-            for result in reward_results
-            if "rationale_text_similarity" in result.applicable
-        ]
-        if rationale_similarities:
-            final_metrics["reward_diagnostic/rationale_text_similarity"] = (
-                sum(rationale_similarities) / len(rationale_similarities)
-            )
+        for diagnostic in (
+            "rationale_text_similarity",
+            "rationale_program_fact_score",
+            "program_trace_consistency",
+        ):
+            values = [
+                result.components[diagnostic]
+                for result in reward_results
+                if diagnostic in result.applicable
+            ]
+            if values:
+                final_metrics[f"reward_diagnostic/{diagnostic}"] = (
+                    sum(values) / len(values)
+                )
         if (
             state.preference_step == 1
             or state.preference_step % config.log_every_steps == 0
@@ -2008,15 +2013,20 @@ def train_grpo(
             ]
             if values:
                 final_metrics[f"reward/{name}"] = sum(values) / len(values)
-        rationale_similarities = [
-            result.components["rationale_text_similarity"]
-            for result in reward_results
-            if "rationale_text_similarity" in result.applicable
-        ]
-        if rationale_similarities:
-            final_metrics["reward_diagnostic/rationale_text_similarity"] = (
-                sum(rationale_similarities) / len(rationale_similarities)
-            )
+        for diagnostic in (
+            "rationale_text_similarity",
+            "rationale_program_fact_score",
+            "program_trace_consistency",
+        ):
+            values = [
+                result.components[diagnostic]
+                for result in reward_results
+                if diagnostic in result.applicable
+            ]
+            if values:
+                final_metrics[f"reward_diagnostic/{diagnostic}"] = (
+                    sum(values) / len(values)
+                )
         if (
             state.rollout_step == 1
             or state.rollout_step % config.log_every_steps == 0

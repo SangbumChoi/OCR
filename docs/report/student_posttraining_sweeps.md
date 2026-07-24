@@ -50,20 +50,22 @@ python scripts/run_student_sweep.py \
 
 ## RLVR reward estimand
 
-The twelve-run RLVR sweep fixes evidence-linked SFT for all arms:
+The fifteen-run RLVR sweep fixes evidence-linked SFT for all arms and uses three paired seeds:
 
 | Arm | RLVR | Reward |
 | --- | --- | --- |
-| `full_reward` | enabled | all configured verifiable components |
-| `no_rationale_reward` | enabled | full reward with semantic-grounded rationale removed and all remaining weights renormalized |
+| `full_reward` | enabled | all configured components with executable program-trace rationale verification |
+| `semantic_rationale` | enabled | identical reward weights, rollout, and compute with semantic-only rationale verification |
+| `no_rationale_reward` | enabled | full reward with grounded rationale removed and all remaining weights renormalized |
 | `correctness_only` | enabled | answer correctness only |
 | `sft_only` | disabled | no rollout or policy update |
 
 The `sft_only` arm estimates the incremental effect of running RLVR. The paired
 `correctness_only - full_reward` isolates the joint contribution of task-specific, grounding,
 rationale, and abstention rewards under the same rollout and update budget.
-`no_rationale_reward - full_reward` isolates the incremental semantic-grounded rationale signal;
-the no-rationale arm preserves every other reward ratio exactly.
+`semantic_rationale - full_reward` isolates executable trace verification while preserving the
+reward weights exactly. `no_rationale_reward - full_reward` isolates the complete grounded
+rationale signal; the no-rationale arm preserves every other reward ratio exactly.
 
 Inspect or run the design:
 

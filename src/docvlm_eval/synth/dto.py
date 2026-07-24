@@ -107,6 +107,7 @@ class QAItem:
     languages: list[str] = field(default_factory=lambda: ["en"])
     key: str | None = None
     graph_query_id: str | None = None
+    reasoning_trace: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -451,6 +452,7 @@ class DocSample:
                 ),
                 key=q.get("key"),
                 graph_query_id=q.get("graph_query_id"),
+                reasoning_trace=q.get("reasoning_trace"),
             ))
 
         rj = gt.get("render", {}) or {}
@@ -570,7 +572,9 @@ class DocSample:
                            if q.evidence_bboxes else {}),
                         **({"rationale": q.rationale} if q.rationale else {}),
                         **({"graph_query_id": q.graph_query_id}
-                           if q.graph_query_id else {})} for q in self.qa]
+                           if q.graph_query_id else {}),
+                        **({"reasoning_trace": q.reasoning_trace}
+                           if q.reasoning_trace else {})} for q in self.qa]
         if self.table_html:
             d["table_html"] = self.table_html
         if self.selection:

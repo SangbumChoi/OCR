@@ -23,6 +23,7 @@ from __future__ import annotations
 import html as _html
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 from PIL import Image
 
@@ -212,7 +213,8 @@ class DocBuilder:
            key: str | None = None, concise: bool = True, rationale: str | None = None,
            languages: list[str] | None = None,
            evidence_keys: list[str] | None = None, derived: bool = False,
-           graph_query_id: str | None = None) -> None:
+           graph_query_id: str | None = None,
+           reasoning_trace: dict[str, Any] | None = None) -> None:
         """Register an answerable (question, answer) pair over content already rendered, so the case
         can be turned into eval Samples. `answer` may be a string or a list of acceptable strings.
 
@@ -235,6 +237,8 @@ class DocBuilder:
                          **({"evidence_keys": evidence_keys} if evidence_keys else {}),
                          **({"derived": True} if derived else {}),
                          **({"graph_query_id": graph_query_id} if graph_query_id else {}),
+                         **({"reasoning_trace": reasoning_trace}
+                            if reasoning_trace else {}),
                          "languages": qa_languages})
 
     def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:

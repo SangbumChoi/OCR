@@ -98,5 +98,9 @@ def test_diagram_spatial_evidence_is_visible_and_reaches_samples():
     )
     assert expected.meta["evidence_count"] == 7
     assert len(expected.meta["boxes"]) == 7
+    assert expected.meta["reasoning_trace"]["operation"] == "weighted_sum"
+    assert len(
+        expected.meta["reasoning_trace"]["trace_fingerprint"]
+    ) == 64
     assert topology.answers == ["Fusion Review"]
     assert topology.meta["evidence_count"] == 1

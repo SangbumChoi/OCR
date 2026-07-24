@@ -168,6 +168,9 @@ def case_to_samples(
         graph_query_id = qa.get("graph_query_id")
         if graph_query_id:
             meta["graph_query_id"] = graph_query_id
+        reasoning_trace = qa.get("reasoning_trace")
+        if reasoning_trace:
+            meta["reasoning_trace"] = reasoning_trace
         counterfactual = gt.get("counterfactual")
         if (
             isinstance(counterfactual, dict)

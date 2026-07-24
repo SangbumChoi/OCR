@@ -1136,10 +1136,13 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
     malformed_reward = float(rlvr.get("malformed_reward", -1))
     if not 0 <= malformed_reward <= 1:
         errors.append("training.posttraining.rlvr.malformed_reward must be within [0, 1]")
-    if rlvr.get("rationale_verifier") != "evidence_semantic":
+    if rlvr.get("rationale_verifier") not in {
+        "evidence_semantic",
+        "evidence_program_trace",
+    }:
         errors.append(
             "training.posttraining.rlvr.rationale_verifier must be "
-            "evidence_semantic"
+            "evidence_semantic or evidence_program_trace"
         )
     rollout = rlvr.get("rollout", {})
     if int(rollout.get("max_new_tokens", 0)) <= 0:

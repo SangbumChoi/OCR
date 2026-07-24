@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
@@ -31,6 +32,28 @@ def _number(value: Any, label: str) -> float:
     if not math.isfinite(value):
         raise ValueError(f"{label} must be finite")
     return value
+
+
+_NUMERIC_LITERAL = re.compile(
+    r"(?<![\w.])(?P<currency>[$€£¥₩])?"
+    r"(?P<value>[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
+    r"(?P<percent>\s*%)?"
+)
+
+
+def _numeric_facts(text: str) -> list[dict[str, Any]]:
+    """Extract ordered numeric facts without losing explicit percentage semantics."""
+
+    facts: list[dict[str, Any]] = []
+    for match in _NUMERIC_LITERAL.finditer(text):
+        value = float(match.group("value").replace(",", ""))
+        facts.append(
+            {
+                "value": value,
+                "percent": bool(match.group("percent")),
+            }
+        )
+    return facts
 
 
 @dataclass(frozen=True)
@@ -95,6 +118,7 @@ class ResolvedQuery:
     answer_value: Any
     rationale: str
     evidence_keys: tuple[str, ...]
+    reasoning_trace: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -388,12 +412,64 @@ class LatentDocumentGraph:
             for node_id in evidence_nodes
             if self.node(node_id).attributes.get("field_key")
         )
+        answer = self._format(value, query.answer_format)
+        trace_inputs: list[dict[str, Any]] = []
+        edge_ids: list[str] = []
+        if query.operation == "path_product":
+            edge_ids.extend(query.inputs)
+        elif query.operation == "sum_products":
+            paths = query.parameters.get("paths")
+            if isinstance(paths, list):
+                edge_ids.extend(
+                    edge_id
+                    for path in paths
+                    if isinstance(path, list)
+                    for edge_id in path
+                    if isinstance(edge_id, str)
+                )
+        if edge_ids:
+            for edge_id in dict.fromkeys(edge_ids):
+                edge = self.edge(edge_id)
+                trace_inputs.append(
+                    {
+                        "id": edge.edge_id,
+                        "input_type": "edge",
+                        "edge_source": edge.source,
+                        "relation": edge.relation,
+                        "edge_target": edge.target,
+                        "weight": edge.weight,
+                    }
+                )
+        else:
+            for node_id in query.inputs:
+                node = self.node(node_id)
+                trace_inputs.append(
+                    {
+                        "id": node.node_id,
+                        "input_type": "node",
+                        "kind": node.kind,
+                        "label": node.label,
+                        "value": node.value,
+                        "unit": node.unit,
+                    }
+                )
+        reasoning_trace = {
+            "schema_version": 1,
+            "operation": query.operation,
+            "inputs": trace_inputs,
+            "parameters": query.parameters,
+            "answer_value": value,
+            "answer": answer,
+            "required_numeric_facts": _numeric_facts(rationale),
+        }
+        reasoning_trace["trace_fingerprint"] = _hash(reasoning_trace)
         return ResolvedQuery(
             query_id=query.query_id,
-            answer=self._format(value, query.answer_format),
+            answer=answer,
             answer_value=value,
             rationale=rationale,
             evidence_keys=evidence_keys,
+            reasoning_trace=reasoning_trace,
         )
 
     def add_questions(self, builder: Any) -> None:
@@ -411,6 +487,7 @@ class LatentDocumentGraph:
                 evidence_keys=list(resolved.evidence_keys),
                 derived=True,
                 graph_query_id=query.query_id,
+                reasoning_trace=resolved.reasoning_trace,
             )
         builder.semantic_graph = self.to_dict()
 

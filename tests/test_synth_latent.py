@@ -41,6 +41,12 @@ def test_graph_recomputes_answer_rationale_and_evidence():
     assert resolved.answer == "5"
     assert "3.0, 2.0" in resolved.rationale
     assert resolved.evidence_keys == ("a_cell", "b_cell")
+    assert resolved.reasoning_trace["operation"] == "sum"
+    assert [
+        item["value"] for item in resolved.reasoning_trace["inputs"]
+    ] == [3, 2]
+    assert resolved.reasoning_trace["answer_value"] == 5
+    assert len(resolved.reasoning_trace["trace_fingerprint"]) == 64
 
 
 def test_graph_rejects_stale_expected_answer():
@@ -79,7 +85,13 @@ def test_weighted_paths_are_executable():
             )
         ],
     )
-    assert graph.resolve("indirect").answer == "20.00%"
+    resolved = graph.resolve("indirect")
+    assert resolved.answer == "20.00%"
+    assert [item["input_type"] for item in resolved.reasoning_trace["inputs"]] == [
+        "edge",
+        "edge",
+    ]
+    assert resolved.reasoning_trace["answer_value"] == pytest.approx(0.2)
 
 
 @pytest.mark.parametrize("level", [1, 3, 5])
@@ -93,6 +105,9 @@ def test_hard_case_programs_validate_at_every_curriculum_level(level):
         for query in graph["queries"]:
             assert query["resolved"]["answer"]
             assert query["resolved"]["rationale"]
+            trace = query["resolved"]["reasoning_trace"]
+            assert trace["operation"] == query["operation"]
+            assert len(trace["trace_fingerprint"]) == 64
 
 
 def test_split_policy_is_deterministic_and_content_sensitive():
