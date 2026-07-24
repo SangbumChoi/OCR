@@ -391,7 +391,12 @@ def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
     if not isinstance(value, dict):
         raise ValueError("sweep.promotion must be a mapping")
     primary_metric = str(value.get("primary_metric") or "")
-    if not _NAME.fullmatch(primary_metric):
+    if primary_metric.startswith("axis."):
+        if not primary_metric.removeprefix("axis."):
+            raise ValueError(
+                "promotion.primary_metric axis name must be non-empty"
+            )
+    elif not _NAME.fullmatch(primary_metric):
         raise ValueError("promotion.primary_metric must be a safe metric name")
     direction = str(value.get("direction") or "maximize")
     if direction not in {"maximize", "minimize"}:
@@ -861,6 +866,18 @@ def _one_sided_lower_bound(
     return round(bootstrap_means[index], 8)
 
 
+def _promotion_delta(
+    record: dict[str, Any],
+    primary_metric: str,
+) -> float | None:
+    if primary_metric.startswith("axis."):
+        axis = primary_metric.removeprefix("axis.")
+        value = record.get("heldout_axis_delta_vs_baseline", {}).get(axis)
+    else:
+        value = record.get("delta_vs_baseline", {}).get(primary_metric)
+    return None if value is None else float(value)
+
+
 def _promotion_decision(
     plan: SweepPlan,
     arm_records: dict[str, dict[str, Any]],
@@ -891,14 +908,14 @@ def _promotion_decision(
         missing_metric = [
             record["replicate_id"]
             for record in ordered
-            if rule.primary_metric not in record["delta_vs_baseline"]
+            if _promotion_delta(record, rule.primary_metric) is None
         ]
         benefits = (
             []
             if missing_metric
             else [
                 direction_sign
-                * float(record["delta_vs_baseline"][rule.primary_metric])
+                * float(_promotion_delta(record, rule.primary_metric))
                 for record in ordered
             ]
         )

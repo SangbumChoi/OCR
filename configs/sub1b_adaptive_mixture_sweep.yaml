@@ -6,6 +6,25 @@ base_experiment: configs/sub1b_experiment.yaml
 output_root: outputs/sweeps/docvlm-adaptive-mixture
 baseline: fixed_uniform
 
+promotion:
+  primary_metric: heldout_score
+  direction: maximize
+  minimum_effect: 0.005
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+    multilingual: 0.0
+
 matched_controls:
   - {document: experiment, path: /initialization/seed}
   - {document: experiment, path: /synthetic/count}

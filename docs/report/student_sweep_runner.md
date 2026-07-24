@@ -206,6 +206,13 @@ promotion:
     L1-region: 0.0
 ```
 
+`primary_metric` may name an aggregate field from `delta_vs_baseline`, such as
+`heldout_score`, or a capability endpoint as `axis.<name>`. For example,
+`axis.L1-region` uses the paired heldout `L1-region` delta as the primary effect.
+The named primary axis should not also appear in `required_axis_deltas`; those
+entries are simultaneous non-regression guardrails for other capabilities.
+Missing target-axis evidence produces `insufficient_evidence`.
+
 The aggregator converts every paired primary-metric delta into a positive-is-better benefit,
 including metrics configured with `direction: minimize`. It then computes a deterministic
 one-sided percentile-bootstrap lower bound using a Bonferroni alpha divided across every candidate
@@ -225,6 +232,15 @@ selector orders them by simultaneous lower bound, mean benefit, parameter count,
 then promotes at most `max_promotions`. `comparison.json` records the full contract, multiplicity
 calculation, per-arm evidence, selected variants, and whether the baseline was retained.
 `comparison.md` renders the same decision immediately below the descriptive ranking.
+
+The generic quality sweeps for adaptive mixture, box IoU, contrastive memory and objective,
+pretraining loss, sequence teacher, SFT target, preference method and objective, and RLVR reward
+and advantage all declare this contract with three paired replicates. Box IoU and SFT target use
+`axis.L1-region` as the primary endpoint; the other quality sweeps use aggregate heldout score.
+Connector family, visual canvas, architecture compute, and language-mixer compute remain outside
+this scalar promotion path because their documented decision rule is quality-versus-efficiency
+Pareto selection. They require a Pareto-aware promotion contract rather than an arbitrary scalar
+substitute.
 
 ## Materialize the promoted recipe
 

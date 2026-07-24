@@ -18,6 +18,62 @@ from docvlm_eval.student.sweep import (
 
 ROOT = Path(__file__).resolve().parents[1]
 
+QUALITY_PROMOTION_CONTRACTS = {
+    "sub1b_adaptive_mixture_sweep.yaml": (
+        "heldout_score",
+        {"L1-locate", "L1-region", "multilingual"},
+    ),
+    "sub1b_box_iou_loss_sweep.yaml": (
+        "axis.L1-region",
+        {"L1-locate", "ocr-full", "multilingual"},
+    ),
+    "sub1b_contrastive_memory_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "ocr-full", "reading-order"},
+    ),
+    "sub1b_contrastive_objective_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "ocr-full", "reading-order"},
+    ),
+    "sub1b_preference_method_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual"},
+    ),
+    "sub1b_preference_objective_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual"},
+    ),
+    "sub1b_pretraining_loss_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "ocr-full", "reading-order"},
+    ),
+    "sub1b_rlvr_advantage_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual"},
+    ),
+    "sub1b_rlvr_reward_sweep.yaml": (
+        "heldout_score",
+        {"L1-locate", "L1-region", "multilingual"},
+    ),
+    "sub1b_sequence_teacher_sweep.yaml": (
+        "heldout_score",
+        {"L1-region", "multilingual", "ocr-full"},
+    ),
+    "sub1b_sft_target_sweep.yaml": (
+        "axis.L1-region",
+        {"L1-locate", "multilingual", "ocr-full"},
+    ),
+}
+
+FULL_PROMOTION_GATES = {
+    "parameter_budget",
+    "generalization",
+    "grounding",
+    "reasoning",
+    "multilingual",
+    "reliability",
+}
+
 
 def _tiny_sweep(tmp_path: Path, *, mutate=None) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -926,17 +982,73 @@ def test_sweep_rejects_an_invalid_promotion_contract(tmp_path):
         )
 
 
+def test_sweep_rejects_an_empty_axis_primary_metric(tmp_path):
+    def mutate(raw):
+        raw["promotion"]["primary_metric"] = "axis."
+
+    with pytest.raises(
+        ValueError,
+        match="promotion.primary_metric axis name must be non-empty",
+    ):
+        compile_sweep_plan(
+            _tiny_sweep(tmp_path, mutate=mutate),
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "compiled",
+        )
+
+
+def test_sweep_accepts_a_colon_delimited_axis_primary_metric(tmp_path):
+    def mutate(raw):
+        raw["promotion"]["primary_metric"] = "axis.probe:direction"
+
+    plan = compile_sweep_plan(
+        _tiny_sweep(tmp_path, mutate=mutate),
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert plan.promotion is not None
+    assert plan.promotion.primary_metric == "axis.probe:direction"
+
+
+@pytest.mark.parametrize(
+    ("config_name", "expected"),
+    sorted(QUALITY_PROMOTION_CONTRACTS.items()),
+)
+def test_quality_sweeps_declare_fail_closed_promotion_contracts(
+    config_name,
+    expected,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / config_name).read_text(encoding="utf-8")
+    )
+    promotion = raw["promotion"]
+    primary_metric, required_axes = expected
+
+    assert promotion["primary_metric"] == primary_metric
+    assert promotion["direction"] == "maximize"
+    assert promotion["minimum_effect"] == 0.005
+    assert promotion["minimum_replicates"] == 3
+    assert promotion["familywise_alpha"] == 0.05
+    assert promotion["max_promotions"] == 1
+    assert set(promotion["required_gates"]) == FULL_PROMOTION_GATES
+    assert set(promotion["required_axis_deltas"]) == required_axes
+    assert set(promotion["required_axis_deltas"].values()) == {0.0}
+
+
 def test_promotion_corrects_all_candidates_and_axis_guardrails():
     plan = SimpleNamespace(
         promotion=PromotionRule(
-            primary_metric="heldout_score",
+            primary_metric="axis.L1-region",
             direction="maximize",
             minimum_effect=0.05,
             minimum_replicates=2,
             familywise_alpha=0.05,
             max_promotions=1,
             required_gates=("parameter_budget",),
-            required_axis_deltas={"L1-region": 0.0},
+            required_axis_deltas={"ocr-full": 0.0},
         ),
         baseline="baseline",
         replicates=("seed_0", "seed_1"),
@@ -954,21 +1066,24 @@ def test_promotion_corrects_all_candidates_and_axis_guardrails():
         },
     }
 
-    def record(replicate, score, axis):
+    def record(replicate, score, target_axis, guardrail_axis):
         return {
             "replicate_id": replicate,
             "delta_vs_baseline": {"heldout_score": score},
-            "heldout_axis_delta_vs_baseline": {"L1-region": axis},
+            "heldout_axis_delta_vs_baseline": {
+                "L1-region": target_axis,
+                "ocr-full": guardrail_axis,
+            },
         }
 
     records_by_arm = {
         "higher_score_but_regressed": {
-            "seed_0": record("seed_0", 0.2, -0.01),
-            "seed_1": record("seed_1", 0.2, 0.02),
+            "seed_0": record("seed_0", 0.3, 0.2, -0.01),
+            "seed_1": record("seed_1", 0.3, 0.2, 0.02),
         },
         "safe_gain": {
-            "seed_0": record("seed_0", 0.1, 0.01),
-            "seed_1": record("seed_1", 0.12, 0.01),
+            "seed_0": record("seed_0", 0.1, 0.1, 0.01),
+            "seed_1": record("seed_1", 0.12, 0.12, 0.01),
         },
     }
 
@@ -985,7 +1100,10 @@ def test_promotion_corrects_all_candidates_and_axis_guardrails():
     ] == "reject"
     assert decision["candidates"]["higher_score_but_regressed"][
         "evidence"
-    ]["regressed_axes"] == ["L1-region"]
+    ]["regressed_axes"] == ["ocr-full"]
+    assert decision["candidates"]["safe_gain"]["evidence"][
+        "primary_metric"
+    ] == "axis.L1-region"
     assert decision["multiple_comparisons"]["candidate_count"] == 2
     assert decision["multiple_comparisons"]["comparison_count"] == 4
     assert decision["multiple_comparisons"][
