@@ -151,8 +151,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   staged sweep.
 - **Close the validation-to-data loop:**
   [`report/student_failure_driven_synthesis.md`](report/student_failure_driven_synthesis.md) —
-  leakage-safe validation rewards, factor-shrinkage allocation across case, language, difficulty,
-  layout, and composition arms, exact generator execution, and a content-addressed next-run plan.
+  leakage-safe matched baseline-to-final learning progress, residual-failure factor shrinkage
+  across case, language, difficulty, layout, and composition arms, exact generator execution, and
+  a content-addressed next-run plan.
 - **Isolate pretraining losses:**
   [`report/student_pretraining_loss_sweep.md`](report/student_pretraining_loss_sweep.md) —
   fail-closed supervision provenance and paired leave-one-active-loss-out experiments.

@@ -78,8 +78,9 @@ def _positive_number(mapping: Mapping[str, Any], key: str) -> float:
 
 
 def validate_synthesis_policy_config(config: Mapping[str, Any]) -> None:
-    if int(config.get("schema_version", 0)) != 1:
-        raise ValueError("synthesis policy schema_version must be 1")
+    schema_version = int(config.get("schema_version", 0))
+    if schema_version not in {1, 2}:
+        raise ValueError("synthesis policy schema_version must be 1 or 2")
     if int(config.get("budget", 0)) <= 0:
         raise ValueError("synthesis policy budget must be positive")
     if int(config.get("seed", -1)) < 0:
@@ -103,6 +104,40 @@ def validate_synthesis_policy_config(config: Mapping[str, Any]) -> None:
     reward_total = sum(_positive_number(reward_weights, key) for key in reward_weights)
     if reward_total <= 0:
         raise ValueError("failure_weights must have positive total weight")
+    if schema_version >= 2:
+        if config.get("require_matched_baseline") is not True:
+            raise ValueError(
+                "schema_version 2 requires require_matched_baseline=true"
+            )
+        progress_coefficient = _positive_number(
+            config,
+            "learning_progress_coefficient",
+        )
+        if progress_coefficient <= 0:
+            raise ValueError(
+                "learning_progress_coefficient must be positive"
+            )
+        progress_weights = config.get("learning_progress_weights")
+        if not isinstance(progress_weights, dict):
+            raise ValueError("learning_progress_weights must be a mapping")
+        expected_progress = {
+            "score_gain",
+            "reward_gain",
+            "structure_gain",
+        }
+        if set(progress_weights) != expected_progress:
+            raise ValueError(
+                "learning_progress_weights must define score_gain, "
+                "reward_gain, and structure_gain"
+            )
+        progress_total = sum(
+            _positive_number(progress_weights, key)
+            for key in progress_weights
+        )
+        if progress_total <= 0:
+            raise ValueError(
+                "learning_progress_weights must have positive total weight"
+            )
     factor_weights = config.get("factor_weights")
     if not isinstance(factor_weights, dict) or set(factor_weights) != set(
         POLICY_FACTORS
@@ -252,6 +287,103 @@ def _failure(row: Mapping[str, Any], weights: Mapping[str, Any]) -> float:
     ) / total
 
 
+def _sample_id(row: Mapping[str, Any]) -> str:
+    sample_id = str(row.get("sample_id") or "").strip()
+    if not sample_id:
+        raise ValueError("evaluation rows require non-empty sample_id values")
+    return sample_id
+
+
+def _sample_identity(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: row.get(key)
+        for key in (
+            "sample_id",
+            "split",
+            "source",
+            "language",
+            "answer_type",
+            "metric",
+            "meta",
+            "robustness_slices",
+            "question",
+            "answers",
+            "image_path",
+        )
+    }
+
+
+def _rows_by_sample_id(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    label: str,
+) -> dict[str, Mapping[str, Any]]:
+    indexed: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        sample_id = _sample_id(row)
+        if sample_id in indexed:
+            raise ValueError(
+                f"{label} evaluation rows contain duplicate sample_id "
+                f"{sample_id!r}"
+            )
+        indexed[sample_id] = row
+    return indexed
+
+
+def _match_baseline_rows(
+    rows: Sequence[Mapping[str, Any]],
+    baseline_rows: Sequence[Mapping[str, Any]],
+) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
+    current = _rows_by_sample_id(rows, label="current")
+    baseline = _rows_by_sample_id(baseline_rows, label="baseline")
+    if set(current) != set(baseline):
+        missing = sorted(set(current) - set(baseline))
+        extra = sorted(set(baseline) - set(current))
+        raise ValueError(
+            "matched baseline sample_id set differs from current evaluation: "
+            f"missing={missing[:5]}, extra={extra[:5]}"
+        )
+    matched = []
+    for sample_id in sorted(current):
+        current_row = current[sample_id]
+        baseline_row = baseline[sample_id]
+        if payload_fingerprint(_sample_identity(current_row)) != (
+            payload_fingerprint(_sample_identity(baseline_row))
+        ):
+            raise ValueError(
+                "matched baseline sample identity differs for sample_id "
+                f"{sample_id!r}"
+            )
+        if arm_from_evaluation_row(current_row) != arm_from_evaluation_row(
+            baseline_row
+        ):
+            raise ValueError(
+                "matched baseline synthesis arm differs for sample_id "
+                f"{sample_id!r}"
+            )
+        matched.append((current_row, baseline_row))
+    return matched
+
+
+def _learning_progress(
+    row: Mapping[str, Any],
+    baseline_row: Mapping[str, Any],
+    weights: Mapping[str, Any],
+) -> float:
+    components = {
+        "score_gain": _clamped_metric(row, "score")
+        - _clamped_metric(baseline_row, "score"),
+        "reward_gain": _clamped_metric(row, "reward")
+        - _clamped_metric(baseline_row, "reward"),
+        "structure_gain": float(row.get("structurally_valid") is True)
+        - float(baseline_row.get("structurally_valid") is True),
+    }
+    total = sum(float(weights[name]) for name in components)
+    return sum(
+        float(weights[name]) * value for name, value in components.items()
+    ) / total
+
+
 def _candidate_arms(config: Mapping[str, Any]) -> list[dict[str, Any]]:
     space = config["candidate_space"]
     arms: list[dict[str, Any]] = []
@@ -303,36 +435,49 @@ def _factor_key(value: Any) -> str:
 
 
 def _factor_statistics(
-    observed: Sequence[tuple[dict[str, Any], float]],
+    observed: Sequence[tuple[dict[str, Any], float, float, float]],
     *,
     global_failure: float,
+    global_learning_progress: float,
+    global_utility: float,
     prior_strength: float,
 ) -> dict[str, dict[str, dict[str, float | int]]]:
-    totals: dict[str, dict[str, float]] = {
-        factor: defaultdict(float) for factor in POLICY_FACTORS
+    totals: dict[str, dict[str, dict[str, float]]] = {
+        signal: {
+            factor: defaultdict(float) for factor in POLICY_FACTORS
+        }
+        for signal in ("failure", "learning_progress", "utility")
     }
     counts: dict[str, dict[str, int]] = {
         factor: defaultdict(int) for factor in POLICY_FACTORS
     }
-    for arm, failure in observed:
+    for arm, failure, learning_progress, utility in observed:
         for factor in POLICY_FACTORS:
             value = _factor_key(arm[factor])
-            totals[factor][value] += failure
+            totals["failure"][factor][value] += failure
+            totals["learning_progress"][factor][value] += learning_progress
+            totals["utility"][factor][value] += utility
             counts[factor][value] += 1
+    global_signals = {
+        "failure": global_failure,
+        "learning_progress": global_learning_progress,
+        "utility": global_utility,
+    }
     result: dict[str, dict[str, dict[str, float | int]]] = {}
     for factor in POLICY_FACTORS:
         result[factor] = {}
         for value in sorted(counts[factor]):
             count = counts[factor][value]
-            mean = totals[factor][value] / count
-            posterior = (
-                totals[factor][value] + prior_strength * global_failure
-            ) / (count + prior_strength)
-            result[factor][value] = {
-                "n": count,
-                "mean_failure": round(mean, 8),
-                "posterior_failure": round(posterior, 8),
-            }
+            statistics: dict[str, float | int] = {"n": count}
+            for signal, global_value in global_signals.items():
+                total = totals[signal][factor][value]
+                mean = total / count
+                posterior = (
+                    total + prior_strength * global_value
+                ) / (count + prior_strength)
+                statistics[f"mean_{signal}"] = round(mean, 8)
+                statistics[f"posterior_{signal}"] = round(posterior, 8)
+            result[factor][value] = statistics
     return result
 
 
@@ -342,11 +487,14 @@ def plan_synthesis_batch(
     *,
     source_fingerprint: str,
     source_path: str,
+    baseline_rows: Sequence[Mapping[str, Any]] | None = None,
+    baseline_source_fingerprint: str | None = None,
+    baseline_source_path: str | None = None,
     budget: int | None = None,
     seed: int | None = None,
     allow_heldout_analysis: bool = False,
 ) -> dict[str, Any]:
-    """Allocate an exact next batch from validation failures.
+    """Allocate an exact next batch from validation learning signals.
 
     Heldout rows can only produce an analysis artifact, never an executable
     training plan.
@@ -373,15 +521,72 @@ def plan_synthesis_batch(
     if effective_budget <= 0 or effective_seed < 0:
         raise ValueError("budget must be positive and seed non-negative")
     failure_weights = config["failure_weights"]
-    observed = [
-        (arm_from_evaluation_row(row), _failure(row, failure_weights))
-        for row in rows
-    ]
-    global_failure = sum(value for _, value in observed) / len(observed)
+    schema_version = int(config["schema_version"])
+    progress_required = schema_version >= 2
+    progress_enabled = progress_required and baseline_rows is not None
+    if progress_required and baseline_rows is None:
+        raise ValueError(
+            "synthesis policy requires matched baseline evaluation rows"
+        )
+    if progress_enabled and (
+        not baseline_source_path
+        or not str(baseline_source_fingerprint or "").startswith("sha256:")
+    ):
+        raise ValueError(
+            "matched baseline requires source path and SHA-256 fingerprint"
+        )
+    if progress_enabled:
+        matched_rows = _match_baseline_rows(rows, baseline_rows or [])
+        learning_progress_weights = config.get(
+            "learning_progress_weights",
+            {
+                "score_gain": 1.0,
+                "reward_gain": 0.0,
+                "structure_gain": 0.0,
+            },
+        )
+        learning_progress_coefficient = float(
+            config.get("learning_progress_coefficient", 0.0)
+        )
+        observed = []
+        for row, baseline_row in matched_rows:
+            failure = _failure(row, failure_weights)
+            progress = _learning_progress(
+                row,
+                baseline_row,
+                learning_progress_weights,
+            )
+            observed.append(
+                (
+                    arm_from_evaluation_row(row),
+                    failure,
+                    progress,
+                    max(
+                        0.0,
+                        failure + learning_progress_coefficient * progress,
+                    ),
+                )
+            )
+    else:
+        learning_progress_weights = {}
+        learning_progress_coefficient = 0.0
+        observed = []
+        for row in rows:
+            failure = _failure(row, failure_weights)
+            observed.append(
+                (arm_from_evaluation_row(row), failure, 0.0, failure)
+            )
+    global_failure = sum(value[1] for value in observed) / len(observed)
+    global_learning_progress = (
+        sum(value[2] for value in observed) / len(observed)
+    )
+    global_utility = sum(value[3] for value in observed) / len(observed)
     prior_strength = float(config["prior_strength"])
     factor_stats = _factor_statistics(
         observed,
         global_failure=global_failure,
+        global_learning_progress=global_learning_progress,
+        global_utility=global_utility,
         prior_strength=prior_strength,
     )
     factor_weights = {
@@ -394,29 +599,51 @@ def plan_synthesis_batch(
     logits: list[float] = []
     scored_candidates: list[dict[str, Any]] = []
     for arm in candidates:
-        posterior_total = 0.0
+        posterior_totals = {
+            "failure": 0.0,
+            "learning_progress": 0.0,
+            "utility": 0.0,
+        }
         uncertainty_total = 0.0
         evidence_total = 0
         for factor in POLICY_FACTORS:
             stat = factor_stats[factor].get(_factor_key(arm[factor]))
             count = int(stat["n"]) if stat else 0
-            posterior = (
-                float(stat["posterior_failure"])
-                if stat
-                else global_failure
-            )
             weight = factor_weights[factor]
-            posterior_total += weight * posterior
+            for signal, global_value in (
+                ("failure", global_failure),
+                ("learning_progress", global_learning_progress),
+                ("utility", global_utility),
+            ):
+                posterior = (
+                    float(stat[f"posterior_{signal}"])
+                    if stat
+                    else global_value
+                )
+                posterior_totals[signal] += weight * posterior
             uncertainty_total += weight / math.sqrt(count + 1)
             evidence_total += count
-        predicted_failure = posterior_total / factor_weight_total
+        predicted_failure = (
+            posterior_totals["failure"] / factor_weight_total
+        )
+        predicted_learning_progress = (
+            posterior_totals["learning_progress"] / factor_weight_total
+        )
+        predicted_utility = (
+            posterior_totals["utility"] / factor_weight_total
+        )
         uncertainty = uncertainty_total / factor_weight_total
-        priority = predicted_failure + uncertainty_coefficient * uncertainty
+        priority = predicted_utility + uncertainty_coefficient * uncertainty
         logits.append(priority / float(config["temperature"]))
         scored_candidates.append(
             {
                 **arm,
                 "predicted_failure": round(predicted_failure, 8),
+                "predicted_learning_progress": round(
+                    predicted_learning_progress,
+                    8,
+                ),
+                "predicted_utility": round(predicted_utility, 8),
                 "uncertainty": round(uncertainty, 8),
                 "priority": round(priority, 8),
                 "factor_evidence_count": evidence_total,
@@ -463,8 +690,12 @@ def plan_synthesis_batch(
     for index, job in enumerate(jobs):
         job["output_subdir"] = f"job-{index:04d}"
     plan = {
-        "schema_version": 1,
-        "policy": "factor_shrinkage_failure_curriculum",
+        "schema_version": schema_version,
+        "policy": (
+            "factor_shrinkage_learning_progress_curriculum"
+            if progress_enabled
+            else "factor_shrinkage_failure_curriculum"
+        ),
         "training_authorized": training_authorized,
         "claim_scope": (
             "next_training_batch"
@@ -480,7 +711,11 @@ def plan_synthesis_batch(
         "budget": effective_budget,
         "seed": effective_seed,
         "global_failure": round(global_failure, 8),
+        "global_learning_progress": round(global_learning_progress, 8),
+        "global_utility": round(global_utility, 8),
         "failure_weights": dict(failure_weights),
+        "learning_progress_weights": dict(learning_progress_weights),
+        "learning_progress_coefficient": learning_progress_coefficient,
         "factor_weights": dict(factor_weights),
         "prior_strength": prior_strength,
         "uncertainty_coefficient": uncertainty_coefficient,
@@ -491,6 +726,18 @@ def plan_synthesis_batch(
         "factor_statistics": factor_stats,
         "jobs": jobs,
     }
+    if progress_enabled:
+        sample_ids = sorted(_sample_id(row) for row in rows)
+        plan["matched_baseline_required"] = progress_required
+        plan["matched_sample_ids_fingerprint"] = payload_fingerprint(
+            sample_ids
+        )
+        plan["baseline_source"] = {
+            "split": source_split,
+            "path": str(baseline_source_path),
+            "fingerprint": str(baseline_source_fingerprint),
+            "rows": len(baseline_rows or []),
+        }
     plan["plan_fingerprint"] = payload_fingerprint(plan)
     validate_generation_plan(
         plan,
@@ -504,8 +751,9 @@ def validate_generation_plan(
     *,
     require_training_authorized: bool = False,
 ) -> None:
-    if int(plan.get("schema_version", 0)) != 1:
-        raise ValueError("generation plan schema_version must be 1")
+    schema_version = int(plan.get("schema_version", 0))
+    if schema_version not in {1, 2}:
+        raise ValueError("generation plan schema_version must be 1 or 2")
     if require_training_authorized and plan.get("training_authorized") is not True:
         raise ValueError("generation plan is not authorized for training")
     source = plan.get("source")
@@ -524,6 +772,87 @@ def validate_generation_plan(
         raise ValueError(
             "training-authorized generation plans must originate from validation"
         )
+    baseline_source = plan.get("baseline_source")
+    if schema_version >= 2:
+        if plan.get("matched_baseline_required") is not True:
+            raise ValueError(
+                "generation plan schema_version 2 requires a matched baseline"
+            )
+        if plan.get("policy") != (
+            "factor_shrinkage_learning_progress_curriculum"
+        ):
+            raise ValueError(
+                "generation plan schema_version 2 has an invalid policy"
+            )
+        if not isinstance(baseline_source, dict):
+            raise ValueError(
+                "matched-baseline generation plans require baseline_source"
+            )
+        if (
+            not str(baseline_source.get("path") or "").strip()
+            or not str(
+                baseline_source.get("fingerprint") or ""
+            ).startswith("sha256:")
+            or int(baseline_source.get("rows", 0)) <= 0
+        ):
+            raise ValueError(
+                "generation plan baseline_source requires path, SHA-256 "
+                "fingerprint, and positive row count"
+            )
+        if baseline_source.get("split") != source.get("split"):
+            raise ValueError(
+                "generation plan baseline and current sources must share a split"
+            )
+        if int(baseline_source["rows"]) != int(source["rows"]):
+            raise ValueError(
+                "generation plan baseline and current row counts must match"
+            )
+        matched_fingerprint = str(
+            plan.get("matched_sample_ids_fingerprint") or ""
+        )
+        if not matched_fingerprint.startswith("sha256:"):
+            raise ValueError(
+                "matched-baseline generation plan requires a sample-ID "
+                "fingerprint"
+            )
+        progress_weights = plan.get("learning_progress_weights")
+        if not isinstance(progress_weights, dict) or set(
+            progress_weights
+        ) != {"score_gain", "reward_gain", "structure_gain"}:
+            raise ValueError(
+                "matched-baseline generation plan has invalid learning "
+                "progress weights"
+            )
+        if sum(
+            _positive_number(progress_weights, key)
+            for key in progress_weights
+        ) <= 0:
+            raise ValueError(
+                "matched-baseline generation plan learning progress weights "
+                "must have positive total"
+            )
+        coefficient = _positive_number(
+            plan,
+            "learning_progress_coefficient",
+        )
+        if coefficient <= 0:
+            raise ValueError(
+                "matched-baseline generation plan requires a positive "
+                "learning progress coefficient"
+            )
+        global_failure = float(plan.get("global_failure", math.nan))
+        global_progress = float(
+            plan.get("global_learning_progress", math.nan)
+        )
+        global_utility = float(plan.get("global_utility", math.nan))
+        if (
+            not 0.0 <= global_failure <= 1.0
+            or not -1.0 <= global_progress <= 1.0
+            or not 0.0 <= global_utility <= 1.0 + coefficient
+        ):
+            raise ValueError(
+                "matched-baseline generation plan has invalid global signals"
+            )
     budget = int(plan.get("budget", 0))
     jobs = plan.get("jobs")
     if budget <= 0 or not isinstance(jobs, list) or not jobs:
@@ -536,6 +865,22 @@ def validate_generation_plan(
         for factor in POLICY_FACTORS:
             if factor not in job:
                 raise ValueError(f"generation job is missing {factor}")
+        if schema_version >= 2:
+            for signal in (
+                "predicted_failure",
+                "predicted_learning_progress",
+                "predicted_utility",
+            ):
+                try:
+                    signal_value = float(job[signal])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"generation job requires numeric {signal}"
+                    ) from exc
+                if not math.isfinite(signal_value):
+                    raise ValueError(
+                        f"generation job {signal} must be finite"
+                    )
         if job["composition_tier"] not in COMPOSITION_TIERS:
             raise ValueError("generation job has invalid composition_tier")
         if int(job["difficulty_level"]) not in range(1, 6):
@@ -564,7 +909,7 @@ def validate_generation_plan(
 
 
 def validate_generation_plan_source(plan: Mapping[str, Any]) -> Path:
-    """Verify that an executable plan still points to its exact validation rows."""
+    """Verify the exact current and matched-baseline validation artifacts."""
 
     validate_generation_plan(plan, require_training_authorized=True)
     source_path = Path(plan["source"]["path"])
@@ -588,6 +933,43 @@ def validate_generation_plan_source(plan: Mapping[str, Any]) -> Path:
             "training-authorized generation source must contain only "
             "validation rows"
         )
+    baseline_source = plan.get("baseline_source")
+    if isinstance(baseline_source, dict):
+        baseline_path = Path(baseline_source["path"])
+        if not baseline_path.is_file():
+            raise ValueError(
+                "generation plan baseline source artifact does not exist: "
+                f"{baseline_path}"
+            )
+        if file_fingerprint(baseline_path) != baseline_source["fingerprint"]:
+            raise ValueError(
+                "generation plan baseline source fingerprint does not match "
+                "its validation artifact"
+            )
+        baseline_rows = load_evaluation_rows(baseline_path)
+        if len(baseline_rows) != int(baseline_source["rows"]):
+            raise ValueError(
+                "generation plan baseline source row count does not match "
+                "its validation artifact"
+            )
+        if {
+            str(row.get("split") or "") for row in baseline_rows
+        } != {"validation"}:
+            raise ValueError(
+                "training-authorized generation baseline must contain only "
+                "validation rows"
+            )
+        matched = _match_baseline_rows(rows, baseline_rows)
+        matched_ids_fingerprint = payload_fingerprint(
+            sorted(_sample_id(current) for current, _ in matched)
+        )
+        if matched_ids_fingerprint != plan.get(
+            "matched_sample_ids_fingerprint"
+        ):
+            raise ValueError(
+                "generation plan matched sample-ID fingerprint does not "
+                "match its validation artifacts"
+            )
     return source_path
 
 

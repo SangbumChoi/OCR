@@ -688,6 +688,25 @@ def test_experiment_emits_next_batch_plan_from_validation(tmp_path):
     assert policy.dependencies == ("evaluate",)
     assert policy.command[policy.command.index("--budget") + 1] == "5"
     assert policy.command[policy.command.index("--seed") + 1] == "99"
+    assert policy.command[
+        policy.command.index("--baseline-per-sample") + 1
+    ] == str(
+        tmp_path
+        / "output"
+        / "artifacts"
+        / "evaluation_baseline"
+        / "validation"
+        / "per_sample.jsonl"
+    )
+    baseline = next(
+        stage for stage in plan.stages if stage.name == "evaluate_baseline"
+    )
+    assert any(
+        artifact.path.endswith(
+            "evaluation_baseline/validation/per_sample.jsonl"
+        )
+        for artifact in baseline.artifacts
+    )
 
 
 def test_experiment_can_generate_train_split_from_authorized_plan(tmp_path):

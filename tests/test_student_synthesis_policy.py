@@ -47,6 +47,23 @@ def _config():
     }
 
 
+def _progress_config():
+    config = _config()
+    config.update(
+        {
+            "schema_version": 2,
+            "require_matched_baseline": True,
+            "learning_progress_coefficient": 0.5,
+            "learning_progress_weights": {
+                "score_gain": 0.5,
+                "reward_gain": 0.3,
+                "structure_gain": 0.2,
+            },
+        }
+    )
+    return config
+
+
 def _row(language, score, reward, valid, *, split="validation"):
     return {
         "sample_id": f"{split}-{language}",
@@ -64,6 +81,18 @@ def _row(language, score, reward, valid, *, split="validation"):
             "document_count": 1,
         },
     }
+
+
+def _plan_with_baseline(rows, baseline_rows, config=None):
+    return plan_synthesis_batch(
+        rows,
+        config or _progress_config(),
+        source_fingerprint="sha256:current",
+        source_path="/tmp/current/validation/per_sample.jsonl",
+        baseline_rows=baseline_rows,
+        baseline_source_fingerprint="sha256:baseline",
+        baseline_source_path="/tmp/baseline/validation/per_sample.jsonl",
+    )
 
 
 def test_validation_failures_deterministically_shift_the_next_batch():
@@ -119,6 +148,63 @@ def test_heldout_can_only_emit_non_executable_analysis():
         )
 
 
+def test_matched_learning_progress_shifts_equal_failure_arms():
+    rows = [
+        _row("en", 0.5, 0.5, True),
+        _row("ko", 0.5, 0.5, True),
+    ]
+    baseline_rows = [
+        _row("en", 0.0, 0.0, False),
+        _row("ko", 0.5, 0.5, True),
+    ]
+
+    plan = _plan_with_baseline(rows, baseline_rows)
+
+    counts = {job["language"]: job["count"] for job in plan["jobs"]}
+    assert counts["en"] > counts["ko"]
+    assert plan["schema_version"] == 2
+    assert plan["policy"] == (
+        "factor_shrinkage_learning_progress_curriculum"
+    )
+    assert plan["global_learning_progress"] > 0
+    assert plan["baseline_source"]["rows"] == 2
+    assert plan["matched_sample_ids_fingerprint"].startswith("sha256:")
+    assert (
+        plan["factor_statistics"]["language"]["en"][
+            "mean_learning_progress"
+        ]
+        > 0
+    )
+    validate_generation_plan(plan, require_training_authorized=True)
+
+
+def test_matched_learning_progress_requires_exact_sample_ids():
+    rows = [_row("en", 0.5, 0.5, True)]
+    baseline_rows = [_row("ko", 0.0, 0.0, False)]
+
+    with pytest.raises(ValueError, match="sample_id set differs"):
+        _plan_with_baseline(rows, baseline_rows)
+
+
+def test_matched_learning_progress_requires_immutable_sample_identity():
+    row = _row("en", 0.5, 0.5, True)
+    baseline = _row("en", 0.0, 0.0, False)
+    baseline["question"] = "A different benchmark question"
+
+    with pytest.raises(ValueError, match="sample identity differs"):
+        _plan_with_baseline([row], [baseline])
+
+
+def test_schema_two_requires_a_matched_baseline():
+    with pytest.raises(ValueError, match="requires matched baseline"):
+        plan_synthesis_batch(
+            [_row("en", 0.5, 0.5, True)],
+            _progress_config(),
+            source_fingerprint="sha256:current",
+            source_path="/tmp/current/validation/per_sample.jsonl",
+        )
+
+
 def test_plan_fingerprint_rejects_content_tampering():
     plan = plan_synthesis_batch(
         [_row("en", 0.5, 0.5, True)],
@@ -156,4 +242,36 @@ def test_executable_plan_pins_the_validation_source_bytes(tmp_path):
     assert validate_generation_plan_source(plan) == source
     source.write_text('{"split":"validation","changed":true}\n', encoding="utf-8")
     with pytest.raises(ValueError, match="source fingerprint"):
+        validate_generation_plan_source(plan)
+
+
+def test_executable_progress_plan_pins_both_validation_sources(tmp_path):
+    current = tmp_path / "current.jsonl"
+    baseline = tmp_path / "baseline.jsonl"
+    current_rows = [_row("en", 0.5, 0.5, True)]
+    baseline_rows = [_row("en", 0.0, 0.0, False)]
+    current.write_text(
+        json.dumps(current_rows[0]) + "\n",
+        encoding="utf-8",
+    )
+    baseline.write_text(
+        json.dumps(baseline_rows[0]) + "\n",
+        encoding="utf-8",
+    )
+    plan = plan_synthesis_batch(
+        current_rows,
+        _progress_config(),
+        source_fingerprint=file_fingerprint(current),
+        source_path=str(current),
+        baseline_rows=baseline_rows,
+        baseline_source_fingerprint=file_fingerprint(baseline),
+        baseline_source_path=str(baseline),
+    )
+
+    assert validate_generation_plan_source(plan) == current
+    baseline.write_text(
+        json.dumps({**baseline_rows[0], "score": 0.1}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="baseline source fingerprint"):
         validate_generation_plan_source(plan)

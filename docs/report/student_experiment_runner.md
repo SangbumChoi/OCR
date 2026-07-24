@@ -109,9 +109,10 @@ experiments to retain one fixed benchmark. Setting both `synthetic.validation_co
 pretraining through `--eval-src`. This optimizer-heldout validation split can drive adaptive data
 mixing while the final heldout root remains untouched. It is also converted to structured
 evaluation samples. When `synthetic.adaptation_policy.enabled` is true, the final
-`plan_next_synthetic_batch` stage turns those validation failures into an authorized plan for the
-next run. Setting `synthetic.training_policy_plan` to that artifact replaces fixed train generation
-with exact policy execution; heldout-derived plans are rejected. See
+`plan_next_synthetic_batch` stage joins exact baseline and final validation rows, then turns
+residual failures and matched learning progress into an authorized plan for the next run. Setting
+`synthetic.training_policy_plan` to that artifact replaces fixed train generation with exact policy
+execution; heldout-derived plans are rejected. See
 [`student_failure_driven_synthesis.md`](student_failure_driven_synthesis.md). The runner writes a
 resolved architecture blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions
 match the experiment.

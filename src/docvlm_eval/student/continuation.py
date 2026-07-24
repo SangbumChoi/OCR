@@ -107,6 +107,7 @@ class ContinuationContract:
     replay_samples_fingerprint: str
     training_policy_fingerprint: str
     training_policy_source_fingerprint: str
+    training_policy_baseline_source_fingerprint: str | None
     parent_attestation_sha256: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -342,6 +343,21 @@ def resolve_continuation_contract(
             "parent synthesis policy must originate from the parent "
             "validation evaluation"
         )
+    baseline_source = policy.get("baseline_source")
+    if isinstance(baseline_source, Mapping):
+        baseline_source_path = Path(str(baseline_source["path"])).resolve()
+        expected_baseline_source = (
+            parent_root
+            / "artifacts"
+            / "evaluation_baseline"
+            / "validation"
+            / "per_sample.jsonl"
+        ).resolve()
+        if baseline_source_path != expected_baseline_source:
+            raise ValueError(
+                "parent synthesis policy matched baseline must originate "
+                "from the parent baseline validation evaluation"
+            )
 
     checkpoint_record = _tree_record(checkpoint, checkpoint_files)
     attested_files: dict[str, dict[str, Any]] = {}
@@ -402,6 +418,11 @@ def resolve_continuation_contract(
         training_policy_fingerprint=str(policy["plan_fingerprint"]),
         training_policy_source_fingerprint=str(
             policy["source"]["fingerprint"]
+        ),
+        training_policy_baseline_source_fingerprint=(
+            str(baseline_source["fingerprint"])
+            if isinstance(baseline_source, Mapping)
+            else None
         ),
         parent_attestation_sha256=attestation_hash,
     )

@@ -19,6 +19,13 @@ from docvlm_eval.student.synthesis_policy import (
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--per-sample", type=Path, required=True)
+    parser.add_argument(
+        "--baseline-per-sample",
+        type=Path,
+        help=(
+            "matched baseline per-sample rows from the same evaluation split"
+        ),
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--budget", type=int)
@@ -31,12 +38,28 @@ def main() -> None:
     args = parser.parse_args()
 
     rows = load_evaluation_rows(args.per_sample)
+    baseline_rows = (
+        load_evaluation_rows(args.baseline_per_sample)
+        if args.baseline_per_sample is not None
+        else None
+    )
     config = load_synthesis_policy_config(args.config)
     plan = plan_synthesis_batch(
         rows,
         config,
         source_fingerprint=file_fingerprint(args.per_sample),
         source_path=str(args.per_sample.resolve()),
+        baseline_rows=baseline_rows,
+        baseline_source_fingerprint=(
+            file_fingerprint(args.baseline_per_sample)
+            if args.baseline_per_sample is not None
+            else None
+        ),
+        baseline_source_path=(
+            str(args.baseline_per_sample.resolve())
+            if args.baseline_per_sample is not None
+            else None
+        ),
         budget=args.budget,
         seed=args.seed,
         allow_heldout_analysis=args.allow_heldout_analysis,

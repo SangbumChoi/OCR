@@ -7,22 +7,25 @@ graphs, and rendering provenance remain exactly verifiable.
 
 ## Leakage and authorization contract
 
-[`plan_student_synthesis.py`](../../scripts/plan_student_synthesis.py) accepts one structured
-`per_sample.jsonl` artifact. A plan is authorized for training only when every row has
-`split: validation`. Mixed splits and train rows fail. Heldout rows require the explicit
-`--allow-heldout-analysis` flag and produce `training_authorized: false` with
-`claim_scope: heldout_analysis_only`.
+[`plan_student_synthesis.py`](../../scripts/plan_student_synthesis.py) accepts the final and
+matched-baseline structured `per_sample.jsonl` artifacts. A plan is authorized for training only
+when every row has `split: validation`. The two inputs must contain exactly the same unique sample
+IDs and immutable sample identities, including task, ground truth, image, metadata, language, and
+synthesis arm. Mixed splits, train rows, duplicate IDs, or a changed benchmark identity fail.
+Heldout rows require the explicit `--allow-heldout-analysis` flag and produce
+`training_authorized: false` with `claim_scope: heldout_analysis_only`.
 
 [`generate_from_synthesis_policy.py`](../../scripts/generate_from_synthesis_policy.py) always calls
 the plan validator with training authorization required. A heldout-derived analysis therefore
 cannot be reused for training by changing a CLI flag. The content-addressed plan also fails if any
-allocation, arm, budget, or provenance field changes after fingerprinting.
+allocation, arm, budget, current source, matched baseline source, sample-ID set, or provenance
+field changes after fingerprinting.
 
 The final heldout split remains reserved for generalization and promotion evidence. The production
 experiment uses a distinct validation root for temperature calibration, adaptive pretraining
 feedback, and synthesis-policy learning.
 
-## Reward and factor model
+## Residual failure and learning progress
 
 For validation example \(i\), the bounded failure signal is:
 
@@ -33,9 +36,26 @@ failure_i =
   + 0.20 * structure_failure_i
 ```
 
-All weights are configurable. Each row is attributed to an exact arm using generator case,
-language, difficulty level, visual layout family, and composition tier. Composition is classified
-as single document, multi-page, or multi-document.
+The matched learning-progress signal is:
+
+```text
+progress_i =
+  0.50 * (final_task_score_i - baseline_task_score_i)
+  + 0.30 * (final_verifier_reward_i - baseline_verifier_reward_i)
+  + 0.20 * (final_structure_valid_i - baseline_structure_valid_i)
+
+utility_i = max(0, failure_i + 0.25 * progress_i)
+```
+
+All weights and the progress coefficient are configurable. Residual failure remains the dominant
+signal, so difficult or regressed arms are still represented. Positive matched progress adds a
+bounded learnability reward; negative progress lowers the utility of repeatedly sampling an arm
+whose observed update was harmful. This is a contextual allocation heuristic, not a causal claim
+about any individual training example.
+
+Each row is attributed to an exact arm using generator case, language, difficulty level, visual
+layout family, and composition tier. Composition is classified as single document, multi-page, or
+multi-document.
 
 The generator writes `generator_case` into every `gt.json`. The benchmark converter separately
 preserves that stable identity and the path-derived `case`, so fanned-out directory names cannot
@@ -44,15 +64,16 @@ silently become generator labels.
 Sparse Cartesian arms are estimated with empirical-Bayes factor shrinkage. For factor value \(v\):
 
 ```text
-posterior_failure(v) =
-  (sum_failure(v) + prior_strength * global_failure)
+posterior_signal(v) =
+  (sum_signal(v) + prior_strength * global_signal)
   / (count(v) + prior_strength)
 ```
 
-An arm combines the configured factor posteriors and adds a bounded uncertainty bonus. A
-temperature softmax supplies exploitation; an explicit uniform mixture supplies exploration.
-Largest-remainder rounding makes integer allocations sum exactly to the requested document budget.
-Arm ordering, tie-breaking, seeds, output directories, and the plan fingerprint are deterministic.
+The planner estimates failure, learning progress, and combined utility separately. An arm combines
+the configured factor utility posteriors and adds a bounded uncertainty bonus. A temperature
+softmax supplies exploitation; an explicit uniform mixture supplies exploration. Largest-remainder
+rounding makes integer allocations sum exactly to the requested document budget. Arm ordering,
+tie-breaking, seeds, output directories, and the plan fingerprint are deterministic.
 
 ## Exact generation
 
@@ -74,6 +95,7 @@ The production DAG evaluates train, validation, and heldout splits. Its final
 
 ```text
 artifacts/evaluation/validation/per_sample.jsonl
+artifacts/evaluation_baseline/validation/per_sample.jsonl
 ```
 
 and writes:
@@ -98,6 +120,8 @@ Standalone planning is also available:
 ```bash
 python scripts/plan_student_synthesis.py \
   --per-sample outputs/run/artifacts/evaluation/validation/per_sample.jsonl \
+  --baseline-per-sample \
+    outputs/run/artifacts/evaluation_baseline/validation/per_sample.jsonl \
   --config configs/sub1b_synthesis_policy.yaml \
   --output outputs/run/artifacts/synthetic/next_train_plan.json
 ```

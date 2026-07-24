@@ -45,8 +45,8 @@ DAG, the continuation resolver verifies:
   fingerprint;
 - a byte-identical tokenizer copy materialized inside every child root, so the following round
   depends only on its immediate parent's attested artifacts;
-- an untampered validation-only, training-authorized synthesis plan whose source is the parent's
-  exact validation `per_sample.jsonl`;
+- an untampered validation-only, training-authorized synthesis plan whose current and matched
+  baseline sources are the parent's exact validation `per_sample.jsonl` artifacts;
 - an exact round increment and an explicit `reset_per_stage` optimizer policy.
 
 The child begins with `attest_continuation`. No synthesis or optimizer stage can run until the same
@@ -59,10 +59,12 @@ The next-round spec also replaces the fresh-run
 `evaluation.baseline_checkpoint_stage` with `inherited`. The child then evaluates the parent's
 attested final checkpoint on the child's exact current train/validation/heldout files before
 evaluating the updated checkpoint. This preserves matched heldout sample IDs and a valid
-train-minus-heldout gap even after cumulative replay changes the active train set. Each
-continuation therefore measures incremental improvement against the exact model that generated
-the previous round's failure-driven policy without pretending that an omitted initialization or
-pretraining stage can be evaluated locally.
+train-minus-heldout gap even after cumulative replay changes the active train set. The synthesis
+planner additionally joins the inherited-baseline and updated validation rows by exact sample ID,
+rejects any changed benchmark identity, and records residual failure, signed learning progress,
+and combined allocation utility. Each continuation therefore measures incremental improvement
+against the exact inherited model without pretending that an omitted initialization or pretraining
+stage can be evaluated locally.
 
 ## Replay and provenance
 

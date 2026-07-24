@@ -1,7 +1,7 @@
 # Failure-driven allocation for the next exact synthetic training batch.
 # Only validation per-sample artifacts may authorize a training plan.
 
-schema_version: 1
+schema_version: 2
 budget: 700
 seed: 9107
 
@@ -9,6 +9,13 @@ failure_weights:
   score_deficit: 0.50
   reward_deficit: 0.30
   structure_failure: 0.20
+
+require_matched_baseline: true
+learning_progress_coefficient: 0.25
+learning_progress_weights:
+  score_gain: 0.50
+  reward_gain: 0.30
+  structure_gain: 0.20
 
 prior_strength: 4.0
 uncertainty_coefficient: 0.15

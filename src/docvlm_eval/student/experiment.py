@@ -612,6 +612,21 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 f"synthetic adaptation policy config does not exist: {policy_path}"
             )
         policy_config = load_synthesis_policy_config(policy_path)
+        if bool(policy_config.get("require_matched_baseline", False)):
+            evaluation_config = raw.get("evaluation")
+            has_matched_baseline = isinstance(
+                evaluation_config,
+                dict,
+            ) and bool(
+                evaluation_config.get("baseline_checkpoint_stage")
+                or evaluation_config.get("baseline_evaluation")
+            )
+            if not has_matched_baseline:
+                raise ValueError(
+                    "matched-baseline synthesis adaptation requires "
+                    "evaluation.baseline_checkpoint_stage or "
+                    "evaluation.baseline_evaluation"
+                )
         budget = adaptation.get("budget", policy_config["budget"])
         seed = adaptation.get("seed", policy_config["seed"])
         if int(budget) <= 0 or int(seed) < 0:
@@ -1091,6 +1106,11 @@ def build_experiment_plan(
             or "configs/sub1b_synthesis_policy.yaml",
         )
         if adaptation_enabled
+        else None
+    )
+    adaptation_policy_config = (
+        load_synthesis_policy_config(adaptation_config_path)
+        if adaptation_config_path is not None
         else None
     )
     if adaptation_config_path is not None:
@@ -2369,29 +2389,40 @@ def build_experiment_plan(
         ]
         if validation_enabled:
             baseline_dependencies.append("build_validation_samples")
+        baseline_artifacts = [
+            Artifact(str(baseline_eval_dir / "manifest.json")),
+            Artifact(str(baseline_eval_dir / "comparison.json")),
+            Artifact(
+                str(
+                    baseline_eval_dir
+                    / "train"
+                    / "per_sample.jsonl"
+                )
+            ),
+            Artifact(
+                str(
+                    baseline_eval_dir
+                    / "heldout"
+                    / "per_sample.jsonl"
+                )
+            ),
+        ]
+        if validation_enabled:
+            baseline_artifacts.append(
+                Artifact(
+                    str(
+                        baseline_eval_dir
+                        / "validation"
+                        / "per_sample.jsonl"
+                    )
+                )
+            )
         stages.append(
             ExperimentStage(
                 "evaluate_baseline",
                 tuple(baseline_command),
                 tuple(dict.fromkeys(baseline_dependencies)),
-                (
-                    Artifact(str(baseline_eval_dir / "manifest.json")),
-                    Artifact(str(baseline_eval_dir / "comparison.json")),
-                    Artifact(
-                        str(
-                            baseline_eval_dir
-                            / "train"
-                            / "per_sample.jsonl"
-                        )
-                    ),
-                    Artifact(
-                        str(
-                            baseline_eval_dir
-                            / "heldout"
-                            / "per_sample.jsonl"
-                        )
-                    ),
-                ),
+                tuple(baseline_artifacts),
             )
         )
         eval_command.extend(
@@ -2455,6 +2486,16 @@ def build_experiment_plan(
         )
     )
     if adaptation_enabled:
+        baseline_policy_root = (
+            baseline_eval_dir
+            if internal_baseline_stage is not None
+            else _resolve_path(
+                repo_root,
+                evaluation["baseline_evaluation"],
+            )
+            if evaluation.get("baseline_evaluation")
+            else None
+        )
         policy_command = [
             python,
             script("plan_student_synthesis.py"),
@@ -2465,6 +2506,26 @@ def build_experiment_plan(
             "--output",
             str(next_synthesis_plan),
         ]
+        if bool(
+            (adaptation_policy_config or {}).get(
+                "require_matched_baseline",
+                False,
+            )
+        ):
+            if baseline_policy_root is None:
+                raise ValueError(
+                    "matched-baseline synthesis adaptation has no baseline "
+                    "evaluation root"
+                )
+            config_index = policy_command.index("--config")
+            policy_command[config_index:config_index] = [
+                "--baseline-per-sample",
+                str(
+                    baseline_policy_root
+                    / "validation"
+                    / "per_sample.jsonl"
+                ),
+            ]
         _add_optional(
             policy_command,
             "--budget",
