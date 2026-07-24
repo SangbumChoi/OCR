@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from docvlm_eval.student.architecture_sweep import (
+    apply_compute_budget_gate,
     compile_architecture_sweep,
     compute_budget_report,
 )
@@ -61,6 +62,8 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
     plan = _compile(tmp_path)
 
     assert plan.baseline == "r896_l64"
+    assert plan.sweep.promotion is not None
+    assert plan.sweep.promotion.to_dict()["mode"] == "pareto"
     assert len(plan.profiles) == 5
     assert len(plan.sweep.variants) == 15
     assert plan.budgets.pretrain > plan.budgets.sft > plan.budgets.rlvr
@@ -101,6 +104,9 @@ def test_architecture_sweep_compiles_paired_compute_matched_profiles(tmp_path):
             is False
         )
         assert "visual_backend_benchmark" not in variant.plan.stage_names
+        assert variant.decision_metrics[
+            "training_flops_per_sample"
+        ] > 0
 
 
 def test_architecture_sweep_profiles_have_expected_compute_order(tmp_path):
@@ -123,6 +129,10 @@ def test_language_mixer_sweep_compiles_hybrid_profiles(tmp_path):
     profiles = {profile.id: profile for profile in plan.profiles}
 
     assert plan.baseline == "all_attention"
+    assert plan.sweep.promotion is not None
+    assert plan.sweep.promotion.to_dict()["selection_order"][1] == (
+        "decision.rlvr_peak_kv_cache_bytes_bfloat16"
+    )
     assert len(plan.profiles) == 4
     assert len(plan.sweep.variants) == 12
     assert profiles["all_attention"].blueprint_patches == ()
@@ -157,6 +167,33 @@ def test_language_mixer_sweep_compiles_hybrid_profiles(tmp_path):
         assert "architecture-profile:" in " ".join(
             variant.plan.raw_spec["evaluation"]["wandb_tags"]
         )
+        assert variant.decision_metrics[
+            "rlvr_peak_kv_cache_bytes_bfloat16"
+        ] > 0
+
+
+def test_architecture_sweep_does_not_inherit_base_scalar_promotion(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_architecture_compute_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw.pop("promotion")
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "no-promotion-architecture-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_architecture_sweep(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert plan.sweep.promotion is None
 
 
 def test_architecture_profile_patches_cannot_override_compute_contract(
@@ -229,3 +266,32 @@ def test_compute_budget_report_rejects_excessive_overshoot(tmp_path):
     assert report["status"] == "fail"
     assert report["runs"]["r448_l32--seed_0"]["rlvr"]["status"] == "fail"
     assert report["runs"]["r896_l64--seed_0"]["pretrain"]["status"] == "pass"
+
+
+def test_compute_budget_gate_revokes_a_selected_architecture():
+    comparison = {
+        "promotion": {
+            "status": "promote",
+            "selected_variants": ["smaller"],
+            "baseline_retained": False,
+            "candidates": {
+                "smaller": {"decision": "promote"},
+            },
+        }
+    }
+
+    gated = apply_compute_budget_gate(
+        comparison,
+        {"status": "fail"},
+    )
+
+    assert gated["promotion"]["status"] == "retain_baseline"
+    assert gated["promotion"]["selected_variants"] == []
+    assert gated["promotion"]["baseline_retained"] is True
+    assert gated["promotion"]["candidates"]["smaller"]["decision"] == (
+        "reject_external_gate"
+    )
+    assert gated["promotion"]["external_gates"] == {
+        "architecture_compute_budget": "fail"
+    }
+    assert comparison["promotion"]["status"] == "promote"

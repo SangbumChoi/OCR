@@ -7,6 +7,8 @@ import pytest
 import yaml
 
 from docvlm_eval.student.sweep import (
+    ParetoObjective,
+    ParetoPromotionRule,
     PromotionRule,
     SweepRunner,
     _promotion_decision,
@@ -373,6 +375,12 @@ def test_connector_family_sweep_compiles_compute_matched_pareto_arms(
 
     assert len(plan.variants) == 6
     assert plan.baseline == "gated_resampler"
+    assert plan.promotion is not None
+    assert plan.promotion.to_dict()["mode"] == "pareto"
+    assert "parameters.total" in {
+        objective["metric"]
+        for objective in plan.promotion.to_dict()["objectives"]
+    }
     parameters = {}
     for variant in plan.variants:
         connector = variant.plan.resolved_blueprint["student"]["connector"]
@@ -826,6 +834,12 @@ def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
 
     assert len(plan.variants) == 12
     assert plan.baseline == "packed"
+    assert plan.promotion is not None
+    assert plan.promotion.to_dict()["mode"] == "pareto"
+    assert "efficiency.executed_visual_tokens_per_sample" in {
+        objective["metric"]
+        for objective in plan.promotion.to_dict()["objectives"]
+    }
     policies = {
         variant.arm_id: (
             variant.plan.resolved_blueprint["training"]["pretraining"][
@@ -1109,6 +1123,129 @@ def test_promotion_corrects_all_candidates_and_axis_guardrails():
     assert decision["multiple_comparisons"][
         "per_comparison_alpha"
     ] == pytest.approx(0.0125)
+
+
+def test_pareto_promotion_filters_dominated_candidates_and_uses_priority():
+    plan = SimpleNamespace(
+        promotion=ParetoPromotionRule(
+            objectives=(
+                ParetoObjective(
+                    metric="heldout_score",
+                    direction="maximize",
+                    minimum_effect=-0.02,
+                    required_improvement=False,
+                ),
+                ParetoObjective(
+                    metric="parameters.total",
+                    direction="minimize",
+                    minimum_effect=-50.0,
+                    required_improvement=True,
+                ),
+                ParetoObjective(
+                    metric="decision.cache_bytes",
+                    direction="minimize",
+                    minimum_effect=0.0,
+                    required_improvement=True,
+                ),
+            ),
+            selection_order=(
+                "heldout_score",
+                "decision.cache_bytes",
+                "parameters.total",
+            ),
+            minimum_replicates=2,
+            familywise_alpha=0.05,
+            max_promotions=1,
+            required_gates=("parameter_budget",),
+            required_axis_deltas={},
+        ),
+        baseline="baseline",
+        replicates=("seed_0", "seed_1"),
+        fingerprint="sha256:test-pareto-promotion",
+    )
+    candidate_values = {
+        "efficient_balanced": (-0.005, -100.0, -50.0, 700),
+        "cache_specialist": (0.01, 20.0, -100.0, 820),
+        "dominated": (-0.01, -50.0, -20.0, 750),
+        "quality_regression": (-0.03, -200.0, -120.0, 600),
+    }
+    arm_records = {
+        "baseline": {},
+        **{
+            arm_id: {
+                "gate_statuses": {"parameter_budget": "pass"},
+                "parameters": {"total": parameters},
+                "decision_metrics": {
+                    "cache_bytes": 1_000.0 + cache_delta
+                },
+            }
+            for arm_id, (
+                _,
+                _,
+                cache_delta,
+                parameters,
+            ) in candidate_values.items()
+        },
+    }
+
+    def record(
+        replicate,
+        score_delta,
+        parameter_delta,
+        cache_delta,
+    ):
+        return {
+            "replicate_id": replicate,
+            "delta_vs_baseline": {"heldout_score": score_delta},
+            "parameter_delta_vs_baseline": {
+                "total": parameter_delta
+            },
+            "decision_metric_delta_vs_baseline": {
+                "cache_bytes": cache_delta
+            },
+            "heldout_axis_delta_vs_baseline": {},
+        }
+
+    records_by_arm = {
+        arm_id: {
+            replicate: record(
+                replicate,
+                score_delta,
+                parameter_delta,
+                cache_delta,
+            )
+            for replicate in plan.replicates
+        }
+        for arm_id, (
+            score_delta,
+            parameter_delta,
+            cache_delta,
+            _,
+        ) in candidate_values.items()
+    }
+
+    decision = _promotion_decision(
+        plan,
+        arm_records,
+        records_by_arm,
+    )
+
+    assert decision["status"] == "promote"
+    assert decision["pareto_frontier"] == [
+        "cache_specialist",
+        "efficient_balanced",
+    ]
+    assert decision["selected_variants"] == ["cache_specialist"]
+    assert decision["candidates"]["dominated"]["decision"] == (
+        "pareto_dominated"
+    )
+    assert decision["candidates"]["quality_regression"]["decision"] == (
+        "reject"
+    )
+    assert decision["candidates"]["quality_regression"]["evidence"][
+        "regressed_objectives"
+    ] == ["heldout_score"]
+    assert decision["multiple_comparisons"]["comparison_count"] == 12
 
 
 def test_full_sweep_compiles_loss_sft_and_reward_ablation_contracts(tmp_path):

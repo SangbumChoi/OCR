@@ -25,6 +25,7 @@ from .config import StudentConfig
 from .sweep import (
     SweepPlan,
     SweepRunner,
+    _write_comparison_markdown,
     apply_json_patch,
     compile_sweep_plan,
 )
@@ -428,6 +429,10 @@ def compile_architecture_sweep(
     child["name"] = name
     child["output_root"] = str(root)
     child["baseline"] = baseline
+    if "promotion" in raw:
+        child["promotion"] = copy.deepcopy(raw["promotion"])
+    else:
+        child.pop("promotion", None)
     shared_blueprint = list(child.get("shared_blueprint_patches") or [])
     shared_blueprint.extend(_compute_patches(budgets))
     shared_blueprint.append(
@@ -501,6 +506,19 @@ def compile_architecture_sweep(
         {
             "id": profile.id,
             "hypothesis": profile.hypothesis,
+            "decision_metrics": {
+                "training_flops_per_sample": float(
+                    profile.compute["training_flops_per_sample"]
+                ),
+                "forward_flops_total": float(
+                    profile.compute["forward_flops"]["total"]
+                ),
+                "rlvr_peak_kv_cache_bytes_bfloat16": float(
+                    profile.compute["rlvr"][
+                        "peak_kv_cache_bytes_bfloat16"
+                    ]
+                ),
+            },
             "experiment_patches": [
                 {
                     "op": "add",
@@ -631,6 +649,35 @@ def compute_budget_report(plan: ArchitectureSweepPlan) -> dict[str, Any]:
     }
 
 
+def apply_compute_budget_gate(
+    comparison: dict[str, Any],
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach the external compute gate and revoke unsafe promotion evidence."""
+
+    gated = copy.deepcopy(comparison)
+    promotion = gated["promotion"]
+    status = str(report.get("status") or "insufficient_evidence")
+    promotion["external_gates"] = {
+        "architecture_compute_budget": status
+    }
+    if status == "pass":
+        return gated
+    selected = set(promotion.get("selected_variants") or [])
+    for arm_id in selected:
+        candidate = promotion.get("candidates", {}).get(arm_id)
+        if candidate is not None:
+            candidate["decision"] = "reject_external_gate"
+    promotion["status"] = (
+        "insufficient_evidence"
+        if status == "insufficient_evidence"
+        else "retain_baseline"
+    )
+    promotion["selected_variants"] = []
+    promotion["baseline_retained"] = True
+    return gated
+
+
 class ArchitectureSweepRunner:
     def __init__(
         self,
@@ -652,8 +699,32 @@ class ArchitectureSweepRunner:
             report = compute_budget_report(self.plan)
             report_path = Path(self.plan.root) / "compute_budget_report.json"
             _write_json(report_path, report)
+            comparison_path = Path(result["comparison"])
+            comparison = json.loads(
+                comparison_path.read_text(encoding="utf-8")
+            )
+            comparison = apply_compute_budget_gate(comparison, report)
+            _write_json(comparison_path, comparison)
+            _write_comparison_markdown(
+                comparison_path.with_suffix(".md"),
+                comparison,
+            )
             result["compute_budget_report"] = str(report_path)
             result["compute_budget_status"] = report["status"]
+            result["promotion"] = {
+                "status": comparison["promotion"]["status"],
+                "selected_variants": comparison["promotion"][
+                    "selected_variants"
+                ],
+                "baseline_retained": comparison["promotion"][
+                    "baseline_retained"
+                ],
+            }
+            summary_path = Path(self.plan.root) / "sweep_run_summary.json"
             if report["status"] != "pass":
+                result["status"] = "failed"
+                result["error"] = "architecture compute-budget gate failed"
+                _write_json(summary_path, result)
                 raise RuntimeError("architecture compute-budget gate failed")
+            _write_json(summary_path, result)
         return result

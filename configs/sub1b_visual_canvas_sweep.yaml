@@ -6,6 +6,46 @@ base_experiment: configs/sub1b_experiment.yaml
 output_root: outputs/sweeps/docvlm-visual-canvas-ablation
 baseline: packed
 
+promotion:
+  mode: pareto
+  objectives:
+    - metric: heldout_score
+      direction: maximize
+      minimum_effect: -0.005
+      required_improvement: false
+    - metric: train_minus_heldout_score
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: false
+    - metric: efficiency.executed_visual_tokens_per_sample
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: true
+    - metric: heldout_milliseconds_per_sample
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: true
+  selection_order:
+    - heldout_score
+    - heldout_milliseconds_per_sample
+    - efficiency.executed_visual_tokens_per_sample
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+    reading-order: 0.0
+
 shared_blueprint_patches:
   - {op: replace, path: /training/pretraining/optimizer/micro_batch_size, value: 2}
   - {op: replace, path: /training/pretraining/optimizer/grad_accum_steps, value: 4}

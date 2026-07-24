@@ -96,6 +96,13 @@ memory advantages are not evidence of quality; no hybrid arm should replace
 the all-attention default until the paired held-out suite passes the same
 deployment gates.
 
+The machine-readable Pareto contract permits at most 50M additional parameters while requiring a
+simultaneous reduction in analytical forward FLOPs or peak bf16 RLVR KV-cache bytes. Heldout score
+must remain within 0.005, the train-minus-heldout gap may not widen, and all declared capability
+guardrails and deployment gates must pass. Pareto-dominated hybrids are removed before the
+lexicographic quality, cache, FLOP, and parameter preference is applied. The realized compute
+budget remains an external fail-closed gate on the final selection.
+
 ## Initialization
 
 Selective transfer accepts `language_family: lfm2` for both text-only LFM2 and

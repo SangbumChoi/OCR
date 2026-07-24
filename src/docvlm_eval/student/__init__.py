@@ -57,6 +57,8 @@ from .teacher_targets import (
 from .sweep import (
     CompiledVariant,
     MatchedControl,
+    ParetoObjective,
+    ParetoPromotionRule,
     PromotionRule,
     SweepPlan,
     SweepRunner,
@@ -147,6 +149,8 @@ __all__ = [
     "MixtureComponent",
     "MatchedControl",
     "NativeStudentTeacher",
+    "ParetoObjective",
+    "ParetoPromotionRule",
     "PretrainConfig",
     "PromotionRule",
     "RLVRConfig",

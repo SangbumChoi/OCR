@@ -166,3 +166,11 @@ preserving heldout score, grounding, multilingual controls, robustness slices, a
 gates. A higher valid-token fraction alone is not a quality result. The loop fallback launches
 attention per image while FlexAttention has compile and mask-construction costs, so wall-clock
 speed and peak memory must be reported from the target GPU before claiming deployment throughput.
+
+The Pareto contract compares heldout score, train-minus-heldout gap, executed visual tokens per
+sample, and heldout milliseconds per sample with simultaneous paired bounds. A dense policy can
+replace packed execution only if it preserves every declared quality axis and significantly
+improves at least one execution objective without regressing the other. The isolated target-GPU
+backend report remains mandatory before the selected production recipe can claim fused-attention
+throughput; this sweep-level decision does not relabel dense measurements as FlexAttention
+evidence.

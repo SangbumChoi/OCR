@@ -101,6 +101,13 @@ Each W&B run receives `resolution:<pixels>`, `visual-latents:<count>`, and
 deltas, capability-axis deltas, confidence intervals, and deployment gates. The compute report is
 an additional prerequisite for interpreting those deltas as fixed-student-compute evidence.
 
+The architecture specification replaces the base sweep's scalar rule with a Pareto contract.
+Heldout score has a 0.005 non-inferiority margin, the train-minus-heldout gap may not widen, and
+parameter count plus compiler-pinned training FLOPs per sample are minimize objectives. At least
+one efficiency objective must improve with a simultaneous lower bound above zero. Capability and
+deployment gates remain mandatory. A failed realized-compute report revokes a provisional
+selection in the persisted comparison before the runner exits nonzero.
+
 ## Interpretation
 
 Select a profile only after the full paired rectangle is complete. A lower-resolution arm that

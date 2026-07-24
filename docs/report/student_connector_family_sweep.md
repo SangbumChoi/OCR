@@ -54,3 +54,10 @@ python scripts/run_student_sweep.py \
 Keep `gated_resampler` when its paired heldout gain justifies roughly 32M extra parameters and the
 measured latency. Promote `average_pool_projector` when it remains within the predeclared quality
 margin and improves the deployment Pareto frontier.
+
+The machine-readable Pareto contract uses heldout score and train-minus-heldout gap as quality
+constraints, actual parameter count and heldout milliseconds per sample as efficiency objectives,
+and the full deployment-gate set. The pooled projector must save parameters, show a simultaneous
+latency non-regression, pass every capability guardrail, and remain within the 0.005 heldout margin.
+Missing target-GPU visual or full-training feasibility evidence is insufficient evidence, not a
+promotion.

@@ -206,6 +206,7 @@ class CompiledVariant:
     blueprint_path: str
     plan: ExperimentPlan
     parameters: dict[str, int]
+    decision_metrics: dict[str, float]
     fingerprint: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -223,6 +224,7 @@ class CompiledVariant:
             "experiment_root": self.plan.root,
             "experiment_fingerprint": self.plan.fingerprint,
             "parameters": self.parameters,
+            "decision_metrics": self.decision_metrics,
             "fingerprint": self.fingerprint,
         }
 
@@ -252,6 +254,47 @@ class PromotionRule:
 
 
 @dataclass(frozen=True)
+class ParetoObjective:
+    metric: str
+    direction: str
+    minimum_effect: float
+    required_improvement: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metric": self.metric,
+            "direction": self.direction,
+            "minimum_effect": self.minimum_effect,
+            "required_improvement": self.required_improvement,
+        }
+
+
+@dataclass(frozen=True)
+class ParetoPromotionRule:
+    objectives: tuple[ParetoObjective, ...]
+    selection_order: tuple[str, ...]
+    minimum_replicates: int
+    familywise_alpha: float
+    max_promotions: int
+    required_gates: tuple[str, ...]
+    required_axis_deltas: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": "pareto",
+            "objectives": [
+                objective.to_dict() for objective in self.objectives
+            ],
+            "selection_order": list(self.selection_order),
+            "minimum_replicates": self.minimum_replicates,
+            "familywise_alpha": self.familywise_alpha,
+            "max_promotions": self.max_promotions,
+            "required_gates": list(self.required_gates),
+            "required_axis_deltas": self.required_axis_deltas,
+        }
+
+
+@dataclass(frozen=True)
 class SweepPlan:
     name: str
     root: str
@@ -262,7 +305,7 @@ class SweepPlan:
     control_values_by_replicate: dict[str, dict[str, Any]]
     replicates: tuple[str, ...]
     variants: tuple[CompiledVariant, ...]
-    promotion: PromotionRule | None
+    promotion: PromotionRule | ParetoPromotionRule | None
     fingerprint: str
     raw_spec: dict[str, Any]
 
@@ -384,31 +427,9 @@ def _parse_replicates(
     return tuple(replicates)
 
 
-def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
-    value = raw.get("promotion")
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError("sweep.promotion must be a mapping")
-    primary_metric = str(value.get("primary_metric") or "")
-    if primary_metric.startswith("axis."):
-        if not primary_metric.removeprefix("axis."):
-            raise ValueError(
-                "promotion.primary_metric axis name must be non-empty"
-            )
-    elif not _NAME.fullmatch(primary_metric):
-        raise ValueError("promotion.primary_metric must be a safe metric name")
-    direction = str(value.get("direction") or "maximize")
-    if direction not in {"maximize", "minimize"}:
-        raise ValueError("promotion.direction must be maximize or minimize")
-    minimum_effect = value.get("minimum_effect", 0.0)
-    if (
-        not isinstance(minimum_effect, (int, float))
-        or isinstance(minimum_effect, bool)
-        or not math.isfinite(float(minimum_effect))
-        or float(minimum_effect) < 0
-    ):
-        raise ValueError("promotion.minimum_effect must be finite and non-negative")
+def _promotion_common(
+    value: dict[str, Any],
+) -> tuple[int, float, int, tuple[str, ...], dict[str, float]]:
     minimum_replicates = value.get("minimum_replicates", 3)
     if (
         not isinstance(minimum_replicates, int)
@@ -442,7 +463,9 @@ def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
         or any(not _NAME.fullmatch(gate) for gate in normalized_gates)
         or len(set(normalized_gates)) != len(normalized_gates)
     ):
-        raise ValueError("promotion.required_gates must contain unique safe names")
+        raise ValueError(
+            "promotion.required_gates must contain unique safe names"
+        )
     required_axis_deltas = value.get("required_axis_deltas", {})
     if not isinstance(required_axis_deltas, dict):
         raise ValueError("promotion.required_axis_deltas must be a mapping")
@@ -459,6 +482,140 @@ def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
                 "promotion.required_axis_deltas values must be finite"
             )
         normalized_axes[axis] = float(threshold)
+    return (
+        minimum_replicates,
+        float(familywise_alpha),
+        max_promotions,
+        tuple(normalized_gates),
+        normalized_axes,
+    )
+
+
+def _parse_pareto_promotion(
+    value: dict[str, Any],
+) -> ParetoPromotionRule:
+    objectives_raw = value.get("objectives")
+    if not isinstance(objectives_raw, list) or len(objectives_raw) < 2:
+        raise ValueError(
+            "pareto promotion requires at least two objectives"
+        )
+    objectives: list[ParetoObjective] = []
+    seen: set[str] = set()
+    for item in objectives_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every pareto objective must be a mapping")
+        metric = str(item.get("metric") or "")
+        if metric.startswith("axis."):
+            valid_metric = bool(metric.removeprefix("axis."))
+        else:
+            valid_metric = bool(_NAME.fullmatch(metric))
+        if not valid_metric or metric in seen:
+            raise ValueError(
+                "pareto objective metrics must be unique valid names"
+            )
+        seen.add(metric)
+        direction = str(item.get("direction") or "")
+        if direction not in {"maximize", "minimize"}:
+            raise ValueError(
+                "pareto objective direction must be maximize or minimize"
+            )
+        minimum_effect = item.get("minimum_effect", 0.0)
+        if (
+            not isinstance(minimum_effect, (int, float))
+            or isinstance(minimum_effect, bool)
+            or not math.isfinite(float(minimum_effect))
+        ):
+            raise ValueError(
+                "pareto objective minimum_effect must be finite"
+            )
+        required_improvement = item.get("required_improvement", False)
+        if not isinstance(required_improvement, bool):
+            raise ValueError(
+                "pareto objective required_improvement must be boolean"
+            )
+        objectives.append(
+            ParetoObjective(
+                metric=metric,
+                direction=direction,
+                minimum_effect=float(minimum_effect),
+                required_improvement=required_improvement,
+            )
+        )
+    if not any(objective.required_improvement for objective in objectives):
+        raise ValueError(
+            "pareto promotion requires an efficiency improvement objective"
+        )
+    selection_order_raw = value.get("selection_order")
+    selection_order = (
+        [str(metric) for metric in selection_order_raw]
+        if isinstance(selection_order_raw, list)
+        else []
+    )
+    if (
+        not selection_order
+        or len(set(selection_order)) != len(selection_order)
+        or any(metric not in seen for metric in selection_order)
+    ):
+        raise ValueError(
+            "pareto promotion selection_order must be a unique objective subset"
+        )
+    (
+        minimum_replicates,
+        familywise_alpha,
+        max_promotions,
+        required_gates,
+        required_axis_deltas,
+    ) = _promotion_common(value)
+    return ParetoPromotionRule(
+        objectives=tuple(objectives),
+        selection_order=tuple(selection_order),
+        minimum_replicates=minimum_replicates,
+        familywise_alpha=familywise_alpha,
+        max_promotions=max_promotions,
+        required_gates=required_gates,
+        required_axis_deltas=required_axis_deltas,
+    )
+
+
+def _parse_promotion(
+    raw: dict[str, Any],
+) -> PromotionRule | ParetoPromotionRule | None:
+    value = raw.get("promotion")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("sweep.promotion must be a mapping")
+    mode = str(value.get("mode") or "superiority")
+    if mode == "pareto":
+        return _parse_pareto_promotion(value)
+    if mode != "superiority":
+        raise ValueError("promotion.mode must be superiority or pareto")
+    primary_metric = str(value.get("primary_metric") or "")
+    if primary_metric.startswith("axis."):
+        if not primary_metric.removeprefix("axis."):
+            raise ValueError(
+                "promotion.primary_metric axis name must be non-empty"
+            )
+    elif not _NAME.fullmatch(primary_metric):
+        raise ValueError("promotion.primary_metric must be a safe metric name")
+    direction = str(value.get("direction") or "maximize")
+    if direction not in {"maximize", "minimize"}:
+        raise ValueError("promotion.direction must be maximize or minimize")
+    minimum_effect = value.get("minimum_effect", 0.0)
+    if (
+        not isinstance(minimum_effect, (int, float))
+        or isinstance(minimum_effect, bool)
+        or not math.isfinite(float(minimum_effect))
+        or float(minimum_effect) < 0
+    ):
+        raise ValueError("promotion.minimum_effect must be finite and non-negative")
+    (
+        minimum_replicates,
+        familywise_alpha,
+        max_promotions,
+        required_gates,
+        required_axis_deltas,
+    ) = _promotion_common(value)
     return PromotionRule(
         primary_metric=primary_metric,
         direction=direction,
@@ -466,8 +623,8 @@ def _parse_promotion(raw: dict[str, Any]) -> PromotionRule | None:
         minimum_replicates=minimum_replicates,
         familywise_alpha=float(familywise_alpha),
         max_promotions=max_promotions,
-        required_gates=tuple(normalized_gates),
-        required_axis_deltas=normalized_axes,
+        required_gates=required_gates,
+        required_axis_deltas=required_axis_deltas,
     )
 
 
@@ -537,6 +694,23 @@ def compile_sweep_plan(
         ids.add(variant_id)
         variant_experiment_patches = _patch_list(item, "experiment_patches")
         variant_blueprint_patches = _patch_list(item, "blueprint_patches")
+        decision_metrics_raw = item.get("decision_metrics", {})
+        if not isinstance(decision_metrics_raw, dict):
+            raise ValueError("variant decision_metrics must be a mapping")
+        decision_metrics: dict[str, float] = {}
+        for metric, metric_value in decision_metrics_raw.items():
+            if (
+                not isinstance(metric, str)
+                or not _NAME.fullmatch(metric)
+                or not isinstance(metric_value, (int, float))
+                or isinstance(metric_value, bool)
+                or not math.isfinite(float(metric_value))
+            ):
+                raise ValueError(
+                    "variant decision_metrics require safe names and "
+                    "finite numeric values"
+                )
+            decision_metrics[metric] = float(metric_value)
         _validate_reserved_patches(variant_experiment_patches)
         if (
             variant_id != baseline
@@ -550,6 +724,7 @@ def compile_sweep_plan(
                 variant_id,
                 variant_experiment_patches,
                 variant_blueprint_patches,
+                decision_metrics,
             )
         )
     if baseline not in ids:
@@ -567,6 +742,7 @@ def compile_sweep_plan(
             variant_id,
             variant_experiment_patches,
             variant_blueprint_patches,
+            decision_metrics,
         ) in arm_specs:
             experiment_patches = [
                 *shared_experiment,
@@ -620,6 +796,7 @@ def compile_sweep_plan(
                     "replicate": replicate_id,
                     "experiment": canonical_experiment,
                     "blueprint": blueprint,
+                    "decision_metrics": decision_metrics,
                     "input_fingerprints": plan.input_fingerprints,
                 }
             )
@@ -665,6 +842,7 @@ def compile_sweep_plan(
                     blueprint_path=str(blueprint_path),
                     plan=plan,
                     parameters=estimate_parameters(plan.resolved_blueprint),
+                    decision_metrics=copy.deepcopy(decision_metrics),
                     fingerprint=variant_fingerprint,
                 )
             )
@@ -878,6 +1056,274 @@ def _promotion_delta(
     return None if value is None else float(value)
 
 
+def _promotion_metric_delta(
+    record: dict[str, Any],
+    metric: str,
+) -> float | None:
+    if metric.startswith("axis."):
+        value = record.get("heldout_axis_delta_vs_baseline", {}).get(
+            metric.removeprefix("axis.")
+        )
+    elif metric.startswith("parameters."):
+        value = record.get("parameter_delta_vs_baseline", {}).get(
+            metric.removeprefix("parameters.")
+        )
+    elif metric.startswith("efficiency."):
+        value = record.get(
+            "pretraining_efficiency_delta_vs_baseline",
+            {},
+        ).get(metric.removeprefix("efficiency."))
+    elif metric.startswith("decision."):
+        value = record.get("decision_metric_delta_vs_baseline", {}).get(
+            metric.removeprefix("decision.")
+        )
+    else:
+        value = record.get("delta_vs_baseline", {}).get(metric)
+    return None if value is None else float(value)
+
+
+def _pareto_promotion_decision(
+    plan: SweepPlan,
+    rule: ParetoPromotionRule,
+    arm_records: dict[str, dict[str, Any]],
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    candidate_ids = sorted(set(arm_records) - {plan.baseline})
+    if not candidate_ids:
+        raise ValueError("promotion requires at least one non-baseline arm")
+    comparisons_per_candidate = (
+        len(rule.objectives) + len(rule.required_axis_deltas)
+    )
+    comparison_count = len(candidate_ids) * comparisons_per_candidate
+    corrected_alpha = rule.familywise_alpha / comparison_count
+    candidates: dict[str, dict[str, Any]] = {}
+    eligible: list[str] = []
+    for arm_id in candidate_ids:
+        ordered = [
+            records_by_arm[arm_id][replicate_id]
+            for replicate_id in plan.replicates
+        ]
+        objective_evidence: dict[str, dict[str, Any]] = {}
+        missing_objectives: list[str] = []
+        regressed_objectives: list[str] = []
+        strict_improvements: list[str] = []
+        for objective in rule.objectives:
+            missing_replicates = [
+                record["replicate_id"]
+                for record in ordered
+                if _promotion_metric_delta(record, objective.metric) is None
+            ]
+            if missing_replicates:
+                missing_objectives.append(objective.metric)
+                benefits: list[float] = []
+                lower_bound = None
+            else:
+                direction_sign = (
+                    1.0 if objective.direction == "maximize" else -1.0
+                )
+                benefits = [
+                    direction_sign
+                    * float(
+                        _promotion_metric_delta(
+                            record,
+                            objective.metric,
+                        )
+                    )
+                    for record in ordered
+                ]
+                lower_bound = _one_sided_lower_bound(
+                    benefits,
+                    alpha=corrected_alpha,
+                    key=(
+                        f"{plan.fingerprint}:{arm_id}:"
+                        f"{objective.metric}:pareto-promotion"
+                    ),
+                )
+                if (
+                    lower_bound is not None
+                    and lower_bound < objective.minimum_effect
+                ):
+                    regressed_objectives.append(objective.metric)
+                if (
+                    objective.required_improvement
+                    and lower_bound is not None
+                    and lower_bound > 0.0
+                ):
+                    strict_improvements.append(objective.metric)
+            objective_evidence[objective.metric] = {
+                "direction": objective.direction,
+                "mean_benefit": (
+                    None if not benefits else round(_mean(benefits), 8)
+                ),
+                "simultaneous_lower_bound": lower_bound,
+                "minimum_effect": objective.minimum_effect,
+                "required_improvement": objective.required_improvement,
+                "missing_replicates": missing_replicates,
+            }
+        gate_statuses = arm_records[arm_id]["gate_statuses"]
+        failed_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) == "fail"
+        )
+        incomplete_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) not in {"pass", "fail"}
+        )
+        axis_evidence: dict[str, dict[str, Any]] = {}
+        missing_axes: list[str] = []
+        regressed_axes: list[str] = []
+        for axis, minimum_delta in sorted(
+            rule.required_axis_deltas.items()
+        ):
+            if any(
+                axis not in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            ):
+                missing_axes.append(axis)
+                continue
+            values = [
+                float(record["heldout_axis_delta_vs_baseline"][axis])
+                for record in ordered
+            ]
+            axis_lower_bound = _one_sided_lower_bound(
+                values,
+                alpha=corrected_alpha,
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{axis}:"
+                    "pareto-promotion-axis"
+                ),
+            )
+            axis_evidence[axis] = {
+                "mean_delta": round(_mean(values), 8),
+                "simultaneous_lower_bound": axis_lower_bound,
+                "minimum_delta": minimum_delta,
+            }
+            if (
+                axis_lower_bound is not None
+                and axis_lower_bound < minimum_delta
+            ):
+                regressed_axes.append(axis)
+        evidence = {
+            "replicate_count": len(ordered),
+            "objectives": objective_evidence,
+            "strict_improvements": strict_improvements,
+            "failed_gates": failed_gates,
+            "incomplete_gates": incomplete_gates,
+            "missing_objectives": missing_objectives,
+            "regressed_objectives": regressed_objectives,
+            "missing_axes": missing_axes,
+            "regressed_axes": regressed_axes,
+            "axis_guardrails": axis_evidence,
+            "parameters": arm_records[arm_id]["parameters"],
+            "decision_metrics": arm_records[arm_id]["decision_metrics"],
+        }
+        if failed_gates or regressed_axes or regressed_objectives:
+            decision = "reject"
+        elif (
+            len(ordered) < rule.minimum_replicates
+            or missing_objectives
+            or incomplete_gates
+            or missing_axes
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in objective_evidence.values()
+            )
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in axis_evidence.values()
+            )
+        ):
+            decision = "insufficient_evidence"
+        elif not strict_improvements:
+            decision = "retain_baseline"
+        else:
+            decision = "eligible"
+            eligible.append(arm_id)
+        candidates[arm_id] = {
+            "decision": decision,
+            "evidence": evidence,
+        }
+    for arm_id in eligible:
+        dominated_by = []
+        current = candidates[arm_id]["evidence"]["objectives"]
+        for other_id in eligible:
+            if other_id == arm_id:
+                continue
+            other = candidates[other_id]["evidence"]["objectives"]
+            weakly_better = all(
+                float(other[objective.metric]["mean_benefit"])
+                >= float(current[objective.metric]["mean_benefit"])
+                for objective in rule.objectives
+            )
+            strictly_better = any(
+                float(other[objective.metric]["mean_benefit"])
+                > float(current[objective.metric]["mean_benefit"])
+                for objective in rule.objectives
+            )
+            if weakly_better and strictly_better:
+                dominated_by.append(other_id)
+        candidates[arm_id]["evidence"]["dominated_by"] = sorted(
+            dominated_by
+        )
+    frontier = sorted(
+        arm_id
+        for arm_id in eligible
+        if not candidates[arm_id]["evidence"]["dominated_by"]
+    )
+    frontier.sort(
+        key=lambda arm_id: (
+            *[
+                -float(
+                    candidates[arm_id]["evidence"]["objectives"][metric][
+                        "simultaneous_lower_bound"
+                    ]
+                )
+                for metric in rule.selection_order
+            ],
+            int(candidates[arm_id]["evidence"]["parameters"]["total"]),
+            arm_id,
+        )
+    )
+    selected = frontier[: rule.max_promotions]
+    for arm_id in eligible:
+        if arm_id in selected:
+            candidates[arm_id]["decision"] = "promote"
+        elif arm_id in frontier:
+            candidates[arm_id]["decision"] = "eligible_not_selected"
+        else:
+            candidates[arm_id]["decision"] = "pareto_dominated"
+    if selected:
+        status = "promote"
+    elif any(
+        candidate["decision"] == "insufficient_evidence"
+        for candidate in candidates.values()
+    ):
+        status = "insufficient_evidence"
+    else:
+        status = "retain_baseline"
+    return {
+        "status": status,
+        "selected_variants": selected,
+        "baseline_retained": not bool(selected),
+        "contract": rule.to_dict(),
+        "pareto_frontier": frontier,
+        "multiple_comparisons": {
+            "method": "bonferroni_one_sided_percentile_bootstrap",
+            "candidate_count": len(candidate_ids),
+            "objectives_per_candidate": len(rule.objectives),
+            "guardrails_per_candidate": len(rule.required_axis_deltas),
+            "comparison_count": comparison_count,
+            "familywise_alpha": rule.familywise_alpha,
+            "per_comparison_alpha": corrected_alpha,
+            "simultaneous_confidence_level": 1.0 - corrected_alpha,
+            "resamples": 10_000,
+        },
+        "candidates": candidates,
+    }
+
+
 def _promotion_decision(
     plan: SweepPlan,
     arm_records: dict[str, dict[str, Any]],
@@ -891,6 +1337,13 @@ def _promotion_decision(
             "baseline_retained": True,
             "candidates": {},
         }
+    if isinstance(rule, ParetoPromotionRule):
+        return _pareto_promotion_decision(
+            plan,
+            rule,
+            arm_records,
+            records_by_arm,
+        )
     candidate_ids = sorted(set(arm_records) - {plan.baseline})
     if not candidate_ids:
         raise ValueError("promotion requires at least one non-baseline arm")
@@ -1204,6 +1657,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             "hypothesis": variant.hypothesis,
             "fingerprint": variant.fingerprint,
             "parameters": variant.parameters,
+            "decision_metrics": variant.decision_metrics,
             "metrics": _summary_metrics(comparison),
             "heldout_by_answer_type": _axis_scores(comparison, "heldout"),
             "train_by_answer_type": _axis_scores(comparison, "train"),
@@ -1268,6 +1722,16 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             for name, value in record["pretraining_efficiency"].items()
             if name in baseline_efficiency
         }
+        record["parameter_delta_vs_baseline"] = {
+            name: float(value) - float(baseline["parameters"][name])
+            for name, value in record["parameters"].items()
+            if name in baseline["parameters"]
+        }
+        record["decision_metric_delta_vs_baseline"] = {
+            name: float(value) - float(baseline["decision_metrics"][name])
+            for name, value in record["decision_metrics"].items()
+            if name in baseline["decision_metrics"]
+        }
         evaluation_root = Path(record["evaluation_root"])
         current_comparison, current_rows = load_evaluation_artifacts(
             evaluation_root
@@ -1316,6 +1780,16 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         parameters = [record["parameters"] for record in ordered]
         if any(value != parameters[0] for value in parameters[1:]):
             raise ValueError(f"arm {arm_id!r} changes architecture across replicates")
+        decision_metrics = [
+            record["decision_metrics"] for record in ordered
+        ]
+        if any(
+            value != decision_metrics[0]
+            for value in decision_metrics[1:]
+        ):
+            raise ValueError(
+                f"arm {arm_id!r} changes decision metrics across replicates"
+            )
         metric_names = sorted(ordered[0]["metrics"])
         metric_statistics = {
             name: _distribution(
@@ -1465,6 +1939,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         arm_records[arm_id] = {
             "hypothesis": ordered[0]["hypothesis"],
             "parameters": parameters[0],
+            "decision_metrics": decision_metrics[0],
             "replicate_count": len(ordered),
             "runs": {
                 record["replicate_id"]: record["run_id"]
@@ -1652,6 +2127,10 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
             ),
         ]
     )
+    for gate, status in sorted(
+        promotion.get("external_gates", {}).items()
+    ):
+        lines.append(f"- External gate `{gate}`: `{status}`")
     if promotion["status"] != "not_configured":
         multiplicity = promotion["multiple_comparisons"]
         lines.extend(
@@ -1660,30 +2139,76 @@ def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
                 f"`{multiplicity['method']}` over "
                 f"{multiplicity['comparison_count']} comparisons",
                 "",
-                "| Candidate | Decision | Mean benefit | Simultaneous lower bound |",
-                "| --- | --- | ---: | ---: |",
             ]
         )
-        for variant_id, candidate in sorted(
-            promotion["candidates"].items()
-        ):
-            evidence = candidate["evidence"]
-            mean_benefit = evidence["mean_benefit"]
-            lower_bound = evidence["simultaneous_lower_bound"]
-            mean_text = (
-                "unavailable"
-                if mean_benefit is None
-                else f"{mean_benefit:+.6f}"
+        if promotion["contract"].get("mode") == "pareto":
+            lines.extend(
+                [
+                    "- Pareto frontier: "
+                    + (
+                        ", ".join(
+                            f"`{variant}`"
+                            for variant in promotion["pareto_frontier"]
+                        )
+                        if promotion["pareto_frontier"]
+                        else "none"
+                    ),
+                    "",
+                    "| Candidate | Decision | Objective | Mean benefit | "
+                    "Simultaneous lower bound | Minimum effect |",
+                    "| --- | --- | --- | ---: | ---: | ---: |",
+                ]
             )
-            lower_text = (
-                "unavailable"
-                if lower_bound is None
-                else f"{lower_bound:+.6f}"
+            for variant_id, candidate in sorted(
+                promotion["candidates"].items()
+            ):
+                objectives = candidate["evidence"]["objectives"]
+                for metric, evidence in objectives.items():
+                    mean_benefit = evidence["mean_benefit"]
+                    lower_bound = evidence["simultaneous_lower_bound"]
+                    mean_text = (
+                        "unavailable"
+                        if mean_benefit is None
+                        else f"{mean_benefit:+.6f}"
+                    )
+                    lower_text = (
+                        "unavailable"
+                        if lower_bound is None
+                        else f"{lower_bound:+.6f}"
+                    )
+                    lines.append(
+                        f"| `{variant_id}` | `{candidate['decision']}` | "
+                        f"`{metric}` | {mean_text} | {lower_text} | "
+                        f"{evidence['minimum_effect']:+.6f} |"
+                    )
+        else:
+            lines.extend(
+                [
+                    "| Candidate | Decision | Mean benefit | "
+                    "Simultaneous lower bound |",
+                    "| --- | --- | ---: | ---: |",
+                ]
             )
-            lines.append(
-                f"| `{variant_id}` | `{candidate['decision']}` | "
-                f"{mean_text} | {lower_text} |"
-            )
+            for variant_id, candidate in sorted(
+                promotion["candidates"].items()
+            ):
+                evidence = candidate["evidence"]
+                mean_benefit = evidence["mean_benefit"]
+                lower_bound = evidence["simultaneous_lower_bound"]
+                mean_text = (
+                    "unavailable"
+                    if mean_benefit is None
+                    else f"{mean_benefit:+.6f}"
+                )
+                lower_text = (
+                    "unavailable"
+                    if lower_bound is None
+                    else f"{lower_bound:+.6f}"
+                )
+                lines.append(
+                    f"| `{variant_id}` | `{candidate['decision']}` | "
+                    f"{mean_text} | {lower_text} |"
+                )
     lines.extend(["", "## Matched controls by replicate", ""])
     for replicate_id, controls in sorted(
         result["matched_controls_by_replicate"].items()

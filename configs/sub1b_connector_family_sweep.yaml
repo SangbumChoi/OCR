@@ -6,6 +6,47 @@ base_experiment: configs/sub1b_experiment.yaml
 output_root: outputs/sweeps/docvlm-connector-family-ablation
 baseline: gated_resampler
 
+promotion:
+  mode: pareto
+  objectives:
+    - metric: heldout_score
+      direction: maximize
+      minimum_effect: -0.005
+      required_improvement: false
+    - metric: train_minus_heldout_score
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: false
+    - metric: parameters.total
+      direction: minimize
+      minimum_effect: 1.0
+      required_improvement: true
+    - metric: heldout_milliseconds_per_sample
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: true
+  selection_order:
+    - heldout_score
+    - heldout_milliseconds_per_sample
+    - parameters.total
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+    - visual_efficiency
+    - training_feasibility
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+
 shared_experiment_patches:
   - {op: add, path: /evaluation/wandb_tags/-, value: architecture-ablation}
   - {op: add, path: /evaluation/wandb_tags/-, value: connector-family-ablation}

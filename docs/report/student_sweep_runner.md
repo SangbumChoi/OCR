@@ -238,9 +238,53 @@ pretraining loss, sequence teacher, SFT target, preference method and objective,
 and advantage all declare this contract with three paired replicates. Box IoU and SFT target use
 `axis.L1-region` as the primary endpoint; the other quality sweeps use aggregate heldout score.
 Connector family, visual canvas, architecture compute, and language-mixer compute remain outside
-this scalar promotion path because their documented decision rule is quality-versus-efficiency
-Pareto selection. They require a Pareto-aware promotion contract rather than an arbitrary scalar
-substitute.
+this scalar path because their decision rule is quality-versus-efficiency Pareto selection. They
+declare `mode: pareto` instead of substituting an arbitrary weighted score.
+
+## Pareto promotion contract
+
+A Pareto contract declares at least two positive-is-better objectives after applying each
+objective's direction:
+
+```yaml
+promotion:
+  mode: pareto
+  objectives:
+    - metric: heldout_score
+      direction: maximize
+      minimum_effect: -0.005
+      required_improvement: false
+    - metric: parameters.total
+      direction: minimize
+      minimum_effect: 1.0
+      required_improvement: true
+  selection_order: [heldout_score, parameters.total]
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+```
+
+Metric namespaces are explicit: unprefixed names resolve to paired evaluation deltas,
+`axis.<name>` to paired heldout capability deltas, `parameters.<component>` to parameter-count
+deltas, `efficiency.<name>` to final-checkpoint pretraining-efficiency deltas, and
+`decision.<name>` to compiler-pinned analytical metrics. Every value is compared with the matched
+baseline from the same replicate.
+
+`minimum_effect` is a simultaneous lower-bound constraint and may be negative to encode a
+predeclared non-inferiority margin. At least one objective must set `required_improvement: true`,
+and at least one such objective must have a lower bound strictly above zero. The aggregator applies
+the same Bonferroni-corrected one-sided bootstrap across every objective and capability guardrail.
+It rejects constraint violations, fails closed on missing evidence, removes candidates dominated
+on every objective mean, and applies `selection_order` lexicographically to simultaneous lower
+bounds on the remaining frontier. This preserves the declared trade-off instead of hiding it in a
+post-hoc weighted average.
+
+Architecture profiles can attach finite `decision_metrics` to each arm. The architecture compiler
+uses this mechanism for training FLOPs per sample, total forward FLOPs, and peak bf16 RLVR KV-cache
+bytes. It explicitly removes the scalar promotion inherited from the base sweep when the
+architecture specification does not provide its own contract. After aggregation, the realized
+three-phase compute-budget report is attached as an external gate; a failed gate revokes any
+selection in both `comparison.json` and `comparison.md`.
 
 ## Materialize the promoted recipe
 
@@ -253,11 +297,22 @@ python scripts/promote_student_recipe.py \
   --output outputs/promoted/docvlm-core
 ```
 
+The same command accepts an architecture meta-sweep:
+
+```bash
+python scripts/promote_student_recipe.py \
+  --sweep configs/sub1b_architecture_compute_sweep.yaml \
+  --comparison outputs/sweeps/docvlm-visual-architecture-compute/comparison.json \
+  --output outputs/promoted/docvlm-visual-architecture
+```
+
 The command recompiles the current sweep, re-aggregates the stored run artifacts, and requires the
 supplied comparison, sweep fingerprint, and promotion contract to match that recomputed evidence.
 It then applies only the shared and selected-arm patches to the original base experiment and
 blueprint. Replicate patches are deliberately excluded, so a favorable seed block cannot leak into
 the promoted recipe.
+For an architecture meta-sweep, it reconstructs the generated child sweep, reapplies the realized
+compute-budget external gate, and materializes the selected profile's compiler-generated patches.
 
 The output contains `experiment.yaml`, `blueprint.yaml`, and `promotion_manifest.json`. The
 manifest pins the source sweep and comparison hashes, complete promotion evidence, applied patches,

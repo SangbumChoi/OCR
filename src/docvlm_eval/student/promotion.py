@@ -13,8 +13,14 @@ from typing import Any
 import yaml
 
 from ..architecture import load_blueprint, validate_blueprint
+from .architecture_sweep import (
+    apply_compute_budget_gate,
+    compile_architecture_sweep,
+    compute_budget_report,
+)
 from .experiment import build_experiment_plan
 from .sweep import (
+    _write_comparison_markdown,
     aggregate_sweep_results,
     apply_json_patch,
     compile_sweep_plan,
@@ -135,16 +141,28 @@ def materialize_promoted_recipe(
     source_sweep = _resolve(repo, sweep_path)
     if not source_sweep.is_file():
         raise FileNotFoundError(source_sweep)
-    sweep_spec = _load_yaml(source_sweep)
+    source_spec = _load_yaml(source_sweep)
+    architecture_plan = None
     with tempfile.TemporaryDirectory(
         prefix="docvlm-promote-compile-"
     ) as compile_root:
-        plan = compile_sweep_plan(
-            source_sweep,
-            repo_root=repo,
-            python=python,
-            compile_root=compile_root,
-        )
+        if "base_sweep" in source_spec:
+            architecture_plan = compile_architecture_sweep(
+                source_sweep,
+                repo_root=repo,
+                python=python,
+                compile_root=compile_root,
+            )
+            plan = architecture_plan.sweep
+            sweep_spec = plan.raw_spec
+        else:
+            plan = compile_sweep_plan(
+                source_sweep,
+                repo_root=repo,
+                python=python,
+                compile_root=compile_root,
+            )
+            sweep_spec = source_spec
     comparison_file = (
         _resolve(repo, comparison_path)
         if comparison_path is not None
@@ -162,6 +180,17 @@ def materialize_promoted_recipe(
             "comparison fingerprint does not match the current sweep"
         )
     recomputed_comparison = aggregate_sweep_results(plan)
+    if architecture_plan is not None:
+        recomputed_comparison = apply_compute_budget_gate(
+            recomputed_comparison,
+            compute_budget_report(architecture_plan),
+        )
+        canonical_comparison = Path(plan.root) / "comparison.json"
+        _atomic_write_json(canonical_comparison, recomputed_comparison)
+        _write_comparison_markdown(
+            canonical_comparison.with_suffix(".md"),
+            recomputed_comparison,
+        )
     if _stable_json(comparison) != _stable_json(recomputed_comparison):
         raise ValueError(
             "comparison does not match evidence recomputed from run artifacts"
@@ -291,6 +320,11 @@ def materialize_promoted_recipe(
             "recipe_fingerprint": recipe_fingerprint,
             "source": {
                 "sweep": str(source_sweep),
+                "sweep_kind": (
+                    "architecture"
+                    if architecture_plan is not None
+                    else "generic"
+                ),
                 "sweep_sha256": source_sweep_sha256,
                 "sweep_fingerprint": plan.fingerprint,
                 "comparison": str(comparison_file),

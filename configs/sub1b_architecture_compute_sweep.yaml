@@ -7,6 +7,45 @@ output_root: outputs/sweeps/docvlm-visual-architecture-compute
 baseline: r896_l64
 overshoot_tolerance_fraction: 0.02
 
+promotion:
+  mode: pareto
+  objectives:
+    - metric: heldout_score
+      direction: maximize
+      minimum_effect: -0.005
+      required_improvement: false
+    - metric: train_minus_heldout_score
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: false
+    - metric: parameters.total
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: true
+    - metric: decision.training_flops_per_sample
+      direction: minimize
+      minimum_effect: 1.0
+      required_improvement: true
+  selection_order:
+    - heldout_score
+    - decision.training_flops_per_sample
+    - parameters.total
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+
 reference_budget:
   text_tokens: 1024
   pretraining_effective_tokens: 20000000000

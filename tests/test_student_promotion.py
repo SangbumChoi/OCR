@@ -6,6 +6,10 @@ import pytest
 import yaml
 
 import docvlm_eval.student.promotion as promotion_module
+from docvlm_eval.student.architecture_sweep import (
+    apply_compute_budget_gate,
+    compile_architecture_sweep,
+)
 from docvlm_eval.student.promotion import materialize_promoted_recipe
 from docvlm_eval.student.sweep import compile_sweep_plan
 
@@ -110,6 +114,108 @@ def test_materialize_promoted_recipe_excludes_replicate_seed_patches(
         comparison_path=comparison_path,
     )
     assert repeated["recipe_fingerprint"] == manifest["recipe_fingerprint"]
+
+
+def test_materialize_promoted_architecture_profile(tmp_path, monkeypatch):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_architecture_compute_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "architecture-output")
+    sweep_path = tmp_path / "architecture-sweep.yaml"
+    sweep_path.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+    architecture_plan = compile_architecture_sweep(
+        sweep_path,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+    plan = architecture_plan.sweep
+    selected = "r448_l32"
+    comparison = {
+        "schema_version": 4,
+        "sweep": plan.name,
+        "sweep_fingerprint": plan.fingerprint,
+        "baseline": plan.baseline,
+        "promotion": {
+            "status": "promote",
+            "selected_variants": [selected],
+            "baseline_retained": False,
+            "contract": plan.promotion.to_dict(),
+            "multiple_comparisons": {
+                "method": "bonferroni_one_sided_percentile_bootstrap",
+            },
+            "pareto_frontier": [selected],
+            "candidates": {
+                selected: {
+                    "decision": "promote",
+                    "evidence": {},
+                }
+            },
+        },
+    }
+    comparison = apply_compute_budget_gate(
+        comparison,
+        {"status": "pass"},
+    )
+    comparison_path = tmp_path / "architecture-comparison.json"
+    comparison_path.write_text(
+        json.dumps(comparison),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        promotion_module,
+        "aggregate_sweep_results",
+        lambda _: {
+            key: value
+            for key, value in comparison.items()
+            if key != "promotion"
+        }
+        | {
+            "promotion": {
+                key: value
+                for key, value in comparison["promotion"].items()
+                if key != "external_gates"
+            }
+        },
+    )
+    monkeypatch.setattr(
+        promotion_module,
+        "compute_budget_report",
+        lambda _: {"status": "pass"},
+    )
+    monkeypatch.setattr(
+        promotion_module,
+        "_write_comparison_markdown",
+        lambda *_: None,
+    )
+
+    output = tmp_path / "promoted-architecture"
+    manifest = materialize_promoted_recipe(
+        sweep_path,
+        output,
+        repo_root=ROOT,
+        python=sys.executable,
+        comparison_path=comparison_path,
+    )
+
+    blueprint = yaml.safe_load(
+        (output / "blueprint.yaml").read_text(encoding="utf-8")
+    )
+    assert blueprint["student"]["vision"]["image_size"] == 448
+    assert blueprint["student"]["connector"]["latent_tokens"] == 32
+    assert blueprint["training"]["pretraining"]["input_pipeline"][
+        "visual_canvas_mode"
+    ] == "fixed_square"
+    assert manifest["source"]["sweep_kind"] == "architecture"
+    assert manifest["source"]["selected_variant"] == selected
+    assert manifest["promotion"]["external_gates"] == {
+        "architecture_compute_budget": "pass"
+    }
 
 
 def test_materialize_promoted_recipe_rejects_stale_or_tampered_evidence(

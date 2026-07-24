@@ -7,6 +7,50 @@ output_root: outputs/sweeps/docvlm-language-mixer-compute
 baseline: all_attention
 overshoot_tolerance_fraction: 0.02
 
+promotion:
+  mode: pareto
+  objectives:
+    - metric: heldout_score
+      direction: maximize
+      minimum_effect: -0.005
+      required_improvement: false
+    - metric: train_minus_heldout_score
+      direction: minimize
+      minimum_effect: 0.0
+      required_improvement: false
+    - metric: parameters.total
+      direction: minimize
+      minimum_effect: -50000000.0
+      required_improvement: false
+    - metric: decision.forward_flops_total
+      direction: minimize
+      minimum_effect: 1.0
+      required_improvement: true
+    - metric: decision.rlvr_peak_kv_cache_bytes_bfloat16
+      direction: minimize
+      minimum_effect: 1.0
+      required_improvement: true
+  selection_order:
+    - heldout_score
+    - decision.rlvr_peak_kv_cache_bytes_bfloat16
+    - decision.forward_flops_total
+    - parameters.total
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  required_gates:
+    - parameter_budget
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+  required_axis_deltas:
+    L1-region: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+    reading-order: 0.0
+
 reference_budget:
   text_tokens: 1024
   pretraining_effective_tokens: 20000000000
