@@ -131,6 +131,9 @@ posttraining:
     max_steps: null
     num_workers: null
     target_mode: evidence_linked
+  dpo:
+    enabled: false
+    max_steps: null
   rlvr:
     enabled: true
     max_steps: null

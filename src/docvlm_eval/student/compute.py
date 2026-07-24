@@ -456,6 +456,75 @@ def estimate_batch_training_flops_breakdown(
     )
 
 
+def _reused_visual_forward_flops(
+    config: StudentConfig,
+    *,
+    text_tokens: int,
+    vision_tokens: int,
+    sequence_batch_size: int,
+) -> int:
+    """Count one image encoding followed by a repeated language batch."""
+
+    image = estimate_forward_flops(
+        config,
+        text_tokens=1,
+        vision_tokens=vision_tokens,
+        include_lm_head=False,
+        include_task_heads=False,
+    )
+    sequences = estimate_forward_flops(
+        config,
+        text_tokens=text_tokens,
+        vision_tokens=vision_tokens,
+        batch_size=sequence_batch_size,
+        include_vision=False,
+    )
+    return image.vision + image.connector + sequences.total
+
+
+def _reused_visual_training_flops_breakdown(
+    config: StudentConfig,
+    *,
+    text_tokens: int,
+    vision_tokens: int,
+    sequence_batch_size: int,
+    checkpoint_components: tuple[str, ...],
+) -> TrainingFlops:
+    """Count gradients through one visual prefix and repeated sequences."""
+
+    supported = {"vision", "connector", "language"}
+    requested = set(checkpoint_components)
+    if len(requested) != len(checkpoint_components) or not requested <= supported:
+        raise ValueError(
+            "checkpoint components must be a unique subset of "
+            "vision, connector, language"
+        )
+    forward = _reused_visual_forward_flops(
+        config,
+        text_tokens=text_tokens,
+        vision_tokens=vision_tokens,
+        sequence_batch_size=sequence_batch_size,
+    )
+    sequence_tokens = text_tokens + (
+        config.connector.latent_tokens if vision_tokens > 0 else 0
+    )
+    recompute = 0
+    if "vision" in requested and vision_tokens > 0:
+        recompute += _vision_block_flops(config, vision_tokens, 1)
+    if "connector" in requested and vision_tokens > 0:
+        recompute += _connector_flops(config, vision_tokens, 1)
+    if "language" in requested:
+        recompute += _language_flops(
+            config,
+            sequence_tokens,
+            sequence_batch_size,
+        )
+    return TrainingFlops(
+        algorithmic=3 * forward,
+        checkpoint_recompute=recompute,
+    )
+
+
 def estimate_rlvr_step_flops(
     config: StudentConfig,
     *,
@@ -513,21 +582,20 @@ def estimate_rlvr_step_flops(
                 include_task_heads=False,
             ).total
     scored_tokens = prompt_tokens + completion_tokens
-    full_group = estimate_forward_flops(
+    reference_scoring = _reused_visual_forward_flops(
         config,
         text_tokens=scored_tokens,
         vision_tokens=vision_tokens,
-        batch_size=group_size,
-    ).total
-    policy_update_breakdown = estimate_training_flops_breakdown(
+        sequence_batch_size=group_size,
+    )
+    policy_update_breakdown = _reused_visual_training_flops_breakdown(
         config,
         text_tokens=scored_tokens,
         vision_tokens=vision_tokens,
-        batch_size=group_size,
+        sequence_batch_size=group_size,
         checkpoint_components=checkpoint_components,
     )
     policy_update = policy_update_breakdown.algorithmic
-    reference_scoring = full_group
     replay_breakdown = (
         estimate_training_flops_breakdown(
             config,
@@ -549,6 +617,62 @@ def estimate_rlvr_step_flops(
     result["checkpoint_recompute"] = (
         policy_update_breakdown.checkpoint_recompute
         + replay_breakdown.checkpoint_recompute
+    )
+    result["executed_total"] = (
+        result["total"] + result["checkpoint_recompute"]
+    )
+    return result
+
+
+def estimate_dpo_step_flops(
+    config: StudentConfig,
+    *,
+    vision_tokens: int,
+    prompt_tokens: int,
+    completion_tokens: int,
+    candidate_group_size: int,
+    use_kv_cache: bool = True,
+    checkpoint_components: tuple[str, ...] = (),
+    accepted_pair: bool = True,
+) -> dict[str, int]:
+    """Estimate reference rollout and an optional two-sequence DPO update."""
+
+    rollout = estimate_rlvr_step_flops(
+        config,
+        vision_tokens=vision_tokens,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        group_size=candidate_group_size,
+        use_kv_cache=use_kv_cache,
+    )["rollout"]
+    if accepted_pair:
+        scored_tokens = prompt_tokens + completion_tokens
+        policy_update_breakdown = _reused_visual_training_flops_breakdown(
+            config,
+            text_tokens=scored_tokens,
+            vision_tokens=vision_tokens,
+            sequence_batch_size=2,
+            checkpoint_components=checkpoint_components,
+        )
+        policy_update = policy_update_breakdown.algorithmic
+        reference_scoring = _reused_visual_forward_flops(
+            config,
+            text_tokens=scored_tokens,
+            vision_tokens=vision_tokens,
+            sequence_batch_size=2,
+        )
+    else:
+        policy_update_breakdown = TrainingFlops(algorithmic=0)
+        policy_update = 0
+        reference_scoring = 0
+    result = {
+        "reference_rollout": rollout,
+        "policy_update": policy_update,
+        "reference_scoring": reference_scoring,
+    }
+    result["total"] = sum(result.values())
+    result["checkpoint_recompute"] = (
+        policy_update_breakdown.checkpoint_recompute
     )
     result["executed_total"] = (
         result["total"] + result["checkpoint_recompute"]

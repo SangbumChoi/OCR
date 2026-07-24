@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run structured SFT or verifiable-reward GRPO for the native student."""
+"""Run structured SFT, verifier-ranked DPO, or RLVR for the native student."""
 
 from __future__ import annotations
 
@@ -14,9 +14,11 @@ from docvlm_eval.benchmarks import load_jsonl
 from docvlm_eval.student.data import StudentCollator, StudentCollatorConfig
 from docvlm_eval.student.model import DocumentVLMStudent
 from docvlm_eval.student.posttrain import (
+    DPOConfig,
     RLVRConfig,
     SFTConfig,
     StructuredPostTrainingDataset,
+    train_dpo,
     train_grpo,
     train_sft,
 )
@@ -66,7 +68,7 @@ def _device(args) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["sft", "rlvr"])
+    parser.add_argument("stage", choices=["sft", "dpo", "rlvr"])
     parser.add_argument(
         "--config",
         type=Path,
@@ -123,13 +125,14 @@ def main() -> None:
     )
     collator = StudentCollator(tokenizer, collator_config)
 
+    replay_requested = (
+        args.replay_samples is not None
+        or args.replay_every_steps is not None
+        or args.replay_loss_coefficient is not None
+    )
+    if args.stage != "rlvr" and replay_requested:
+        raise SystemExit("replay options apply only to RLVR")
     if args.stage == "sft":
-        if (
-            args.replay_samples is not None
-            or args.replay_every_steps is not None
-            or args.replay_loss_coefficient is not None
-        ):
-            raise SystemExit("replay options apply only to RLVR")
         overrides = {
             "device": device,
             "resume_from": args.resume,
@@ -160,7 +163,7 @@ def main() -> None:
     if args.target_mode is not None or args.num_workers is not None:
         raise SystemExit("--target-mode and --num-workers apply only to SFT")
     if not str(metadata.get("run_stage", "")).startswith("sft:"):
-        raise SystemExit("RLVR must start from an SFT checkpoint")
+        raise SystemExit(f"{args.stage.upper()} must start from an SFT checkpoint")
     overrides = {
         "device": device,
         "resume_from": args.resume,
@@ -168,28 +171,8 @@ def main() -> None:
     }
     if args.max_steps is not None:
         overrides["max_steps"] = args.max_steps
-    if args.replay_every_steps is not None:
-        overrides["supervised_replay_every_steps"] = args.replay_every_steps
-    if args.replay_loss_coefficient is not None:
-        overrides["supervised_replay_loss_coefficient"] = (
-            args.replay_loss_coefficient
-        )
     reference_id = _checkpoint_id(args.checkpoint)
-    config = RLVRConfig.from_blueprint(
-        blueprint,
-        args.output,
-        reference_id=reference_id,
-        **overrides,
-    )
     dataset = StructuredPostTrainingDataset(samples, target_mode="evidence_linked")
-    replay_dataset = (
-        StructuredPostTrainingDataset(
-            load_jsonl(args.replay_samples),
-            target_mode="evidence_linked",
-        )
-        if args.replay_samples is not None
-        else None
-    )
     policy = DocumentVLMStudent.from_pretrained(
         args.checkpoint,
         map_location=device,
@@ -198,6 +181,54 @@ def main() -> None:
         args.checkpoint,
         map_location=device,
     )
+    reward_config = RewardConfig.from_blueprint(blueprint)
+    if args.stage == "dpo":
+        config = DPOConfig.from_blueprint(
+            blueprint,
+            args.output,
+            reference_id=reference_id,
+            **overrides,
+        )
+        result = train_dpo(
+            policy,
+            reference,
+            dataset,
+            collator,
+            tokenizer,
+            config,
+            reward_config,
+        )
+        print(
+            f"Finished DPO preference_step={result.preference_step} "
+            f"optimizer_step={result.optimizer_step} "
+            f"accepted_pairs={result.accepted_pairs} "
+            f"student_flops={result.student_flops_seen:,} "
+            f"executed_student_flops="
+            f"{result.executed_student_flops_seen:,} "
+            f"checkpoint={result.last_checkpoint}"
+        )
+        return
+
+    if args.replay_every_steps is not None:
+        overrides["supervised_replay_every_steps"] = args.replay_every_steps
+    if args.replay_loss_coefficient is not None:
+        overrides["supervised_replay_loss_coefficient"] = (
+            args.replay_loss_coefficient
+        )
+    config = RLVRConfig.from_blueprint(
+        blueprint,
+        args.output,
+        reference_id=reference_id,
+        **overrides,
+    )
+    replay_dataset = (
+        StructuredPostTrainingDataset(
+            load_jsonl(args.replay_samples),
+            target_mode="evidence_linked",
+        )
+        if args.replay_samples is not None
+        else None
+    )
     result = train_grpo(
         policy,
         reference,
@@ -205,7 +236,7 @@ def main() -> None:
         collator,
         tokenizer,
         config,
-        RewardConfig.from_blueprint(blueprint),
+        reward_config,
         replay_dataset=replay_dataset,
     )
     print(

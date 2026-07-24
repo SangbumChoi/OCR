@@ -151,12 +151,12 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   transfer, and the matched random/vision/language/dual/selective suite.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
-  rewards, visual-prefix-cached rollout, single-update GRPO, periodic supervised multimodal replay,
-  bounded symbolic formula equivalence, exact checkpoint resume, and train/heldout generation
-  evaluation.
+  rewards, visual-prefix-cached rollout, verifier-ranked DPO, single-update GRPO, periodic
+  supervised multimodal replay, bounded symbolic formula equivalence, exact checkpoint resume, and
+  train/heldout generation evaluation.
 - **Isolate post-training choices:**
   [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) — paired
-  pre-RLVR SFT-target comparisons and SFT-only versus correctness-only/full-reward RLVR.
+  SFT-target, reward, advantage-estimator, and compute-matched DPO-versus-GRPO comparisons.
 - **Run end to end:** [`report/student_experiment_runner.md`](report/student_experiment_runner.md) —
   one adjustable, validated, resumable DAG from independent hard-document synthesis through
   weighted UDD mixing, pretraining, SFT, RLVR, and train/heldout evaluation.
@@ -257,6 +257,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·
    [`report/student_rlvr_advantage_sweep.md`](report/student_rlvr_advantage_sweep.md) ·
+   [`report/student_preference_method_sweep.md`](report/student_preference_method_sweep.md) ·
    [`report/student_experiment_runner.md`](report/student_experiment_runner.md) ·
    [`report/student_architecture_compute_sweep.md`](report/student_architecture_compute_sweep.md) ·
    [`report/student_language_mixer_sweep.md`](report/student_language_mixer_sweep.md) ·

@@ -258,6 +258,30 @@ training:
         multilingual_and_reading_order: 0.15
         reliability_and_abstention: 0.10
         general_multimodal_replay: 0.05
+    dpo:
+      preference_source: reference_verifier_ranked
+      reference_policy: sft_checkpoint
+      group_size: 8
+      minimum_reward_margin: 0.05
+      beta: 0.10
+      sequence_reduction: sum
+      rollout:
+        max_new_tokens: 128
+        temperature: 0.8
+        top_p: 0.95
+        use_kv_cache: true
+      optimizer:
+        max_steps: 1000
+        total_student_flops: null
+        stop_at_student_flops: false
+        learning_rate: 0.000005
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        precision: bfloat16
+        checkpoint_every_steps: 100
+        log_every_steps: 1
+        seed: 29
     rlvr:
       algorithm: grpo
       update_policy: one_on_policy_update_per_group

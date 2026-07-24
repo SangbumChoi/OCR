@@ -447,6 +447,63 @@ def test_rlvr_advantage_sweep_compiles_compute_matched_estimators(tmp_path):
         ]["wandb_tags"]
 
 
+def test_preference_method_sweep_compiles_compute_matched_dpo_and_grpo(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_preference_method_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "preference-method-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.baseline == "grpo"
+    for variant in plan.variants:
+        blueprint = variant.plan.resolved_blueprint
+        posttraining = blueprint["training"]["posttraining"]
+        dpo_optimizer = posttraining["dpo"]["optimizer"]
+        rlvr_optimizer = posttraining["rlvr"]["optimizer"]
+        assert posttraining["dpo"]["group_size"] == posttraining["rlvr"][
+            "group_size"
+        ]
+        assert posttraining["dpo"]["rollout"] == posttraining["rlvr"][
+            "rollout"
+        ]
+        assert dpo_optimizer["max_steps"] is None
+        assert rlvr_optimizer["max_steps"] is None
+        assert dpo_optimizer["stop_at_student_flops"] is True
+        assert rlvr_optimizer["stop_at_student_flops"] is True
+        assert dpo_optimizer["total_student_flops"] == (
+            rlvr_optimizer["total_student_flops"]
+        )
+        assert dpo_optimizer["total_student_flops"] == (
+            192_000_000_000_000_000
+        )
+        assert dpo_optimizer["seed"] == rlvr_optimizer["seed"]
+        if variant.arm_id == "dpo":
+            assert "dpo" in variant.plan.stage_names
+            assert "rlvr" not in variant.plan.stage_names
+        else:
+            assert "rlvr" in variant.plan.stage_names
+            assert "dpo" not in variant.plan.stage_names
+        assert "preference-method-ablation" in variant.plan.raw_spec[
+            "evaluation"
+        ]["wandb_tags"]
+
+
 def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_sequence_teacher_sweep.yaml").read_text(

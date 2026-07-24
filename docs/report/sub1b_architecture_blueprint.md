@@ -177,9 +177,11 @@ three target ablations. It shuffles exhaustively per epoch rather than sampling 
 with replacement. See
 [`student_posttraining_runner.md`](student_posttraining_runner.md) for commands and contracts.
 
-### RL with verifiable rewards
+### Preference optimization and RL with verifiable rewards
 
-Run GRPO from the SFT checkpoint. All default rewards are computed from authored or normalized
+Run verifier-ranked DPO or GRPO from the SFT checkpoint. DPO ranks frozen-reference candidates and
+updates on a sufficiently separated best/worst pair; GRPO samples from the evolving policy and
+applies one group-relative update. All default rewards are computed from authored or normalized
 ground truth:
 
 - answer exactness and normalized text similarity;
@@ -288,6 +290,8 @@ three-replicate fixed-FLOP comparison is specified in
 Post-training exposes both standardized GRPO and leave-one-out reward advantages under one
 checkpointed objective contract. The compute-matched comparison is specified in
 [`student_rlvr_advantage_sweep.md`](student_rlvr_advantage_sweep.md).
+Verifier-ranked DPO and on-policy GRPO are separately compared at a fixed algorithmic student-FLOP
+budget in [`student_preference_method_sweep.md`](student_preference_method_sweep.md).
 
 Final deployment acceptance joins those two evidence streams. `eval_student.py` verifies the
 benchmark's complete student configuration and canonical fingerprint, CUDA runtime, benchmark

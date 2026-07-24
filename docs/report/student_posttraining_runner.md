@@ -7,14 +7,15 @@ stage for the native sub-1B document VLM. It supports:
 
 - exhaustive structured SFT with answer-only, free-rationale, and evidence-linked targets;
 - strict answer/evidence/rationale JSON generation;
+- verifier-ranked direct preference optimization from frozen SFT candidates;
 - single-update group-relative policy optimization from an SFT checkpoint;
 - periodic supervised multimodal replay during RLVR;
 - independently reported verifiable reward components;
 - atomic checkpoints and exact continuation with tokenizer and reference guards.
 
-This is training infrastructure, not evidence that the default SFT or RLVR recipe improves held-out
-capability. Claims still require matched SFT-only and RLVR runs on template-, graph-, and
-source-held-out evaluations.
+This is training infrastructure, not evidence that the default SFT, DPO, or RLVR recipe improves
+held-out capability. Claims still require matched runs on template-, graph-, and source-held-out
+evaluations.
 
 Those comparisons are compiled by
 [`student_posttraining_sweeps.md`](student_posttraining_sweeps.md). The SFT-target suite evaluates
@@ -79,6 +80,29 @@ SFT inherits the production component-level activation-checkpointing contract us
 Use `torchrun` for SFT data parallelism and `--resume latest` for exact continuation. The checkpoint
 records `run_stage: sft:<target_mode>`; SFT resume rejects a different target mode, and RLVR rejects
 checkpoints without an SFT marker.
+
+## Verifier-ranked DPO
+
+Run DPO from an SFT checkpoint:
+
+```bash
+python scripts/posttrain_student.py dpo \
+  --samples data/posttraining/train.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
+  --output outputs/student_dpo/verifier_ranked
+```
+
+The frozen SFT reference samples a candidate group, the structured verifier selects the
+highest- and lowest-reward responses, and the policy receives one direct preference update only
+when the reward margin passes the configured threshold. Candidate ties are logged as skipped pairs
+and consume rollout FLOPs without an optimizer step. Policy and reference pair scoring reuse one
+visual encoding across the chosen and rejected sequences.
+
+The checkpointed objective contract covers preference source, reward margin, beta, sequence
+reduction, reward weights, and malformed-response reward. See
+[`student_preference_method_sweep.md`](student_preference_method_sweep.md) for the equation,
+compute-matched GRPO comparison, continuation guarantees, and interpretation boundary.
 
 ## Verifiable-reward GRPO
 
@@ -172,17 +196,16 @@ receives zero policy advantage; a scheduled replay anchor can still provide a su
 
 ## Resume and operational boundary
 
-RLVR checkpoints contain policy weights, optimizer and AMP scaler state, Python/Torch/CUDA RNG
-state, rollout and optimizer cursors, student FLOPs consumed, tokenizer fingerprint, and a
-frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, replay
-contract, objective contract, compute-budget contract, or activation-checkpointing contract. The
-objective contract covers advantage estimator, epsilon, KL coefficient, reward weights, and
-malformed reward. Setting `max_steps: null`,
+RLVR and DPO checkpoints contain policy weights, optimizer and AMP scaler state,
+Python/Torch/CUDA RNG state, stage cursors, student FLOPs consumed, tokenizer fingerprint, and a
+frozen-reference identifier. Resume rejects a changed tokenizer, reference checkpoint, objective
+contract, compute-budget contract, or activation-checkpointing contract. RLVR additionally guards
+the replay contract. Setting `max_steps: null`,
 `stop_at_student_flops: true`, and
 `total_student_flops` makes the compute budget the production stop; this is used by
 [`student_architecture_compute_sweep.md`](student_architecture_compute_sweep.md).
 
-Native RLVR currently runs in one process. An 800M policy, frozen 800M reference, gradients, and
+Native DPO and RLVR currently run in one process. An 800M policy, frozen 800M reference, gradients, and
 AdamW state must fit on that process; shard independent experiments by seed when one device is not
 large enough. Distributed rollout, optimizer sharding, KV caching, multi-epoch off-policy replay,
 and semantic rationale entailment remain future measured extensions. The implemented collapse

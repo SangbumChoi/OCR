@@ -32,7 +32,7 @@ from .pretrain import PretrainConfig, pretraining_supervision_contract
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _HUB_REVISION = re.compile(r"^[0-9a-f]{40}$")
-_CHECKPOINT_STAGES = {"pretrain", "sft", "rlvr"}
+_CHECKPOINT_STAGES = {"pretrain", "sft", "dpo", "rlvr"}
 _OUTPUT_FLAGS = {"--out", "--output", "--save"}
 
 
@@ -642,9 +642,12 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         raise ValueError("initialization.seed must be non-negative")
     posttraining = _require_mapping(raw, "posttraining")
     sft = posttraining.get("sft")
+    dpo = posttraining.get("dpo")
     rlvr = posttraining.get("rlvr")
     if not isinstance(sft, dict):
         raise ValueError("experiment.posttraining.sft must be a mapping")
+    if not isinstance(dpo, dict):
+        raise ValueError("experiment.posttraining.dpo must be a mapping")
     if not isinstance(rlvr, dict):
         raise ValueError("experiment.posttraining.rlvr must be a mapping")
     if "enabled" in sft and not isinstance(sft["enabled"], bool):
@@ -657,9 +660,22 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         "evidence_linked",
     }:
         raise ValueError("posttraining.sft.target_mode is invalid")
+    if "enabled" in dpo and not isinstance(dpo["enabled"], bool):
+        raise ValueError("posttraining.dpo.enabled must be a boolean")
+    dpo_enabled = bool(dpo.get("enabled", False))
+    if not dpo_enabled:
+        ignored = sorted(
+            key for key in ("max_steps",) if dpo.get(key) is not None
+        )
+        if ignored:
+            raise ValueError(
+                "disabled DPO cannot set stage-specific overrides: "
+                f"{ignored}"
+            )
     if "enabled" in rlvr and not isinstance(rlvr["enabled"], bool):
         raise ValueError("posttraining.rlvr.enabled must be a boolean")
-    if not bool(rlvr.get("enabled", True)):
+    rlvr_enabled = bool(rlvr.get("enabled", True))
+    if not rlvr_enabled:
         ignored = sorted(
             key
             for key in (
@@ -675,6 +691,10 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
                 "disabled RLVR cannot set stage-specific overrides: "
                 f"{ignored}"
             )
+    if dpo_enabled and rlvr_enabled:
+        raise ValueError(
+            "posttraining.dpo and posttraining.rlvr are mutually exclusive"
+        )
     evaluation = _require_mapping(raw, "evaluation")
     if int(evaluation.get("max_new_tokens", 0)) <= 0:
         raise ValueError("evaluation.max_new_tokens must be positive")
@@ -819,7 +839,10 @@ def build_experiment_plan(
     input_fingerprints: dict[str, Any] = {
         "synthetic_config": _file_fingerprint(synth_config_path),
     }
-    rlvr_spec = ((raw.get("posttraining") or {}).get("rlvr") or {})
+    posttraining_spec = raw.get("posttraining") or {}
+    dpo_spec = posttraining_spec.get("dpo") or {}
+    dpo_enabled = bool(dpo_spec.get("enabled", False))
+    rlvr_spec = posttraining_spec.get("rlvr") or {}
     rlvr_enabled = bool(rlvr_spec.get("enabled", True))
     configured_replay = (
         rlvr_spec.get("replay_samples") if rlvr_enabled else None
@@ -852,6 +875,7 @@ def build_experiment_plan(
     initial_dir = artifacts / "initial"
     pretrain_dir = artifacts / "pretrain"
     sft_dir = artifacts / "sft"
+    dpo_dir = artifacts / "dpo"
     rlvr_dir = artifacts / "rlvr"
     eval_dir = artifacts / "evaluation"
     leakage_report = artifacts / "data" / "split_leakage.json"
@@ -1701,8 +1725,38 @@ def build_experiment_plan(
         )
     )
 
-    rlvr = posttraining.get("rlvr") or {}
     final_checkpoint_stage = "sft"
+    dpo = posttraining.get("dpo") or {}
+    if dpo_enabled:
+        dpo_command = [
+            python,
+            script("posttrain_student.py"),
+            "dpo",
+            "--config",
+            str(resolved_blueprint_path),
+            "--samples",
+            str(train_samples),
+            "--tokenizer",
+            str(tokenizer_dir),
+            "--checkpoint",
+            "@student:sft",
+            "--output",
+            str(dpo_dir),
+            "--device",
+            device,
+        ]
+        _add_optional(dpo_command, "--max-steps", dpo.get("max_steps"))
+        stages.append(
+            ExperimentStage(
+                "dpo",
+                tuple(dpo_command),
+                ("sft",),
+                (Artifact(str(dpo_dir / "latest_checkpoint.txt")),),
+            )
+        )
+        final_checkpoint_stage = "dpo"
+
+    rlvr = posttraining.get("rlvr") or {}
     if rlvr_enabled:
         rlvr_command = [
             python,
@@ -1875,6 +1929,7 @@ def _resolve_command(command: tuple[str, ...], root: Path) -> list[str]:
     stage_outputs = {
         "pretrain": root / "artifacts" / "pretrain",
         "sft": root / "artifacts" / "sft",
+        "dpo": root / "artifacts" / "dpo",
         "rlvr": root / "artifacts" / "rlvr",
     }
     resolved = []

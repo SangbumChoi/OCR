@@ -119,19 +119,58 @@ def _rl_config(
     )
 
 
+def _dpo_config(
+    output,
+    max_steps,
+    resume=None,
+    *,
+    beta=0.1,
+    margin=0.05,
+):
+    from docvlm_eval.student.posttrain import DPOConfig
+
+    return DPOConfig(
+        output_dir=str(output),
+        max_steps=max_steps,
+        group_size=2,
+        minimum_reward_margin=margin,
+        beta=beta,
+        sequence_reduction="sum",
+        max_new_tokens=2,
+        temperature=1.0,
+        top_p=1.0,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        max_grad_norm=1.0,
+        precision="float32",
+        checkpoint_every_steps=1,
+        log_every_steps=1,
+        seed=31,
+        device="cpu",
+        resume_from=resume,
+        tokenizer_fingerprint=_Tokenizer.fingerprint,
+        reference_id="sft-reference-test",
+    )
+
+
 def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
     from docvlm_eval.architecture import load_blueprint
-    from docvlm_eval.student.posttrain import RLVRConfig, SFTConfig
+    from docvlm_eval.student.posttrain import DPOConfig, RLVRConfig, SFTConfig
 
     blueprint = load_blueprint("configs/sub1b_architecture.yaml")
     sft = SFTConfig.from_blueprint(blueprint, tmp_path / "sft")
+    dpo = DPOConfig.from_blueprint(
+        blueprint,
+        tmp_path / "dpo",
+        reference_id="reference",
+    )
     rlvr = RLVRConfig.from_blueprint(
         blueprint,
         tmp_path / "rlvr",
         reference_id="reference",
     )
 
-    for config in (sft, rlvr):
+    for config in (sft, dpo, rlvr):
         assert config.gradient_checkpointing is True
         assert config.gradient_checkpointing_components == (
             "vision",
@@ -139,6 +178,8 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
             "language",
         )
         assert config.gradient_checkpointing_use_reentrant is False
+    assert dpo.preference_source == "reference_verifier_ranked"
+    assert dpo.sequence_reduction == "sum"
     assert rlvr.use_kv_cache is True
     assert rlvr.advantage_estimator == "group_standardized"
 
@@ -297,6 +338,202 @@ def test_group_relative_policy_loss_supports_leave_one_out_advantages():
     assert leave_one_out["advantage_abs_mean"] < standardized[
         "advantage_abs_mean"
     ]
+
+
+def test_direct_preference_loss_and_pair_selection_follow_verifier_rank():
+    import math
+
+    import torch
+
+    from docvlm_eval.student.posttrain import (
+        direct_preference_loss,
+        select_preference_pair,
+    )
+
+    policy = torch.tensor(
+        [[-1.0, -1.2], [-1.4, -1.6]],
+        requires_grad=True,
+    )
+    reference = policy.detach().clone()
+    mask = torch.ones(2, 2, dtype=torch.bool)
+
+    loss, metrics = direct_preference_loss(
+        policy,
+        reference,
+        mask,
+        beta=0.1,
+        sequence_reduction="sum",
+    )
+    loss.backward()
+    pair = select_preference_pair(
+        torch.tensor([0.5, 1.0, 0.0]),
+        minimum_reward_margin=0.05,
+    )
+
+    assert float(loss.detach()) == pytest.approx(math.log(2))
+    assert float(metrics["preference_logit"].detach()) == pytest.approx(0)
+    assert policy.grad is not None
+    assert policy.grad[0].mean() < 0
+    assert policy.grad[1].mean() > 0
+    assert pair is not None
+    assert pair[:2] == (1, 2)
+    assert pair[2] == pytest.approx(1.0)
+    assert (
+        select_preference_pair(
+            torch.ones(3),
+            minimum_reward_margin=0.05,
+        )
+        is None
+    )
+
+
+def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
+    tmp_path,
+    monkeypatch,
+):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_dpo
+    from docvlm_eval.student.rewards import RewardConfig, build_structured_target
+
+    target = build_structured_target("42")
+
+    def tied_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [5, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [target, target],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        tied_group,
+    )
+    torch.manual_seed(47)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    policy = copy.deepcopy(initial)
+    result = train_dpo(
+        policy,
+        copy.deepcopy(initial),
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _dpo_config(tmp_path / "tied", 1),
+        RewardConfig(weights={"answer_correctness": 1.0}),
+    )
+
+    assert result.preference_step == 1
+    assert result.optimizer_step == 0
+    assert result.accepted_pairs == 0
+    assert result.skipped_pairs == 1
+    assert result.student_flops_seen > 0
+    assert result.final_metrics["dpo/accepted_pair"] == 0
+    for name, expected in initial.state_dict().items():
+        assert torch.equal(expected, policy.state_dict()[name]), name
+
+
+def test_dpo_checkpoint_resume_matches_uninterrupted_updates(
+    tmp_path,
+    monkeypatch,
+):
+    from dataclasses import replace
+
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.posttrain import train_dpo
+    from docvlm_eval.student.rewards import RewardConfig, build_structured_target
+
+    correct = build_structured_target("42")
+    wrong = build_structured_target("17")
+
+    def fixed_group(model, prompt_batch, tokenizer, config):
+        del model, tokenizer, config
+        device = prompt_batch["input_ids"].device
+        return (
+            torch.tensor([[5, 2], [6, 2]], device=device),
+            torch.ones(2, 2, dtype=torch.bool, device=device),
+            [correct, wrong],
+        )
+
+    monkeypatch.setattr(
+        "docvlm_eval.student.posttrain.sample_completion_group",
+        fixed_group,
+    )
+    rewards = RewardConfig(
+        weights={
+            "answer_correctness": 0.8,
+            "normalized_text_similarity": 0.2,
+        }
+    )
+    torch.manual_seed(53)
+    initial = DocumentVLMStudent(StudentConfig.tiny())
+    full = copy.deepcopy(initial)
+    resumed = copy.deepcopy(initial)
+    reference_full = copy.deepcopy(initial)
+    reference_resumed = copy.deepcopy(initial)
+
+    full_result = train_dpo(
+        full,
+        reference_full,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _dpo_config(tmp_path / "full-dpo", 2),
+        rewards,
+    )
+    first_result = train_dpo(
+        resumed,
+        reference_resumed,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _dpo_config(tmp_path / "resumed-dpo", 1),
+        rewards,
+    )
+    with pytest.raises(ValueError, match="objective contract mismatch"):
+        train_dpo(
+            copy.deepcopy(resumed),
+            copy.deepcopy(reference_resumed),
+            _dataset(),
+            _collator(),
+            _Tokenizer(),
+            replace(
+                _dpo_config(
+                    tmp_path / "resumed-dpo",
+                    2,
+                    "latest",
+                ),
+                beta=0.2,
+            ),
+            rewards,
+        )
+    resumed_result = train_dpo(
+        resumed,
+        reference_resumed,
+        _dataset(),
+        _collator(),
+        _Tokenizer(),
+        _dpo_config(
+            tmp_path / "resumed-dpo",
+            2,
+            "latest",
+        ),
+        rewards,
+    )
+
+    assert full_result.optimizer_step == 2
+    assert first_result.optimizer_step == 1
+    assert resumed_result.optimizer_step == 2
+    for name, expected in full.state_dict().items():
+        assert torch.equal(expected, resumed.state_dict()[name]), name
+    for name, expected in initial.state_dict().items():
+        assert torch.equal(expected, reference_resumed.state_dict()[name]), name
 
 
 def test_supervised_replay_updates_zero_advantage_group(tmp_path, monkeypatch):

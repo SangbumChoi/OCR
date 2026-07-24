@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Three matched sweeps isolate the required post-training questions without conflating SFT targets,
-RLVR rewards, and advantage estimators:
+Four matched sweeps isolate the required post-training questions without conflating SFT targets,
+RLVR rewards, advantage estimators, and preference-learning methods:
 
 1. [`configs/sub1b_sft_target_sweep.yaml`](../../configs/sub1b_sft_target_sweep.yaml)
    compares answer-only, free-rationale, and evidence-linked SFT before any RLVR update.
@@ -12,6 +12,8 @@ RLVR rewards, and advantage estimators:
    decomposed grounded reward.
 3. [`configs/sub1b_rlvr_advantage_sweep.yaml`](../../configs/sub1b_rlvr_advantage_sweep.yaml)
    holds the full reward fixed and compares standardized GRPO advantages with RLOO.
+4. [`configs/sub1b_preference_method_sweep.yaml`](../../configs/sub1b_preference_method_sweep.yaml)
+   compares on-policy GRPO with verifier-ranked DPO under a fixed algorithmic student-FLOP budget.
 
 Each design has three paired stochastic replicates. These configurations are executable experiment
 contracts, not evidence that one target, reward, or estimator is better. Heldout claims require
@@ -89,6 +91,16 @@ reward scale, while `leave_one_out` uses every other completion as a critic-free
 [`student_rlvr_advantage_sweep.md`](student_rlvr_advantage_sweep.md) for the equations, exact-resume
 objective contract, and promotion rule.
 
+## Preference-method estimand
+
+The six-run method sweep starts every arm from the same evidence-linked SFT checkpoint and matches
+the verifier, group size, rollout controls, optimizer controls, and `192e15` algorithmic
+student-FLOP budget. GRPO samples from the evolving policy; DPO samples from the frozen SFT
+reference and updates on the highest-versus-lowest verifier pair. This is therefore a method-level
+comparison rather than a pure objective ablation. See
+[`student_preference_method_sweep.md`](student_preference_method_sweep.md) for the exact objective,
+compute convention, skipped-pair accounting, and promotion rule.
+
 ## Paired controls and outputs
 
 Within each replicate, arms share model initialization, authored train and heldout documents,
@@ -103,9 +115,10 @@ and deployment gates. W&B runs use separate groups:
 
 - `docvlm-sft-target-ablation`, tagged `sft-target-ablation`;
 - `docvlm-rlvr-reward-ablation`, tagged `rlvr-reward-ablation`;
-- `docvlm-rlvr-advantage-ablation`, tagged `rlvr-advantage-ablation`.
+- `docvlm-rlvr-advantage-ablation`, tagged `rlvr-advantage-ablation`;
+- `docvlm-preference-method-ablation`, tagged `preference-method-ablation`.
 
-The baselines are `evidence_linked`, `full_reward`, and `group_standardized`, respectively.
+The baselines are `evidence_linked`, `full_reward`, `group_standardized`, and `grpo`, respectively.
 Consequently, an arm-minus-baseline interval supports one policy only after checking per-family,
 per-language, grounding, reliability, and train-minus-heldout results.
 

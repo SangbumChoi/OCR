@@ -6,6 +6,7 @@ from docvlm_eval.student.compute import (
     compute_profile,
     estimate_batch_training_flops,
     estimate_batch_training_flops_breakdown,
+    estimate_dpo_step_flops,
     estimate_forward_flops,
     estimate_language_kv_cache_bytes,
     estimate_rlvr_step_flops,
@@ -227,6 +228,67 @@ def test_rlvr_compute_tracks_generation_and_replay():
     )
     assert uncached["rollout"] > long["rollout"]
     assert uncached["policy_update"] == long["policy_update"]
+
+
+def test_rlvr_compute_counts_one_shared_visual_encoding_per_group():
+    config = StudentConfig.tiny()
+    one = estimate_rlvr_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        group_size=1,
+    )
+    two = estimate_rlvr_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        group_size=2,
+    )
+
+    assert two["policy_update"] > one["policy_update"]
+    assert two["policy_update"] < 2 * one["policy_update"]
+    assert two["reference_scoring"] > one["reference_scoring"]
+    assert two["reference_scoring"] < 2 * one["reference_scoring"]
+
+
+def test_dpo_compute_counts_reference_rollout_and_optional_pair_update():
+    config = StudentConfig.tiny()
+    accepted = estimate_dpo_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        candidate_group_size=3,
+        checkpoint_components=("language",),
+    )
+    skipped = estimate_dpo_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        candidate_group_size=3,
+        accepted_pair=False,
+    )
+    uncached = estimate_dpo_step_flops(
+        config,
+        vision_tokens=16,
+        prompt_tokens=24,
+        completion_tokens=4,
+        candidate_group_size=3,
+        use_kv_cache=False,
+    )
+
+    assert accepted["reference_rollout"] == skipped["reference_rollout"]
+    assert accepted["policy_update"] > 0
+    assert accepted["reference_scoring"] > 0
+    assert accepted["total"] > skipped["total"]
+    assert accepted["checkpoint_recompute"] > 0
+    assert skipped["policy_update"] == 0
+    assert skipped["reference_scoring"] == 0
+    assert skipped["checkpoint_recompute"] == 0
+    assert uncached["reference_rollout"] > accepted["reference_rollout"]
 
 
 def test_profile_exposes_phase_accounting_convention():
