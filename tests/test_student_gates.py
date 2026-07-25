@@ -60,6 +60,7 @@ def _row(
     reached_max_new_tokens=False,
     degenerate_repetition=False,
     structurally_valid=True,
+    metric="exact",
 ):
     components = components or {}
     return {
@@ -67,6 +68,7 @@ def _row(
         "score": score,
         "answer": "correct" if score == 1.0 else "",
         "answer_type": answer_type,
+        "metric": metric,
         "confidence": confidence,
         "meta": meta or {},
         "reward_components": components,
@@ -78,6 +80,55 @@ def _row(
         "degenerate_repetition": degenerate_repetition,
         "structurally_valid": structurally_valid,
     }
+
+
+def test_grounding_gate_scores_malformed_capability_rows_as_zero():
+    from docvlm_eval.student.gates import _grounding
+
+    gate = next(
+        gate
+        for gate in _blueprint()["evaluation_gates"]
+        if gate["id"] == "grounding"
+    )
+    pairs = [
+        (
+            _row(
+                "box",
+                0.0,
+                answer_type="grounding",
+                metric="grounding",
+                structurally_valid=False,
+            ),
+            _row(
+                "box",
+                0.0,
+                answer_type="grounding",
+                metric="grounding",
+                structurally_valid=False,
+            ),
+        ),
+        (
+            _row(
+                "ocr",
+                0.0,
+                answer_type="ocr-full",
+                structurally_valid=False,
+            ),
+            _row(
+                "ocr",
+                0.0,
+                answer_type="ocr-full",
+                structurally_valid=False,
+            ),
+        ),
+    ]
+
+    result = _grounding(gate, pairs, None, True)
+
+    assert result["status"] == "fail"
+    assert result["evidence"]["box_samples"] == 1
+    assert result["evidence"]["extraction_samples"] == 1
+    assert result["evidence"]["box_iou_delta"] == 0.0
 
 
 def _matched_gate_rows():

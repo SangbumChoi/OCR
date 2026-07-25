@@ -72,6 +72,7 @@ class StructuredEvalConfig:
     max_new_tokens_hard_cap: int = 128
     max_new_tokens_by_answer_type: tuple[tuple[str, int], ...] = ()
     max_samples: int | None = None
+    sample_selection: str = "random"
     use_kv_cache: bool = True
     precision: str = "bfloat16"
     device: str = "auto"
@@ -90,6 +91,11 @@ class StructuredEvalConfig:
         )
         if self.max_samples is not None and self.max_samples <= 0:
             raise ValueError("max_samples must be positive when set")
+        if self.sample_selection not in {
+            "random",
+            "answer_type_round_robin",
+        }:
+            raise ValueError("unsupported evaluation sample selection")
         if not isinstance(self.use_kv_cache, bool):
             raise ValueError("use_kv_cache must be a boolean")
         if self.precision not in {"auto", "float32", "bfloat16", "float16"}:
@@ -107,6 +113,49 @@ class StructuredEvalResult:
     output_dir: str
     summary: dict[str, Any]
     per_sample: list[dict[str, Any]]
+
+
+def select_evaluation_indices(
+    dataset: StructuredPostTrainingDataset,
+    *,
+    max_samples: int | None,
+    seed: int,
+    strategy: str,
+) -> list[int]:
+    """Select a deterministic bounded subset without reading target content."""
+
+    indices = list(range(len(dataset)))
+    if max_samples is None or len(indices) <= max_samples:
+        return indices
+    if strategy == "random":
+        return sorted(random.Random(seed).sample(indices, max_samples))
+    if strategy != "answer_type_round_robin":
+        raise ValueError("unsupported evaluation sample selection")
+
+    groups: dict[str, list[int]] = defaultdict(list)
+    for index, sample in enumerate(dataset.samples):
+        groups[str(sample.answer_type).strip().lower()].append(index)
+    rng = random.Random(seed)
+    labels = sorted(groups)
+    rng.shuffle(labels)
+    for label in labels:
+        rng.shuffle(groups[label])
+
+    selected: list[int] = []
+    depth = 0
+    while len(selected) < max_samples:
+        added = False
+        for label in labels:
+            group = groups[label]
+            if depth < len(group):
+                selected.append(group[depth])
+                added = True
+                if len(selected) == max_samples:
+                    break
+        if not added:
+            break
+        depth += 1
+    return sorted(selected)
 
 
 def _evaluation_device(name: str) -> torch.device:
@@ -463,11 +512,12 @@ def evaluate_structured_student(
     if not split_name.strip():
         raise ValueError("split_name cannot be empty")
     device = _evaluation_device(config.device)
-    indices = list(range(len(dataset)))
-    if config.max_samples is not None and len(indices) > config.max_samples:
-        indices = sorted(
-            random.Random(config.seed).sample(indices, config.max_samples)
-        )
+    indices = select_evaluation_indices(
+        dataset,
+        max_samples=config.max_samples,
+        seed=config.seed,
+        strategy=config.sample_selection,
+    )
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     was_training = model.training
@@ -658,6 +708,7 @@ def evaluate_structured_student(
         "generation_backend": (
             "kv_cache" if config.use_kv_cache else "full_prefix"
         ),
+        "sample_selection": config.sample_selection,
         "generation_token_budget_policy": {
             "base_tokens": config.max_new_tokens,
             "hard_cap": config.max_new_tokens_hard_cap,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -29,10 +30,10 @@ class SplitPolicy:
             raise ValueError("split ratios must sum to 1")
 
     def assign(self, record: dict[str, Any]) -> str:
-        graph = record.get("semantic_graph") or {}
+        identity = semantic_split_identity(record)
         keys = {
-            "content": graph.get("content_fingerprint"),
-            "template": graph.get("template_fingerprint"),
+            "content": identity.get("content_fingerprint"),
+            "template": identity.get("template_fingerprint"),
             "layout": (record.get("render") or {}).get("layout_fingerprint"),
             "document": record.get("doc_id"),
         }
@@ -48,6 +49,81 @@ class SplitPolicy:
         return "heldout"
 
 
+def _fingerprint(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_record_semantic_identity(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """Build semantic split keys for exact records without a latent graph."""
+
+    fields = {
+        str(key): value
+        for key, value in (record.get("fields") or {}).items()
+        if key != "full_text"
+    }
+    qas = list(record.get("qa") or [])
+    if not fields or not qas:
+        raise ValueError(
+            "graph-free split records require nonempty fields and QA contracts"
+        )
+    content_contract = {
+        "generator_case": record.get("generator_case"),
+        "type": record.get("type"),
+        "fields": fields,
+        "qa": qas,
+    }
+    template_contract = {
+        "generator_case": record.get("generator_case"),
+        "type": record.get("type"),
+        "field_keys": sorted(fields),
+        "qa": [
+            {
+                "key": qa.get("key"),
+                "question": qa.get("question"),
+                "metric": qa.get("metric"),
+                "answer_type": qa.get("answer_type"),
+                "evidence_keys": qa.get("evidence_keys"),
+            }
+            for qa in qas
+        ],
+    }
+    return {
+        "schema_version": 1,
+        "source": "exact_record_contract",
+        "content_fingerprint": _fingerprint(content_contract),
+        "template_fingerprint": _fingerprint(template_contract),
+    }
+
+
+def semantic_split_identity(record: dict[str, Any]) -> dict[str, Any]:
+    """Return validated content/template fingerprints from either contract."""
+
+    graph = record.get("semantic_graph")
+    identity = graph if isinstance(graph, dict) and graph else record.get(
+        "semantic_identity"
+    )
+    if not isinstance(identity, dict):
+        raise ValueError(
+            "every split record requires semantic graph fingerprints or "
+            "an exact-record semantic identity"
+        )
+    content = identity.get("content_fingerprint")
+    template = identity.get("template_fingerprint")
+    if not content or not template:
+        raise ValueError(
+            "every split record requires semantic content and template fingerprints"
+        )
+    return identity
+
+
 def validate_split_leakage(
     records: Iterable[dict[str, Any]],
     *,
@@ -59,17 +135,18 @@ def validate_split_leakage(
     seen_content: dict[str, str] = {}
     seen_template: dict[str, set[str]] = {}
     seen_layout: dict[str, set[str]] = {}
+    identity_sources: dict[str, int] = {}
     missing_layout = 0
     counts = {"train": 0, "validation": 0, "heldout": 0}
     for record in records:
         split = str(record.get("split") or "")
         if split not in counts:
             raise ValueError(f"invalid or missing split {split!r}")
-        graph = record.get("semantic_graph") or {}
-        content = graph.get("content_fingerprint")
-        template = graph.get("template_fingerprint")
-        if not content or not template:
-            raise ValueError("every split record requires semantic graph fingerprints")
+        identity = semantic_split_identity(record)
+        content = str(identity["content_fingerprint"])
+        template = str(identity["template_fingerprint"])
+        source = str(identity.get("source") or "semantic_graph")
+        identity_sources[source] = identity_sources.get(source, 0) + 1
         previous = seen_content.get(content)
         if previous is not None and previous != split:
             raise ValueError(
@@ -113,6 +190,7 @@ def validate_split_leakage(
         "counts": counts,
         "unique_content": len(seen_content),
         "unique_templates": len(seen_template),
+        "identity_sources": identity_sources,
         "template_overlap_count": len(template_overlaps),
         "template_overlaps": template_overlaps,
         "unique_layouts": len(seen_layout),

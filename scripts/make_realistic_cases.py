@@ -463,10 +463,13 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
         }
     if key in HARD_CASE_FACTORIES:
         validate_hard_document_language(out, sample_language)
-    if out.get("semantic_graph"):
-        policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
-        out["suggested_split"] = policy.assign(out)
     out["generator_case"] = key
+    if not out.get("semantic_graph"):
+        from docvlm_eval.synth.splits import build_record_semantic_identity
+
+        out["semantic_identity"] = build_record_semantic_identity(out)
+    policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
+    out["suggested_split"] = policy.assign(out)
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
     img.save(folder / "clean.png")
@@ -479,10 +482,16 @@ def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | Non
                     "anchor_metric": gt["anchor_metric"], "support": sup,
                     "split": out["split"], "suggested_split": out.get("suggested_split"),
                     "difficulty": out.get("difficulty"),
-                    "template_fingerprint": (out.get("semantic_graph") or {}).get(
-                        "template_fingerprint"),
-                    "content_fingerprint": (out.get("semantic_graph") or {}).get(
-                        "content_fingerprint"),
+                    "template_fingerprint": (
+                        out.get("semantic_graph")
+                        or out.get("semantic_identity")
+                        or {}
+                    ).get("template_fingerprint"),
+                    "content_fingerprint": (
+                        out.get("semantic_graph")
+                        or out.get("semantic_identity")
+                        or {}
+                    ).get("content_fingerprint"),
                     "counterfactual": out.get("counterfactual"),
                     "layout": {
                         "family": out.get("render", {}).get("layout_family"),

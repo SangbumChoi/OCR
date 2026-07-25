@@ -9,7 +9,11 @@ from docvlm_eval.synth.latent import (
     GraphQuery,
     LatentDocumentGraph,
 )
-from docvlm_eval.synth.splits import SplitPolicy, validate_split_leakage
+from docvlm_eval.synth.splits import (
+    SplitPolicy,
+    build_record_semantic_identity,
+    validate_split_leakage,
+)
 
 
 def _simple_graph(value: float, *, expected: str | None = None) -> LatentDocumentGraph:
@@ -327,6 +331,42 @@ def test_split_validator_reports_template_overlap_separately():
     assert report["template_overlap_count"] == 1
     with pytest.raises(ValueError, match="template leakage"):
         validate_split_leakage(records, require_template_isolation=True)
+
+
+def test_graph_free_exact_records_receive_semantic_leakage_identity():
+    record = {
+        "generator_case": "audit_packet",
+        "type": "three-page audit packet",
+        "fields": {"purchase_order": "PO-123", "full_text": "rendered text"},
+        "qa": [
+            {
+                "question": "What is the purchase order?",
+                "answers": ["PO-123"],
+                "metric": "exact",
+                "answer_type": "kie",
+            }
+        ],
+    }
+    identity = build_record_semantic_identity(record)
+    duplicate = {
+        **record,
+        "semantic_identity": identity,
+        "split": "heldout",
+    }
+
+    assert identity["source"] == "exact_record_contract"
+    assert len(identity["content_fingerprint"]) == 64
+    with pytest.raises(ValueError, match="semantic content leakage"):
+        validate_split_leakage(
+            [
+                {
+                    **record,
+                    "semantic_identity": identity,
+                    "split": "train",
+                },
+                duplicate,
+            ]
+        )
 
 
 def test_layout_split_policy_and_leakage_gate():

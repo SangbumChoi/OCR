@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "executed_on": "2026-07-25",
+  "experiment": "configs/sub1b_experiment_capability_tiny.yaml",
+  "initialization_arm": "I5_structured_mlp",
+  "claim_scope": "execution_contract_only",
+  "quality_claim_authorized": false,
+  "pipeline": {
+    "fingerprint": "sha256:a228876c544a399eab782455fe754031e26e4ec4e877edc882bfe94f6c335ee5",
+    "stage_count": 22,
+    "complete": true,
+    "duration_seconds": 59.188498973846436,
+    "contract_status": "pass",
+    "capability_status": "fail",
+    "attestation_sha256": "sha256:23e7d1377d1f876dc55936781d3161ed0bd3f50648b425f3c4eec445c352be9c"
+  },
+  "synthetic_split_evidence": {
+    "documents": {
+      "train": 8,
+      "validation": 8,
+      "heldout": 8
+    },
+    "unique_content_fingerprints": 24,
+    "unique_template_fingerprints": 6,
+    "identity_sources": {
+      "semantic_graph": 18,
+      "exact_record_contract": 6
+    }
+  },
+  "heldout_evaluation": {
+    "dataset_samples": 155,
+    "selected_samples": 48,
+    "answer_type_count": 21,
+    "sample_selection": "answer_type_round_robin",
+    "generation_token_budget": {
+      "base_tokens": 16,
+      "hard_cap": 32,
+      "by_answer_type": {
+        "ocr-full": 32,
+        "reading-order": 32,
+        "table*": 32,
+        "chart*": 24,
+        "H-comprehension": 24,
+        "H-accounting": 24
+      }
+    },
+    "degenerate_repetition_rate": 0.0,
+    "max_token_rate": 0.875
+  },
+  "capability_gates": {
+    "counts": {
+      "pass": 1,
+      "fail": 4,
+      "insufficient_evidence": 4
+    },
+    "parameter_budget": {
+      "status": "pass",
+      "actual_parameters": 587019
+    },
+    "generalization": {
+      "status": "fail",
+      "matched_samples": 48,
+      "heldout_score_delta": 0.0
+    },
+    "grounding": {
+      "status": "fail",
+      "box_samples": 5,
+      "extraction_samples": 3,
+      "box_iou_delta": 0.0
+    },
+    "reasoning": {
+      "status": "fail",
+      "complete_counterfactual_groups": 3,
+      "factual_score_delta": 0.0,
+      "counterfactual_score_delta": 0.0
+    },
+    "generation_stability": {
+      "status": "fail",
+      "matched_target_samples": 12,
+      "max_token_rate": 0.5,
+      "degenerate_repetition_rate": 0.0,
+      "violations": [
+        "max_token_rate"
+      ]
+    },
+    "multilingual": {
+      "status": "insufficient_evidence",
+      "missing": "monolingual control evaluation"
+    },
+    "reliability": {
+      "status": "insufficient_evidence",
+      "missing": "heldout calibration evidence"
+    },
+    "visual_efficiency": {
+      "status": "insufficient_evidence",
+      "missing": "target-device visual backend benchmark"
+    },
+    "training_feasibility": {
+      "status": "insufficient_evidence",
+      "missing": "target-device full-student training benchmark"
+    }
+  },
+  "limitations": [
+    "The transfer sources contain deterministic random fixture weights.",
+    "The target is a 587k-parameter contract model with one optimizer step per phase.",
+    "The smoke run proves representative gate wiring, not transfer quality.",
+    "No deployment-capability or quality conclusion is authorized."
+  ]
+}

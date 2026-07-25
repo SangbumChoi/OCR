@@ -93,6 +93,43 @@ def _reward_config():
     )
 
 
+def test_answer_type_round_robin_selection_preserves_task_coverage():
+    from docvlm_eval.schema import Sample
+    from docvlm_eval.student.evaluate import select_evaluation_indices
+    from docvlm_eval.student.posttrain import StructuredPostTrainingDataset
+
+    samples = [
+        Sample(
+            sample_id=f"{answer_type}-{index}",
+            image_path="",
+            question="Question",
+            answers=["Answer"],
+            answer_type=answer_type,
+            metric="exact",
+        )
+        for answer_type in ("table-html", "grounding", "reasoning")
+        for index in range(3)
+    ]
+    dataset = StructuredPostTrainingDataset(samples)
+
+    selected = select_evaluation_indices(
+        dataset,
+        max_samples=3,
+        seed=17,
+        strategy="answer_type_round_robin",
+    )
+
+    assert {
+        dataset.samples[index].answer_type for index in selected
+    } == {"table-html", "grounding", "reasoning"}
+    assert selected == select_evaluation_indices(
+        dataset,
+        max_samples=3,
+        seed=17,
+        strategy="answer_type_round_robin",
+    )
+
+
 def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     import torch
 

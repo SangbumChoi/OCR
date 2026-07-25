@@ -335,6 +335,73 @@ def test_experiment_rejects_non_boolean_generation_cache(tmp_path):
         )
 
 
+def test_experiment_compiles_answer_type_round_robin_evaluation(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["sample_selection"] = "answer_type_round_robin"
+    config = tmp_path / "answer-type-eval.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+
+    assert evaluate.command[
+        evaluate.command.index("--sample-selection") + 1
+    ] == "answer_type_round_robin"
+
+
+def test_capability_smoke_covers_representative_hard_document_cases(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_experiment_capability_tiny.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "capability-smoke.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    train = next(stage for stage in plan.stages if stage.name == "synthetic_train")
+    evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
+
+    only_index = train.command.index("--only")
+    assert set(train.command[only_index + 1 : only_index + 5]) == {
+        "hard_table",
+        "hard_chart",
+        "hard_science",
+        "audit_packet",
+    }
+    assert evaluate.command[
+        evaluate.command.index("--sample-selection") + 1
+    ] == "answer_type_round_robin"
+    assert evaluate.command[
+        evaluate.command.index("--max-samples") + 1
+    ] == "48"
+
+
+def test_experiment_rejects_unknown_evaluation_sample_selection(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["sample_selection"] = "target_length"
+    config = tmp_path / "invalid-selection.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sample_selection"):
+        build_experiment_plan(
+            config,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
+
+
 def test_experiment_rejects_unbounded_answer_type_generation_budget(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(

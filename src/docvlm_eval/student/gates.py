@@ -70,6 +70,20 @@ def _component(row: Mapping[str, Any], name: str) -> float | None:
     return float(value) if value is not None else None
 
 
+def _component_or_malformed_zero(
+    row: Mapping[str, Any],
+    name: str,
+) -> float | None:
+    """Treat a malformed structured response as zero, not missing evidence."""
+
+    value = _component(row, name)
+    if value is not None:
+        return value
+    if row.get("structurally_valid") is False:
+        return 0.0
+    return None
+
+
 def _parameter_budget(
     gate: Mapping[str, Any],
     parameter_counts: Mapping[str, int],
@@ -169,8 +183,24 @@ def _grounding(
     box_pairs = [
         (current_box, baseline_box)
         for current, baseline in pairs
-        if (current_box := _component(current, "box_iou")) is not None
-        and (baseline_box := _component(baseline, "box_iou")) is not None
+        if (
+            str(current.get("metric") or "").lower() == "grounding"
+            or _component(current, "box_iou") is not None
+        )
+        and (
+            current_box := _component_or_malformed_zero(
+                current,
+                "box_iou",
+            )
+        )
+        is not None
+        and (
+            baseline_box := _component_or_malformed_zero(
+                baseline,
+                "box_iou",
+            )
+        )
+        is not None
     ]
     extraction_patterns = tuple(
         str(value).lower()
@@ -186,12 +216,20 @@ def _grounding(
             pattern in str(current.get("answer_type", "")).lower()
             for pattern in extraction_patterns
         )
-        and (current_text := _component(
-            current, "normalized_text_similarity"
-        )) is not None
-        and (baseline_text := _component(
-            baseline, "normalized_text_similarity"
-        )) is not None
+        and (
+            current_text := _component_or_malformed_zero(
+                current,
+                "normalized_text_similarity",
+            )
+        )
+        is not None
+        and (
+            baseline_text := _component_or_malformed_zero(
+                baseline,
+                "normalized_text_similarity",
+            )
+        )
+        is not None
     ]
     if not box_pairs or not text_pairs:
         return _result(

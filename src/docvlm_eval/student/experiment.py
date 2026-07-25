@@ -969,6 +969,11 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             )
     if int(evaluation.get("max_new_tokens", 0)) <= 0:
         raise ValueError("evaluation.max_new_tokens must be positive")
+    if evaluation.get("sample_selection", "random") not in {
+        "random",
+        "answer_type_round_robin",
+    }:
+        raise ValueError("evaluation.sample_selection is unsupported")
     validate_generation_token_budget_policy(
         base_tokens=evaluation["max_new_tokens"],
         hard_cap=evaluation.get(
@@ -2836,6 +2841,12 @@ def build_experiment_plan(
         f"heldout={heldout_samples}",
     ]
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
+    eval_command.extend(
+        [
+            "--sample-selection",
+            str(evaluation.get("sample_selection", "random")),
+        ]
+    )
     for pattern, budget in (
         evaluation.get("max_new_tokens_by_answer_type") or {}
     ).items():

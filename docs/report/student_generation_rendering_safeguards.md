@@ -48,6 +48,12 @@ Per-sample evaluation writes `generation_token_budget` and
 completion width continues to drive preference and RLVR FLOP accounting. The complete policy is
 checkpointed as part of each rollout contract, so changing it invalidates resume.
 
+Bounded smoke evaluations can set `evaluation.sample_selection: answer_type_round_robin`. The
+selector takes one sample from each public `answer_type` before taking a second from any type,
+with deterministic within-type shuffling. It never reads answers, target length, reward, or
+correctness. Baseline and final evaluation therefore retain identical task coverage under a small
+sample budget instead of accidentally omitting tables, grounding, or reasoning slices.
+
 ## Tokenized target-fit audit
 
 The production experiment runs `audit_generation_budgets` after the tokenizer and structured

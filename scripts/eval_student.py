@@ -192,6 +192,15 @@ def main() -> None:
         help="Repeat for exact labels or trailing-wildcard task prefixes.",
     )
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument(
+        "--sample-selection",
+        choices=["random", "answer_type_round_robin"],
+        default="random",
+        help=(
+            "Bounded evaluation subset policy. answer_type_round_robin "
+            "preserves public task-label coverage without reading targets."
+        ),
+    )
     parser.add_argument("--repetition-guard-min-tokens", type=int, default=24)
     parser.add_argument("--repetition-guard-max-period", type=int, default=16)
     parser.add_argument("--repetition-guard-repetitions", type=int, default=3)
@@ -341,6 +350,7 @@ def main() -> None:
         ),
         max_new_tokens_by_answer_type=answer_type_token_budgets,
         max_samples=args.max_samples,
+        sample_selection=args.sample_selection,
         use_kv_cache=not args.no_kv_cache,
         precision=args.precision,
         device=device,

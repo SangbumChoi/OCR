@@ -127,6 +127,21 @@ python scripts/run_student_experiment.py \
   --experiment configs/sub1b_experiment_tiny.yaml
 ```
 
+Use the bounded capability smoke when the task-label sampling and quality-gate inputs also need
+coverage on CPU:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_capability_tiny.yaml \
+  --no-resume
+```
+
+It combines hard tables, charts, scientific pages, and multi-page audit packets with deterministic
+`answer_type_round_robin` evaluation. The run still uses a tiny fixture model and one optimization
+step per phase, so it proves representative gate wiring rather than model quality or target-device
+feasibility. The compact executed evidence is
+[`student_capability_tiny_smoke.json`](../results/student_capability_tiny_smoke.json).
+
 The selective-transfer CPU contract adds deterministic, differently shaped vision and language
 fixture checkpoints. Its 23 stages execute real exact and structured-MLP transfer before the same
 pretraining, SFT, RLVR, matched evaluation, and schema-v3 feedback-plan path:
