@@ -1177,6 +1177,68 @@ def test_experiment_compiles_pinned_hub_initialization_sources(tmp_path):
     ).artifacts[0].kind == "checkpoint_manifest"
 
 
+def test_experiment_compiles_selective_hub_initialization_source(tmp_path):
+    revision = "7" * 40
+    prefix = "model.vision_model.encoder.layers."
+    config = _write_initialization_experiment(
+        tmp_path,
+        {
+            "arm": "I1_vision",
+            "vision_family": "siglip",
+            "vision_source": {
+                "hub": {
+                    "repo_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+                    "revision": revision,
+                    "tensor_prefixes": [prefix],
+                }
+            },
+        },
+    )
+
+    plan = build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+    acquire = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "acquire_vision_checkpoint"
+    )
+    initialize = next(
+        stage for stage in plan.stages if stage.name == "initialize_student"
+    )
+
+    assert acquire.command[1].endswith("acquire_selective_checkpoint.py")
+    assert ("--tensor-prefix", prefix) == (
+        acquire.command[
+            acquire.command.index("--tensor-prefix"):
+            acquire.command.index("--tensor-prefix") + 2
+        ]
+    )
+    assert "--family" not in acquire.command
+    assert "@checkpoint:vision" in initialize.command
+    assert initialize.dependencies == (
+        "train_tokenizer",
+        "acquire_vision_checkpoint",
+    )
+
+
+def test_experiment_rejects_empty_selective_tensor_prefixes(tmp_path):
+    config = _write_initialization_experiment(
+        tmp_path,
+        {
+            "arm": "I1_vision",
+            "vision_source": {
+                "hub": {
+                    "repo_id": "test/model",
+                    "revision": "8" * 40,
+                    "tensor_prefixes": [],
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="tensor_prefixes"):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
+
+
 def test_experiment_fingerprints_local_initialization_sources(tmp_path):
     checkpoint = tmp_path / "source"
     checkpoint.mkdir()

@@ -160,6 +160,15 @@ def audit_lfm_transfer_pilot(
     architecture_profiles = load_architecture_catalog(
         architecture_catalog_source
     )
+    smol_preflight_source = (
+        repo
+        / "docs"
+        / "results"
+        / "selective_transfer_smol_vision_real_source_preflight.json"
+    )
+    smol_preflight = json.loads(
+        smol_preflight_source.read_text(encoding="utf-8")
+    )
     variants = {variant.arm_id: variant for variant in plan.variants}
     required_arms = {
         "native_random",
@@ -341,7 +350,7 @@ def audit_lfm_transfer_pilot(
         architecture_report=architecture_report,
         weight_report=weight_report,
         profiles=architecture_profiles,
-        real_payload_preflight=preflight,
+        real_payload_preflights=[preflight, smol_preflight],
     )
     aligned_selection = next(
         (
@@ -688,6 +697,9 @@ def audit_lfm_transfer_pilot(
             ),
             "catalog_fingerprint": _file_fingerprint(
                 architecture_catalog_source
+            ),
+            "smol_vision_preflight_fingerprint": _file_fingerprint(
+                smol_preflight_source
             ),
         },
         "checks": checks,

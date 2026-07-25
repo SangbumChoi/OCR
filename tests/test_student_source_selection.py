@@ -28,9 +28,12 @@ def _build():
         load_architecture_catalog(
             ROOT / "configs" / "small_vlm_architectures.yaml"
         ),
-        real_payload_preflight=_read(
-            "selective_transfer_lfm_real_source_preflight.json"
-        ),
+        real_payload_preflights=[
+            _read("selective_transfer_lfm_real_source_preflight.json"),
+            _read(
+                "selective_transfer_smol_vision_real_source_preflight.json"
+            ),
+        ],
     )
 
 
@@ -97,6 +100,18 @@ def test_matrix_keeps_population_statistics_out_of_copy_authority():
     assert report["promotion_claim_authorized"] is False
 
 
+def test_matrix_binds_verified_smol_vision_payload_to_both_targets():
+    report = _build()
+    for target in ("docvlm-800m", "docvlm-lfm-aligned-814m"):
+        smol = _source(report, target, "smolvlm2-500m")
+        assert smol["real_payload_evidence"]["status"] == "verified"
+        assert smol["real_payload_evidence"]["component"] == "vision"
+        assert (
+            smol["real_payload_evidence"]["copied_parameters"]
+            == 85_054_464
+        )
+
+
 def test_missing_position_weight_role_requires_payload_preflight():
     report = _build()
     internvl = _source(report, "docvlm-800m", "internvl3-1b")
@@ -129,9 +144,12 @@ def test_matrix_validation_rejects_stale_upstream_evidence():
         profiles=load_architecture_catalog(
             ROOT / "configs" / "small_vlm_architectures.yaml"
         ),
-        real_payload_preflight=_read(
-            "selective_transfer_lfm_real_source_preflight.json"
-        ),
+        real_payload_preflights=[
+            _read("selective_transfer_lfm_real_source_preflight.json"),
+            _read(
+                "selective_transfer_smol_vision_real_source_preflight.json"
+            ),
+        ],
     )
 
     assert audit["status"] == "fail"

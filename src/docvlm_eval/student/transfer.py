@@ -21,6 +21,7 @@ _LANGUAGE_ATTENTION = re.compile(
     r"^language\.blocks\.(\d+)\.attn\."
 )
 _SHAPE_POLICIES = {"exact", "structured_mlp"}
+_VISION_SCOPES = {"all", "transformer_blocks"}
 
 
 @dataclass
@@ -28,6 +29,7 @@ class TransferReport:
     family: str
     fractions: dict[str, float]
     shape_policy: str
+    vision_scope: str
     require_attention_geometry: bool
     require_healthy_source_weights: bool
     source_identity: dict[str, Any] | None = None
@@ -700,6 +702,7 @@ def selective_transfer(
     token_map: Mapping[int, int] | None = None,
     copy_token_embeddings: bool | None = None,
     shape_policy: str = "exact",
+    vision_scope: str = "all",
     source_identity: Mapping[str, Any] | None = None,
     source_attention_geometry: Mapping[str, Any] | None = None,
     require_attention_geometry: bool = False,
@@ -713,6 +716,10 @@ def selective_transfer(
     if shape_policy not in _SHAPE_POLICIES:
         raise ValueError(
             f"shape_policy must be one of {sorted(_SHAPE_POLICIES)}"
+        )
+    if vision_scope not in _VISION_SCOPES:
+        raise ValueError(
+            f"vision_scope must be one of {sorted(_VISION_SCOPES)}"
         )
     normalized_fractions = {
         component: float(fractions.get(component, 0.0))
@@ -805,6 +812,7 @@ def selective_transfer(
         family=family,
         fractions=normalized_fractions,
         shape_policy=shape_policy,
+        vision_scope=vision_scope,
         require_attention_geometry=require_attention_geometry,
         require_healthy_source_weights=require_healthy_source_weights,
         source_identity=(
@@ -866,6 +874,13 @@ def selective_transfer(
         if component == "lm_head":
             component = "language"
         if component not in normalized_fractions or normalized_fractions[component] <= 0:
+            report.skipped_by_policy += 1
+            continue
+        if (
+            component == "vision"
+            and vision_scope == "transformer_blocks"
+            and not target_key.startswith("vision.blocks.")
+        ):
             report.skipped_by_policy += 1
             continue
         if target_key == "lm_head.weight" and "language.token_embedding.weight" in target:

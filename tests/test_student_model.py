@@ -1269,6 +1269,59 @@ def test_selective_transfer_reports_shape_mismatch_without_cropping():
     assert any(item["target"] == key for item in report.skipped_shape)
 
 
+def test_vision_block_scope_excludes_interface_and_final_norm():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    original = {
+        key: value.clone() for key, value in student.state_dict().items()
+    }
+    source = {
+        key: torch.full_like(value, 0.25)
+        for key, value in student.state_dict().items()
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"vision": 1.0},
+        vision_scope="transformer_blocks",
+    )
+
+    assert report.vision_scope == "transformer_blocks"
+    assert report.copied_keys
+    assert all(
+        key.startswith("vision.blocks.") for key in report.copied_keys
+    )
+    for key in (
+        "vision.patch_embed.weight",
+        "vision.patch_embed.bias",
+        "vision.position_embedding",
+        "vision.norm.weight",
+        "vision.norm.bias",
+    ):
+        assert torch.equal(student.state_dict()[key], original[key])
+
+
+def test_selective_transfer_rejects_unknown_vision_scope():
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    with pytest.raises(ValueError, match="vision_scope"):
+        selective_transfer(
+            student,
+            student.state_dict(),
+            {"vision": 1.0},
+            vision_scope="patch_and_pray",
+        )
+
+
 def test_structured_mlp_transfer_uses_one_joint_channel_selection():
     import torch
 

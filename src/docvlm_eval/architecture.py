@@ -666,6 +666,11 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 f"{arm_id}.shape_policy must be exact or structured_mlp"
             )
+        vision_scope = arm.get("vision_scope", "all")
+        if vision_scope not in {"all", "transformer_blocks"}:
+            errors.append(
+                f"{arm_id}.vision_scope must be all or transformer_blocks"
+            )
         if not isinstance(
             arm.get("require_attention_geometry", False),
             bool,

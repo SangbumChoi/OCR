@@ -146,6 +146,7 @@ class HubCheckpointSpec:
     revision: str
     family: str
     allow_patterns: tuple[str, ...] = _DEFAULT_ALLOW_PATTERNS
+    tensor_prefixes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.repo_id or "/" not in self.repo_id:
@@ -156,6 +157,8 @@ class HubCheckpointSpec:
             raise ValueError("checkpoint family must be student, siglip, llama, or lfm2")
         if not self.allow_patterns:
             raise ValueError("checkpoint allow_patterns cannot be empty")
+        if any(not prefix for prefix in self.tensor_prefixes):
+            raise ValueError("checkpoint tensor_prefixes must be non-empty strings")
 
 
 def validate_checkpoint_snapshot(
@@ -225,6 +228,10 @@ def acquire_hub_checkpoint(
 ) -> dict[str, Any]:
     """Acquire a pinned snapshot in the shared Hub cache and write a run manifest."""
 
+    if spec.tensor_prefixes:
+        raise ValueError(
+            "tensor-prefix checkpoint specs require selective acquisition"
+        )
     if snapshot_loader is None:
         from huggingface_hub import snapshot_download
 
@@ -261,10 +268,19 @@ def checkpoint_manifest_valid(
     try:
         manifest_path = Path(path)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        snapshot = Path(manifest["snapshot_path"])
-        if manifest.get("kind") != "huggingface_model_checkpoint" or not snapshot.is_dir():
+        kind = manifest.get("kind")
+        if kind == "huggingface_model_checkpoint":
+            snapshot = Path(manifest["snapshot_path"])
+            files = manifest.get("files", [])
+        elif kind == "selective_hub_safetensors_subset":
+            output = manifest["output"]
+            snapshot = Path(output["path"])
+            files = output.get("files", [])
+        else:
             return False
-        for record in manifest.get("files", []):
+        if not snapshot.is_dir():
+            return False
+        for record in files:
             candidate = snapshot / str(record["path"])
             if not candidate.is_file() or candidate.stat().st_size != int(record["bytes"]):
                 return False
@@ -272,7 +288,7 @@ def checkpoint_manifest_valid(
                 "sha256"
             ):
                 return False
-        return bool(manifest.get("files"))
+        return bool(files)
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return False
 
@@ -281,4 +297,6 @@ def checkpoint_path_from_manifest(path: str | Path) -> Path:
     if not checkpoint_manifest_valid(path, verify_hashes=True):
         raise ValueError(f"checkpoint manifest is invalid or incomplete: {path}")
     manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+    if manifest["kind"] == "selective_hub_safetensors_subset":
+        return Path(manifest["output"]["path"])
     return Path(manifest["snapshot_path"])

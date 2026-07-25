@@ -157,6 +157,17 @@ initialization_arms:
     minimum_component_parameter_fraction: {language: 0.50}
     policy: "Use the strict type-aware language policy and fail unless at least half of deployed language parameters are initialized from an operator-compatible source."
     purpose: "Fail-closed LFM initialization for the source-aligned sub-1B language profile."
+  - id: I9_lfm_smol_dual
+    shape_policy: structured_mlp
+    vision_scope: transformer_blocks
+    require_attention_geometry: true
+    require_healthy_source_weights: true
+    vision_transfer: 1.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.95, language: 0.50}
+    policy: "Copy only exact SmolVLM2 transformer blocks, excluding patch, position, final-norm, and connector tensors, while applying strict LFM language transfer."
+    purpose: "Tests whether the cross-model vision-block candidate adds document perception without conflating incompatible visual interfaces."
 
 training:
   activation_checkpointing:

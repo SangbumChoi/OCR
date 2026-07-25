@@ -24,6 +24,7 @@ def _compact_transfer_report(
         "component": report["component"],
         "family": report["family"],
         "shape_policy": report["shape_policy"],
+        "vision_scope": report["vision_scope"],
         "source_identity": {
             "content_fingerprint": source_identity.get(
                 "content_fingerprint"
@@ -104,6 +105,11 @@ def main() -> None:
     parser.add_argument("--init-arm", default="I0_random")
     parser.add_argument("--vision-source", type=Path)
     parser.add_argument("--vision-family", default="student", choices=["student", "siglip"])
+    parser.add_argument(
+        "--vision-transfer-scope",
+        default=None,
+        choices=["all", "transformer_blocks"],
+    )
     parser.add_argument("--language-source", type=Path)
     parser.add_argument(
         "--language-family",
@@ -189,6 +195,10 @@ def main() -> None:
                 {"vision": arm["vision_transfer"]},
                 family=args.vision_family,
                 shape_policy=str(arm.get("shape_policy", "exact")),
+                vision_scope=str(
+                    args.vision_transfer_scope
+                    or arm.get("vision_scope", "all")
+                ),
                 source_identity=vision_identity,
                 require_attention_geometry=bool(
                     arm.get("require_attention_geometry", False)

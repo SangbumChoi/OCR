@@ -88,8 +88,8 @@ def _markdown(report: dict[str, Any]) -> str:
             "candidate. The recorded real-payload run verifies this language transfer "
             "at 80.49% coverage with zero shape, semantic, or missing-source skips.",
             "- SmolVLM2 is a vision-block candidate for both targets, but it remains "
-            "unexecuted pairwise evidence and must not be combined with the LFM result "
-            "as though a dual-source checkpoint had been tested.",
+            "separately verified at payload level. A checkpoint combining Smol vision "
+            "and LFM language still requires matched training evidence.",
             "- Position weights without sampled semantic-role evidence require a "
             "pairwise payload preflight even when the config convention matches.",
             "- Token embeddings remain identity-map gated. Vocabulary width equality "
@@ -147,6 +147,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--smol-vision-preflight",
+        type=Path,
+        default=(
+            ROOT
+            / "docs"
+            / "results"
+            / "selective_transfer_smol_vision_real_source_preflight.json"
+        ),
+    )
+    parser.add_argument(
         "--json-output",
         type=Path,
         default=(
@@ -171,19 +181,22 @@ def main() -> None:
     architecture_report = _read(args.architecture_report)
     weight_report = _read(args.weight_report)
     profiles = load_architecture_catalog(args.catalog)
-    real_payload_preflight = _read(args.real_payload_preflight)
+    real_payload_preflights = [
+        _read(args.real_payload_preflight),
+        _read(args.smol_vision_preflight),
+    ]
     report = build_source_selection_matrix(
         architecture_report,
         weight_report,
         profiles,
-        real_payload_preflight=real_payload_preflight,
+        real_payload_preflights=real_payload_preflights,
     )
     audit = validate_source_selection_matrix(
         report,
         architecture_report=architecture_report,
         weight_report=weight_report,
         profiles=profiles,
-        real_payload_preflight=real_payload_preflight,
+        real_payload_preflights=real_payload_preflights,
     )
     if audit["status"] != "pass":
         raise SystemExit("\n".join(audit["errors"]))

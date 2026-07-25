@@ -156,58 +156,96 @@ def _real_payload_evidence(
     *,
     target: str,
     profile: Mapping[str, Any],
-    preflight: Mapping[str, Any] | None,
+    preflights: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    if preflight is None:
+    if not preflights:
         return {"status": "not_supplied"}
-    source = preflight.get("source")
-    transfer = preflight.get("transfer")
-    target_record = preflight.get("target")
-    if not all(
-        isinstance(item, Mapping)
-        for item in (source, transfer, target_record)
-    ):
-        return {"status": "invalid"}
-    relevant = (
-        target == "docvlm-lfm-aligned-814m"
-        and source.get("model") == profile.get("model_id")
-        and source.get("revision") == profile.get("revision")
-    )
-    if not relevant:
-        return {"status": "not_applicable"}
-    verified = (
-        preflight.get("claim_scope")
-        == "real_source_initialization_contract_only"
-        and preflight.get("quality_claim_authorized") is False
-        and transfer.get("component") == "language"
-        and transfer.get("attention_geometry_compatible") is True
-        and transfer.get("short_convolution_compatible") is True
-        and transfer.get("mlp_operator_compatible") is True
-        and transfer.get("value_verified") is True
-        and not transfer.get("unhealthy_source_weight_roles")
-        and int(transfer.get("shape_skips") or 0) == 0
-        and int(transfer.get("semantic_skips") or 0) == 0
-        and int(transfer.get("missing_source") or 0) == 0
-        and float(
-            transfer.get("realized_component_parameter_fraction") or 0
+    for preflight in preflights:
+        source = preflight.get("source")
+        transfer = preflight.get("transfer")
+        target_record = preflight.get("target")
+        if not all(
+            isinstance(item, Mapping)
+            for item in (source, transfer, target_record)
+        ):
+            continue
+        relevant = (
+            source.get("model") == profile.get("model_id")
+            and source.get("revision") == profile.get("revision")
         )
-        >= float(
-            transfer.get("minimum_component_parameter_fraction") or 1
+        if not relevant:
+            continue
+        lfm = (
+            target == "docvlm-lfm-aligned-814m"
+            and preflight.get("claim_scope")
+            == "real_source_initialization_contract_only"
+            and transfer.get("component") == "language"
         )
-    )
-    return {
-        "status": "verified" if verified else "failed",
-        "component": transfer.get("component"),
-        "copied_parameters": transfer.get("copied_parameters"),
-        "realized_component_parameter_fraction": transfer.get(
-            "realized_component_parameter_fraction"
-        ),
-        "value_verified": transfer.get("value_verified"),
-        "shape_skips": transfer.get("shape_skips"),
-        "semantic_skips": transfer.get("semantic_skips"),
-        "missing_source": transfer.get("missing_source"),
-        "source_content_fingerprint": source.get("content_fingerprint"),
-    }
+        smol = (
+            preflight.get("claim_scope")
+            == "real_source_vision_initialization_contract_only"
+            and target_record.get("architecture")
+            == "docvlm-production-vision"
+            and transfer.get("vision_scope") == "transformer_blocks"
+            and transfer.get("all_copied_keys_within_scope") is True
+        )
+        if not (lfm or smol):
+            continue
+        minimum = (
+            float(
+                transfer.get(
+                    "minimum_component_parameter_fraction"
+                )
+                or 1
+            )
+            if lfm
+            else 0.95
+        )
+        verified = (
+            preflight.get("quality_claim_authorized") is False
+            and preflight.get("promotion_claim_authorized", False) is False
+            and transfer.get("value_verified") is True
+            and not transfer.get("unhealthy_source_weight_roles")
+            and int(transfer.get("shape_skips") or 0) == 0
+            and int(transfer.get("semantic_skips") or 0) == 0
+            and int(transfer.get("missing_source") or 0) == 0
+            and float(
+                transfer.get(
+                    "realized_component_parameter_fraction"
+                )
+                or 0
+            )
+            >= minimum
+            and (
+                not lfm
+                or (
+                    transfer.get("attention_geometry_compatible")
+                    is True
+                    and transfer.get("short_convolution_compatible")
+                    is True
+                    and transfer.get("mlp_operator_compatible") is True
+                )
+            )
+        )
+        return {
+            "status": "verified" if verified else "failed",
+            "claim_scope": preflight.get("claim_scope"),
+            "component": transfer.get("component")
+            or target_record.get("component"),
+            "copied_parameters": transfer.get("copied_parameters"),
+            "realized_component_parameter_fraction": transfer.get(
+                "realized_component_parameter_fraction"
+            ),
+            "value_verified": transfer.get("value_verified"),
+            "shape_skips": transfer.get("shape_skips"),
+            "semantic_skips": transfer.get("semantic_skips"),
+            "missing_source": transfer.get("missing_source"),
+            "source_content_fingerprint": source.get(
+                "content_fingerprint"
+            )
+            or source.get("selected_content_fingerprint"),
+        }
+    return {"status": "not_applicable"}
 
 
 def build_source_selection_matrix(
@@ -215,7 +253,7 @@ def build_source_selection_matrix(
     weight_report: Mapping[str, Any],
     profiles: Sequence[Mapping[str, Any]],
     *,
-    real_payload_preflight: Mapping[str, Any] | None = None,
+    real_payload_preflights: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Compose topology, sampled-weight, and real-payload transfer evidence."""
 
@@ -276,7 +314,7 @@ def build_source_selection_matrix(
             payload = _real_payload_evidence(
                 target=target_id,
                 profile=profile,
-                preflight=real_payload_preflight,
+                preflights=real_payload_preflights,
             )
             sources.append(
                 {
@@ -323,10 +361,9 @@ def build_source_selection_matrix(
                 "report_fingerprint"
             ),
             "catalog_fingerprint": _stable_fingerprint(list(profiles)),
-            "real_payload_fingerprint": (
-                None
-                if real_payload_preflight is None
-                else _stable_fingerprint(real_payload_preflight)
+            "real_payload_fingerprints": sorted(
+                _stable_fingerprint(item)
+                for item in real_payload_preflights
             ),
         },
         "decision_contract": {
@@ -351,7 +388,7 @@ def validate_source_selection_matrix(
     architecture_report: Mapping[str, Any] | None = None,
     weight_report: Mapping[str, Any] | None = None,
     profiles: Sequence[Mapping[str, Any]] | None = None,
-    real_payload_preflight: Mapping[str, Any] | None = None,
+    real_payload_preflights: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Validate internal integrity and the fail-closed claim boundary."""
 
@@ -404,10 +441,13 @@ def validate_source_selection_matrix(
                 if profiles is None
                 else _stable_fingerprint(list(profiles))
             ),
-            "real_payload_fingerprint": (
+            "real_payload_fingerprints": (
                 None
-                if real_payload_preflight is None
-                else _stable_fingerprint(real_payload_preflight)
+                if real_payload_preflights is None
+                else sorted(
+                    _stable_fingerprint(item)
+                    for item in real_payload_preflights
+                )
             ),
         }
         for field, expected in expected_inputs.items():

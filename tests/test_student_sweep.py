@@ -1304,6 +1304,53 @@ def test_lfm_language_transfer_pilot_is_bounded_and_non_promotional(tmp_path):
         assert "screening-only" in experiment["evaluation"]["wandb_tags"]
 
 
+def test_smol_vision_transfer_pilot_is_matched_and_selective(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_smol_vision_transfer_pilot.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "smol-vision-transfer-pilot.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 2
+    assert plan.replicates == ("seed_0",)
+    assert plan.baseline == "lfm_language_only"
+    assert plan.promotion is None
+    assert {variant.arm_id for variant in plan.variants} == {
+        "lfm_language_only",
+        "lfm_smol_dual",
+    }
+    for variant in plan.variants:
+        experiment = variant.plan.raw_spec
+        vision_hub = experiment["initialization"]["vision_source"]["hub"]
+        assert vision_hub["tensor_prefixes"] == [
+            "model.vision_model.encoder.layers."
+        ]
+        acquire = next(
+            stage
+            for stage in variant.plan.stages
+            if stage.name == "acquire_vision_checkpoint"
+        )
+        assert acquire.command[1].endswith(
+            "acquire_selective_checkpoint.py"
+        )
+        assert "--tensor-prefix" in acquire.command
+        assert variant.parameters["total"] == 814_207_243
+        assert experiment["evaluation"]["max_samples"] == 64
+        assert "screening-only" in experiment["evaluation"]["wandb_tags"]
+
+
 def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_visual_canvas_sweep.yaml").read_text(

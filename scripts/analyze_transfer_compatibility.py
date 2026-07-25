@@ -42,6 +42,11 @@ def main() -> None:
         default="exact",
         choices=["exact", "structured_mlp"],
     )
+    parser.add_argument(
+        "--vision-transfer-scope",
+        default="all",
+        choices=["all", "transformer_blocks"],
+    )
     parser.add_argument("--language-attention-heads", type=int)
     parser.add_argument("--language-kv-heads", type=int)
     parser.add_argument("--language-rope-base", type=float)
@@ -145,6 +150,7 @@ def main() -> None:
         {args.component: args.fraction},
         family=spec.family,
         shape_policy=args.shape_policy,
+        vision_scope=args.vision_transfer_scope,
         source_attention_geometry=source_geometry,
         require_attention_geometry=args.require_attention_geometry,
     ).to_dict()
@@ -160,6 +166,7 @@ def main() -> None:
         "component": args.component,
         "fraction": args.fraction,
         "shape_policy": args.shape_policy,
+        "vision_transfer_scope": args.vision_transfer_scope,
         "require_attention_geometry": args.require_attention_geometry,
         "source_attention_geometry": source_geometry,
         "target_attention_geometry": report[

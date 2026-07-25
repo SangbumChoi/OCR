@@ -340,6 +340,29 @@ def _checkpoint_sources(
             checkpoint_kwargs["allow_patterns"] = tuple(
                 str(pattern) for pattern in hub["allow_patterns"]
             )
+        if "tensor_prefixes" in hub:
+            raw_prefixes = hub["tensor_prefixes"]
+            if (
+                not isinstance(raw_prefixes, list)
+                or not raw_prefixes
+                or any(
+                    not isinstance(prefix, str) or not prefix
+                    for prefix in raw_prefixes
+                )
+            ):
+                raise ValueError(
+                    "selective Hub tensor_prefixes must be a non-empty "
+                    "list of non-empty strings"
+                )
+            checkpoint_kwargs["tensor_prefixes"] = tuple(
+                raw_prefixes
+            )
+        if checkpoint_kwargs.get("tensor_prefixes") and hub.get(
+            "allow_patterns"
+        ) is not None:
+            raise ValueError(
+                "selective Hub sources cannot also define allow_patterns"
+            )
         spec = HubCheckpointSpec(
             repo_id=str(hub.get("repo_id") or ""),
             revision=str(hub.get("revision") or ""),
@@ -1923,21 +1946,47 @@ def build_experiment_plan(
     for component, spec in checkpoint_specs.items():
         stage_name = f"acquire_{component}_checkpoint"
         manifest = checkpoint_manifests[component]
+        if spec.tensor_prefixes:
+            output_dir = (
+                artifacts
+                / "initialization_sources"
+                / f"{component}_checkpoint"
+            )
+            command = [
+                python,
+                script("acquire_selective_checkpoint.py"),
+                "--repo-id",
+                spec.repo_id,
+                "--revision",
+                spec.revision,
+            ]
+            for prefix in spec.tensor_prefixes:
+                command.extend(["--tensor-prefix", prefix])
+            command.extend(
+                [
+                    "--output-dir",
+                    str(output_dir),
+                    "--manifest",
+                    str(manifest),
+                ]
+            )
+        else:
+            command = [
+                python,
+                script("acquire_student_checkpoint.py"),
+                "--repo-id",
+                spec.repo_id,
+                "--revision",
+                spec.revision,
+                "--family",
+                spec.family,
+                "--output",
+                str(manifest),
+            ]
         stages.append(
             ExperimentStage(
                 stage_name,
-                (
-                    python,
-                    script("acquire_student_checkpoint.py"),
-                    "--repo-id",
-                    spec.repo_id,
-                    "--revision",
-                    spec.revision,
-                    "--family",
-                    spec.family,
-                    "--output",
-                    str(manifest),
-                ),
+                tuple(command),
                 (),
                 (Artifact(str(manifest), "checkpoint_manifest"),),
             )

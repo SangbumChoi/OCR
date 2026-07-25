@@ -64,6 +64,7 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     blueprint["initialization_arms"][5][
         "require_healthy_source_weights"
     ] = "yes"
+    blueprint["initialization_arms"][6]["vision_scope"] = "patch_and_pray"
 
     _, errors = validate_blueprint(blueprint)
 
@@ -86,6 +87,7 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
         "require_healthy_source_weights must be a boolean" in error
         for error in errors
     )
+    assert any("vision_scope must be" in error for error in errors)
 
 
 def test_blueprint_rejects_an_unbounded_malformed_recovery():

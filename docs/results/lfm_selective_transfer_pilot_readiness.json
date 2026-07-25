@@ -248,7 +248,7 @@
     "fail": 0,
     "pass": 15
   },
-  "fingerprint": "sha256:d943da58b4c1c3fd20caca5026a93fe90118a89031600156b683ed622fb41141",
+  "fingerprint": "sha256:5ab1bb793d13270221b9211eba2d5081361f2eab59f02a438f770f36ba947b0d",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
@@ -267,9 +267,10 @@
     "architecture_report_fingerprint": "sha256:406ea9d266644d175ab995878f149c7583953e758863bc686db78896dbfabebf",
     "catalog_fingerprint": "sha256:8b518c54f51c96bf95cc6e6603e6eaa5b4eb78a54cb03ad205134efecf3408b9",
     "claim_scope": "selective_transfer_source_selection_only",
-    "report_fingerprint": "sha256:524c0e937f59f2fd1c0c70bcc3e7529216ccacf38e862dfd29389f18d921607e",
+    "report_fingerprint": "sha256:ff03a56387d2375e96c99beee4463ebcb83f29846e7f5d5ea6cc28a8dd6df66b",
+    "smol_vision_preflight_fingerprint": "sha256:d66f9707db46c4b870dd425095ddae006d51b06f7cd4d4381f787f4fdf1f5b87",
     "source": "docs/results/selective_transfer_source_matrix.json",
-    "source_fingerprint": "sha256:41ff19091331c8dc243465edd41c4456c2abc40a7a9d35efed7e1027585cd5e9",
+    "source_fingerprint": "sha256:cbbc7a9c23d7150663956dbaaee3e98ba246ac02f7e4be52c0eb8af0d2ad22fd",
     "weight_report_fingerprint": "sha256:789c74acdbe6c8f061b85dbb851f7b536f1a643fcf59b955a29450c881e56b61"
   },
   "sweep": {

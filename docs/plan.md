@@ -197,6 +197,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/student_lfm_language_transfer_sweep.md`](report/student_lfm_language_transfer_sweep.md)
   — a sub-1B LFM-compatible language control, zero-allocation transfer proof, and paired
   architecture and aligned-transfer sweep.
+- **Test cross-model vision-block transfer:**
+  [`report/student_smol_vision_transfer_pilot.md`](report/student_smol_vision_transfer_pilot.md)
+  — exact SmolVLM2 transformer-block acquisition, real-payload copy verification, and a bounded
+  matched pilot against the same LFM language initialization.
 - **Guard long structured generation and rendering:**
   [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
   — exact suffix-cycle termination, bounded task-aware token horizons, a leakage-safe tokenized

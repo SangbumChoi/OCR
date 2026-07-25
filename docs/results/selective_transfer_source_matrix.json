@@ -11,12 +11,15 @@
   "inputs": {
     "architecture_report_fingerprint": "sha256:7476278ef62b5685563ec0533f645997487937b966fe5a7fba522fffeb60579d",
     "catalog_fingerprint": "sha256:1895233b3df7dee5e29fe255c9f3d905214f2d0e81fe839e7e8f7b6fa789799a",
-    "real_payload_fingerprint": "sha256:2ed151c5251d84cd9031441a4a0a73b5330ce13de49efb9db6f0b1d55a31cc02",
+    "real_payload_fingerprints": [
+      "sha256:2ed151c5251d84cd9031441a4a0a73b5330ce13de49efb9db6f0b1d55a31cc02",
+      "sha256:d4fe134413d3eec05b22649bbe4d26369ba60cb162811749b20f512b6fbb47ee"
+    ],
     "weight_report_fingerprint": "sha256:f7adced9840e0bba8560e97dfdda8bd6fab54cd04d0b46696b409652497ba384"
   },
   "promotion_claim_authorized": false,
   "quality_claim_authorized": false,
-  "report_fingerprint": "sha256:524c0e937f59f2fd1c0c70bcc3e7529216ccacf38e862dfd29389f18d921607e",
+  "report_fingerprint": "sha256:ff03a56387d2375e96c99beee4463ebcb83f29846e7f5d5ea6cc28a8dd6df66b",
   "schema_version": 1,
   "targets": [
     {
@@ -99,7 +102,16 @@
           ],
           "model_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
           "real_payload_evidence": {
-            "status": "not_applicable"
+            "claim_scope": "real_source_vision_initialization_contract_only",
+            "component": "vision",
+            "copied_parameters": 85054464,
+            "missing_source": 0,
+            "realized_component_parameter_fraction": 0.9593970632823667,
+            "semantic_skips": 0,
+            "shape_skips": 0,
+            "source_content_fingerprint": "sha256:4b800d8bb77adbee0e349c01d809fc4bda27b4ee7dd2aafdb23f12886d3dda13",
+            "status": "verified",
+            "value_verified": true
           },
           "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
           "sampled_weight_roles": 18,
@@ -515,6 +527,7 @@
           ],
           "model_id": "LiquidAI/LFM2.5-VL-1.6B",
           "real_payload_evidence": {
+            "claim_scope": "real_source_initialization_contract_only",
             "component": "language",
             "copied_parameters": 553748992,
             "missing_source": 0,
@@ -608,7 +621,16 @@
           ],
           "model_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
           "real_payload_evidence": {
-            "status": "not_applicable"
+            "claim_scope": "real_source_vision_initialization_contract_only",
+            "component": "vision",
+            "copied_parameters": 85054464,
+            "missing_source": 0,
+            "realized_component_parameter_fraction": 0.9593970632823667,
+            "semantic_skips": 0,
+            "shape_skips": 0,
+            "source_content_fingerprint": "sha256:4b800d8bb77adbee0e349c01d809fc4bda27b4ee7dd2aafdb23f12886d3dda13",
+            "status": "verified",
+            "value_verified": true
           },
           "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
           "sampled_weight_roles": 18,
