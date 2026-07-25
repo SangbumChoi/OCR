@@ -82,7 +82,9 @@ It ranks channels by the joint squared L2 norm of gate rows, up rows, and down c
 the selected channels in source order, and applies that same index set to all three weights.
 Incomplete groups, hidden-width mismatches, and source-smaller-than-target groups remain random.
 The LFM2 adapter covers attention, gated short convolution, norms, and SwiGLU projections for
-hybrid students. Metadata records copied keys and parameters, missing source keys, and shape
+hybrid students. Hybrid depth reduction maps attention targets only to attention sources and
+short-convolution targets only to short-convolution sources. Metadata records copied keys and
+parameters, missing source keys, and shape
 mismatches in `artifacts/initial/metadata.json`. It also records canonical source and target
 topology SHA-256 values and an ordered mapping manifest with source key, target key, shape, dtype,
 copy method, and copied parameter count for every transferred tensor. Exact, token-row, and
@@ -102,6 +104,7 @@ copied parameters against a component-relative floor declared by the arm:
 | `I4_selective` | 40% | 7.5% |
 | `I5_structured_mlp` | 40% | 25% |
 | `I6_strict_structured` | 40% | 25% |
+| `I8_lfm_aligned_language` | n/a | 50% |
 
 These conservative floors sit below the pinned compatibility counts but reject a source,
 canonicalization, or architecture change that leaves only a token number of copied tensors.
@@ -124,12 +127,13 @@ or copied-value fingerprint; exact resume rejects lineage drift; and experiment 
 the use-time source identity to match the planned local checkpoint or pinned acquisition manifest.
 Legacy schema-version-1 lineages remain loadable but are insufficient execution evidence.
 
-`I6_strict_structured` adds a semantic attention gate. It reads hidden width, query heads, KV
-heads, head dimension, and RoPE base from the checkpoint config. Missing geometry fails closed;
-any mismatch leaves selected attention tensors random and records `skipped_semantic`. This matters
-for the pinned Qwen source: Q and O matrix shapes match the default student even though Qwen uses
-12/2 heads, 128-dimensional heads, and RoPE base 1,000,000 while the default student uses 24/8,
-64-dimensional heads, and RoPE base 10,000.
+`I6_strict_structured` and `I8_lfm_aligned_language` add semantic operator gates. They read hidden
+width, query heads, KV heads, head dimension, RoPE base and layout, norm epsilon, Q/K
+normalization, projection bias, MLP bias, short-convolution kernel, and convolution bias from the
+checkpoint config. Missing geometry fails closed; any mismatch leaves the affected tensors random
+and records `skipped_semantic`. This matters even when matrix shapes happen to match: changing
+RoPE channel layout or omitting Q/K normalization changes the operator implemented by copied
+weights.
 
 ## Matched experiment
 
@@ -176,3 +180,8 @@ The geometry-by-transfer factorial is documented in
 [`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).
 It uses a strict transfer arm and paired linear contrasts to distinguish a generally better
 attention architecture from an architecture that specifically receives the pinned teacher better.
+
+The LFM-specific aligned profile and three-arm paired sweep are documented in
+[`student_lfm_language_transfer_sweep.md`](student_lfm_language_transfer_sweep.md). Its meta-device
+preflight executes the real adapter and proves an 80.49% language-parameter transfer dose before
+checkpoint payloads are downloaded.

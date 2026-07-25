@@ -289,7 +289,7 @@ def test_attention_geometry_transfer_factorial_compiles_four_cells(tmp_path):
     assert plan.promotion is None
     expected = {
         "native_random": (799_919_884, 24, 8, 10_000.0, "I0_random"),
-        "qwen_random": (781_820_172, 12, 2, 1_000_000.0, "I0_random"),
+        "qwen_random": (781_513_996, 12, 2, 1_000_000.0, "I0_random"),
         "native_strict_transfer": (
             799_919_884,
             24,
@@ -298,7 +298,7 @@ def test_attention_geometry_transfer_factorial_compiles_four_cells(tmp_path):
             "I6_strict_structured",
         ),
         "qwen_strict_transfer": (
-            781_820_172,
+            781_513_996,
             12,
             2,
             1_000_000.0,
@@ -314,6 +314,10 @@ def test_attention_geometry_transfer_factorial_compiles_four_cells(tmp_path):
         assert language["attention_heads"] == heads
         assert language["kv_heads"] == kv_heads
         assert language["rope_base"] == rope_base
+        if variant.arm_id.startswith("qwen_"):
+            assert language["rope_layout"] == "half_split"
+            assert language["attention_bias"] is False
+            assert language["mlp_bias"] is False
         assert variant.plan.raw_spec["initialization"]["arm"] == arm
     interaction = next(
         contrast
@@ -1069,6 +1073,52 @@ def test_sequence_teacher_sweep_compiles_pinned_fixed_dose_arms(tmp_path):
             apply.command[apply.command.index("--accepted-target-count") + 1]
             == "400"
         )
+
+
+def test_lfm_language_transfer_sweep_compiles_aligned_sub1b_runs(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_lfm_language_transfer_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "lfm-language-transfer-sweep.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 9
+    assert plan.baseline == "native_random"
+    assert {variant.arm_id for variant in plan.variants} == {
+        "native_random",
+        "lfm_random",
+        "lfm_strict_transfer",
+    }
+    for variant in plan.variants:
+        initialization = variant.plan.raw_spec["initialization"]
+        source = initialization["language_source"]["hub"]
+        assert initialization["language_family"] == "lfm2"
+        assert source == {
+            "repo_id": "LiquidAI/LFM2.5-VL-1.6B",
+            "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+        }
+        if variant.arm_id.startswith("lfm_"):
+            assert variant.parameters["total"] == 814_207_243
+        else:
+            assert variant.parameters["total"] == 799_919_884
+        expected_arm = (
+            "I8_lfm_aligned_language"
+            if variant.arm_id == "lfm_strict_transfer"
+            else "I0_random"
+        )
+        assert initialization["arm"] == expected_arm
 
 
 def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):

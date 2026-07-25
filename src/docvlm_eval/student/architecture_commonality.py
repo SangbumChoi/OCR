@@ -45,6 +45,14 @@ _COMPONENT_FIELDS = {
         "activation",
         "position",
         "rope_base",
+        "rope_layout",
+        "norm_eps",
+        "qk_norm",
+        "attention_bias",
+        "mlp_bias",
+        "conv_kernel_size",
+        "conv_bias",
+        "layer_types",
         "vocab_size",
     ),
 }
@@ -146,6 +154,31 @@ def profile_from_blueprint(
                 "activation": "swiglu",
                 "position": "rope",
                 "rope_base": float(language["rope_base"]),
+                "rope_layout": str(
+                    language.get("rope_layout", "interleaved")
+                ),
+                "norm_eps": float(language.get("norm_eps", 1e-6)),
+                "qk_norm": bool(language.get("qk_norm", False)),
+                "attention_bias": bool(
+                    language.get("attention_bias", True)
+                ),
+                "mlp_bias": bool(language.get("mlp_bias", True)),
+                "conv_kernel_size": int(
+                    language.get("conv_kernel_size", 3)
+                ),
+                "conv_bias": bool(language.get("conv_bias", False)),
+                "layer_types": (
+                    None
+                    if full_attention_layers is None
+                    else [
+                        (
+                            "attention"
+                            if index in set(full_attention_layers)
+                            else "short_conv"
+                        )
+                        for index in range(int(language["layers"]))
+                    ]
+                ),
                 "vocab_size": int(language["vocab_size"]),
             },
         }
@@ -213,12 +246,20 @@ def transfer_compatibility(
         "norm": sl["norm"] == tl["norm"],
         "position": sl["position"] == tl["position"] == "rope",
         "rope_base": sl["rope_base"] == tl["rope_base"],
+        "rope_layout": sl["rope_layout"] == tl["rope_layout"],
+        "norm_eps": sl["norm_eps"] == tl["norm_eps"],
+        "qk_norm": sl["qk_norm"] == tl["qk_norm"],
+        "attention_bias": (
+            sl["attention_bias"] == tl["attention_bias"]
+        ),
     }
     language_mlp_checks = {
         "mode": sl["mode"] == tl["mode"] == "decoder_only",
         "width": sl["width"] == tl["width"],
         "norm": sl["norm"] == tl["norm"],
         "activation": sl["activation"] == tl["activation"] == "swiglu",
+        "norm_eps": sl["norm_eps"] == tl["norm_eps"],
+        "mlp_bias": sl["mlp_bias"] == tl["mlp_bias"],
     }
     exact_mlp = (
         all(language_mlp_checks.values())
@@ -305,6 +346,44 @@ def transfer_compatibility(
                 ),
             },
         ),
+        "language.short_convolution": _decision(
+            (
+                "exact"
+                if (
+                    sl["mixer"] == tl["mixer"]
+                    == "hybrid_short_convolution_attention"
+                    and sl["width"] == tl["width"]
+                    and sl["norm_eps"] == tl["norm_eps"]
+                    and sl["conv_kernel_size"] == tl["conv_kernel_size"]
+                    and sl["conv_bias"] == tl["conv_bias"]
+                )
+                else "distill_only"
+            ),
+            (
+                "Short-convolution width, cache kernel, bias, and norm align."
+                if (
+                    sl["mixer"] == tl["mixer"]
+                    == "hybrid_short_convolution_attention"
+                    and sl["width"] == tl["width"]
+                    and sl["norm_eps"] == tl["norm_eps"]
+                    and sl["conv_kernel_size"] == tl["conv_kernel_size"]
+                    and sl["conv_bias"] == tl["conv_bias"]
+                )
+                else "Short convolution requires the same hybrid operator contract."
+            ),
+            checks={
+                "hybrid_mixer": (
+                    sl["mixer"] == tl["mixer"]
+                    == "hybrid_short_convolution_attention"
+                ),
+                "width": sl["width"] == tl["width"],
+                "norm_eps": sl["norm_eps"] == tl["norm_eps"],
+                "conv_kernel_size": (
+                    sl["conv_kernel_size"] == tl["conv_kernel_size"]
+                ),
+                "conv_bias": sl["conv_bias"] == tl["conv_bias"],
+            },
+        ),
         "language.token_embeddings": _decision(
             "token_rows" if sl["width"] == tl["width"] else "distill_only",
             (
@@ -349,15 +428,18 @@ def architecture_commonality(
                 for profile in sources
             ]
             encoded, count = Counter(values).most_common(1)[0]
+            decoded = json.loads(encoded)
+            if decoded is None:
+                continue
             if count >= minimum_count:
                 common.append(
                     {
                         "feature": f"{component}.{field}",
-                        "value": json.loads(encoded),
+                        "value": decoded,
                         "count": count,
                         "fraction": count / len(sources),
                         "target_matches": (
-                            target[component][field] == json.loads(encoded)
+                            target[component][field] == decoded
                         ),
                     }
                 )
@@ -377,4 +459,118 @@ def architecture_commonality(
         "prevalence_threshold": prevalence_threshold,
         "common_features": common,
         "compatibility": compatibility,
+    }
+
+
+def lfm_meta_transfer_preflight(
+    blueprint: Mapping[str, Any],
+    profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Run a zero-allocation transfer audit against the Transformers LFM graph."""
+
+    import re
+
+    import torch
+    from transformers.models.lfm2.configuration_lfm2 import Lfm2Config
+    from transformers.models.lfm2.modeling_lfm2 import Lfm2ForCausalLM
+
+    from ..architecture import estimate_parameters
+    from .config import StudentConfig
+    from .model import DocumentVLMStudent
+    from .transfer import selective_transfer
+
+    profile = validate_architecture_profile(profile)
+    language = profile["language"]
+    layer_types = [
+        "full_attention" if value == "attention" else "conv"
+        for value in language["layer_types"]
+    ]
+    source_config = Lfm2Config(
+        hidden_size=int(language["width"]),
+        block_dim=int(language["width"]),
+        intermediate_size=int(language["mlp_width"]),
+        block_ff_dim=int(language["mlp_width"]),
+        num_hidden_layers=int(language["layers"]),
+        num_attention_heads=int(language["attention_heads"]),
+        num_key_value_heads=int(language["kv_heads"]),
+        vocab_size=int(language["vocab_size"]),
+        rope_theta=float(language["rope_base"]),
+        conv_L_cache=int(language["conv_kernel_size"]),
+        conv_bias=bool(language["conv_bias"]),
+        layer_types=layer_types,
+        norm_eps=float(language["norm_eps"]),
+    )
+    with torch.device("meta"):
+        source = Lfm2ForCausalLM(source_config)
+        target = DocumentVLMStudent(
+            StudentConfig.from_blueprint(dict(blueprint))
+        )
+    source_geometry = {
+        "hidden_width": int(language["width"]),
+        "attention_heads": int(language["attention_heads"]),
+        "kv_heads": int(language["kv_heads"]),
+        "head_dim": int(language["head_dim"]),
+        "rope_base": float(language["rope_base"]),
+        "rope_layout": str(language["rope_layout"]),
+        "norm_eps": float(language["norm_eps"]),
+        "qk_norm": bool(language["qk_norm"]),
+        "attention_bias": bool(language["attention_bias"]),
+        "mlp_bias": bool(language["mlp_bias"]),
+        "conv_kernel_size": int(language["conv_kernel_size"]),
+        "conv_bias": bool(language["conv_bias"]),
+    }
+    report = selective_transfer(
+        target,
+        source.state_dict(),
+        {"language": 1.0},
+        family="lfm2",
+        shape_policy="structured_mlp",
+        source_attention_geometry=source_geometry,
+        require_attention_geometry=True,
+    )
+    parameters = estimate_parameters(dict(blueprint))
+    exact_tensors = sum(
+        mapping["method"] == "exact"
+        for mapping in report.tensor_mappings
+    )
+    block_pattern = re.compile(r"language\.blocks\.(\d+)\.")
+    block_pairs = sorted(
+        {
+            (
+                int(block_pattern.match(mapping["target"]).group(1)),
+                int(block_pattern.match(mapping["source"]).group(1)),
+            )
+            for mapping in report.tensor_mappings
+            if block_pattern.match(mapping["target"])
+            and block_pattern.match(mapping["source"])
+        }
+    )
+    return {
+        "schema_version": 1,
+        "source": profile["id"],
+        "source_revision": profile["revision"],
+        "target": "docvlm-lfm-aligned-814m",
+        "target_parameters": parameters["total"],
+        "language_parameters": parameters["language"],
+        "copied_parameters": report.copied_parameters,
+        "copied_language_fraction": (
+            report.copied_parameters / parameters["language"]
+        ),
+        "copied_tensors": report.copied_tensors,
+        "exact_tensors": exact_tensors,
+        "structured_tensors": report.structured_tensors,
+        "structured_parameters": report.structured_parameters,
+        "structured_groups": len(report.structured_groups),
+        "shape_skips": len(report.skipped_shape),
+        "semantic_skips": len(report.skipped_semantic),
+        "missing_source_keys": len(report.missing_source),
+        "attention_geometry_compatible": (
+            report.attention_geometry_compatible
+        ),
+        "short_convolution_compatible": (
+            report.short_convolution_compatible
+        ),
+        "mlp_operator_compatible": report.mlp_operator_compatible,
+        "depth_mapped_block_pairs": block_pairs,
+        "mapping_fingerprint": report.mapping_fingerprint,
     }

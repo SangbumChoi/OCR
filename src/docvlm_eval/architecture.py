@@ -45,6 +45,9 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
         embeddings *= 2
     head_dim = ld // attention_heads
     kv_width = head_dim * kv_heads
+    attention_bias = bool(language.get("attention_bias", True))
+    mlp_bias = bool(language.get("mlp_bias", True))
+    qk_norm = bool(language.get("qk_norm", False))
     full_attention_layers = language.get("full_attention_layers")
     attention_layer_count = (
         llayers
@@ -57,9 +60,10 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
     )
     convolution_layer_count = llayers - attention_layer_count
     language_attention = (
-        ld * ld + ld
-        + 2 * (ld * kv_width + kv_width)
-        + ld * ld + ld
+        ld * ld + (ld if attention_bias else 0)
+        + 2 * (ld * kv_width + (kv_width if attention_bias else 0))
+        + ld * ld + (ld if attention_bias else 0)
+        + (2 * head_dim if qk_norm else 0)
     )
     conv_bias = bool(language.get("conv_bias", False))
     conv_kernel = int(language.get("conv_kernel_size", 3))
@@ -71,7 +75,10 @@ def estimate_parameters(blueprint: dict[str, Any]) -> dict[str, int]:
         + ld * ld
         + (ld if conv_bias else 0)
     )
-    language_ffn = 2 * (ld * mlp_width + mlp_width) + mlp_width * ld + ld
+    language_ffn = (
+        3 * ld * mlp_width
+        + (2 * mlp_width + ld if mlp_bias else 0)
+    )
     language_blocks = (
         attention_layer_count
         * (language_attention + language_ffn + 2 * ld)
@@ -232,6 +239,27 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         )
     if not isinstance(language.get("conv_bias", False), bool):
         errors.append("student.language.conv_bias must be a boolean")
+    if float(language.get("norm_eps", 0)) <= 0:
+        errors.append("student.language.norm_eps must be positive")
+    if not isinstance(language.get("qk_norm", False), bool):
+        errors.append("student.language.qk_norm must be a boolean")
+    if not isinstance(language.get("attention_bias", True), bool):
+        errors.append("student.language.attention_bias must be a boolean")
+    if not isinstance(language.get("mlp_bias", True), bool):
+        errors.append("student.language.mlp_bias must be a boolean")
+    if language.get("rope_layout", "interleaved") not in {
+        "interleaved",
+        "half_split",
+    }:
+        errors.append(
+            "student.language.rope_layout must be interleaved or half_split"
+        )
+    if float(vision.get("norm_eps", 0)) <= 0:
+        errors.append("student.vision.norm_eps must be positive")
+    if vision.get("gelu_approximate", "none") not in {"none", "tanh"}:
+        errors.append(
+            "student.vision.gelu_approximate must be none or tanh"
+        )
     if int(connector["output_width"]) % int(connector["attention_heads"]):
         errors.append("student.connector.output_width must be divisible by attention_heads")
     if int(connector["input_width"]) != int(vision["width"]):

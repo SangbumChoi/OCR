@@ -20,7 +20,7 @@ def load_checkpoint_attention_geometry(
     path: str | Path,
     *,
     family: str,
-) -> dict[str, int | float] | None:
+) -> dict[str, Any] | None:
     """Read language attention geometry without loading checkpoint tensors."""
     path = Path(path)
     root = path.parent if path.is_file() else path
@@ -52,6 +52,10 @@ def load_checkpoint_attention_geometry(
         "rope_base",
         language.get("rope_theta"),
     )
+    if rope_base is None:
+        rope_parameters = language.get("rope_parameters")
+        if isinstance(rope_parameters, dict):
+            rope_base = rope_parameters.get("rope_theta")
     if any(value is None for value in (hidden, heads, kv_heads, rope_base)):
         return None
     hidden = int(hidden)
@@ -59,12 +63,46 @@ def load_checkpoint_attention_geometry(
     kv_heads = int(kv_heads)
     if hidden <= 0 or heads <= 0 or kv_heads <= 0 or hidden % heads:
         return None
+    model_type = str(language.get("model_type") or raw.get("model_type") or "")
+    known_bias_free = model_type in {
+        "lfm2",
+        "llama",
+        "mistral",
+        "qwen2",
+        "qwen3",
+    }
     return {
         "hidden_width": hidden,
         "attention_heads": heads,
         "kv_heads": kv_heads,
         "head_dim": int(language.get("head_dim") or hidden // heads),
         "rope_base": float(rope_base),
+        "rope_layout": str(
+            language.get("rope_layout")
+            or ("half_split" if known_bias_free else "interleaved")
+        ),
+        "norm_eps": float(
+            language.get(
+                "norm_eps",
+                language.get("rms_norm_eps", 1e-6),
+            )
+        ),
+        "qk_norm": bool(
+            language.get("qk_norm", model_type == "lfm2")
+        ),
+        "attention_bias": bool(
+            language.get("attention_bias", not known_bias_free)
+        ),
+        "mlp_bias": bool(
+            language.get("mlp_bias", not known_bias_free)
+        ),
+        "conv_kernel_size": int(
+            language.get(
+                "conv_kernel_size",
+                language.get("conv_L_cache", 3),
+            )
+        ),
+        "conv_bias": bool(language.get("conv_bias", False)),
     }
 
 

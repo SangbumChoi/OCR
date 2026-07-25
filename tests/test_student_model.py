@@ -1484,7 +1484,154 @@ def test_checkpoint_attention_geometry_reads_external_config(tmp_path):
         "kv_heads": 2,
         "head_dim": 128,
         "rope_base": 1_000_000.0,
+        "rope_layout": "interleaved",
+        "norm_eps": 1e-6,
+        "qk_norm": False,
+        "attention_bias": True,
+        "mlp_bias": True,
+        "conv_kernel_size": 3,
+        "conv_bias": False,
     }
+
+
+def test_checkpoint_attention_geometry_reads_lfm_operator_contract(tmp_path):
+    import json
+
+    from docvlm_eval.student.checkpoint import (
+        load_checkpoint_attention_geometry,
+    )
+
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "lfm2_vl",
+                "text_config": {
+                    "model_type": "lfm2",
+                    "hidden_size": 2048,
+                    "num_attention_heads": 32,
+                    "num_key_value_heads": 8,
+                    "rope_parameters": {"rope_theta": 1_000_000.0},
+                    "norm_eps": 1e-5,
+                    "conv_L_cache": 3,
+                    "conv_bias": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_checkpoint_attention_geometry(
+        tmp_path,
+        family="lfm2",
+    ) == {
+        "hidden_width": 2048,
+        "attention_heads": 32,
+        "kv_heads": 8,
+        "head_dim": 64,
+        "rope_base": 1_000_000.0,
+        "rope_layout": "half_split",
+        "norm_eps": 1e-5,
+        "qk_norm": True,
+        "attention_bias": False,
+        "mlp_bias": False,
+        "conv_kernel_size": 3,
+        "conv_bias": False,
+    }
+
+
+def test_half_split_rope_uses_lfm_channel_layout():
+    import torch
+
+    from docvlm_eval.student.model import RotaryEmbedding, _rotate_half
+
+    values = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+    assert torch.equal(
+        _rotate_half(values, "half_split"),
+        torch.tensor([[-3.0, -4.0, 1.0, 2.0]]),
+    )
+    rotary = RotaryEmbedding(4, 10_000.0, "half_split")
+    cos, sin = rotary(3, torch.device("cpu"), torch.float32)
+    assert torch.equal(cos[..., 1, :2], cos[..., 1, 2:])
+    assert torch.equal(sin[..., 2, :2], sin[..., 2, 2:])
+
+
+def test_lfm_strict_transfer_maps_qk_norm_and_like_typed_layers():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import selective_transfer
+
+    base = StudentConfig.tiny()
+    config = replace(
+        base,
+        language=replace(
+            base.language,
+            layers=4,
+            full_attention_layers=(1, 3),
+            norm_eps=1e-5,
+            qk_norm=True,
+            attention_bias=False,
+            mlp_bias=False,
+            rope_layout="half_split",
+        ),
+    )
+    student = DocumentVLMStudent(config)
+    target = student.state_dict()
+    source = {
+        "model.layers.0.conv.in_proj.weight": torch.full_like(
+            target["language.blocks.0.conv.in_proj.weight"],
+            1.0,
+        ),
+        "model.layers.2.self_attn.q_proj.weight": torch.full_like(
+            target["language.blocks.1.attn.q_proj.weight"],
+            2.0,
+        ),
+        "model.layers.2.self_attn.q_layernorm.weight": torch.full_like(
+            target["language.blocks.1.attn.q_norm.weight"],
+            3.0,
+        ),
+        "model.layers.4.self_attn.q_proj.weight": torch.full_like(
+            target["language.blocks.3.attn.q_proj.weight"],
+            4.0,
+        ),
+        "model.layers.5.conv.in_proj.weight": torch.full_like(
+            target["language.blocks.2.conv.in_proj.weight"],
+            5.0,
+        ),
+    }
+    geometry = {
+        "hidden_width": 128,
+        "attention_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 16,
+        "rope_base": 10_000.0,
+        "rope_layout": "half_split",
+        "norm_eps": 1e-5,
+        "qk_norm": True,
+        "attention_bias": False,
+        "mlp_bias": False,
+        "conv_kernel_size": 3,
+        "conv_bias": False,
+    }
+
+    report = selective_transfer(
+        student,
+        source,
+        {"language": 1.0},
+        family="lfm2",
+        source_attention_geometry=geometry,
+        require_attention_geometry=True,
+    )
+
+    assert torch.all(student.language.blocks[0].conv.in_proj.weight == 1)
+    assert torch.all(student.language.blocks[1].attn.q_proj.weight == 2)
+    assert torch.all(student.language.blocks[1].attn.q_norm.weight == 3)
+    assert torch.all(student.language.blocks[3].attn.q_proj.weight == 4)
+    assert torch.all(student.language.blocks[2].conv.in_proj.weight == 5)
+    assert report.attention_geometry_compatible is True
+    assert report.short_convolution_compatible is True
+    assert report.skipped_semantic == []
 
 
 def test_meta_selective_transfer_counts_copied_target_shapes_exactly():

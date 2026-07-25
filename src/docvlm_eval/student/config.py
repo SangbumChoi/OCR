@@ -18,6 +18,8 @@ class VisionConfig:
     mlp_ratio: float
     max_position_tokens: int
     dropout: float = 0.0
+    norm_eps: float = 1e-5
+    gelu_approximate: str = "none"
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,11 @@ class LanguageConfig:
     full_attention_layers: tuple[int, ...] | None = None
     conv_kernel_size: int = 3
     conv_bias: bool = False
+    norm_eps: float = 1e-6
+    qk_norm: bool = False
+    attention_bias: bool = True
+    mlp_bias: bool = True
+    rope_layout: str = "interleaved"
 
     @property
     def layer_types(self) -> tuple[str, ...]:
@@ -148,6 +155,10 @@ class StudentConfig:
         errors: list[str] = []
         if self.vision.width % self.vision.attention_heads:
             errors.append("vision width must be divisible by vision attention heads")
+        if self.vision.norm_eps <= 0:
+            errors.append("vision norm epsilon must be positive")
+        if self.vision.gelu_approximate not in {"none", "tanh"}:
+            errors.append("vision GELU approximation must be none or tanh")
         if self.language.width % self.language.attention_heads:
             errors.append("language width must be divisible by language attention heads")
         if self.language.attention_heads % self.language.kv_heads:
@@ -183,6 +194,18 @@ class StudentConfig:
             errors.append("language convolution kernel size must be at least two")
         if not isinstance(self.language.conv_bias, bool):
             errors.append("language convolution bias must be boolean")
+        if self.language.norm_eps <= 0:
+            errors.append("language norm epsilon must be positive")
+        if not isinstance(self.language.qk_norm, bool):
+            errors.append("language qk_norm must be boolean")
+        if not isinstance(self.language.attention_bias, bool):
+            errors.append("language attention_bias must be boolean")
+        if not isinstance(self.language.mlp_bias, bool):
+            errors.append("language mlp_bias must be boolean")
+        if self.language.rope_layout not in {"interleaved", "half_split"}:
+            errors.append(
+                "language RoPE layout must be interleaved or half_split"
+            )
         if self.connector.output_width % self.connector.attention_heads:
             errors.append("connector output width must be divisible by connector attention heads")
         if self.connector.family not in {

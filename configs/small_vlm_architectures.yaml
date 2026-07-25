@@ -36,6 +36,14 @@ profiles:
       activation: swiglu
       position: rope
       rope_base: 100000
+      rope_layout: half_split
+      norm_eps: 0.00001
+      qk_norm: false
+      attention_bias: false
+      mlp_bias: false
+      conv_kernel_size: null
+      conv_bias: null
+      layer_types: null
       vocab_size: 49280
 
   - id: fastvlm-0.5b
@@ -74,6 +82,14 @@ profiles:
       activation: swiglu
       position: rope
       rope_base: 1000000
+      rope_layout: half_split
+      norm_eps: 0.000001
+      qk_norm: false
+      attention_bias: false
+      mlp_bias: false
+      conv_kernel_size: null
+      conv_bias: null
+      layer_types: null
       vocab_size: 151936
 
   - id: florence-2-base
@@ -112,6 +128,14 @@ profiles:
       activation: gelu
       position: learned_absolute_1d
       rope_base: null
+      rope_layout: null
+      norm_eps: 0.00001
+      qk_norm: false
+      attention_bias: true
+      mlp_bias: true
+      conv_kernel_size: null
+      conv_bias: null
+      layer_types: null
       vocab_size: 51289
 
   - id: internvl3-1b
@@ -150,6 +174,14 @@ profiles:
       activation: swiglu
       position: rope
       rope_base: 1000000
+      rope_layout: half_split
+      norm_eps: 0.000001
+      qk_norm: false
+      attention_bias: false
+      mlp_bias: false
+      conv_kernel_size: null
+      conv_bias: null
+      layer_types: null
       vocab_size: 151674
 
   - id: lfm2.5-vl-1.6b
@@ -188,4 +220,28 @@ profiles:
       activation: swiglu
       position: rope
       rope_base: 1000000
+      rope_layout: half_split
+      norm_eps: 0.00001
+      qk_norm: true
+      attention_bias: false
+      mlp_bias: false
+      conv_kernel_size: 3
+      conv_bias: false
+      layer_types:
+        - short_conv
+        - short_conv
+        - attention
+        - short_conv
+        - short_conv
+        - attention
+        - short_conv
+        - short_conv
+        - attention
+        - short_conv
+        - attention
+        - short_conv
+        - attention
+        - short_conv
+        - attention
+        - short_conv
       vocab_size: 65536

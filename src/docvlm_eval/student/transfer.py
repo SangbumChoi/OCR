@@ -30,9 +30,11 @@ class TransferReport:
     shape_policy: str
     require_attention_geometry: bool
     source_identity: dict[str, Any] | None = None
-    source_attention_geometry: dict[str, int | float] | None = None
-    target_attention_geometry: dict[str, int | float] | None = None
+    source_attention_geometry: dict[str, Any] | None = None
+    target_attention_geometry: dict[str, Any] | None = None
     attention_geometry_compatible: bool | None = None
+    short_convolution_compatible: bool | None = None
+    mlp_operator_compatible: bool | None = None
     source_topology_fingerprint: str = ""
     target_topology_fingerprint: str = ""
     copied_tensors: int = 0
@@ -285,6 +287,8 @@ def canonicalize_source_state(
             )
             key = key.replace(".self_attn.", ".attn.")
             key = key.replace(".attn.out_proj.", ".attn.o_proj.")
+            key = key.replace(".attn.q_layernorm.", ".attn.q_norm.")
+            key = key.replace(".attn.k_layernorm.", ".attn.k_norm.")
             key = key.replace(".layer_norm1.", ".norm1.")
             key = key.replace(".layer_norm2.", ".norm2.")
             key = key.replace(".mlp.fc1.", ".mlp.fc1.")
@@ -336,6 +340,8 @@ def canonicalize_source_state(
             )
             key = key.replace(".self_attn.", ".attn.")
             key = key.replace(".attn.out_proj.", ".attn.o_proj.")
+            key = key.replace(".attn.q_layernorm.", ".attn.q_norm.")
+            key = key.replace(".attn.k_layernorm.", ".attn.k_norm.")
             key = key.replace(".operator_norm.", ".norm1.")
             key = key.replace(".ffn_norm.", ".norm2.")
             key = key.replace(
@@ -376,6 +382,57 @@ def _block_count(keys: list[str], component: str) -> int:
     return max(indices, default=-1) + 1
 
 
+def _language_layer_types(keys: list[str]) -> dict[int, str]:
+    layer_types: dict[int, str] = {}
+    for key in keys:
+        match = _BLOCK.match(key)
+        if match is None or match.group(1) != "language":
+            continue
+        index = int(match.group(2))
+        suffix = match.group(3)
+        observed = (
+            "attention"
+            if suffix.startswith("attn.")
+            else "short_conv"
+            if suffix.startswith("conv.")
+            else None
+        )
+        if observed is None:
+            continue
+        previous = layer_types.get(index)
+        if previous is not None and previous != observed:
+            raise ValueError(
+                f"language source layer {index} mixes attention and convolution"
+            )
+        layer_types[index] = observed
+    return layer_types
+
+
+def _typed_depth_map(
+    target_index: int,
+    target_types: Mapping[int, str],
+    source_types: Mapping[int, str],
+) -> int | None:
+    layer_type = target_types.get(target_index)
+    if layer_type is None:
+        return None
+    target_indices = sorted(
+        index for index, value in target_types.items() if value == layer_type
+    )
+    source_indices = sorted(
+        index for index, value in source_types.items() if value == layer_type
+    )
+    if not source_indices:
+        return None
+    target_rank = target_indices.index(target_index)
+    source_rank = _depth_map(
+        target_rank,
+        len(target_indices),
+        len(source_indices),
+    )
+    return source_indices[source_rank]
+
+
 def _selected_blocks(count: int, fraction: float) -> set[int]:
     selected_count = min(count, max(0, round(count * fraction)))
     if selected_count == 0:
@@ -396,7 +453,7 @@ def _depth_map(target_index: int, target_count: int, source_count: int) -> int:
 
 def _target_attention_geometry(
     student: nn.Module,
-) -> dict[str, int | float] | None:
+) -> dict[str, Any] | None:
     config = getattr(student, "config", None)
     language = getattr(config, "language", None)
     if language is None:
@@ -409,12 +466,19 @@ def _target_attention_geometry(
         "kv_heads": int(language.kv_heads),
         "head_dim": hidden // heads,
         "rope_base": float(language.rope_base),
+        "rope_layout": str(language.rope_layout),
+        "norm_eps": float(language.norm_eps),
+        "qk_norm": bool(language.qk_norm),
+        "attention_bias": bool(language.attention_bias),
+        "mlp_bias": bool(language.mlp_bias),
+        "conv_kernel_size": int(language.conv_kernel_size),
+        "conv_bias": bool(language.conv_bias),
     }
 
 
 def _normalize_attention_geometry(
-    value: Mapping[str, int | float] | None,
-) -> dict[str, int | float] | None:
+    value: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
     if value is None:
         return None
     required = {
@@ -424,17 +488,24 @@ def _normalize_attention_geometry(
         "head_dim",
         "rope_base",
     }
-    if set(value) != required:
+    if not required <= set(value):
         raise ValueError(
             "attention geometry must contain hidden_width, attention_heads, "
             "kv_heads, head_dim, and rope_base"
         )
-    normalized: dict[str, int | float] = {
+    normalized: dict[str, Any] = {
         "hidden_width": int(value["hidden_width"]),
         "attention_heads": int(value["attention_heads"]),
         "kv_heads": int(value["kv_heads"]),
         "head_dim": int(value["head_dim"]),
         "rope_base": float(value["rope_base"]),
+        "rope_layout": str(value.get("rope_layout", "interleaved")),
+        "norm_eps": float(value.get("norm_eps", 1e-6)),
+        "qk_norm": bool(value.get("qk_norm", False)),
+        "attention_bias": bool(value.get("attention_bias", True)),
+        "mlp_bias": bool(value.get("mlp_bias", True)),
+        "conv_kernel_size": int(value.get("conv_kernel_size", 3)),
+        "conv_bias": bool(value.get("conv_bias", False)),
     }
     if (
         any(
@@ -447,8 +518,12 @@ def _normalize_attention_geometry(
             )
         )
         or float(normalized["rope_base"]) <= 0
+        or float(normalized["norm_eps"]) <= 0
+        or int(normalized["conv_kernel_size"]) < 2
     ):
         raise ValueError("attention geometry values must be positive")
+    if normalized["rope_layout"] not in {"interleaved", "half_split"}:
+        raise ValueError("attention geometry RoPE layout is invalid")
     return normalized
 
 
@@ -575,7 +650,7 @@ def selective_transfer(
     copy_token_embeddings: bool | None = None,
     shape_policy: str = "exact",
     source_identity: Mapping[str, Any] | None = None,
-    source_attention_geometry: Mapping[str, int | float] | None = None,
+    source_attention_geometry: Mapping[str, Any] | None = None,
     require_attention_geometry: bool = False,
 ) -> TransferReport:
     """Copy policy-compatible tensors under component and depth controls.
@@ -597,10 +672,49 @@ def selective_transfer(
         source_attention_geometry
     )
     target_geometry = _target_attention_geometry(student)
+    attention_geometry_fields = (
+        "hidden_width",
+        "attention_heads",
+        "kv_heads",
+        "head_dim",
+        "rope_base",
+        "rope_layout",
+        "norm_eps",
+        "qk_norm",
+        "attention_bias",
+    )
     geometry_compatible = (
         None
         if source_geometry is None or target_geometry is None
-        else source_geometry == target_geometry
+        else all(
+            source_geometry[field] == target_geometry[field]
+            for field in attention_geometry_fields
+        )
+    )
+    short_convolution_compatible = (
+        None
+        if source_geometry is None or target_geometry is None
+        else all(
+            source_geometry[field] == target_geometry[field]
+            for field in (
+                "hidden_width",
+                "norm_eps",
+                "conv_kernel_size",
+                "conv_bias",
+            )
+        )
+    )
+    mlp_operator_compatible = (
+        None
+        if source_geometry is None or target_geometry is None
+        else all(
+            source_geometry[field] == target_geometry[field]
+            for field in (
+                "hidden_width",
+                "norm_eps",
+                "mlp_bias",
+            )
+        )
     )
     if (
         require_attention_geometry
@@ -633,6 +747,8 @@ def selective_transfer(
         source_attention_geometry=source_geometry,
         target_attention_geometry=target_geometry,
         attention_geometry_compatible=geometry_compatible,
+        short_convolution_compatible=short_convolution_compatible,
+        mlp_operator_compatible=mlp_operator_compatible,
         source_topology_fingerprint=_topology_fingerprint(source),
         target_topology_fingerprint=_topology_fingerprint(target),
     )
@@ -640,6 +756,8 @@ def selective_transfer(
         copy_token_embeddings = family == "student"
     source_keys = list(source)
     target_keys = list(target)
+    target_language_types = _language_layer_types(target_keys)
+    source_language_types = _language_layer_types(source_keys)
     target_counts = {
         component: _block_count(target_keys, component)
         for component in ("vision", "language")
@@ -752,11 +870,30 @@ def selective_transfer(
             if source_count == 0:
                 report.missing_source.append(target_key)
                 continue
-            source_index = _depth_map(
-                target_index,
-                target_counts[block_component],
-                source_count,
+            source_index = (
+                _typed_depth_map(
+                    target_index,
+                    target_language_types,
+                    source_language_types,
+                )
+                if block_component == "language"
+                and source_language_types
+                else _depth_map(
+                    target_index,
+                    target_counts[block_component],
+                    source_count,
+                )
             )
+            if source_index is None:
+                report.skipped_by_policy += 1
+                report.skipped_semantic.append(
+                    {
+                        "target": target_key,
+                        "source": None,
+                        "reason": "layer_type_mismatch",
+                    }
+                )
+                continue
             source_key = f"{block_component}.blocks.{source_index}.{suffix}"
 
         if (
@@ -773,6 +910,20 @@ def selective_transfer(
                 }
             )
             continue
+        if (
+            require_attention_geometry
+            and ".conv." in target_key
+            and not short_convolution_compatible
+        ):
+            report.skipped_by_policy += 1
+            report.skipped_semantic.append(
+                {
+                    "target": target_key,
+                    "source": source_key,
+                    "reason": "short_convolution_geometry_mismatch",
+                }
+            )
+            continue
         source_tensor = source.get(source_key)
         if source_tensor is None:
             report.missing_source.append(source_key)
@@ -782,7 +933,14 @@ def selective_transfer(
         structured_selection_fingerprint = None
         if tuple(source_tensor.shape) != tuple(target_tensor.shape):
             mlp_match = _MLP_WEIGHT.match(target_key)
-            if shape_policy == "structured_mlp" and mlp_match:
+            if (
+                shape_policy == "structured_mlp"
+                and mlp_match
+                and (
+                    not require_attention_geometry
+                    or mlp_operator_compatible
+                )
+            ):
                 target_index = int(mlp_match.group(1))
                 source_index = int(source_key.split(".")[2])
                 target_prefix = f"language.blocks.{target_index}.mlp"

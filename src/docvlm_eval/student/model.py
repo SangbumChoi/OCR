@@ -319,26 +319,43 @@ class VisionAttention(nn.Module):
 
 
 class VisionMLP(nn.Module):
-    def __init__(self, width: int, hidden: int, dropout: float):
+    def __init__(
+        self,
+        width: int,
+        hidden: int,
+        dropout: float,
+        gelu_approximate: str,
+    ):
         super().__init__()
         self.fc1 = nn.Linear(width, hidden)
         self.fc2 = nn.Linear(hidden, width)
         self.dropout = dropout
+        self.gelu_approximate = gelu_approximate
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc2(F.dropout(F.gelu(self.fc1(x)), self.dropout, self.training))
+        return self.fc2(
+            F.dropout(
+                F.gelu(
+                    self.fc1(x),
+                    approximate=self.gelu_approximate,
+                ),
+                self.dropout,
+                self.training,
+            )
+        )
 
 
 class VisionBlock(nn.Module):
     def __init__(self, config: VisionConfig):
         super().__init__()
-        self.norm1 = nn.LayerNorm(config.width)
+        self.norm1 = nn.LayerNorm(config.width, eps=config.norm_eps)
         self.attn = VisionAttention(config.width, config.attention_heads, config.dropout)
-        self.norm2 = nn.LayerNorm(config.width)
+        self.norm2 = nn.LayerNorm(config.width, eps=config.norm_eps)
         self.mlp = VisionMLP(
             config.width,
             int(config.width * config.mlp_ratio),
             config.dropout,
+            config.gelu_approximate,
         )
 
     def forward(
@@ -372,7 +389,7 @@ class VisionTower(nn.Module):
             torch.zeros(config.max_position_tokens, config.width)
         )
         self.blocks = nn.ModuleList([VisionBlock(config) for _ in range(config.layers)])
-        self.norm = nn.LayerNorm(config.width)
+        self.norm = nn.LayerNorm(config.width, eps=config.norm_eps)
         self.last_packed_attention_backend = "none"
         self.gradient_checkpointing = False
         self.checkpoint_use_reentrant = False
@@ -629,11 +646,11 @@ class CrossAttention(nn.Module):
 
 
 class SwiGLU(nn.Module):
-    def __init__(self, width: int, hidden: int):
+    def __init__(self, width: int, hidden: int, *, bias: bool = True):
         super().__init__()
-        self.gate_proj = nn.Linear(width, hidden)
-        self.up_proj = nn.Linear(width, hidden)
-        self.down_proj = nn.Linear(hidden, width)
+        self.gate_proj = nn.Linear(width, hidden, bias=bias)
+        self.up_proj = nn.Linear(width, hidden, bias=bias)
+        self.down_proj = nn.Linear(hidden, width, bias=bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -841,10 +858,15 @@ def build_connector(config: ConnectorConfig) -> nn.Module:
     raise ValueError(f"unsupported connector family {config.family!r}")
 
 
-def _rotate_half(x: torch.Tensor) -> torch.Tensor:
-    x1 = x[..., ::2]
-    x2 = x[..., 1::2]
-    return torch.stack((-x2, x1), dim=-1).flatten(-2)
+def _rotate_half(x: torch.Tensor, layout: str) -> torch.Tensor:
+    if layout == "interleaved":
+        x1 = x[..., ::2]
+        x2 = x[..., 1::2]
+        return torch.stack((-x2, x1), dim=-1).flatten(-2)
+    if layout == "half_split":
+        midpoint = x.shape[-1] // 2
+        return torch.cat((-x[..., midpoint:], x[..., :midpoint]), dim=-1)
+    raise ValueError(f"unsupported RoPE layout {layout!r}")
 
 
 def _apply_rope(
@@ -852,8 +874,12 @@ def _apply_rope(
     k: torch.Tensor,
     cos: torch.Tensor,
     sin: torch.Tensor,
+    layout: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    return q * cos + _rotate_half(q) * sin, k * cos + _rotate_half(k) * sin
+    return (
+        q * cos + _rotate_half(q, layout) * sin,
+        k * cos + _rotate_half(k, layout) * sin,
+    )
 
 
 def _multi_positive_contrastive_loss(
@@ -888,8 +914,9 @@ def _multi_positive_siglip_loss(
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, head_dim: int, base: float):
+    def __init__(self, head_dim: int, base: float, layout: str):
         super().__init__()
+        self.layout = layout
         inv_freq = 1.0 / (
             base
             ** (
@@ -912,8 +939,16 @@ class RotaryEmbedding(nn.Module):
                 return cos[..., :length, :], sin[..., :length, :]
         positions = torch.arange(length, device=device, dtype=torch.float32)
         angles = torch.outer(positions, self.inv_freq.to(device=device))
-        cos = angles.cos().repeat_interleave(2, dim=-1).to(dtype)[None, None]
-        sin = angles.sin().repeat_interleave(2, dim=-1).to(dtype)[None, None]
+        if self.layout == "interleaved":
+            cos = angles.cos().repeat_interleave(2, dim=-1)
+            sin = angles.sin().repeat_interleave(2, dim=-1)
+        elif self.layout == "half_split":
+            cos = torch.cat((angles.cos(), angles.cos()), dim=-1)
+            sin = torch.cat((angles.sin(), angles.sin()), dim=-1)
+        else:
+            raise ValueError(f"unsupported RoPE layout {self.layout!r}")
+        cos = cos.to(dtype)[None, None]
+        sin = sin.to(dtype)[None, None]
         self._cache = (length, device, dtype, cos, sin)
         return cos, sin
 
@@ -926,10 +961,37 @@ class GroupedQueryAttention(nn.Module):
         self.head_dim = config.width // config.attention_heads
         self.kv_width = self.kv_heads * self.head_dim
         self.dropout = config.dropout
-        self.q_proj = nn.Linear(config.width, config.width)
-        self.k_proj = nn.Linear(config.width, self.kv_width)
-        self.v_proj = nn.Linear(config.width, self.kv_width)
-        self.o_proj = nn.Linear(config.width, config.width)
+        self.rope_layout = config.rope_layout
+        self.q_proj = nn.Linear(
+            config.width,
+            config.width,
+            bias=config.attention_bias,
+        )
+        self.k_proj = nn.Linear(
+            config.width,
+            self.kv_width,
+            bias=config.attention_bias,
+        )
+        self.v_proj = nn.Linear(
+            config.width,
+            self.kv_width,
+            bias=config.attention_bias,
+        )
+        self.o_proj = nn.Linear(
+            config.width,
+            config.width,
+            bias=config.attention_bias,
+        )
+        self.q_norm = (
+            RMSNorm(self.head_dim, eps=config.norm_eps)
+            if config.qk_norm
+            else nn.Identity()
+        )
+        self.k_norm = (
+            RMSNorm(self.head_dim, eps=config.norm_eps)
+            if config.qk_norm
+            else nn.Identity()
+        )
 
     def forward(
         self,
@@ -946,10 +1008,24 @@ class GroupedQueryAttention(nn.Module):
         tuple[torch.Tensor, torch.Tensor],
     ]:
         batch, length, width = x.shape
-        q = self.q_proj(x).view(batch, length, self.heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x).view(batch, length, self.kv_heads, self.head_dim).transpose(1, 2)
+        q = self.q_norm(
+            self.q_proj(x).view(
+                batch,
+                length,
+                self.heads,
+                self.head_dim,
+            )
+        ).transpose(1, 2)
+        k = self.k_norm(
+            self.k_proj(x).view(
+                batch,
+                length,
+                self.kv_heads,
+                self.head_dim,
+            )
+        ).transpose(1, 2)
         v = self.v_proj(x).view(batch, length, self.kv_heads, self.head_dim).transpose(1, 2)
-        q, k = _apply_rope(q, k, cos, sin)
+        q, k = _apply_rope(q, k, cos, sin, self.rope_layout)
         if past_key_value is not None:
             past_key, past_value = past_key_value
             expected = (batch, self.kv_heads, self.head_dim)
@@ -1008,17 +1084,21 @@ class GroupedQueryAttention(nn.Module):
             or not 0 <= cache_position < key_cache.shape[2]
         ):
             raise ValueError("invalid static grouped-query attention KV cache")
-        q = self.q_proj(x).view(
-            batch,
-            length,
-            self.heads,
-            self.head_dim,
+        q = self.q_norm(
+            self.q_proj(x).view(
+                batch,
+                length,
+                self.heads,
+                self.head_dim,
+            )
         ).transpose(1, 2)
-        k = self.k_proj(x).view(
-            batch,
-            length,
-            self.kv_heads,
-            self.head_dim,
+        k = self.k_norm(
+            self.k_proj(x).view(
+                batch,
+                length,
+                self.kv_heads,
+                self.head_dim,
+            )
         ).transpose(1, 2)
         v = self.v_proj(x).view(
             batch,
@@ -1026,7 +1106,7 @@ class GroupedQueryAttention(nn.Module):
             self.kv_heads,
             self.head_dim,
         ).transpose(1, 2)
-        q, k = _apply_rope(q, k, cos, sin)
+        q, k = _apply_rope(q, k, cos, sin, self.rope_layout)
         key_cache[:, :, cache_position : cache_position + 1].copy_(k)
         value_cache[:, :, cache_position : cache_position + 1].copy_(v)
         key = key_cache[:, :, : cache_position + 1]
@@ -1175,13 +1255,17 @@ class DecoderBlock(nn.Module):
         if layer_type not in {"attention", "short_conv"}:
             raise ValueError(f"unsupported language layer type {layer_type!r}")
         self.layer_type = layer_type
-        self.norm1 = RMSNorm(config.width)
+        self.norm1 = RMSNorm(config.width, eps=config.norm_eps)
         if self.is_attention:
             self.attn = GroupedQueryAttention(config)
         else:
             self.conv = GatedShortConvolution(config)
-        self.norm2 = RMSNorm(config.width)
-        self.mlp = SwiGLU(config.width, config.mlp_width)
+        self.norm2 = RMSNorm(config.width, eps=config.norm_eps)
+        self.mlp = SwiGLU(
+            config.width,
+            config.mlp_width,
+            bias=config.mlp_bias,
+        )
 
     @property
     def is_attention(self) -> bool:
@@ -1300,10 +1384,11 @@ class LanguageDecoder(nn.Module):
                 for layer_type in config.layer_types
             ]
         )
-        self.norm = RMSNorm(config.width)
+        self.norm = RMSNorm(config.width, eps=config.norm_eps)
         self.rotary = RotaryEmbedding(
             config.width // config.attention_heads,
             config.rope_base,
+            config.rope_layout,
         )
         self.gradient_checkpointing = False
         self.checkpoint_use_reentrant = False

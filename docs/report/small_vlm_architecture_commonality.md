@@ -30,21 +30,46 @@ This report compares pinned public configs before any selective weight copy. A c
 | `language.activation` | `"swiglu"` | 4/5 | yes |
 | `language.position` | `"rope"` | 4/5 | yes |
 | `language.rope_base` | `1000000` | 3/5 | no |
+| `language.rope_layout` | `"half_split"` | 4/5 | no |
+| `language.norm_eps` | `1e-05` | 3/5 | no |
+| `language.qk_norm` | `false` | 4/5 | yes |
+| `language.attention_bias` | `false` | 4/5 | no |
+| `language.mlp_bias` | `false` | 4/5 | no |
 
 ## Transfer preflight
 
 | Source | Compatible subcomponents | Exact | Structured | Token rows | Distill only |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| [internvl3-1b](https://huggingface.co/OpenGVLab/InternVL3-1B-hf/blob/014c0583a0d4bedf29fbe2dbff4f865eb998e171/config.json) | 1/7 | 1 | 0 | 0 | 6 |
-| [smolvlm2-500m](https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/blob/7b375e1b73b11138ff12fe22c8f2822d8fe03467/config.json) | 1/7 | 1 | 0 | 0 | 6 |
-| [fastvlm-0.5b](https://huggingface.co/apple/FastVLM-0.5B/blob/16375720c2d673fa583e57e9876afde27549c7d0/config.json) | 0/7 | 0 | 0 | 0 | 7 |
-| [florence-2-base](https://huggingface.co/microsoft/Florence-2-base/blob/5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac/config.json) | 0/7 | 0 | 0 | 0 | 7 |
-| [lfm2.5-vl-1.6b](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B/blob/919fde3d022e3f90a4716006f993938ee8c2eb97/config.json) | 0/7 | 0 | 0 | 0 | 7 |
+| [internvl3-1b](https://huggingface.co/OpenGVLab/InternVL3-1B-hf/blob/014c0583a0d4bedf29fbe2dbff4f865eb998e171/config.json) | 1/8 | 1 | 0 | 0 | 7 |
+| [smolvlm2-500m](https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/blob/7b375e1b73b11138ff12fe22c8f2822d8fe03467/config.json) | 1/8 | 1 | 0 | 0 | 7 |
+| [fastvlm-0.5b](https://huggingface.co/apple/FastVLM-0.5B/blob/16375720c2d673fa583e57e9876afde27549c7d0/config.json) | 0/8 | 0 | 0 | 0 | 8 |
+| [florence-2-base](https://huggingface.co/microsoft/Florence-2-base/blob/5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac/config.json) | 0/8 | 0 | 0 | 0 | 8 |
+| [lfm2.5-vl-1.6b](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B/blob/919fde3d022e3f90a4716006f993938ee8c2eb97/config.json) | 0/8 | 0 | 0 | 0 | 8 |
+
+## LFM-aligned sub-1B control
+
+The executable control keeps the document vision tower fixed and aligns the language operator to LFM2.5. It uses width 2048, 32 query heads, 8 KV heads, per-head Q/K RMSNorm, half-split RoPE at base 1,000,000, bias-free projections, kernel-3 short convolution, 12 layers, and a reduced 5,120-channel SwiGLU.
+
+- Deployment parameters: `814,207,243`.
+- Copied language parameters: `553,748,992` (80.49%).
+- Exact tensors: `73`; structured tensors: `36` across `12` SwiGLU groups.
+- Shape skips: `0`; semantic skips: `0`; missing source keys: `0`.
+- Representative forward FLOPs: `3,737,836,001,792` versus `4,184,311,007,744` native (89.33%).
+- 2,176-token language state: `17,891,328` bytes versus `102,498,304` native (17.46%).
+
+| Source | Compatible subcomponents | Exact | Structured | Token rows | Distill only |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [lfm2.5-vl-1.6b](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B/blob/919fde3d022e3f90a4716006f993938ee8c2eb97/config.json) | 4/8 | 2 | 1 | 1 | 4 |
+| [internvl3-1b](https://huggingface.co/OpenGVLab/InternVL3-1B-hf/blob/014c0583a0d4bedf29fbe2dbff4f865eb998e171/config.json) | 1/8 | 1 | 0 | 0 | 7 |
+| [smolvlm2-500m](https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/blob/7b375e1b73b11138ff12fe22c8f2822d8fe03467/config.json) | 1/8 | 1 | 0 | 0 | 7 |
+| [fastvlm-0.5b](https://huggingface.co/apple/FastVLM-0.5B/blob/16375720c2d673fa583e57e9876afde27549c7d0/config.json) | 0/8 | 0 | 0 | 0 | 8 |
+| [florence-2-base](https://huggingface.co/microsoft/Florence-2-base/blob/5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac/config.json) | 0/8 | 0 | 0 | 0 | 8 |
 
 ## Decision rules
 
 - Copy attention only when hidden width, query heads, KV heads, head dimension, normalization, RoPE convention, and RoPE base all match.
 - Reduce an MLP only as one complete SwiGLU group with one shared channel selection; never crop independent matrices.
 - Copy token embeddings only through an explicit tokenizer identity map.
-- Treat position embeddings, hybrid-convolution blocks, encoder-decoder text stacks, and non-identical connectors as distillation targets rather than weight-copy targets.
+- Transfer short-convolution blocks only through like-typed depth mapping with the same width, kernel, bias, and normalization contract.
+- Treat incompatible position embeddings, encoder-decoder text stacks, and non-identical connectors as distillation targets rather than weight-copy targets.
 - Run an initialization factorial against random, vision-only, language-only, dual, and selective controls; this report establishes compatibility, not downstream benefit.

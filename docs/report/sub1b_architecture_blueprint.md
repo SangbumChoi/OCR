@@ -164,8 +164,12 @@ five-arm baseline suite, and the focused structured-MLP suite are executable in
 The pinned cross-architecture preflight in
 [`small_vlm_architecture_commonality.md`](small_vlm_architecture_commonality.md) compares
 SmolVLM2, FastVLM, Florence-2, InternVL3, and LFM2.5 before any copy. The current 1536-wide target
-has no copy-compatible LFM2.5 subcomponent among the seven audited transfer groups, so LFM2.5 must
+has no copy-compatible LFM2.5 subcomponent among the eight audited transfer groups, so LFM2.5 must
 remain a logits/features teacher unless a separately controlled source-aligned geometry is used.
+That control is now executable in
+[`student_lfm_language_transfer_sweep.md`](student_lfm_language_transfer_sweep.md): an
+814.2M profile adds LFM-compatible Q/K normalization, half-split RoPE, bias-free projections, and
+like-typed hybrid blocks, with a meta-device preflight proving 80.49% realized language transfer.
 The source-aligned 12-head/2-KV-head profile is not a new default: its random and transferred
 effects are isolated by the 2x2 design in
 [`student_attention_geometry_transfer_factorial.md`](student_attention_geometry_transfer_factorial.md).

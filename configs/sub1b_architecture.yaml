@@ -33,6 +33,8 @@ student:
     mlp_ratio: 4.0
     max_position_tokens: 4096
     dropout: 0.0
+    norm_eps: 0.00001
+    gelu_approximate: none
 
   language:
     family: decoder_only
@@ -50,6 +52,11 @@ student:
     full_attention_layers: null
     conv_kernel_size: 3
     conv_bias: false
+    norm_eps: 0.000001
+    qk_norm: false
+    attention_bias: true
+    mlp_bias: true
+    rope_layout: interleaved
 
   connector:
     family: gated_resampler
@@ -133,6 +140,15 @@ initialization_arms:
     minimum_component_parameter_fraction: {vision: 0.40, language: 0.25}
     policy: "Apply structured MLP transfer and copy attention only when hidden, head, KV-head, head-dimension, and RoPE geometry all match."
     purpose: "Separates semantically compatible attention inheritance from same-shape projection copying."
+  - id: I8_lfm_aligned_language
+    shape_policy: structured_mlp
+    require_attention_geometry: true
+    vision_transfer: 0.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {language: 0.50}
+    policy: "Use the strict type-aware language policy and fail unless at least half of deployed language parameters are initialized from an operator-compatible source."
+    purpose: "Fail-closed LFM initialization for the source-aligned sub-1B language profile."
 
 training:
   activation_checkpointing:

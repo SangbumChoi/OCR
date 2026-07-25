@@ -9,11 +9,12 @@ However, their head decomposition and rotary geometry differ:
 | Profile | Query heads | KV heads | Head dimension | RoPE base | Parameters |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | native student | 24 | 8 | 64 | 10,000 | 799,919,884 |
-| pinned Qwen / aligned student | 12 | 2 | 128 | 1,000,000 | 781,820,172 |
+| pinned Qwen / aligned student | 12 | 2 | 128 | 1,000,000 | 781,513,996 |
 
 Copying the native profile's same-shape Q and O matrices silently changes the channel groups to
 which RoPE and grouped-query attention are applied. The strict transfer arm therefore treats
-hidden width, query heads, KV heads, head dimension, and RoPE base as one semantic contract.
+hidden width, query heads, KV heads, head dimension, RoPE base and channel layout, norm epsilon,
+Q/K normalization, and projection bias as one semantic contract.
 
 ## Strict transfer gate
 
@@ -27,7 +28,7 @@ Header-only analysis of the same half-depth Qwen source gives:
 | Student geometry | Attention compatible | Copied tensors | Copied parameters | Language fraction | Semantic skips |
 | --- | --- | ---: | ---: | ---: | ---: |
 | native 24/8 | no | 61 | 226,530,816 | 33.4% | 96 |
-| Qwen-aligned 12/2 | yes | 145 | 292,615,680 | 44.4% | 0 |
+| Qwen-aligned 12/2 | yes | 109 | 292,591,104 | 44.4% | 0 |
 
 Both profiles have zero residual weight-shape mismatches under structured MLP transfer. The aligned
 profile also removes 18,099,712 deployed parameters by reducing KV projection and cache width.
