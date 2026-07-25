@@ -79,7 +79,9 @@ def test_materialize_promoted_recipe_excludes_replicate_seed_patches(
     monkeypatch.setattr(
         promotion_module,
         "aggregate_sweep_results",
-        lambda _: json.loads(comparison_path.read_text(encoding="utf-8")),
+        lambda _, **__: json.loads(
+            comparison_path.read_text(encoding="utf-8")
+        ),
     )
 
     manifest = materialize_promoted_recipe(
@@ -170,7 +172,7 @@ def test_materialize_promoted_architecture_profile(tmp_path, monkeypatch):
     monkeypatch.setattr(
         promotion_module,
         "aggregate_sweep_results",
-        lambda _: {
+        lambda _, **__: {
             key: value
             for key, value in comparison.items()
             if key != "promotion"
@@ -240,7 +242,9 @@ def test_materialize_promoted_recipe_rejects_stale_or_tampered_evidence(
     monkeypatch.setattr(
         promotion_module,
         "aggregate_sweep_results",
-        lambda _: json.loads(valid_comparison.read_text(encoding="utf-8")),
+        lambda _, **__: json.loads(
+            valid_comparison.read_text(encoding="utf-8")
+        ),
     )
     output = tmp_path / "promoted"
     materialize_promoted_recipe(
@@ -276,7 +280,9 @@ def test_materialize_promoted_recipe_requires_one_authorized_arm(
     monkeypatch.setattr(
         promotion_module,
         "aggregate_sweep_results",
-        lambda _: json.loads(comparison_path.read_text(encoding="utf-8")),
+        lambda _, **__: json.loads(
+            comparison_path.read_text(encoding="utf-8")
+        ),
     )
 
     with pytest.raises(ValueError, match="does not authorize"):
@@ -303,7 +309,7 @@ def test_materialize_promoted_recipe_rejects_edited_comparison(
     monkeypatch.setattr(
         promotion_module,
         "aggregate_sweep_results",
-        lambda _: recomputed,
+        lambda _, **__: recomputed,
     )
 
     with pytest.raises(ValueError, match="recomputed from run artifacts"):

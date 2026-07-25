@@ -17,6 +17,25 @@ ROOT = Path(__file__).resolve().parents[1]
 REVISION = "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9"
 
 
+@pytest.fixture(autouse=True)
+def _stub_sweep_execution_attestations(monkeypatch):
+    import docvlm_eval.student.sweep as sweep_module
+
+    monkeypatch.setattr(
+        sweep_module,
+        "_verify_run_attestation",
+        lambda plan, repo_root: {
+            "path": str(Path(plan.root) / "evidence_attestation.json"),
+            "attestation_sha256": f"sha256:{'a' * 64}",
+            "stage_count": len(plan.stages),
+            "contract_status": "pass",
+            "capability_status": "pass",
+            "claim_scope": "deployment_capability",
+            "quality_claim_authorized": True,
+        },
+    )
+
+
 def _factorial_config(tmp_path: Path) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     experiment = yaml.safe_load(

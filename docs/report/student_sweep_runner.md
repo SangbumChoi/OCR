@@ -50,6 +50,19 @@ python scripts/run_student_sweep.py \
   --sweep configs/sub1b_sweep_tiny.yaml
 ```
 
+Run the three-seed selective-transfer evidence proxy:
+
+```bash
+python scripts/run_student_sweep.py \
+  --sweep configs/sub1b_selective_transfer_fixture_sweep.yaml \
+  --no-resume
+```
+
+This suite compares random initialization with deterministic cross-architecture fixture transfer.
+It exercises exact and structured-MLP transfer, paired evaluation, feedback planning, run
+attestation, and aggregation. The fixtures contain random weights, so the suite deliberately has
+no promotion contract and cannot establish a pretrained-transfer quality benefit.
+
 Use repeated `--variant ID` or `--replicate ID` flags to run a subset. `--from-stage`, `--to-stage`,
 and `--no-resume` are forwarded to every selected experiment. A later full invocation resumes
 completed runs and produces the suite comparison once the complete arm-by-replicate rectangle has
@@ -135,6 +148,13 @@ JSONL, replaces its run-specific image path with the SHA-256 of the referenced i
 fingerprints the sorted samples. Artifact equality is required across arms inside each replicate,
 not across independent replicates. A mismatch stops aggregation before any delta is reported.
 
+Before a completed arm is added to the comparison, the runner writes a full-hash experiment
+attestation. It seals the exact completed stage prefix, current source signatures, declared
+artifacts, checkpoint lineage, optimization progress, and final evaluation. Aggregation loads the
+stored attestation and recomputes it from the current worktree and run root. A missing, failed,
+stale, or byte-semantically different attestation stops the whole sweep before confidence
+intervals, ranking, or promotion are produced. Recipe promotion performs the same recomputation.
+
 For every metric, the report contains the replicate mean, sample standard deviation, range, and a
 deterministic 95% percentile-bootstrap interval. Arm effects use paired deltas
 `arm(replicate) - baseline(replicate)` before bootstrapping, which removes shared block variation.
@@ -164,10 +184,13 @@ Each suite root contains:
 - `runs/<variant>--<replicate>/` with complete manifests, states, logs, and artifacts;
 - `sweep_plan.json` and `sweep_spec.json`;
 - `sweep_run_summary.json`, updated after each completed or failed run;
+- `runs/<variant>--<replicate>/evidence_attestation.json`, sealed immediately after each complete
+  evaluation path;
 - `gates/<variant>--<replicate>.json` and `gates/<variant>.json` with matched baseline decisions;
 - `comparison.json` with run metrics, arm distributions, paired baseline deltas, answer-type
   deltas, document-family/language/evidence-count/degradation deltas, confidence intervals,
-  final-checkpoint pretraining efficiency statistics, gate status, ranking, and promotion evidence;
+  final-checkpoint pretraining efficiency statistics, the verified per-run attestation set, gate
+  status, ranking, and promotion evidence;
 - `comparison.md` with heldout mean and standard deviation, paired 95% interval, parameter count,
   generalization gap, evidence conclusion, deployment-gate status, and promotion decision.
 

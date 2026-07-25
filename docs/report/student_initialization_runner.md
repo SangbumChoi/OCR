@@ -218,3 +218,10 @@ This test establishes that selective transfer survives the complete training and
 Because both sources contain deterministic random weights and the 587,019-parameter target trains
 for one step per phase, its failed capability gate is expected and no quality claim is authorized.
 Use the pinned-source matched sweeps above for the causal quality comparison.
+
+The three-seed CPU proxy in
+[`configs/sub1b_selective_transfer_fixture_sweep.yaml`](../../configs/sub1b_selective_transfer_fixture_sweep.yaml)
+compares this fixture transfer against random initialization with matched generated documents and
+evaluation samples. Its purpose is to execute the paired statistical and attestation path, not to
+promote the fixture arm. The compact committed result is
+[`selective_transfer_fixture_sweep.json`](../results/selective_transfer_fixture_sweep.json).

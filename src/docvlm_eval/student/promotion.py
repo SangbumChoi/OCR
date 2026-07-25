@@ -179,7 +179,10 @@ def materialize_promoted_recipe(
         raise ValueError(
             "comparison fingerprint does not match the current sweep"
         )
-    recomputed_comparison = aggregate_sweep_results(plan)
+    recomputed_comparison = aggregate_sweep_results(
+        plan,
+        repo_root=repo,
+    )
     if architecture_plan is not None:
         recomputed_comparison = apply_compute_budget_gate(
             recomputed_comparison,

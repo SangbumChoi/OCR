@@ -217,6 +217,59 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
     ]
 
 
+def test_selective_fixture_sweep_compiles_paired_claim_limited_runs(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_selective_transfer_fixture_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "selective-fixture-sweep.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert plan.baseline == "random"
+    assert plan.replicates == ("seed_0", "seed_1", "seed_2")
+    assert plan.promotion is None
+    assert len(plan.variants) == 6
+    assert plan.contrasts[0].id == "fixture_transfer_effect"
+    random = next(
+        variant
+        for variant in plan.variants
+        if variant.arm_id == "random"
+        and variant.replicate_id == "seed_0"
+    )
+    transferred = next(
+        variant
+        for variant in plan.variants
+        if variant.arm_id == "structured_fixture"
+        and variant.replicate_id == "seed_0"
+    )
+    assert random.plan.raw_spec["initialization"]["arm"] == "I0_random"
+    assert "vision_source" not in random.plan.raw_spec["initialization"]
+    assert (
+        transferred.plan.raw_spec["initialization"]["arm"]
+        == "I5_structured_mlp"
+    )
+    assert transferred.plan.stage_names[:2] == [
+        "build_vision_fixture_checkpoint",
+        "build_language_fixture_checkpoint",
+    ]
+
+
 def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_initialization_sweep.yaml").read_text(
@@ -1816,8 +1869,26 @@ def _comparison(score: float, milliseconds: float) -> dict:
     }
 
 
-def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
+def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(
+    tmp_path,
+    monkeypatch,
+):
+    import docvlm_eval.student.sweep as sweep_module
+
     plan = _compile_tiny(tmp_path)
+    monkeypatch.setattr(
+        sweep_module,
+        "_verify_run_attestation",
+        lambda plan, repo_root: {
+            "path": str(Path(plan.root) / "evidence_attestation.json"),
+            "attestation_sha256": f"sha256:{'a' * 64}",
+            "stage_count": len(plan.stages),
+            "contract_status": "pass",
+            "capability_status": "pass",
+            "claim_scope": "deployment_capability",
+            "quality_claim_authorized": True,
+        },
+    )
     scores = {
         ("baseline", "seed_0"): (0.2, 20.0),
         ("baseline", "seed_1"): (0.3, 22.0),
@@ -1922,6 +1993,11 @@ def test_sweep_aggregates_baseline_deltas_ranking_and_markdown(tmp_path):
         "seed_1",
     }
     assert result["replicate_count"] == 2
+    assert len(result["execution_attestations"]) == 4
+    assert all(
+        record["contract_status"] == "pass"
+        for record in result["execution_attestations"].values()
+    )
     candidate = result["variants"]["no_sequence_distillation"]
     assert candidate["gate_status"] == "insufficient_evidence"
     assert candidate["gate_statuses"]["parameter_budget"] == "pass"
@@ -2005,6 +2081,64 @@ def test_sweep_rejects_mismatched_evaluation_artifacts(tmp_path):
         aggregate_sweep_results(plan)
 
 
+def test_sweep_rejects_missing_nonprefix_or_stale_run_attestation(
+    tmp_path,
+    monkeypatch,
+):
+    import docvlm_eval.student.sweep as sweep_module
+
+    plan = _compile_tiny(tmp_path)
+    variant = plan.variants[0]
+
+    with pytest.raises(FileNotFoundError, match="no sealed"):
+        sweep_module._verify_run_attestation(
+            variant.plan,
+            repo_root=ROOT,
+        )
+
+    path = Path(variant.plan.root) / "evidence_attestation.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"stages": [{"stage": "evaluate"}]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="exact experiment prefix"):
+        sweep_module._verify_run_attestation(
+            variant.plan,
+            repo_root=ROOT,
+        )
+
+    evaluate_index = variant.plan.stage_names.index("evaluate")
+    path.write_text(
+        json.dumps(
+            {
+                "stages": [
+                    {"stage": name}
+                    for name in variant.plan.stage_names[
+                        : evaluate_index + 1
+                    ]
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sweep_module,
+        "verify_experiment_attestation",
+        lambda *args, **kwargs: {
+            "valid": False,
+            "contract_status": "pass",
+            "capability_status": "pass",
+            "claim_scope": "deployment_capability",
+        },
+    )
+    with pytest.raises(ValueError, match="stale, tampered, or failed"):
+        sweep_module._verify_run_attestation(
+            variant.plan,
+            repo_root=ROOT,
+        )
+
+
 def test_sweep_runner_dry_run_does_not_create_the_output_root(tmp_path):
     plan = _compile_tiny(tmp_path)
     output = Path(plan.root)
@@ -2050,6 +2184,68 @@ def test_sweep_runner_records_each_variant_once_and_updates_suite_state(
         (Path(plan.root) / "sweep_run_summary.json").read_text(encoding="utf-8")
     )
     assert persisted["status"] == "completed"
+
+
+def test_sweep_runner_seals_complete_runs_before_aggregation(
+    tmp_path,
+    monkeypatch,
+):
+    import docvlm_eval.student.sweep as sweep_module
+
+    plan = _compile_tiny(tmp_path)
+    sealed = []
+
+    class FakeExperimentRunner:
+        def __init__(self, experiment_plan, *, repo_root):
+            del repo_root
+            self.plan = experiment_plan
+
+        def run(self, **kwargs):
+            return {"dry_run": False, "pipeline_complete": False}
+
+    def fake_seal(experiment_plan, *, repo_root, stop):
+        assert repo_root == ROOT
+        assert stop == "evaluate"
+        sealed.append(experiment_plan.name)
+        return {
+            "path": str(
+                Path(experiment_plan.root) / "evidence_attestation.json"
+            ),
+            "attestation_sha256": f"sha256:{'a' * 64}",
+            "contract_status": "pass",
+        }
+
+    monkeypatch.setattr(
+        sweep_module,
+        "ExperimentRunner",
+        FakeExperimentRunner,
+    )
+    monkeypatch.setattr(
+        sweep_module,
+        "_write_run_attestation",
+        fake_seal,
+    )
+    monkeypatch.setattr(
+        sweep_module,
+        "aggregate_sweep_results",
+        lambda plan, repo_root: {
+            "ranking": ["baseline", "no_sequence_distillation"],
+            "promotion": {
+                "status": "retain_baseline",
+                "selected_variants": [],
+                "baseline_retained": True,
+            },
+        },
+    )
+
+    result = SweepRunner(plan, repo_root=ROOT).run(stop="evaluate")
+
+    assert len(sealed) == 4
+    assert all(
+        item["execution_attestation"]["contract_status"] == "pass"
+        for item in result["variants"]
+    )
+    assert result["status"] == "completed"
 
 
 def test_sweep_runner_filters_by_arm_and_replicate(tmp_path, monkeypatch):

@@ -17,6 +17,10 @@ from typing import Any
 import yaml
 
 from ..architecture import estimate_parameters, load_blueprint
+from .evidence import (
+    build_experiment_attestation,
+    verify_experiment_attestation,
+)
 from .experiment import ExperimentPlan, ExperimentRunner, build_experiment_plan
 from .gates import (
     evaluate_deployment_gates,
@@ -36,6 +40,114 @@ def _stable_json(value: Any) -> str:
 
 def _fingerprint(value: Any) -> str:
     return f"sha256:{hashlib.sha256(_stable_json(value).encode('utf-8')).hexdigest()}"
+
+
+def _attestation_plan(
+    plan: ExperimentPlan,
+    stage_names: list[str],
+) -> ExperimentPlan:
+    if not stage_names:
+        raise ValueError("sweep run attestation has no stages")
+    expected = [stage.name for stage in plan.stages[: len(stage_names)]]
+    if stage_names != expected:
+        raise ValueError(
+            "sweep run attestation stages are not an exact experiment prefix"
+        )
+    if "evaluate" not in stage_names:
+        raise ValueError(
+            "sweep run attestation does not cover final evaluation"
+        )
+    return replace(plan, stages=plan.stages[: len(stage_names)])
+
+
+def _write_run_attestation(
+    plan: ExperimentPlan,
+    *,
+    repo_root: str | Path,
+    stop: str | None,
+) -> dict[str, Any]:
+    stage_names = [stage.name for stage in plan.stages]
+    if stop is not None:
+        if stop not in stage_names:
+            raise ValueError(f"unknown attestation stop stage {stop!r}")
+        stage_names = stage_names[: stage_names.index(stop) + 1]
+    attestation_plan = _attestation_plan(plan, stage_names)
+    path = Path(plan.root) / "evidence_attestation.json"
+    attestation = build_experiment_attestation(
+        attestation_plan,
+        repo_root=repo_root,
+        output=path,
+        hash_mode="full",
+    )
+    if attestation["contract_status"] != "pass":
+        failed = [
+            check["id"]
+            for check in attestation["contract_checks"]
+            if check["status"] != "pass"
+        ]
+        raise RuntimeError(
+            "sweep run failed execution attestation: "
+            f"{failed[:8]}"
+        )
+    return {
+        "path": str(path),
+        "attestation_sha256": attestation["attestation_sha256"],
+        "stage_count": len(stage_names),
+        "contract_status": attestation["contract_status"],
+        "capability_status": attestation["capability_status"],
+        "claim_scope": attestation["claim_scope"],
+        "quality_claim_authorized": attestation[
+            "quality_claim_authorized"
+        ],
+    }
+
+
+def _verify_run_attestation(
+    plan: ExperimentPlan,
+    *,
+    repo_root: str | Path,
+) -> dict[str, Any]:
+    path = Path(plan.root) / "evidence_attestation.json"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"sweep run has no sealed execution attestation: {path}"
+        )
+    observed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(observed, dict):
+        raise ValueError(f"invalid sweep run attestation: {path}")
+    stages = observed.get("stages")
+    if not isinstance(stages, list) or not all(
+        isinstance(stage, dict)
+        and isinstance(stage.get("stage"), str)
+        for stage in stages
+    ):
+        raise ValueError(f"invalid sweep run attestation stages: {path}")
+    stage_names = [str(stage["stage"]) for stage in stages]
+    attestation_plan = _attestation_plan(plan, stage_names)
+    verification = verify_experiment_attestation(
+        attestation_plan,
+        path,
+        repo_root=repo_root,
+    )
+    if (
+        not verification["valid"]
+        or verification["contract_status"] != "pass"
+    ):
+        raise ValueError(
+            "sweep run execution attestation is stale, tampered, or failed: "
+            f"{path}"
+        )
+    return {
+        "path": str(path),
+        "attestation_sha256": observed.get("attestation_sha256"),
+        "stage_count": len(stage_names),
+        "contract_status": verification["contract_status"],
+        "capability_status": verification["capability_status"],
+        "claim_scope": verification["claim_scope"],
+        "quality_claim_authorized": bool(
+            observed.get("quality_claim_authorized")
+        ),
+    }
 
 
 def _without_wandb_metadata(value: Any) -> Any:
@@ -1956,9 +2068,18 @@ def _aggregate_linear_contrasts(
     return results
 
 
-def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
+def aggregate_sweep_results(
+    plan: SweepPlan,
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
     """Aggregate run metrics and paired replicate deltas against the baseline arm."""
 
+    repository = (
+        Path.cwd().resolve()
+        if repo_root is None
+        else Path(repo_root).resolve()
+    )
     run_records: dict[str, dict[str, Any]] = {}
     blueprints_by_run = {
         variant.id: variant.plan.resolved_blueprint
@@ -2015,6 +2136,14 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
             "comparison": str(comparison_path),
             "evaluation_root": str(evaluation_root),
         }
+
+    for variant in plan.variants:
+        run_records[variant.id]["execution_attestation"] = (
+            _verify_run_attestation(
+                variant.plan,
+                repo_root=repository,
+            )
+        )
 
     records_by_arm: dict[str, dict[str, dict[str, Any]]] = {}
     for run_id, record in run_records.items():
@@ -2398,7 +2527,7 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         records_by_arm,
     )
     result = {
-        "schema_version": 5,
+        "schema_version": 6,
         "sweep": plan.name,
         "sweep_fingerprint": plan.fingerprint,
         "baseline": plan.baseline,
@@ -2414,6 +2543,10 @@ def aggregate_sweep_results(plan: SweepPlan) -> dict[str, Any]:
         "matched_controls_by_replicate": plan.control_values_by_replicate,
         "matched_evaluation_artifacts": matched_artifacts,
         "matched_evaluation_artifacts_by_replicate": artifact_controls,
+        "execution_attestations": {
+            run_id: record["execution_attestation"]
+            for run_id, record in run_records.items()
+        },
         "ranking": ranking,
         "promotion": promotion,
         "contrasts": contrasts,
@@ -2685,6 +2818,15 @@ class SweepRunner:
                     start=start,
                     stop=stop,
                 )
+                execution_attestation = (
+                    _write_run_attestation(
+                        variant.plan,
+                        repo_root=self.repo_root,
+                        stop=stop,
+                    )
+                    if stop in {None, "evaluate"}
+                    else None
+                )
             except Exception as error:
                 outcomes.append(
                     {
@@ -2706,13 +2848,21 @@ class SweepRunner:
                     "replicate": variant.replicate_id,
                     "status": "completed",
                     "result": result,
+                    **(
+                        {"execution_attestation": execution_attestation}
+                        if execution_attestation is not None
+                        else {}
+                    ),
                 }
             )
             response["variants"] = outcomes
             _atomic_write_json(summary_path, response)
         complete_suite = selected == known and stop in {None, "evaluate"}
         if complete_suite:
-            comparison = aggregate_sweep_results(self.plan)
+            comparison = aggregate_sweep_results(
+                self.plan,
+                repo_root=self.repo_root,
+            )
             response["comparison"] = str(Path(self.plan.root) / "comparison.json")
             response["ranking"] = comparison["ranking"]
             response["promotion"] = {

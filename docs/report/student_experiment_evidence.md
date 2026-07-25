@@ -133,3 +133,9 @@ An attestation proves the integrity and execution state of one experiment root. 
 one-step smoke run into statistical evidence. Model promotion still requires the matched,
 multi-seed suites, heldout confidence intervals, deployment preflights, and fail-closed promotion
 rules defined by the sweep runner.
+
+The sweep runner seals this attestation immediately after every completed arm-replicate run.
+Aggregation and canonical-recipe promotion then verify each stored payload against current files
+before reading its score into a paired interval. The comparison stores the compact attestation
+path, hash, stage count, contract status, capability status, and claim scope for each run; it does
+not duplicate checkpoint payloads, long completions, or rendered table bodies.
