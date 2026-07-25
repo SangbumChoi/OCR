@@ -3,13 +3,40 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 
-PILOT_NAME = "docvlm-lfm-language-transfer-pilot"
-EXPECTED_ARMS = frozenset(
-    {"native_random", "lfm_random", "lfm_strict_transfer"}
+@dataclass(frozen=True)
+class PilotExecutionProfile:
+    name: str
+    expected_arms: frozenset[str]
+    claim_scope: str
+    next_action: str
+
+
+LFM_PROFILE = PilotExecutionProfile(
+    name="docvlm-lfm-language-transfer-pilot",
+    expected_arms=frozenset(
+        {"native_random", "lfm_random", "lfm_strict_transfer"}
+    ),
+    claim_scope="native_lfm_pilot_execution_state_only",
+    next_action=(
+        "Run notebooks/lfm_selective_transfer_pilot.ipynb on "
+        "native-BF16 hardware."
+    ),
 )
+SMOL_PROFILE = PilotExecutionProfile(
+    name="docvlm-smol-vision-transfer-pilot",
+    expected_arms=frozenset({"lfm_language_only", "lfm_smol_dual"}),
+    claim_scope="smol_vision_pilot_execution_state_only",
+    next_action=(
+        "Run notebooks/smol_vision_transfer_pilot.ipynb on "
+        "native-BF16 hardware."
+    ),
+)
+PILOT_NAME = LFM_PROFILE.name
+EXPECTED_ARMS = LFM_PROFILE.expected_arms
 
 
 def _mapping(value: Any, label: str) -> dict[str, Any]:
@@ -18,8 +45,11 @@ def _mapping(value: Any, label: str) -> dict[str, Any]:
     return value
 
 
-def _pilot_wandb_runs(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    prefix = f"{PILOT_NAME}--"
+def _pilot_wandb_runs(
+    snapshot: dict[str, Any],
+    profile: PilotExecutionProfile,
+) -> list[dict[str, Any]]:
+    prefix = f"{profile.name}--"
     runs = snapshot.get("runs")
     if not isinstance(runs, list):
         raise ValueError("W&B snapshot runs must be a list")
@@ -46,7 +76,10 @@ def _attestation_is_sealed(value: Any) -> bool:
     )
 
 
-def _local_state(summary: dict[str, Any] | None) -> dict[str, Any]:
+def _local_state(
+    summary: dict[str, Any] | None,
+    expected_arms: frozenset[str],
+) -> dict[str, Any]:
     if summary is None:
         return {
             "summary_present": False,
@@ -66,7 +99,7 @@ def _local_state(summary: dict[str, Any] | None) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         arm = str(item.get("variant") or "")
-        if arm not in EXPECTED_ARMS:
+        if arm not in expected_arms:
             continue
         observed.add(arm)
         if item.get("status") == "completed":
@@ -82,25 +115,26 @@ def _local_state(summary: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def audit_lfm_pilot_execution(
+def audit_pilot_execution(
     readiness: dict[str, Any],
     wandb_snapshot: dict[str, Any],
     *,
+    profile: PilotExecutionProfile,
     local_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Summarize observed execution without importing full logs or metric tables."""
+    """Summarize one pilot without importing full logs or metric tables."""
 
     readiness = _mapping(readiness, "readiness")
     wandb_snapshot = _mapping(wandb_snapshot, "W&B snapshot")
     source = _mapping(wandb_snapshot.get("source"), "W&B snapshot source")
-    local = _local_state(local_summary)
-    pilot_runs = _pilot_wandb_runs(wandb_snapshot)
+    local = _local_state(local_summary, profile.expected_arms)
+    pilot_runs = _pilot_wandb_runs(wandb_snapshot, profile)
     all_runs = [
         run for run in wandb_snapshot["runs"] if isinstance(run, dict)
     ]
     state_counts = Counter(str(run.get("state") or "unknown") for run in all_runs)
 
-    expected = set(EXPECTED_ARMS)
+    expected = set(profile.expected_arms)
     local_completed = set(local["completed_arms"])
     local_attested = set(local["attested_arms"])
     if local["summary_present"]:
@@ -125,7 +159,8 @@ def audit_lfm_pilot_execution(
     readiness_pass = readiness.get("overall_status") == "pass"
     return {
         "schema_version": 1,
-        "claim_scope": "native_lfm_pilot_execution_state_only",
+        "claim_scope": profile.claim_scope,
+        "pilot": profile.name,
         "state": state,
         "observation_scope": (
             "The captured local summary and W&B inventory only; absence does "
@@ -156,7 +191,38 @@ def audit_lfm_pilot_execution(
         "next_action": (
             "Inspect the sealed pilot evidence and screening metrics."
             if training_attested
-            else "Run notebooks/lfm_selective_transfer_pilot.ipynb on "
-            "native-BF16 hardware."
+            else profile.next_action
         ),
     }
+
+
+def audit_lfm_pilot_execution(
+    readiness: dict[str, Any],
+    wandb_snapshot: dict[str, Any],
+    *,
+    local_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Preserve the original LFM execution-audit API."""
+
+    return audit_pilot_execution(
+        readiness,
+        wandb_snapshot,
+        profile=LFM_PROFILE,
+        local_summary=local_summary,
+    )
+
+
+def audit_smol_pilot_execution(
+    readiness: dict[str, Any],
+    wandb_snapshot: dict[str, Any],
+    *,
+    local_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Audit the observed Smol vision-transfer pilot execution."""
+
+    return audit_pilot_execution(
+        readiness,
+        wandb_snapshot,
+        profile=SMOL_PROFILE,
+        local_summary=local_summary,
+    )

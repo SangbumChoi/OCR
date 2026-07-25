@@ -91,3 +91,24 @@ python scripts/run_transfer_pilot_colab.py --pilot smol-vision
 The launcher re-runs readiness, checks W&B credentials, free disk, CUDA memory, and native BF16,
 then delegates to the resumable sweep runner. T4 is rejected because the experiment contract
 requires native BF16; L4, A10, A100, or newer hardware is appropriate.
+
+The ready-to-run notebook is
+[`smol_vision_transfer_pilot.ipynb`](../../notebooks/smol_vision_transfer_pilot.ipynb). It checks
+out the pinned experiment branch, installs the production extras, authenticates W&B, performs the
+compact dry run, launches the resumable matched pilot, and prints only bounded status and
+comparison fields.
+
+## Observed execution state
+
+[`audit_smol_vision_transfer_pilot_execution.py`](../../scripts/audit_smol_vision_transfer_pilot_execution.py)
+keeps launch readiness separate from execution. It accepts completion only when the local sweep
+summary contains both expected arms and each has a sealed passing execution attestation. A W&B run
+name alone is external activity, not proof that all training stages completed.
+
+The available authenticated W&B snapshot was captured on July 25, 2026 and contains ten legacy
+LFM ablation runs, no Smol pilot runs, and no local Smol sweep summary. The current bounded
+observation is therefore `not_started_in_observed_state`:
+[`smol_vision_transfer_pilot_execution_state.json`](../results/smol_vision_transfer_pilot_execution_state.json).
+Because the project is private and no newer authenticated snapshot is stored in the repository,
+this does not prove that no newer run exists outside the captured evidence. Training execution,
+quality, and promotion remain unattested.

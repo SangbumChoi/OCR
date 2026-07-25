@@ -1,5 +1,5 @@
 {
-  "claim_scope": "native_lfm_pilot_execution_state_only",
+  "claim_scope": "smol_vision_pilot_execution_state_only",
   "local": {
     "attested_arms": [],
     "completed_arms": [],
@@ -7,9 +7,9 @@
     "status": "absent",
     "summary_present": false
   },
-  "next_action": "Run notebooks/lfm_selective_transfer_pilot.ipynb on native-BF16 hardware.",
+  "next_action": "Run notebooks/smol_vision_transfer_pilot.ipynb on native-BF16 hardware.",
   "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",
-  "pilot": "docvlm-lfm-language-transfer-pilot",
+  "pilot": "docvlm-smol-vision-transfer-pilot",
   "pilot_submission_authorized": true,
   "promotion_claim_authorized": false,
   "quality_claim_authorized": false,
@@ -18,9 +18,9 @@
   "submission_readiness": {
     "checks": {
       "fail": 0,
-      "pass": 15
+      "pass": 14
     },
-    "fingerprint": "sha256:5ab1bb793d13270221b9211eba2d5081361f2eab59f02a438f770f36ba947b0d",
+    "fingerprint": "sha256:3bbf62c8c334bd48f3a09f684df26ce7c169cffa6e2ae73be88100e5045b900d",
     "status": "pass"
   },
   "training_execution_attested": false,
