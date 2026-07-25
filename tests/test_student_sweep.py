@@ -1357,6 +1357,64 @@ def test_smol_vision_transfer_pilot_is_matched_and_selective(tmp_path):
             assert "acquire_vision_checkpoint" not in variant.plan.stage_names
 
 
+def test_smol_vision_confirmatory_sweep_reuses_one_selective_cache(
+    tmp_path,
+):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_smol_vision_transfer_sweep.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "smol-confirmatory.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 6
+    assert plan.replicates == ("seed_0", "seed_1", "seed_2")
+    assert plan.baseline == "lfm_language_only"
+    assert plan.promotion is not None
+    promotion = plan.promotion.to_dict()
+    assert promotion["eligible_variants"] == ["lfm_smol_dual"]
+    assert promotion["minimum_replicates"] == 3
+    assert promotion["familywise_alpha"] == 0.05
+    assert {
+        "training_feasibility",
+        "generation_stability",
+    }.issubset(promotion["required_gates"])
+
+    cache_dirs = set()
+    for variant in plan.variants:
+        assert variant.parameters["total"] == 814_207_243
+        assert variant.plan.raw_spec["pretraining"]["max_steps"] is None
+        if variant.arm_id == "lfm_smol_dual":
+            acquire = next(
+                stage
+                for stage in variant.plan.stages
+                if stage.name == "acquire_vision_checkpoint"
+            )
+            cache_dirs.add(
+                acquire.command[
+                    acquire.command.index("--output-dir") + 1
+                ]
+            )
+        else:
+            assert "acquire_vision_checkpoint" not in variant.plan.stage_names
+    assert len(cache_dirs) == 1
+    cache = Path(next(iter(cache_dirs)))
+    assert cache.parent == (
+        ROOT / "outputs" / "checkpoint_cache" / "selective"
+    )
+
+
 def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
     raw = yaml.safe_load(
         (ROOT / "configs" / "sub1b_visual_canvas_sweep.yaml").read_text(

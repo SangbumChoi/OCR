@@ -1213,6 +1213,13 @@ def test_experiment_compiles_selective_hub_initialization_source(tmp_path):
         ]
     )
     assert "--family" not in acquire.command
+    output_dir = Path(
+        acquire.command[acquire.command.index("--output-dir") + 1]
+    )
+    assert output_dir.parent == (
+        ROOT / "outputs" / "checkpoint_cache" / "selective"
+    )
+    assert len(output_dir.name) == 64
     assert "@checkpoint:vision" in initialize.command
     assert initialize.dependencies == (
         "train_tokenizer",

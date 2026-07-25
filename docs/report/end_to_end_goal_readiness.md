@@ -54,3 +54,7 @@ authorize model quality. Completion requires:
 
 The next executable step is
 [`smol_vision_transfer_pilot.ipynb`](../../notebooks/smol_vision_transfer_pilot.ipynb).
+After that pilot is sealed, the exact confirmatory contract and compact evidence path are documented
+in [`student_smol_vision_transfer_sweep.md`](student_smol_vision_transfer_sweep.md). The evidence
+builder fingerprints detailed run artifacts instead of copying long metric tables, HTML, or
+full-page outputs into the repository.

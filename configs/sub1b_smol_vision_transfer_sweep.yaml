@@ -1,0 +1,176 @@
+# Three-seed confirmatory sweep for SmolVLM2 transformer-block initialization.
+# Submit this only after the one-seed pilot has sealed target-GPU evidence.
+
+schema_version: 1
+name: docvlm-smol-vision-transfer-sweep
+base_experiment: configs/sub1b_experiment.yaml
+output_root: outputs/sweeps/docvlm-smol-vision-transfer-sweep
+baseline: lfm_language_only
+
+promotion:
+  primary_metric: heldout_score
+  direction: maximize
+  minimum_effect: 0.005
+  minimum_replicates: 3
+  familywise_alpha: 0.05
+  max_promotions: 1
+  eligible_variants:
+    - lfm_smol_dual
+  required_gates:
+    - parameter_budget
+    - training_feasibility
+    - generalization
+    - grounding
+    - reasoning
+    - multilingual
+    - reliability
+    - generation_stability
+  required_axis_deltas:
+    L1-locate: 0.0
+    L1-region: 0.0
+    H-comprehension: 0.0
+    H-accounting: 0.0
+    multilingual: 0.0
+    ocr-full: 0.0
+    reading-order: 0.0
+
+shared_experiment_patches:
+  - {op: add, path: /initialization/language_family, value: lfm2}
+  - op: replace
+    path: /initialization/language_source
+    value:
+      hub:
+        repo_id: LiquidAI/LFM2.5-VL-1.6B
+        revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
+  - {op: replace, path: /runtime/visual_backend_benchmark/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /runtime/visual_backend_benchmark/wandb_entity, value: sbdc}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_entity, value: sbdc}
+  - {op: replace, path: /pretraining/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /pretraining/wandb_entity, value: sbdc}
+  - {op: replace, path: /posttraining/sft/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /posttraining/sft/wandb_entity, value: sbdc}
+  - {op: replace, path: /posttraining/rlvr/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /posttraining/rlvr/wandb_entity, value: sbdc}
+  - {op: replace, path: /evaluation/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /evaluation/wandb_entity, value: sbdc}
+  - {op: add, path: /evaluation/wandb_tags/-, value: smol-vision-transfer-sweep}
+  - {op: add, path: /evaluation/wandb_tags/-, value: confirmatory}
+
+matched_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /initialization/language_family}
+  - {document: experiment, path: /initialization/language_source}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /sequence_teacher/max_requests}
+  - {document: experiment, path: /pretraining/max_steps}
+  - {document: experiment, path: /posttraining/sft/max_steps}
+  - {document: experiment, path: /posttraining/rlvr/max_steps}
+  - {document: experiment, path: /evaluation/max_samples}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
+
+replicate_controls:
+  - {document: experiment, path: /initialization/seed}
+  - {document: experiment, path: /synthetic/train_seed}
+  - {document: experiment, path: /synthetic/heldout_seed}
+  - {document: experiment, path: /evaluation/seed}
+  - {document: blueprint, path: /training/pretraining/input_pipeline/augmentation_seed}
+  - {document: blueprint, path: /training/pretraining/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
+  - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
+
+replicates:
+  - id: seed_0
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 5}
+      - {op: replace, path: /synthetic/train_seed, value: 7}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7007}
+      - {op: replace, path: /evaluation/seed, value: 31}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 7}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 7}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
+
+  - id: seed_1
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 105}
+      - {op: replace, path: /synthetic/train_seed, value: 107}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
+      - {op: replace, path: /evaluation/seed, value: 131}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
+
+  - id: seed_2
+    experiment_patches:
+      - {op: replace, path: /initialization/seed, value: 205}
+      - {op: replace, path: /synthetic/train_seed, value: 207}
+      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
+      - {op: replace, path: /evaluation/seed, value: 231}
+    blueprint_patches:
+      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
+      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
+      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
+      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
+
+variants:
+  - id: lfm_language_only
+    hypothesis: "Measures strict LFM language initialization without inherited vision blocks."
+    decision_metrics: {vision_transfer: 0, language_transfer: 1}
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I8_lfm_aligned_language}
+    blueprint_patches: &lfm_geometry
+      - {op: replace, path: /tokenizer/vocab_size, value: 65536}
+      - {op: replace, path: /student/language/vocab_size, value: 65536}
+      - {op: replace, path: /student/language/width, value: 2048}
+      - {op: replace, path: /student/language/layers, value: 12}
+      - {op: replace, path: /student/language/attention_heads, value: 32}
+      - {op: replace, path: /student/language/kv_heads, value: 8}
+      - {op: replace, path: /student/language/mlp_width, value: 5120}
+      - {op: replace, path: /student/language/rope_base, value: 1000000.0}
+      - {op: replace, path: /student/language/rope_layout, value: half_split}
+      - {op: replace, path: /student/language/norm_eps, value: 0.00001}
+      - {op: replace, path: /student/language/qk_norm, value: true}
+      - {op: replace, path: /student/language/attention_bias, value: false}
+      - {op: replace, path: /student/language/mlp_bias, value: false}
+      - {op: replace, path: /student/language/full_attention_layers, value: [2, 5, 8, 10]}
+      - {op: replace, path: /student/language/conv_kernel_size, value: 3}
+      - {op: replace, path: /student/language/conv_bias, value: false}
+      - {op: replace, path: /student/connector/output_width, value: 2048}
+      - {op: replace, path: /student/connector/layers, value: 1}
+      - {op: replace, path: /student/connector/attention_heads, value: 16}
+      - {op: replace, path: /student/connector/mlp_width, value: 4096}
+      - op: replace
+        path: /training/pretraining/distillation/language_layer_pairs
+        value: [[2, 2], [5, 5], [8, 8], [11, 11]]
+
+  - id: lfm_smol_dual
+    hypothesis: "Tests exact SmolVLM2 transformer-block initialization at fixed LFM language initialization."
+    decision_metrics: {vision_transfer: 1, language_transfer: 1}
+    experiment_patches:
+      - {op: replace, path: /initialization/arm, value: I9_lfm_smol_dual}
+      - {op: add, path: /initialization/vision_family, value: siglip}
+      - op: replace
+        path: /initialization/vision_source
+        value:
+          hub:
+            repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+            revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
+            tensor_prefixes:
+              - model.vision_model.encoder.layers.
+    blueprint_patches: *lfm_geometry
+
+contrasts:
+  - id: smol_vision_block_effect
+    hypothesis: "Smol vision-block effect at fixed LFM language initialization."
+    coefficients: {lfm_language_only: -1, lfm_smol_dual: 1}

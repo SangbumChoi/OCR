@@ -64,6 +64,11 @@ max-token termination, malformed structure, or score regressions. HTML rendering
 requires all-page coverage, table-cell survival, and a bounded canvas, so a large token allowance
 cannot conceal missing pages or unreadable downscaling.
 
+The gated follow-up is the three-seed
+[`student_smol_vision_transfer_sweep.md`](student_smol_vision_transfer_sweep.md). Its treatment
+replicates share one content-addressed selective checkpoint payload while retaining independent
+training state and matched seed controls.
+
 ## Decision rule
 
 Advance to a sealed multi-seed run only if the dual cell passes all execution and generation

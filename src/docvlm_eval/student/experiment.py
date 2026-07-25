@@ -1947,10 +1947,19 @@ def build_experiment_plan(
         stage_name = f"acquire_{component}_checkpoint"
         manifest = checkpoint_manifests[component]
         if spec.tensor_prefixes:
+            cache_key = _fingerprint(
+                {
+                    "repo_id": spec.repo_id,
+                    "revision": spec.revision,
+                    "tensor_prefixes": sorted(spec.tensor_prefixes),
+                }
+            ).split(":", 1)[1]
             output_dir = (
-                artifacts
-                / "initialization_sources"
-                / f"{component}_checkpoint"
+                repo_root
+                / "outputs"
+                / "checkpoint_cache"
+                / "selective"
+                / cache_key
             )
             command = [
                 python,

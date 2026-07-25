@@ -45,6 +45,7 @@ student = [
     "torch>=2.3.0",
     "safetensors>=0.4.0",
     "huggingface-hub>=0.28.0",
+    "filelock>=3.13.0",
     "requests>=2.32.0",
     "tokenizers>=0.20.0",
     "datasets>=2.20.0",

@@ -201,6 +201,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/student_smol_vision_transfer_pilot.md`](report/student_smol_vision_transfer_pilot.md)
   — exact SmolVLM2 transformer-block acquisition, real-payload copy verification, and a bounded
   matched pilot against the same LFM language initialization.
+- **Confirm Smol vision transfer across seeds:**
+  [`report/student_smol_vision_transfer_sweep.md`](report/student_smol_vision_transfer_sweep.md)
+  — a production-budget paired three-seed sweep, one shared content-addressed selective payload,
+  multiplicity-controlled promotion, and compact quality evidence.
 - **Guard long structured generation and rendering:**
   [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
   — exact suffix-cycle termination, bounded task-aware token horizons, a leakage-safe tokenized

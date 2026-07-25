@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import struct
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 from safetensors import safe_open
@@ -13,6 +16,9 @@ from docvlm_eval.student.checkpoint_acquisition import (
 from docvlm_eval.student.selective_checkpoint import (
     materialize_contiguous_safetensors_subset,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_materializes_only_one_contiguous_tensor_prefix(tmp_path):
@@ -58,7 +64,7 @@ def test_materializes_only_one_contiguous_tensor_prefix(tmp_path):
         return source_data[start - data_base : end - data_base + 1]
 
     output = tmp_path / "subset"
-    manifest_path = tmp_path / "checkpoint.json"
+    manifest_path = output / "selective_checkpoint_manifest.json"
     manifest = materialize_contiguous_safetensors_subset(
         repo_id="test/model",
         revision="a" * 40,
@@ -91,6 +97,32 @@ def test_materializes_only_one_contiguous_tensor_prefix(tmp_path):
         ).tolist() == [1.5, 2.5]
     assert checkpoint_manifest_valid(manifest_path, verify_hashes=True)
     assert checkpoint_path_from_manifest(manifest_path) == output.resolve()
+
+    run_manifest = tmp_path / "run" / "checkpoint.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "acquire_selective_checkpoint.py"),
+            "--repo-id",
+            "test/model",
+            "--revision",
+            "a" * 40,
+            "--tensor-prefix",
+            "model.vision.blocks.",
+            "--output-dir",
+            str(output),
+            "--manifest",
+            str(run_manifest),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    summary = json.loads(completed.stdout)
+    assert summary["reused"] is True
+    assert checkpoint_manifest_valid(run_manifest, verify_hashes=True)
+    assert checkpoint_path_from_manifest(run_manifest) == output.resolve()
 
 
 def test_rejects_noncontiguous_selection(tmp_path):
