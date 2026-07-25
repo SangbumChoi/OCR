@@ -24,6 +24,12 @@ def main() -> None:
     parser.add_argument("--max-rows", type=int)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--decode-checks", type=int, default=16)
+    parser.add_argument(
+        "--sampling-strategy",
+        choices=("global_hash", "task_stratified"),
+        default="global_hash",
+    )
+    parser.add_argument("--min-rows-per-task", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -40,6 +46,8 @@ def main() -> None:
             max_rows=args.max_rows,
             seed=args.seed,
             decode_checks=args.decode_checks,
+            sampling_strategy=args.sampling_strategy,
+            min_rows_per_task=args.min_rows_per_task,
         ),
         args.output,
         token=os.environ.get("HF_TOKEN"),

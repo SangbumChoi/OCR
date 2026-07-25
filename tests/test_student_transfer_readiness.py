@@ -46,6 +46,13 @@ def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
     assert result["target_cuda_feasibility_claim_authorized"] is False
     assert result["counts"] == {"pass": 15, "fail": 0}
     assert result["sweep"]["plan_fingerprint"] == plan.fingerprint
+    budget = next(
+        check
+        for check in result["checks"]
+        if check["id"] == "bounded_screening_budget"
+    )
+    assert budget["evidence"]["public_sampling_strategy"] == "task_stratified"
+    assert budget["evidence"]["public_min_rows_per_task"] == 16
 
 
 def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(

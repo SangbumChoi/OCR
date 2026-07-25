@@ -1,6 +1,6 @@
 {
   "claim_scope": "native_lfm_pilot_execution_state_only",
-  "fingerprint": "sha256:77adb07945d89bc6038c3d3892c6c4e14123471947f9ae801ac69b30062eb2c9",
+  "fingerprint": "sha256:288014eb26a95d9581b126fdb4ebc82e79d5e1ad6e6dd317e41dd6a8555d5c80",
   "local": {
     "attestation_sha256_by_arm": {},
     "attested_arms": [],
@@ -25,7 +25,7 @@
       "fail": 0,
       "pass": 15
     },
-    "fingerprint": "sha256:5ab1bb793d13270221b9211eba2d5081361f2eab59f02a438f770f36ba947b0d",
+    "fingerprint": "sha256:a5ecf5f6d48669c820fd2fabae79af239e560844fb3696a3c5808601290a266d",
     "status": "pass"
   },
   "training_execution_attested": false,

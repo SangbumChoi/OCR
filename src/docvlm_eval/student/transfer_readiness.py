@@ -103,18 +103,28 @@ def _evaluation_policy(variant: Any) -> dict[str, Any]:
     }
 
 
-def _public_row_cap(spec: dict[str, Any]) -> int | None:
+def _public_selection(spec: dict[str, Any]) -> dict[str, Any]:
     components = spec.get("data", {}).get("components")
     if not isinstance(components, list):
-        return None
+        return {}
     for component in components:
         if (
             isinstance(component, dict)
             and isinstance(component.get("hub"), dict)
             and component["hub"].get("max_rows") is not None
         ):
-            return int(component["hub"]["max_rows"])
-    return None
+            hub = component["hub"]
+            return {
+                "max_rows": int(hub["max_rows"]),
+                "sampling_strategy": hub.get(
+                    "sampling_strategy",
+                    "global_hash",
+                ),
+                "min_rows_per_task": int(
+                    hub.get("min_rows_per_task", 0)
+                ),
+            }
+    return {}
 
 
 def audit_lfm_transfer_pilot(
@@ -618,7 +628,8 @@ def audit_lfm_transfer_pilot(
     pilot_spec = (
         transfer_variant.plan.raw_spec if transfer_variant is not None else {}
     )
-    public_row_cap = _public_row_cap(pilot_spec)
+    public_selection = _public_selection(pilot_spec)
+    public_row_cap = public_selection.get("max_rows")
     synthetic_count = int(
         pilot_spec.get("synthetic", {}).get("count") or 0
     )
@@ -643,12 +654,20 @@ def audit_lfm_transfer_pilot(
         0 < synthetic_count <= 32
         and public_row_cap is not None
         and 0 < public_row_cap <= 256
+        and public_selection.get("sampling_strategy") == "task_stratified"
+        and public_selection.get("min_rows_per_task") == 16
         and 0 < pretraining_steps <= 25
         and 0 < sft_steps <= 10
         and 0 < rlvr_steps <= 5,
         {
             "synthetic_train_documents": synthetic_count,
             "public_row_cap": public_row_cap,
+            "public_sampling_strategy": public_selection.get(
+                "sampling_strategy"
+            ),
+            "public_min_rows_per_task": public_selection.get(
+                "min_rows_per_task"
+            ),
             "pretraining_steps": pretraining_steps,
             "sft_steps": sft_steps,
             "rlvr_steps": rlvr_steps,
@@ -1196,7 +1215,8 @@ def audit_smol_vision_transfer_pilot(
     )
 
     pilot_spec = dual.plan.raw_spec if dual is not None else {}
-    public_row_cap = _public_row_cap(pilot_spec)
+    public_selection = _public_selection(pilot_spec)
+    public_row_cap = public_selection.get("max_rows")
     synthetic_count = int(
         pilot_spec.get("synthetic", {}).get("count") or 0
     )
@@ -1221,12 +1241,20 @@ def audit_smol_vision_transfer_pilot(
         0 < synthetic_count <= 32
         and public_row_cap is not None
         and 0 < public_row_cap <= 256
+        and public_selection.get("sampling_strategy") == "task_stratified"
+        and public_selection.get("min_rows_per_task") == 16
         and 0 < pretraining_steps <= 25
         and 0 < sft_steps <= 10
         and 0 < rlvr_steps <= 5,
         {
             "synthetic_train_documents": synthetic_count,
             "public_row_cap": public_row_cap,
+            "public_sampling_strategy": public_selection.get(
+                "sampling_strategy"
+            ),
+            "public_min_rows_per_task": public_selection.get(
+                "min_rows_per_task"
+            ),
             "pretraining_steps": pretraining_steps,
             "sft_steps": sft_steps,
             "rlvr_steps": rlvr_steps,

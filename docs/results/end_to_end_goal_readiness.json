@@ -34,7 +34,7 @@
         "adopted_methods": 29,
         "certified_methods": 29,
         "errors": 0,
-        "fingerprint": "sha256:277f7fee2f559e6c3a9e321ebca8e38aa3e1da610b78cdca6c7a1dcb94995f96",
+        "fingerprint": "sha256:592d849b4e5a41ba9994026f45eee51890e7557e1a1ffc4291d7bffe21f9aea1",
         "status": "pass"
       },
       "id": "adopted_method_executable_evidence",
@@ -243,12 +243,12 @@
           "fail": 0,
           "pass": 14
         },
-        "compiled_plan_fingerprint": "sha256:630173efebf4640e7e794511966558a79b977d0c023b1c5ef50832ce728d3a7e",
-        "fingerprint": "sha256:a7e2ae09414bd5c2d15a377f835f9c87e8a86efb845b7056ec90b4534e8db9a2",
+        "compiled_plan_fingerprint": "sha256:3831ba09eebd568ea44bc5355b38df9d026d33da3708cf389a5fbadd1fc2ccc0",
+        "fingerprint": "sha256:fb3fb30a1f9e43374e8654ced94cfcdcc9d789ad9ed225e9260e7a93aeb99cb8",
         "fingerprint_valid": true,
         "pilot_submission_authorized": true,
         "quality_claim_authorized": false,
-        "readiness_plan_fingerprint": "sha256:630173efebf4640e7e794511966558a79b977d0c023b1c5ef50832ce728d3a7e",
+        "readiness_plan_fingerprint": "sha256:3831ba09eebd568ea44bc5355b38df9d026d33da3708cf389a5fbadd1fc2ccc0",
         "status": "pass"
       },
       "id": "pilot_submission_contract",
@@ -257,7 +257,7 @@
     },
     {
       "evidence": {
-        "fingerprint": "sha256:78e8d9e91e9508edeaa4d06cb907c86ffabaffc23a5d79bfb2b2e037d6292282",
+        "fingerprint": "sha256:74214b0e754137ea259b50bbe33cfb675334fd085fd47adf112b65fdcd0bc56c",
         "fingerprint_valid": true,
         "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",
         "readiness_linked": true,
@@ -305,17 +305,17 @@
     "pending": 3
   },
   "execution_complete": false,
-  "fingerprint": "sha256:338b0573bd059335ec4ff77ade83b0e243f536f39ba7bd202ea931ed6ad0e41f",
+  "fingerprint": "sha256:ff9fa1fa98ecd380cb84b73cceaed13af09a983dd2aeb2579235ac6108a955d8",
   "goal_complete": false,
   "implementation_ready": true,
   "inputs": {
-    "execution_state": "sha256:6d84dd84e4893aeeb83b97be3bb9c03176782ae9cd50074e1af17b4259015b0b",
+    "execution_state": "sha256:8c0cedc711cf9ee5416905f012283d68158b3c51da884d077b5b0f4a92f087e7",
     "language_preflight": "sha256:0dba17980a41f8b51f521372ee6a57bf5d9dd1b1fceeb24a23cc4a9879bbbe4e",
     "method_catalog": "sha256:9ea744bb5dbc377803965c7e2360453a4ce0112cf96ff7946839541340c2ea4f",
     "method_evidence": "sha256:18bf22fc003cc356befd44448b985da02b71d43a32b037199cc3b46a125dac4e",
-    "pilot_readiness": "sha256:e452cb3e950cee52e6c118997eb449adb276afdb8d5369e84b4dfec0d7df8e24",
+    "pilot_readiness": "sha256:83f77eb148f41220979b26252ff10f960ffa37b5cb9fe0a9b83b88931b67781a",
     "public_dataset_readiness": "sha256:90f542e20a2778c9542a72f91d640d2d8c4ac5264cd8da9c653b9e0760117e5e",
-    "sweep_fingerprint": "sha256:630173efebf4640e7e794511966558a79b977d0c023b1c5ef50832ce728d3a7e",
+    "sweep_fingerprint": "sha256:3831ba09eebd568ea44bc5355b38df9d026d33da3708cf389a5fbadd1fc2ccc0",
     "synth_config": "sha256:fde0fa184618b67404297ba2bfd9a2799b0ec64955c7dd79364efcdba8b6a5ef",
     "vision_preflight": "sha256:d66f9707db46c4b870dd425095ddae006d51b06f7cd4d4381f787f4fdf1f5b87"
   },

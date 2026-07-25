@@ -95,6 +95,86 @@ def test_materialize_component_filters_and_hash_samples_deterministically(tmp_pa
     assert load_from_disk(str(second_output))["sample_id"] == selected["sample_id"]
 
 
+def test_task_stratified_sampling_guarantees_floor_and_is_deterministic(tmp_path):
+    from datasets import load_from_disk
+
+    dataset = _udd_dataset(tmp_path)
+    spec = HubComponentSpec(
+        repo_id="owner/dataset",
+        revision=REVISION,
+        fold="train",
+        max_rows=2,
+        seed=19,
+        decode_checks=2,
+        sampling_strategy="task_stratified",
+        min_rows_per_task=1,
+    )
+    first = materialize_component(
+        dataset,
+        tmp_path / "stratified-first",
+        spec,
+        resolved_revision=REVISION,
+    )
+    second = materialize_component(
+        dataset,
+        tmp_path / "stratified-second",
+        spec,
+        resolved_revision=REVISION,
+    )
+
+    assert first["selection"] == {
+        "applied_strategy": "task_stratified",
+        "eligible_rows": 4,
+        "eligible_task_counts": {"kie": 2, "reasoning": 2},
+        "task_quotas": {"kie": 1, "reasoning": 1},
+        "selected_rows": 2,
+        "selected_task_counts": {"kie": 1, "reasoning": 1},
+        "task_floor_satisfied": True,
+    }
+    assert (
+        second["selected_indices_fingerprint"]
+        == first["selected_indices_fingerprint"]
+    )
+    selected = load_from_disk(str(tmp_path / "stratified-first"))
+    assert sorted(selected["task"]) == ["kie", "reasoning"]
+
+
+def test_task_stratified_sampling_rejects_impossible_floor(tmp_path):
+    dataset = _udd_dataset(tmp_path)
+    spec = HubComponentSpec(
+        repo_id="owner/dataset",
+        revision=REVISION,
+        fold="train",
+        max_rows=3,
+        decode_checks=1,
+        sampling_strategy="task_stratified",
+        min_rows_per_task=2,
+    )
+
+    with pytest.raises(ValueError, match="cannot satisfy"):
+        materialize_component(
+            dataset,
+            tmp_path / "impossible",
+            spec,
+            resolved_revision=REVISION,
+        )
+
+
+def test_sampling_contract_rejects_inconsistent_controls():
+    with pytest.raises(ValueError, match="min_rows_per_task requires"):
+        HubComponentSpec(
+            repo_id="owner/dataset",
+            revision=REVISION,
+            min_rows_per_task=1,
+        )
+    with pytest.raises(ValueError, match="requires a positive"):
+        HubComponentSpec(
+            repo_id="owner/dataset",
+            revision=REVISION,
+            sampling_strategy="task_stratified",
+        )
+
+
 def test_materialize_component_rejects_duplicate_image_identity(tmp_path):
     dataset = _udd_dataset(tmp_path, duplicate_phash=True)
     spec = HubComponentSpec(

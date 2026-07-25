@@ -25,6 +25,8 @@ shared_experiment_patches:
   - {op: replace, path: /synthetic/heldout_count, value: 32}
   - {op: replace, path: /synthetic/adaptation_policy/enabled, value: false}
   - {op: replace, path: /data/components/1/hub/max_rows, value: 256}
+  - {op: add, path: /data/components/1/hub/sampling_strategy, value: task_stratified}
+  - {op: add, path: /data/components/1/hub/min_rows_per_task, value: 16}
   - {op: replace, path: /sequence_teacher/max_requests, value: 128}
   - {op: replace, path: /sequence_teacher/accepted_target_count, value: 12}
   - {op: replace, path: /pretraining/max_steps, value: 25}

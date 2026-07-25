@@ -37,8 +37,12 @@ Private datasets use `HF_TOKEN` from the environment. Tokens are never written t
 ## Selection
 
 The component can independently filter repeated `--source`, `--task`, and `--language` values.
-`--max-rows` applies a deterministic SHA-256 rank over seed, sample ID, and source row index rather
-than taking a potentially source-ordered prefix. Leaving it unset retains every matching row.
+By default, `--max-rows` applies a deterministic SHA-256 rank over seed, sample ID, and source row
+index rather than taking a potentially source-ordered prefix. Capped pilots use
+`--sampling-strategy task_stratified --min-rows-per-task 16`: every observed task first receives
+up to 16 rows, and the remaining budget is apportioned by residual task capacity. Rows inside each
+task are still selected by the same deterministic hash rank. Acquisition fails when the cap cannot
+satisfy the requested floors. Leaving `--max-rows` unset retains every matching row.
 
 The full executable mixture is:
 
@@ -65,8 +69,10 @@ Before `save_to_disk`, acquisition requires:
 
 `component_manifest.json` records the complete selection spec, resolved commit, source and selected
 row counts, QA count, task/source/language/license distributions, decoded-image count, Arrow
-fingerprint, and selected-index fingerprint. `mixture_manifest.json` carries a fingerprint of this
-upstream manifest, preserving the chain into tokenizer training and pretraining.
+fingerprint, and selected-index fingerprint. For capped inputs it also records eligible task
+counts, deterministic quotas, realized task counts, and whether the requested floor was satisfied.
+`mixture_manifest.json` carries a fingerprint of this upstream manifest, preserving the chain into
+tokenizer training and pretraining.
 
 ## Experiment integration
 

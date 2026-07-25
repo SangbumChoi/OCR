@@ -1497,6 +1497,10 @@ def build_experiment_plan(
             max_rows=(int(hub["max_rows"]) if hub.get("max_rows") is not None else None),
             seed=int(hub.get("seed", 7)),
             decode_checks=int(hub.get("decode_checks", 16)),
+            sampling_strategy=str(
+                hub.get("sampling_strategy", "global_hash")
+            ),
+            min_rows_per_task=int(hub.get("min_rows_per_task", 0)),
         )
         hub_specs[name] = spec
         acquired_paths[name] = component_root / name
@@ -2211,6 +2215,10 @@ def build_experiment_plan(
             str(spec.seed),
             "--decode-checks",
             str(spec.decode_checks),
+            "--sampling-strategy",
+            spec.sampling_strategy,
+            "--min-rows-per-task",
+            str(spec.min_rows_per_task),
             "--output",
             str(output),
         ]

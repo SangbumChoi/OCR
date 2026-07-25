@@ -215,7 +215,9 @@
     {
       "evidence": {
         "pretraining_steps": 25,
+        "public_min_rows_per_task": 16,
         "public_row_cap": 256,
+        "public_sampling_strategy": "task_stratified",
         "rlvr_steps": 5,
         "sft_steps": 10,
         "synthetic_train_documents": 32
@@ -229,7 +231,7 @@
     "fail": 0,
     "pass": 14
   },
-  "fingerprint": "sha256:a7e2ae09414bd5c2d15a377f835f9c87e8a86efb845b7056ec90b4534e8db9a2",
+  "fingerprint": "sha256:fb3fb30a1f9e43374e8654ced94cfcdcc9d789ad9ed225e9260e7a93aeb99cb8",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The dual-source CUDA feasibility stage must execute and pass on the target GPU.",
@@ -266,12 +268,12 @@
     ],
     "baseline": "lfm_language_only",
     "name": "docvlm-smol-vision-transfer-pilot",
-    "plan_fingerprint": "sha256:630173efebf4640e7e794511966558a79b977d0c023b1c5ef50832ce728d3a7e",
+    "plan_fingerprint": "sha256:3831ba09eebd568ea44bc5355b38df9d026d33da3708cf389a5fbadd1fc2ccc0",
     "replicates": [
       "seed_0"
     ],
     "source": "configs/sub1b_smol_vision_transfer_pilot.yaml",
-    "source_fingerprint": "sha256:1d9e083791fe353bebdc4028725f1b70f1ef0d2ca15657a81a5937281cc111f1"
+    "source_fingerprint": "sha256:ff4c555cea5aaa9fb133e362d014285b2e2729625c074e310d495556621b4bae"
   },
   "target_cuda_feasibility_claim_authorized": false
 }

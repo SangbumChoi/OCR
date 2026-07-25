@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+_SAMPLING_STRATEGIES = {"global_hash", "task_stratified"}
 _REQUIRED_COLUMNS = {
     "image",
     "sample_id",
@@ -65,6 +66,8 @@ class HubComponentSpec:
     max_rows: int | None = None
     seed: int = 7
     decode_checks: int = 16
+    sampling_strategy: str = "global_hash"
+    min_rows_per_task: int = 0
 
     def __post_init__(self) -> None:
         if not self.repo_id or "/" not in self.repo_id:
@@ -79,6 +82,24 @@ class HubComponentSpec:
             raise ValueError("Hub component seed must be non-negative")
         if self.decode_checks <= 0:
             raise ValueError("Hub component decode_checks must be positive")
+        if self.sampling_strategy not in _SAMPLING_STRATEGIES:
+            raise ValueError(
+                "Hub component sampling_strategy must be one of "
+                f"{sorted(_SAMPLING_STRATEGIES)}"
+            )
+        if self.min_rows_per_task < 0:
+            raise ValueError("Hub component min_rows_per_task must be non-negative")
+        if self.sampling_strategy == "global_hash" and self.min_rows_per_task:
+            raise ValueError(
+                "min_rows_per_task requires sampling_strategy='task_stratified'"
+            )
+        if (
+            self.sampling_strategy == "task_stratified"
+            and self.min_rows_per_task <= 0
+        ):
+            raise ValueError(
+                "task_stratified sampling requires a positive min_rows_per_task"
+            )
 
 
 def _row_matches(row: dict[str, Any], spec: HubComponentSpec) -> bool:
@@ -93,6 +114,115 @@ def _row_matches(row: dict[str, Any], spec: HubComponentSpec) -> bool:
 def _selection_key(dataset: Any, index: int, seed: int) -> str:
     sample_id = str(dataset[index].get("sample_id") or f"row-{index}")
     return hashlib.sha256(f"{seed}:{sample_id}:{index}".encode("utf-8")).hexdigest()
+
+
+def _allocate_task_quotas(
+    counts: dict[str, int],
+    *,
+    max_rows: int,
+    minimum: int,
+) -> dict[str, int]:
+    tasks = sorted(counts)
+    required = sum(min(minimum, counts[task]) for task in tasks)
+    if required > max_rows:
+        raise ValueError(
+            "max_rows cannot satisfy min_rows_per_task across the filtered "
+            f"tasks: required={required}, max_rows={max_rows}"
+        )
+    quotas = {task: min(minimum, counts[task]) for task in tasks}
+    remaining = max_rows - required
+    while remaining:
+        capacities = {
+            task: counts[task] - quotas[task]
+            for task in tasks
+            if counts[task] > quotas[task]
+        }
+        if not capacities:
+            break
+        total_capacity = sum(capacities.values())
+        shares = {
+            task: remaining * capacity / total_capacity
+            for task, capacity in capacities.items()
+        }
+        allocated = 0
+        for task in sorted(capacities):
+            addition = min(capacities[task], int(shares[task]))
+            quotas[task] += addition
+            allocated += addition
+        remaining -= allocated
+        if not remaining:
+            break
+        remainders = sorted(
+            capacities,
+            key=lambda task: (
+                -(shares[task] - int(shares[task])),
+                task,
+            ),
+        )
+        for task in remainders:
+            if remaining <= 0:
+                break
+            if quotas[task] < counts[task]:
+                quotas[task] += 1
+                remaining -= 1
+    return quotas
+
+
+def _select_indices(
+    metadata: Any,
+    eligible_indices: list[int],
+    spec: HubComponentSpec,
+) -> tuple[list[int], dict[str, Any]]:
+    eligible_tasks = Counter(
+        str(metadata[index].get("task") or "unknown")
+        for index in eligible_indices
+    )
+    if spec.max_rows is None or len(eligible_indices) <= spec.max_rows:
+        selected_indices = list(eligible_indices)
+        quotas = dict(sorted(eligible_tasks.items()))
+        applied_strategy = "all_filtered"
+    elif spec.sampling_strategy == "global_hash":
+        selected_indices = sorted(
+            eligible_indices,
+            key=lambda index: _selection_key(metadata, index, spec.seed),
+        )[: spec.max_rows]
+        quotas = {}
+        applied_strategy = spec.sampling_strategy
+    else:
+        quotas = _allocate_task_quotas(
+            dict(eligible_tasks),
+            max_rows=spec.max_rows,
+            minimum=spec.min_rows_per_task,
+        )
+        selected_indices = []
+        for task in sorted(quotas):
+            task_indices = [
+                index
+                for index in eligible_indices
+                if str(metadata[index].get("task") or "unknown") == task
+            ]
+            task_indices.sort(
+                key=lambda index: _selection_key(metadata, index, spec.seed)
+            )
+            selected_indices.extend(task_indices[: quotas[task]])
+        applied_strategy = spec.sampling_strategy
+    selected_indices.sort()
+    selected_tasks = Counter(
+        str(metadata[index].get("task") or "unknown")
+        for index in selected_indices
+    )
+    return selected_indices, {
+        "applied_strategy": applied_strategy,
+        "eligible_rows": len(eligible_indices),
+        "eligible_task_counts": dict(sorted(eligible_tasks.items())),
+        "task_quotas": dict(sorted(quotas.items())),
+        "selected_rows": len(selected_indices),
+        "selected_task_counts": dict(sorted(selected_tasks.items())),
+        "task_floor_satisfied": all(
+            selected_tasks[task] >= min(spec.min_rows_per_task, count)
+            for task, count in eligible_tasks.items()
+        ),
+    }
 
 
 def _validate_selected(dataset: Any, spec: HubComponentSpec) -> dict[str, Any]:
@@ -210,17 +340,16 @@ def materialize_component(
             if column in dataset.column_names
         ]
     )
-    selected_indices = [
+    eligible_indices = [
         index for index in range(len(metadata)) if _row_matches(metadata[index], spec)
     ]
-    if not selected_indices:
+    if not eligible_indices:
         raise ValueError("public UDD filters selected zero rows")
-    if spec.max_rows is not None and len(selected_indices) > spec.max_rows:
-        selected_indices = sorted(
-            selected_indices,
-            key=lambda index: _selection_key(metadata, index, spec.seed),
-        )[: spec.max_rows]
-        selected_indices.sort()
+    selected_indices, selection = _select_indices(
+        metadata,
+        eligible_indices,
+        spec,
+    )
     selected = dataset.select(selected_indices)
     validation = _validate_selected(selected, spec)
 
@@ -236,6 +365,7 @@ def materialize_component(
         "resolved_revision": resolved_revision,
         "source_rows": len(dataset),
         "selected_indices_fingerprint": _fingerprint(selected_indices),
+        "selection": selection,
         "dataset_fingerprint": getattr(selected, "_fingerprint", None),
         "validation": validation,
     }

@@ -66,6 +66,13 @@ def test_smol_vision_transfer_pilot_readiness_passes(tmp_path):
     assert result["target_cuda_feasibility_claim_authorized"] is False
     assert result["counts"] == {"pass": 14, "fail": 0}
     assert result["sweep"]["plan_fingerprint"] == plan.fingerprint
+    budget = next(
+        check
+        for check in result["checks"]
+        if check["id"] == "bounded_screening_budget"
+    )
+    assert budget["evidence"]["public_sampling_strategy"] == "task_stratified"
+    assert budget["evidence"]["public_min_rows_per_task"] == 16
 
 
 def test_smol_vision_readiness_rejects_tampered_scope(tmp_path):
@@ -83,3 +90,30 @@ def test_smol_vision_readiness_rejects_tampered_scope(tmp_path):
         if item["id"] == "executed_vision_transfer_integrity"
     )
     assert check["status"] == "fail"
+
+
+def test_smol_vision_readiness_rejects_unstratified_public_cap(tmp_path):
+    plan = _plan(tmp_path)
+    dual = next(
+        variant for variant in plan.variants if variant.arm_id == "lfm_smol_dual"
+    )
+    public = dual.plan.raw_spec["data"]["components"][1]["hub"]
+    public["sampling_strategy"] = "global_hash"
+    public["min_rows_per_task"] = 0
+
+    result = audit_smol_vision_transfer_pilot(
+        plan,
+        repo_root=ROOT,
+        sweep_path=SWEEP,
+        vision_preflight_path=VISION,
+        language_preflight_path=LANGUAGE,
+        source_selection_path=SELECTION,
+    )
+
+    budget = next(
+        check
+        for check in result["checks"]
+        if check["id"] == "bounded_screening_budget"
+    )
+    assert result["pilot_submission_authorized"] is False
+    assert budget["status"] == "fail"

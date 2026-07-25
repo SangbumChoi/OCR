@@ -57,6 +57,11 @@ a duplicate 340 MB range request without changing either trained model or its co
 sole contrast is `lfm_smol_dual - lfm_language_only`. The configuration has no promotion block;
 one seed is screening evidence only.
 
+The 256-row public UDD cap uses deterministic task-stratified acquisition with
+a 16-row minimum for every observed task. The component manifest records
+eligible counts, allocated quotas, and realized counts, and submission
+readiness rejects an unstratified fallback.
+
 Long table, HTML, full-page, transcription, and reading-order outputs retain the production
 generation safeguards. Exact trailing token cycles terminate with EOS, task labels receive bounded
 token horizons up to the fixed hard cap, and the generation-stability gate rejects repetition,
