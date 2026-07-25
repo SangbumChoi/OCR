@@ -8,6 +8,12 @@ Open [`colab_full_comparison.ipynb`](colab_full_comparison.ipynb) in Colab → R
 **T4 GPU** → **Run all**. It clones the repo, installs it, runs `scripts/run_full_comparison.sh`,
 prints the score+efficiency matrices, and downloads `docs/results/`.
 
+For the native 814M LFM selective-transfer screening experiment, use
+[`lfm_selective_transfer_pilot.ipynb`](lfm_selective_transfer_pilot.ipynb). It runs the fail-closed
+readiness audit first, requires W&B authentication and sufficient GPU/disk capacity, resumes valid
+stages, writes full logs to the sweep output directory, and prints only compact progress summaries.
+Do not use the legacy LoRA ablation notebook as evidence for the native student.
+
 ## Option B — paste ONE cell into your existing Colab
 ```python
 !git clone https://github.com/SangbumChoi/OCR.git 2>/dev/null; \

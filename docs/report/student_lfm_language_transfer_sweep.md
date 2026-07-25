@@ -146,6 +146,12 @@ It explicitly does not authorize a target-CUDA feasibility, quality, or promotio
 target-GPU stage still has to execute successfully, and quality still requires the sealed
 three-seed confirmatory sweep.
 
+For Colab execution, use
+[`notebooks/lfm_selective_transfer_pilot.ipynb`](../../notebooks/lfm_selective_transfer_pilot.ipynb).
+Its launcher checks the same readiness fingerprint, W&B credentials, free disk, CUDA availability,
+and GPU memory before execution. Full subprocess output is retained in `colab_pilot.log`; the
+notebook prints only state changes, five-minute heartbeats, and a compact final summary.
+
 The confirmatory compiler emits 63 unique tracked stage names across nine runs, all grouped under
 `docvlm-lfm-language-transfer-sweep` in
 [`sbdc/docvlm-ablation`](https://wandb.ai/sbdc/docvlm-ablation). The pilot uses the separate

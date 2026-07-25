@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Run the native LFM selective-transfer pilot with compact Colab output."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import netrc
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+from docvlm_eval.student.sweep import compile_sweep_plan
+from docvlm_eval.student.transfer_readiness import audit_lfm_transfer_pilot
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SWEEP = ROOT / "configs" / "sub1b_lfm_language_transfer_pilot.yaml"
+PREFLIGHT = (
+    ROOT
+    / "docs"
+    / "results"
+    / "selective_transfer_lfm_real_source_preflight.json"
+)
+SWEEP_ROOT = ROOT / "outputs" / "sweeps" / "docvlm-lfm-language-transfer-pilot"
+
+
+def _wandb_credentials_available() -> bool:
+    if os.environ.get("WANDB_API_KEY", "").strip():
+        return True
+    try:
+        credentials = netrc.netrc().authenticators("api.wandb.ai")
+    except (FileNotFoundError, netrc.NetrcParseError, OSError):
+        return False
+    return bool(credentials and credentials[2])
+
+
+def _gpu_evidence() -> dict[str, Any]:
+    try:
+        import torch
+    except ImportError:
+        return {"available": False, "reason": "torch is not installed"}
+    if not torch.cuda.is_available():
+        return {"available": False, "reason": "CUDA is not available"}
+    device = torch.cuda.current_device()
+    properties = torch.cuda.get_device_properties(device)
+    return {
+        "available": True,
+        "device": device,
+        "name": properties.name,
+        "total_memory_bytes": int(properties.total_memory),
+        "torch_version": torch.__version__,
+        "cuda_version": torch.version.cuda,
+    }
+
+
+def _read_summary(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _compact_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    variants = summary.get("variants") or []
+    return {
+        "status": summary.get("status"),
+        "variants": [
+            {
+                "run": item.get("run"),
+                "status": item.get("status"),
+                **(
+                    {"error": str(item.get("error"))[:300]}
+                    if item.get("error")
+                    else {}
+                ),
+            }
+            for item in variants
+        ],
+        **(
+            {"comparison": summary["comparison"]}
+            if summary.get("comparison")
+            else {}
+        ),
+        **(
+            {"promotion": summary["promotion"]}
+            if summary.get("promotion")
+            else {}
+        ),
+    }
+
+
+def _tail(path: Path, *, lines: int = 20, width: int = 500) -> list[str]:
+    try:
+        values = path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        ).splitlines()
+    except OSError:
+        return []
+    return [line[:width] for line in values[-lines:]]
+
+
+def _readiness() -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(
+        prefix="docvlm-lfm-colab-readiness-"
+    ) as temporary:
+        plan = compile_sweep_plan(
+            SWEEP,
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=temporary,
+        )
+        return audit_lfm_transfer_pilot(
+            plan,
+            repo_root=ROOT,
+            sweep_path=SWEEP,
+            preflight_path=PREFLIGHT,
+        )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--variant", action="append", dest="variants")
+    parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--poll-seconds", type=float, default=30.0)
+    parser.add_argument("--heartbeat-seconds", type=float, default=300.0)
+    parser.add_argument("--min-free-gib", type=float, default=25.0)
+    parser.add_argument("--min-gpu-gib", type=float, default=14.0)
+    parser.add_argument(
+        "--log",
+        type=Path,
+        default=SWEEP_ROOT / "colab_pilot.log",
+    )
+    args = parser.parse_args()
+    if args.poll_seconds <= 0:
+        parser.error("--poll-seconds must be positive")
+    if args.heartbeat_seconds < args.poll_seconds:
+        parser.error("--heartbeat-seconds must be at least --poll-seconds")
+    if args.min_free_gib <= 0 or args.min_gpu_gib <= 0:
+        parser.error("memory thresholds must be positive")
+
+    readiness = _readiness()
+    print(
+        json.dumps(
+            {
+                "readiness": readiness["overall_status"],
+                "checks": readiness["counts"],
+                "fingerprint": readiness["fingerprint"],
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    if readiness["overall_status"] != "pass":
+        raise SystemExit("LFM pilot readiness audit failed")
+
+    free_bytes = shutil.disk_usage(ROOT).free
+    environment = {
+        "free_disk_gib": round(free_bytes / 2**30, 2),
+        "wandb_credentials": _wandb_credentials_available(),
+        "gpu": _gpu_evidence(),
+    }
+    print(json.dumps({"environment": environment}, sort_keys=True), flush=True)
+    if not args.dry_run:
+        if free_bytes < args.min_free_gib * 2**30:
+            raise SystemExit(
+                f"need at least {args.min_free_gib:g} GiB free disk"
+            )
+        if not environment["wandb_credentials"]:
+            raise SystemExit(
+                "W&B credentials are missing; run wandb.login() or set "
+                "WANDB_API_KEY"
+            )
+        gpu = environment["gpu"]
+        if not gpu.get("available"):
+            raise SystemExit(str(gpu.get("reason") or "CUDA is unavailable"))
+        if int(gpu["total_memory_bytes"]) < args.min_gpu_gib * 2**30:
+            raise SystemExit(
+                f"need at least {args.min_gpu_gib:g} GiB GPU memory"
+            )
+
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "run_student_sweep.py"),
+        "--sweep",
+        str(SWEEP),
+    ]
+    if args.dry_run:
+        command.append("--dry-run")
+    if args.no_resume:
+        command.append("--no-resume")
+    for variant in args.variants or []:
+        command.extend(["--variant", variant])
+
+    args.log = args.log.resolve()
+    args.log.parent.mkdir(parents=True, exist_ok=True)
+    summary_path = SWEEP_ROOT / "sweep_run_summary.json"
+    started = time.monotonic()
+    last_heartbeat = started
+    last_snapshot = None
+    with args.log.open("a", encoding="utf-8") as log:
+        log.write(
+            "\n"
+            + json.dumps(
+                {
+                    "launcher_started_at_unix": time.time(),
+                    "command": command,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        log.flush()
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        while process.poll() is None:
+            summary = (
+                {}
+                if args.dry_run
+                else _compact_summary(_read_summary(summary_path))
+            )
+            snapshot = json.dumps(summary, sort_keys=True)
+            if summary and snapshot != last_snapshot:
+                print(snapshot, flush=True)
+                last_snapshot = snapshot
+                last_heartbeat = time.monotonic()
+            elif time.monotonic() - last_heartbeat >= args.heartbeat_seconds:
+                print(
+                    json.dumps(
+                        {
+                            "status": "running",
+                            "elapsed_minutes": round(
+                                (time.monotonic() - started) / 60,
+                                1,
+                            ),
+                            "log_mib": round(
+                                args.log.stat().st_size / 2**20,
+                                2,
+                            ),
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+                last_heartbeat = time.monotonic()
+            time.sleep(args.poll_seconds)
+        return_code = process.wait()
+
+    if args.dry_run:
+        result = {
+            "status": "completed" if return_code == 0 else "failed",
+            "dry_run": True,
+            "log": str(args.log),
+        }
+    else:
+        result = _compact_summary(_read_summary(summary_path))
+        result["log"] = str(args.log)
+    print(json.dumps(result, sort_keys=True), flush=True)
+    if return_code:
+        print("\n".join(_tail(args.log)), file=sys.stderr)
+        raise SystemExit(return_code)
+
+
+if __name__ == "__main__":
+    main()
