@@ -117,3 +117,8 @@ observation is therefore `not_started_in_observed_state`:
 Because the project is private and no newer authenticated snapshot is stored in the repository,
 this does not prove that no newer run exists outside the captured evidence. Training execution,
 quality, and promotion remain unattested.
+
+The execution audit accepts both execution-only seals and stronger deployment-capability seals,
+but only when claim scope and quality authorization agree and the attestation digest is valid. It
+also fingerprints the compact arm-to-attestation mapping so the confirmatory submission gate can
+prove that its pilot comparison references the same completed runs.

@@ -58,3 +58,9 @@ After that pilot is sealed, the exact confirmatory contract and compact evidence
 in [`student_smol_vision_transfer_sweep.md`](student_smol_vision_transfer_sweep.md). The evidence
 builder fingerprints detailed run artifacts instead of copying long metric tables, HTML, or
 full-page outputs into the repository.
+
+The confirmatory budget is independently fail-closed by
+[`smol_vision_confirmatory_submission.json`](../results/smol_vision_confirmatory_submission.json).
+Its current status is `pending` because no sealed local Smol pilot comparison is present. It will
+authorize the three-seed run only when pilot execution hashes match the comparison, all required
+gates pass, and the treatment has a positive heldout screening effect.

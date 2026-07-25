@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a selective-transfer pilot with compact Colab output."""
+"""Run a gated selective-transfer experiment with compact Colab output."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from docvlm_eval.student.confirmatory_submission import (
+    audit_smol_confirmatory_submission,
+)
 from docvlm_eval.student.sweep import compile_sweep_plan
 from docvlm_eval.student.transfer_readiness import (
     audit_lfm_transfer_pilot,
@@ -47,16 +50,37 @@ SMOL_PREFLIGHT = (
 SMOL_SWEEP_ROOT = (
     ROOT / "outputs" / "sweeps" / "docvlm-smol-vision-transfer-pilot"
 )
+SMOL_CONFIRMATORY_SWEEP = (
+    ROOT / "configs" / "sub1b_smol_vision_transfer_sweep.yaml"
+)
+SMOL_CONFIRMATORY_SWEEP_ROOT = (
+    ROOT / "outputs" / "sweeps" / "docvlm-smol-vision-transfer-sweep"
+)
+SMOL_EXECUTION = (
+    ROOT
+    / "docs"
+    / "results"
+    / "smol_vision_transfer_pilot_execution_state.json"
+)
+SMOL_PILOT_COMPARISON = SMOL_SWEEP_ROOT / "comparison.json"
 PILOTS = {
     "lfm-language": {
         "sweep": SWEEP,
         "root": SWEEP_ROOT,
+        "log_name": "colab_pilot.log",
         "readiness_prefix": "docvlm-lfm-colab-readiness-",
     },
     "smol-vision": {
         "sweep": SMOL_SWEEP,
         "root": SMOL_SWEEP_ROOT,
+        "log_name": "colab_pilot.log",
         "readiness_prefix": "docvlm-smol-colab-readiness-",
+    },
+    "smol-confirmatory": {
+        "sweep": SMOL_CONFIRMATORY_SWEEP,
+        "root": SMOL_CONFIRMATORY_SWEEP_ROOT,
+        "log_name": "colab_confirmatory.log",
+        "readiness_prefix": "docvlm-smol-confirmatory-readiness-",
     },
 }
 
@@ -104,6 +128,8 @@ def _read_summary(path: Path) -> dict[str, Any]:
 
 def _compact_summary(summary: dict[str, Any]) -> dict[str, Any]:
     variants = summary.get("variants") or []
+    promotion = summary.get("promotion") or {}
+    multiple_comparisons = promotion.get("multiple_comparisons") or {}
     return {
         "status": summary.get("status"),
         "variants": [
@@ -124,8 +150,24 @@ def _compact_summary(summary: dict[str, Any]) -> dict[str, Any]:
             else {}
         ),
         **(
-            {"promotion": summary["promotion"]}
-            if summary.get("promotion")
+            {
+                "promotion": {
+                    "status": promotion.get("status"),
+                    "selected_variants": promotion.get(
+                        "selected_variants"
+                    ),
+                    "multiple_comparisons": {
+                        "method": multiple_comparisons.get("method"),
+                        "comparison_count": multiple_comparisons.get(
+                            "comparison_count"
+                        ),
+                        "familywise_alpha": multiple_comparisons.get(
+                            "familywise_alpha"
+                        ),
+                    },
+                }
+            }
+            if promotion
             else {}
         ),
     }
@@ -153,6 +195,31 @@ def _readiness(pilot: str) -> dict[str, Any]:
             python=sys.executable,
             compile_root=temporary,
         )
+        if pilot == "smol-confirmatory":
+            pilot_plan = compile_sweep_plan(
+                SMOL_SWEEP,
+                repo_root=ROOT,
+                python=sys.executable,
+                compile_root=Path(temporary) / "pilot",
+            )
+            return audit_smol_confirmatory_submission(
+                pilot_plan,
+                plan,
+                pilot_readiness=json.loads(
+                    (
+                        ROOT
+                        / "docs"
+                        / "results"
+                        / "smol_vision_transfer_pilot_readiness.json"
+                    ).read_text(encoding="utf-8")
+                ),
+                pilot_execution=json.loads(
+                    SMOL_EXECUTION.read_text(encoding="utf-8")
+                ),
+                pilot_comparison=(
+                    _read_summary(SMOL_PILOT_COMPARISON) or None
+                ),
+            )
         if pilot == "smol-vision":
             return audit_smol_vision_transfer_pilot(
                 plan,
@@ -180,6 +247,7 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--variant", action="append", dest="variants")
+    parser.add_argument("--replicate", action="append", dest="replicates")
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--poll-seconds", type=float, default=30.0)
     parser.add_argument("--heartbeat-seconds", type=float, default=300.0)
@@ -195,7 +263,7 @@ def main() -> None:
     sweep = Path(profile["sweep"])
     sweep_root = Path(profile["root"])
     if args.log is None:
-        args.log = sweep_root / "colab_pilot.log"
+        args.log = sweep_root / str(profile["log_name"])
     if args.poll_seconds <= 0:
         parser.error("--poll-seconds must be positive")
     if args.heartbeat_seconds < args.poll_seconds:
@@ -215,8 +283,10 @@ def main() -> None:
         ),
         flush=True,
     )
-    if readiness["overall_status"] != "pass":
-        raise SystemExit(f"{args.pilot} pilot readiness audit failed")
+    if readiness["overall_status"] != "pass" and not args.dry_run:
+        raise SystemExit(
+            f"{args.pilot} submission readiness audit did not pass"
+        )
 
     free_bytes = shutil.disk_usage(ROOT).free
     environment = {
@@ -260,6 +330,8 @@ def main() -> None:
         command.append("--no-resume")
     for variant in args.variants or []:
         command.extend(["--variant", variant])
+    for replicate in args.replicates or []:
+        command.extend(["--replicate", replicate])
 
     args.log = args.log.resolve()
     args.log.parent.mkdir(parents=True, exist_ok=True)

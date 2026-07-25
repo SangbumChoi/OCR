@@ -81,6 +81,10 @@ def test_completed_local_summary_requires_every_sealed_arm():
     assert result["state"] == "completed_attested"
     assert result["training_execution_attested"] is True
     assert result["quality_claim_authorized"] is False
+    assert result["local"]["execution_attestation_fingerprint"].startswith(
+        "sha256:"
+    )
+    assert result["fingerprint"].startswith("sha256:")
 
     incomplete = copy.deepcopy(summary)
     incomplete["variants"][0].pop("execution_attestation")
@@ -91,6 +95,67 @@ def test_completed_local_summary_requires_every_sealed_arm():
     )
     assert result["state"] == "completed_unattested"
     assert result["training_execution_attested"] is False
+
+
+def test_completed_local_summary_accepts_deployment_capability_seals():
+    readiness = _read("lfm_selective_transfer_pilot_readiness.json")
+    summary = {
+        "status": "completed",
+        "variants": [
+            {
+                "variant": arm,
+                "status": "completed",
+                "execution_attestation": {
+                    **_attestation(),
+                    "claim_scope": "deployment_capability",
+                    "quality_claim_authorized": True,
+                },
+            }
+            for arm in EXPECTED_ARMS
+        ],
+    }
+
+    result = audit_lfm_pilot_execution(
+        readiness,
+        _read("lfm_ablation_wandb_snapshot.json"),
+        local_summary=summary,
+    )
+
+    assert result["state"] == "completed_attested"
+    assert result["training_execution_attested"] is True
+
+
+def test_completed_local_summary_rejects_duplicate_or_unexpected_arms():
+    readiness = _read("lfm_selective_transfer_pilot_readiness.json")
+    variants = [
+        {
+            "variant": arm,
+            "status": "completed",
+            "execution_attestation": _attestation(),
+        }
+        for arm in EXPECTED_ARMS
+    ]
+    variants.extend(
+        [
+            copy.deepcopy(variants[0]),
+            {
+                "variant": "unexpected",
+                "status": "completed",
+                "execution_attestation": _attestation(),
+            },
+        ]
+    )
+
+    result = audit_lfm_pilot_execution(
+        readiness,
+        _read("lfm_ablation_wandb_snapshot.json"),
+        local_summary={"status": "completed", "variants": variants},
+    )
+
+    assert result["state"] == "completed_unattested"
+    assert result["training_execution_attested"] is False
+    assert result["local"]["duplicate_arms"]
+    assert result["local"]["unexpected_arms"] == ["unexpected"]
 
 
 def test_failed_local_summary_wins_over_external_activity():

@@ -1,0 +1,83 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "authorized": true,
+        "fingerprint": "sha256:3bbf62c8c334bd48f3a09f684df26ce7c169cffa6e2ae73be88100e5045b900d",
+        "fingerprint_valid": true,
+        "status": "pass",
+        "topology_matches": true
+      },
+      "id": "pilot_submission_contract",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "fingerprint": "sha256:8b25c53c9a78800b4913c7134c125451a760f1a425e764dd0f8cff75ebc53283",
+        "fingerprint_valid": true,
+        "state": "not_started_in_observed_state",
+        "training_execution_attested": false
+      },
+      "id": "sealed_pilot_execution",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "baseline": "lfm_language_only",
+        "fingerprint": "sha256:eeef95cd85809526b1eff9b9c40f4a0653a64001688b6779311afb6ad3f5a548",
+        "replicates": [
+          "seed_0",
+          "seed_1",
+          "seed_2"
+        ],
+        "run_count": 6,
+        "sweep": "docvlm-smol-vision-transfer-sweep"
+      },
+      "id": "confirmatory_topology",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "reason": "pilot comparison is not available"
+      },
+      "id": "pilot_comparison_identity",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "reason": "pilot comparison is not available"
+      },
+      "id": "pilot_attestation_linkage",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "reason": "pilot comparison is not available"
+      },
+      "id": "candidate_required_gates",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "reason": "pilot comparison is not available"
+      },
+      "id": "positive_screening_effect",
+      "status": "pending"
+    }
+  ],
+  "claim_scope": "smol_confirmatory_submission_only",
+  "confirmatory_submission_authorized": false,
+  "confirmatory_sweep": "docvlm-smol-vision-transfer-sweep",
+  "counts": {
+    "fail": 0,
+    "pass": 2,
+    "pending": 5
+  },
+  "fingerprint": "sha256:f2b615d5408c9d978f7539dde0d8b361bac4389876fbb44fe73a3c26832949b1",
+  "next_action": "Complete and seal a positive Smol vision-transfer pilot.",
+  "overall_status": "pending",
+  "pilot": "docvlm-smol-vision-transfer-pilot",
+  "promotion_claim_authorized": false,
+  "quality_claim_authorized": false,
+  "schema_version": 1
+}

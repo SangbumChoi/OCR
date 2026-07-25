@@ -1,11 +1,16 @@
 {
   "claim_scope": "smol_vision_pilot_execution_state_only",
+  "fingerprint": "sha256:8b25c53c9a78800b4913c7134c125451a760f1a425e764dd0f8cff75ebc53283",
   "local": {
+    "attestation_sha256_by_arm": {},
     "attested_arms": [],
     "completed_arms": [],
+    "duplicate_arms": [],
+    "execution_attestation_fingerprint": null,
     "observed_arms": [],
     "status": "absent",
-    "summary_present": false
+    "summary_present": false,
+    "unexpected_arms": []
   },
   "next_action": "Run notebooks/smol_vision_transfer_pilot.ipynb on native-BF16 hardware.",
   "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",

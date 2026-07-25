@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
@@ -39,6 +41,16 @@ PILOT_NAME = LFM_PROFILE.name
 EXPECTED_ARMS = LFM_PROFILE.expected_arms
 
 
+def _fingerprint(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
 def _mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a JSON object")
@@ -61,16 +73,27 @@ def _pilot_wandb_runs(
     ]
 
 
-def _attestation_is_sealed(value: Any) -> bool:
+def attestation_is_sealed(value: Any) -> bool:
+    """Accept a valid execution-only or deployment-capability seal."""
+
     if not isinstance(value, dict):
         return False
-    digest = value.get("attestation_sha256")
+    digest = str(value.get("attestation_sha256") or "")
+    scope = value.get("claim_scope")
+    quality_authorized = value.get("quality_claim_authorized")
+    valid_scope = (
+        scope == "execution_contract_only"
+        and quality_authorized is False
+    ) or (
+        scope == "deployment_capability"
+        and quality_authorized is True
+    )
     return (
         value.get("contract_status") == "pass"
-        and value.get("claim_scope") == "execution_contract_only"
-        and value.get("quality_claim_authorized") is False
-        and isinstance(digest, str)
+        and valid_scope
+        and len(digest) == 71
         and digest.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in digest[7:])
         and isinstance(value.get("stage_count"), int)
         and value["stage_count"] > 0
     )
@@ -87,6 +110,10 @@ def _local_state(
             "observed_arms": [],
             "completed_arms": [],
             "attested_arms": [],
+            "unexpected_arms": [],
+            "duplicate_arms": [],
+            "attestation_sha256_by_arm": {},
+            "execution_attestation_fingerprint": None,
         }
 
     variants = summary.get("variants")
@@ -95,23 +122,44 @@ def _local_state(
     observed: set[str] = set()
     completed: set[str] = set()
     attested: set[str] = set()
+    unexpected: set[str] = set()
+    arm_counts: Counter[str] = Counter()
+    attestation_sha256_by_arm: dict[str, str] = {}
     for item in variants:
         if not isinstance(item, dict):
             continue
         arm = str(item.get("variant") or "")
         if arm not in expected_arms:
+            unexpected.add(arm or "<missing>")
             continue
+        arm_counts[arm] += 1
         observed.add(arm)
         if item.get("status") == "completed":
             completed.add(arm)
-            if _attestation_is_sealed(item.get("execution_attestation")):
+            attestation = item.get("execution_attestation")
+            if attestation_is_sealed(attestation):
                 attested.add(arm)
+                attestation_sha256_by_arm[arm] = str(
+                    attestation["attestation_sha256"]
+                )
     return {
         "summary_present": True,
         "status": str(summary.get("status") or "unknown"),
         "observed_arms": sorted(observed),
         "completed_arms": sorted(completed),
         "attested_arms": sorted(attested),
+        "unexpected_arms": sorted(unexpected),
+        "duplicate_arms": sorted(
+            arm for arm, count in arm_counts.items() if count > 1
+        ),
+        "attestation_sha256_by_arm": dict(
+            sorted(attestation_sha256_by_arm.items())
+        ),
+        "execution_attestation_fingerprint": (
+            _fingerprint(attestation_sha256_by_arm)
+            if attestation_sha256_by_arm
+            else None
+        ),
     }
 
 
@@ -137,6 +185,9 @@ def audit_pilot_execution(
     expected = set(profile.expected_arms)
     local_completed = set(local["completed_arms"])
     local_attested = set(local["attested_arms"])
+    local_integrity = (
+        not local["unexpected_arms"] and not local["duplicate_arms"]
+    )
     if local["summary_present"]:
         if local["status"] == "failed":
             state = "failed"
@@ -145,7 +196,9 @@ def audit_pilot_execution(
         elif local["status"] == "completed":
             state = (
                 "completed_attested"
-                if local_completed == expected and local_attested == expected
+                if local_completed == expected
+                and local_attested == expected
+                and local_integrity
                 else "completed_unattested"
             )
         else:
@@ -157,7 +210,7 @@ def audit_pilot_execution(
 
     training_attested = state == "completed_attested"
     readiness_pass = readiness.get("overall_status") == "pass"
-    return {
+    result = {
         "schema_version": 1,
         "claim_scope": profile.claim_scope,
         "pilot": profile.name,
@@ -194,6 +247,8 @@ def audit_pilot_execution(
             else profile.next_action
         ),
     }
+    result["fingerprint"] = _fingerprint(result)
+    return result
 
 
 def audit_lfm_pilot_execution(

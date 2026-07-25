@@ -40,6 +40,27 @@ termination. Table, HTML, and full-page tasks retain the 512-token hard cap plus
 for all-page coverage, table-cell survival, and bounded canvas size. A longer context is therefore
 not accepted as evidence when the output merely repeats tokens or produces an unreadable page.
 
+## Submission gate
+
+[`audit_smol_confirmatory_submission.py`](../../scripts/audit_smol_confirmatory_submission.py)
+binds the confirmatory budget to the exact pilot and confirmatory config fingerprints. Submission
+requires both pilot arms to have matching sealed attestations, every candidate gate to pass, and a
+strictly positive heldout pilot effect with an `improved` conclusion. A stale comparison, changed
+config, extra run, missing run, failed generation gate, or attestation mismatch fails closed.
+
+The current observed state has no local pilot summary or comparison, so the compact submission
+artifact is `pending` with 2 pass, 5 pending, and 0 fail:
+[`smol_vision_confirmatory_submission.json`](../results/smol_vision_confirmatory_submission.json).
+This is an execution dependency, not evidence against the method.
+
+After the pilot completes in the same runtime, the ready-to-run notebook is
+[`smol_vision_transfer_confirmatory.ipynb`](../../notebooks/smol_vision_transfer_confirmatory.ipynb).
+Its launcher performs the submission audit again before any production-budget training begins:
+
+```bash
+python scripts/run_smol_confirmatory_colab.py
+```
+
 ## Compact evidence
 
 After a completed sweep has written `comparison.json`, build the two claim artifacts with:

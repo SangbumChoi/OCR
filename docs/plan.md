@@ -204,7 +204,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Confirm Smol vision transfer across seeds:**
   [`report/student_smol_vision_transfer_sweep.md`](report/student_smol_vision_transfer_sweep.md)
   — a production-budget paired three-seed sweep, one shared content-addressed selective payload,
-  multiplicity-controlled promotion, and compact quality evidence.
+  a sealed positive-pilot submission gate, multiplicity-controlled promotion, and compact quality
+  evidence.
 - **Guard long structured generation and rendering:**
   [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
   — exact suffix-cycle termination, bounded task-aware token horizons, a leakage-safe tokenized
