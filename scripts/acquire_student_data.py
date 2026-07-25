@@ -30,6 +30,8 @@ def main() -> None:
         default="global_hash",
     )
     parser.add_argument("--min-rows-per-task", type=int, default=0)
+    parser.add_argument("--coverage-language", action="append", default=[])
+    parser.add_argument("--min-rows-per-language", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -48,6 +50,8 @@ def main() -> None:
             decode_checks=args.decode_checks,
             sampling_strategy=args.sampling_strategy,
             min_rows_per_task=args.min_rows_per_task,
+            coverage_languages=tuple(args.coverage_language),
+            min_rows_per_language=args.min_rows_per_language,
         ),
         args.output,
         token=os.environ.get("HF_TOKEN"),

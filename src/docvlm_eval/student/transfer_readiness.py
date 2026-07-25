@@ -123,6 +123,13 @@ def _public_selection(spec: dict[str, Any]) -> dict[str, Any]:
                 "min_rows_per_task": int(
                     hub.get("min_rows_per_task", 0)
                 ),
+                "coverage_languages": sorted(
+                    str(value)
+                    for value in (hub.get("coverage_languages") or [])
+                ),
+                "min_rows_per_language": int(
+                    hub.get("min_rows_per_language", 0)
+                ),
             }
     return {}
 
@@ -656,6 +663,9 @@ def audit_lfm_transfer_pilot(
         and 0 < public_row_cap <= 256
         and public_selection.get("sampling_strategy") == "task_stratified"
         and public_selection.get("min_rows_per_task") == 16
+        and public_selection.get("coverage_languages")
+        == ["en", "ja", "ko", "zh"]
+        and public_selection.get("min_rows_per_language") == 8
         and 0 < pretraining_steps <= 25
         and 0 < sft_steps <= 10
         and 0 < rlvr_steps <= 5,
@@ -667,6 +677,12 @@ def audit_lfm_transfer_pilot(
             ),
             "public_min_rows_per_task": public_selection.get(
                 "min_rows_per_task"
+            ),
+            "public_coverage_languages": public_selection.get(
+                "coverage_languages"
+            ),
+            "public_min_rows_per_language": public_selection.get(
+                "min_rows_per_language"
             ),
             "pretraining_steps": pretraining_steps,
             "sft_steps": sft_steps,
@@ -1243,6 +1259,9 @@ def audit_smol_vision_transfer_pilot(
         and 0 < public_row_cap <= 256
         and public_selection.get("sampling_strategy") == "task_stratified"
         and public_selection.get("min_rows_per_task") == 16
+        and public_selection.get("coverage_languages")
+        == ["en", "ja", "ko", "zh"]
+        and public_selection.get("min_rows_per_language") == 8
         and 0 < pretraining_steps <= 25
         and 0 < sft_steps <= 10
         and 0 < rlvr_steps <= 5,
@@ -1254,6 +1273,12 @@ def audit_smol_vision_transfer_pilot(
             ),
             "public_min_rows_per_task": public_selection.get(
                 "min_rows_per_task"
+            ),
+            "public_coverage_languages": public_selection.get(
+                "coverage_languages"
+            ),
+            "public_min_rows_per_language": public_selection.get(
+                "min_rows_per_language"
             ),
             "pretraining_steps": pretraining_steps,
             "sft_steps": sft_steps,

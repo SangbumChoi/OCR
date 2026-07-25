@@ -1501,6 +1501,13 @@ def build_experiment_plan(
                 hub.get("sampling_strategy", "global_hash")
             ),
             min_rows_per_task=int(hub.get("min_rows_per_task", 0)),
+            coverage_languages=tuple(
+                str(value)
+                for value in (hub.get("coverage_languages") or [])
+            ),
+            min_rows_per_language=int(
+                hub.get("min_rows_per_language", 0)
+            ),
         )
         hub_specs[name] = spec
         acquired_paths[name] = component_root / name
@@ -2231,6 +2238,14 @@ def build_experiment_plan(
             command.extend(["--task", value])
         for value in spec.languages:
             command.extend(["--language", value])
+        for value in spec.coverage_languages:
+            command.extend(["--coverage-language", value])
+        command.extend(
+            [
+                "--min-rows-per-language",
+                str(spec.min_rows_per_language),
+            ]
+        )
         stages.append(
             ExperimentStage(
                 f"acquire_component_{component_name}",

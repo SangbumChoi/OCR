@@ -234,6 +234,13 @@
     {
       "evidence": {
         "pretraining_steps": 25,
+        "public_coverage_languages": [
+          "en",
+          "ja",
+          "ko",
+          "zh"
+        ],
+        "public_min_rows_per_language": 8,
         "public_min_rows_per_task": 16,
         "public_row_cap": 256,
         "public_sampling_strategy": "task_stratified",
@@ -250,7 +257,7 @@
     "fail": 0,
     "pass": 15
   },
-  "fingerprint": "sha256:a5ecf5f6d48669c820fd2fabae79af239e560844fb3696a3c5808601290a266d",
+  "fingerprint": "sha256:660830feae4ff885e1f662cfb07ebe11a2a3a549ebef7ef71a8c94af25808fe3",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
@@ -283,12 +290,12 @@
     ],
     "baseline": "lfm_random",
     "name": "docvlm-lfm-language-transfer-pilot",
-    "plan_fingerprint": "sha256:cba2008bf13500a68114144d4a10853620bcfb91ec448aef2e85475b42b7c1bb",
+    "plan_fingerprint": "sha256:97f151102c93f7ae37d9353e3b8c88b79608cb5bb3383e88b3dbf0c09977473f",
     "replicates": [
       "seed_0"
     ],
     "source": "configs/sub1b_lfm_language_transfer_pilot.yaml",
-    "source_fingerprint": "sha256:7c125ed7ea4cd9f231a73dad9864e9aa6451b87ec713c969759a46d383cad995"
+    "source_fingerprint": "sha256:425c5ad42f9cb005acf6bd2ff26fe48c02447c3fa91253da4ffe6203e72b5d0a"
   },
   "target_cuda_feasibility_claim_authorized": false
 }

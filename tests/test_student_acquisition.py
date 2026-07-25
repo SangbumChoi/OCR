@@ -4,6 +4,7 @@ import pytest
 
 from docvlm_eval.student.acquisition import (
     HubComponentSpec,
+    _reserve_language_rows,
     acquire_hub_component,
     materialize_component,
 )
@@ -34,7 +35,7 @@ def _udd_dataset(tmp_path: Path, *, duplicate_phash: bool = False):
                 "elements_json": "[]",
                 "full_text": "",
                 "table_html": "",
-                "language": "en",
+                "language": ("en", "ko", "zh", "ja", "en")[index],
                 "metric": "anls",
                 "fold": "heldout" if index == 4 else "train",
                 "phash": phash,
@@ -122,21 +123,104 @@ def test_task_stratified_sampling_guarantees_floor_and_is_deterministic(tmp_path
         resolved_revision=REVISION,
     )
 
-    assert first["selection"] == {
-        "applied_strategy": "task_stratified",
-        "eligible_rows": 4,
-        "eligible_task_counts": {"kie": 2, "reasoning": 2},
-        "task_quotas": {"kie": 1, "reasoning": 1},
-        "selected_rows": 2,
-        "selected_task_counts": {"kie": 1, "reasoning": 1},
-        "task_floor_satisfied": True,
-    }
+    selection = first["selection"]
+    assert selection["applied_strategy"] == "task_stratified"
+    assert selection["eligible_rows"] == 4
+    assert selection["eligible_task_counts"] == {"kie": 2, "reasoning": 2}
+    assert selection["task_quotas"] == {"kie": 1, "reasoning": 1}
+    assert selection["selected_rows"] == 2
+    assert selection["selected_task_counts"] == {"kie": 1, "reasoning": 1}
+    assert selection["task_floor_satisfied"] is True
+    assert selection["language_floor_satisfied"] is True
     assert (
         second["selected_indices_fingerprint"]
         == first["selected_indices_fingerprint"]
     )
     selected = load_from_disk(str(tmp_path / "stratified-first"))
     assert sorted(selected["task"]) == ["kie", "reasoning"]
+
+
+def test_joint_task_language_sampling_reserves_rare_languages(tmp_path):
+    dataset = _udd_dataset(tmp_path)
+    spec = HubComponentSpec(
+        repo_id="owner/dataset",
+        revision=REVISION,
+        fold="train",
+        max_rows=3,
+        seed=19,
+        decode_checks=2,
+        sampling_strategy="task_stratified",
+        min_rows_per_task=1,
+        coverage_languages=("ko", "zh"),
+        min_rows_per_language=1,
+    )
+
+    manifest = materialize_component(
+        dataset,
+        tmp_path / "joint-coverage",
+        spec,
+        resolved_revision=REVISION,
+    )
+    selection = manifest["selection"]
+
+    assert selection["task_quotas"] == {"kie": 2, "reasoning": 1}
+    assert selection["language_task_reservations"] == {
+        "ko": {"reasoning": 1},
+        "zh": {"kie": 1},
+    }
+    assert selection["selected_task_counts"] == {
+        "kie": 2,
+        "reasoning": 1,
+    }
+    assert selection["selected_language_counts"] == {
+        "en": 1,
+        "ko": 1,
+        "zh": 1,
+    }
+    assert selection["language_floor_satisfied"] is True
+
+
+def test_language_reservation_reroutes_flexible_language():
+    metadata = [
+        {"sample_id": "b-t1", "task": "t1", "language": "b"},
+        {"sample_id": "b-t2", "task": "t2", "language": "b"},
+        {"sample_id": "z-t1", "task": "t1", "language": "z"},
+    ]
+
+    reserved, counts = _reserve_language_rows(
+        metadata,
+        [0, 1, 2],
+        task_quotas={"t1": 1, "t2": 1},
+        languages=("b", "z"),
+        minimum=1,
+        seed=7,
+    )
+
+    assert reserved == {1, 2}
+    assert counts == {"b": {"t2": 1}, "z": {"t1": 1}}
+
+
+def test_joint_sampling_rejects_missing_coverage_language(tmp_path):
+    dataset = _udd_dataset(tmp_path)
+    spec = HubComponentSpec(
+        repo_id="owner/dataset",
+        revision=REVISION,
+        fold="train",
+        max_rows=3,
+        decode_checks=1,
+        sampling_strategy="task_stratified",
+        min_rows_per_task=1,
+        coverage_languages=("de",),
+        min_rows_per_language=1,
+    )
+
+    with pytest.raises(ValueError, match="'de'.*available=0"):
+        materialize_component(
+            dataset,
+            tmp_path / "missing-language",
+            spec,
+            resolved_revision=REVISION,
+        )
 
 
 def test_task_stratified_sampling_rejects_impossible_floor(tmp_path):
@@ -172,6 +256,21 @@ def test_sampling_contract_rejects_inconsistent_controls():
             repo_id="owner/dataset",
             revision=REVISION,
             sampling_strategy="task_stratified",
+        )
+    with pytest.raises(ValueError, match="must be set together"):
+        HubComponentSpec(
+            repo_id="owner/dataset",
+            revision=REVISION,
+            sampling_strategy="task_stratified",
+            min_rows_per_task=1,
+            coverage_languages=("ko",),
+        )
+    with pytest.raises(ValueError, match="language coverage requires"):
+        HubComponentSpec(
+            repo_id="owner/dataset",
+            revision=REVISION,
+            coverage_languages=("ko",),
+            min_rows_per_language=1,
         )
 
 

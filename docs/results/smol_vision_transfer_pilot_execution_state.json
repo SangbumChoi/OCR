@@ -1,6 +1,6 @@
 {
   "claim_scope": "smol_vision_pilot_execution_state_only",
-  "fingerprint": "sha256:74214b0e754137ea259b50bbe33cfb675334fd085fd47adf112b65fdcd0bc56c",
+  "fingerprint": "sha256:60a64534cba79093214a341045bfefe454763531b1baf4cbbca34c4121262ae4",
   "local": {
     "attestation_sha256_by_arm": {},
     "attested_arms": [],
@@ -25,7 +25,7 @@
       "fail": 0,
       "pass": 14
     },
-    "fingerprint": "sha256:fb3fb30a1f9e43374e8654ced94cfcdcc9d789ad9ed225e9260e7a93aeb99cb8",
+    "fingerprint": "sha256:808ee3948e6d72f1cf8614c1db4b9bb12968a2da7c8ff22100fc0dc30befa22a",
     "status": "pass"
   },
   "training_execution_attested": false,

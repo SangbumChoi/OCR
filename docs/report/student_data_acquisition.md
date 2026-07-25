@@ -41,8 +41,12 @@ By default, `--max-rows` applies a deterministic SHA-256 rank over seed, sample 
 index rather than taking a potentially source-ordered prefix. Capped pilots use
 `--sampling-strategy task_stratified --min-rows-per-task 16`: every observed task first receives
 up to 16 rows, and the remaining budget is apportioned by residual task capacity. Rows inside each
-task are still selected by the same deterministic hash rank. Acquisition fails when the cap cannot
-satisfy the requested floors. Leaving `--max-rows` unset retains every matching row.
+task are still selected by the same deterministic hash rank. The transfer pilots additionally set
+`--coverage-language` for English, Korean, Chinese, and Japanese with
+`--min-rows-per-language 8`. A deterministic max-flow reservation satisfies these language floors
+inside the task quotas before remaining task capacity is filled. Acquisition fails when either
+floor set is unavailable or jointly infeasible. Leaving `--max-rows` unset retains every matching
+row.
 
 The full executable mixture is:
 
@@ -71,6 +75,7 @@ Before `save_to_disk`, acquisition requires:
 row counts, QA count, task/source/language/license distributions, decoded-image count, Arrow
 fingerprint, and selected-index fingerprint. For capped inputs it also records eligible task
 counts, deterministic quotas, realized task counts, and whether the requested floor was satisfied.
+It also records eligible and realized language counts plus the language-to-task reservations.
 `mixture_manifest.json` carries a fingerprint of this upstream manifest, preserving the chain into
 tokenizer training and pretraining.
 

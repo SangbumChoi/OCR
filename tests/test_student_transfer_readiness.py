@@ -53,6 +53,13 @@ def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
     )
     assert budget["evidence"]["public_sampling_strategy"] == "task_stratified"
     assert budget["evidence"]["public_min_rows_per_task"] == 16
+    assert budget["evidence"]["public_coverage_languages"] == [
+        "en",
+        "ja",
+        "ko",
+        "zh",
+    ]
+    assert budget["evidence"]["public_min_rows_per_language"] == 8
 
 
 def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(

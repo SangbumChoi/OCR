@@ -73,6 +73,25 @@ def test_smol_vision_transfer_pilot_readiness_passes(tmp_path):
     )
     assert budget["evidence"]["public_sampling_strategy"] == "task_stratified"
     assert budget["evidence"]["public_min_rows_per_task"] == 16
+    assert budget["evidence"]["public_coverage_languages"] == [
+        "en",
+        "ja",
+        "ko",
+        "zh",
+    ]
+    assert budget["evidence"]["public_min_rows_per_language"] == 8
+    dual = next(
+        variant for variant in plan.variants if variant.arm_id == "lfm_smol_dual"
+    )
+    acquisition = next(
+        stage
+        for stage in dual.plan.stages
+        if stage.name == "acquire_component_public_udd"
+    )
+    assert acquisition.command.count("--coverage-language") == 4
+    assert acquisition.command[
+        acquisition.command.index("--min-rows-per-language") + 1
+    ] == "8"
 
 
 def test_smol_vision_readiness_rejects_tampered_scope(tmp_path):

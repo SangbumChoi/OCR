@@ -68,6 +68,8 @@ class HubComponentSpec:
     decode_checks: int = 16
     sampling_strategy: str = "global_hash"
     min_rows_per_task: int = 0
+    coverage_languages: tuple[str, ...] = ()
+    min_rows_per_language: int = 0
 
     def __post_init__(self) -> None:
         if not self.repo_id or "/" not in self.repo_id:
@@ -92,6 +94,36 @@ class HubComponentSpec:
         if self.sampling_strategy == "global_hash" and self.min_rows_per_task:
             raise ValueError(
                 "min_rows_per_task requires sampling_strategy='task_stratified'"
+            )
+        if len(set(self.coverage_languages)) != len(
+            self.coverage_languages
+        ) or any(not language for language in self.coverage_languages):
+            raise ValueError(
+                "coverage_languages must contain unique non-empty values"
+            )
+        if self.min_rows_per_language < 0:
+            raise ValueError(
+                "Hub component min_rows_per_language must be non-negative"
+            )
+        if bool(self.coverage_languages) != bool(
+            self.min_rows_per_language
+        ):
+            raise ValueError(
+                "coverage_languages and min_rows_per_language must be set "
+                "together"
+            )
+        if (
+            self.coverage_languages
+            and self.sampling_strategy != "task_stratified"
+        ):
+            raise ValueError(
+                "language coverage requires sampling_strategy='task_stratified'"
+            )
+        if self.languages and not set(self.coverage_languages).issubset(
+            self.languages
+        ):
+            raise ValueError(
+                "coverage_languages must be included by the language filters"
             )
         if (
             self.sampling_strategy == "task_stratified"
@@ -168,6 +200,112 @@ def _allocate_task_quotas(
     return quotas
 
 
+def _reserve_language_rows(
+    metadata: Any,
+    eligible_indices: list[int],
+    *,
+    task_quotas: dict[str, int],
+    languages: tuple[str, ...],
+    minimum: int,
+    seed: int,
+) -> tuple[set[int], dict[str, dict[str, int]]]:
+    intersections: dict[str, dict[str, list[int]]] = {
+        language: {} for language in languages
+    }
+    for index in eligible_indices:
+        row = metadata[index]
+        language = str(row.get("language") or "und")
+        if language not in intersections:
+            continue
+        task = str(row.get("task") or "unknown")
+        intersections[language].setdefault(task, []).append(index)
+    for language, by_task in intersections.items():
+        available = sum(len(indices) for indices in by_task.values())
+        if available < minimum:
+            raise ValueError(
+                "filtered rows cannot satisfy min_rows_per_language for "
+                f"{language!r}: available={available}, required={minimum}"
+            )
+
+    source = ("source", "")
+    sink = ("sink", "")
+    residual: dict[tuple[str, str], dict[tuple[str, str], int]] = {}
+
+    def add_edge(
+        start: tuple[str, str],
+        end: tuple[str, str],
+        capacity: int,
+    ) -> None:
+        residual.setdefault(start, {})[end] = capacity
+        residual.setdefault(end, {}).setdefault(start, 0)
+
+    language_nodes = {
+        language: ("language", language) for language in sorted(languages)
+    }
+    task_nodes = {
+        task: ("task", task) for task in sorted(task_quotas)
+    }
+    for language, node in language_nodes.items():
+        add_edge(source, node, minimum)
+        for task, indices in sorted(intersections[language].items()):
+            if task in task_nodes:
+                add_edge(node, task_nodes[task], len(indices))
+    for task, node in task_nodes.items():
+        add_edge(node, sink, task_quotas[task])
+
+    required_flow = minimum * len(languages)
+    total_flow = 0
+    while total_flow < required_flow:
+        parent: dict[tuple[str, str], tuple[str, str] | None] = {
+            source: None
+        }
+        queue = [source]
+        for node in queue:
+            for neighbor in sorted(residual[node]):
+                if residual[node][neighbor] > 0 and neighbor not in parent:
+                    parent[neighbor] = node
+                    queue.append(neighbor)
+        if sink not in parent:
+            break
+        increment = required_flow - total_flow
+        node = sink
+        while parent[node] is not None:
+            previous = parent[node]
+            increment = min(increment, residual[previous][node])
+            node = previous
+        node = sink
+        while parent[node] is not None:
+            previous = parent[node]
+            residual[previous][node] -= increment
+            residual[node][previous] += increment
+            node = previous
+        total_flow += increment
+    if total_flow != required_flow:
+        raise ValueError(
+            "task quotas cannot jointly satisfy the requested language floors: "
+            f"required={required_flow}, feasible={total_flow}"
+        )
+
+    reserved: set[int] = set()
+    reservation_counts: dict[str, dict[str, int]] = {}
+    for language, language_node in language_nodes.items():
+        for task, task_node in task_nodes.items():
+            capacity = len(intersections[language].get(task, ()))
+            count = capacity - residual.get(language_node, {}).get(
+                task_node,
+                0,
+            )
+            if count <= 0:
+                continue
+            ranked = sorted(
+                intersections[language][task],
+                key=lambda index: _selection_key(metadata, index, seed),
+            )
+            reserved.update(ranked[:count])
+            reservation_counts.setdefault(language, {})[task] = count
+    return reserved, reservation_counts
+
+
 def _select_indices(
     metadata: Any,
     eligible_indices: list[int],
@@ -177,6 +315,11 @@ def _select_indices(
         str(metadata[index].get("task") or "unknown")
         for index in eligible_indices
     )
+    eligible_languages = Counter(
+        str(metadata[index].get("language") or "und")
+        for index in eligible_indices
+    )
+    reservations: dict[str, dict[str, int]] = {}
     if spec.max_rows is None or len(eligible_indices) <= spec.max_rows:
         selected_indices = list(eligible_indices)
         quotas = dict(sorted(eligible_tasks.items()))
@@ -194,34 +337,69 @@ def _select_indices(
             max_rows=spec.max_rows,
             minimum=spec.min_rows_per_task,
         )
-        selected_indices = []
+        reserved, reservations = _reserve_language_rows(
+            metadata,
+            eligible_indices,
+            task_quotas=quotas,
+            languages=spec.coverage_languages,
+            minimum=spec.min_rows_per_language,
+            seed=spec.seed,
+        )
+        selected_indices = list(reserved)
+        selected_by_task = Counter(
+            str(metadata[index].get("task") or "unknown")
+            for index in reserved
+        )
         for task in sorted(quotas):
             task_indices = [
                 index
                 for index in eligible_indices
-                if str(metadata[index].get("task") or "unknown") == task
+                if index not in reserved
+                and str(metadata[index].get("task") or "unknown") == task
             ]
             task_indices.sort(
                 key=lambda index: _selection_key(metadata, index, spec.seed)
             )
-            selected_indices.extend(task_indices[: quotas[task]])
+            selected_indices.extend(
+                task_indices[: quotas[task] - selected_by_task[task]]
+            )
         applied_strategy = spec.sampling_strategy
     selected_indices.sort()
     selected_tasks = Counter(
         str(metadata[index].get("task") or "unknown")
         for index in selected_indices
     )
+    selected_languages = Counter(
+        str(metadata[index].get("language") or "und")
+        for index in selected_indices
+    )
+    language_floor_satisfied = all(
+        selected_languages[language] >= spec.min_rows_per_language
+        for language in spec.coverage_languages
+    )
+    if not language_floor_satisfied:
+        raise ValueError(
+            "selected rows do not satisfy the language coverage floor"
+        )
     return selected_indices, {
         "applied_strategy": applied_strategy,
         "eligible_rows": len(eligible_indices),
         "eligible_task_counts": dict(sorted(eligible_tasks.items())),
+        "eligible_language_counts": dict(
+            sorted(eligible_languages.items())
+        ),
         "task_quotas": dict(sorted(quotas.items())),
+        "language_task_reservations": reservations,
         "selected_rows": len(selected_indices),
         "selected_task_counts": dict(sorted(selected_tasks.items())),
+        "selected_language_counts": dict(
+            sorted(selected_languages.items())
+        ),
         "task_floor_satisfied": all(
             selected_tasks[task] >= min(spec.min_rows_per_task, count)
             for task, count in eligible_tasks.items()
         ),
+        "language_floor_satisfied": language_floor_satisfied,
     }
 
 

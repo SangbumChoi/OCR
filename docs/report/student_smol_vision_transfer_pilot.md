@@ -60,7 +60,9 @@ one seed is screening evidence only.
 The 256-row public UDD cap uses deterministic task-stratified acquisition with
 a 16-row minimum for every observed task. The component manifest records
 eligible counts, allocated quotas, and realized counts, and submission
-readiness rejects an unstratified fallback.
+readiness rejects an unstratified fallback. Within those quotas, a deterministic
+joint reservation guarantees at least eight English, Korean, Chinese, and
+Japanese rows; an unavailable or infeasible language floor stops acquisition.
 
 Long table, HTML, full-page, transcription, and reading-order outputs retain the production
 generation safeguards. Exact trailing token cycles terminate with EOS, task labels receive bounded
