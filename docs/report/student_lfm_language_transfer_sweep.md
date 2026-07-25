@@ -120,6 +120,30 @@ python scripts/run_student_sweep.py \
 The pilot has no promotion block. Its single-seed deltas are screening signals only and must not be
 combined with the confirmatory replicates or used to select a deployment model.
 
+### Submission readiness
+
+[`scripts/audit_lfm_transfer_pilot.py`](../../scripts/audit_lfm_transfer_pilot.py) compiles the
+current pilot and checks it against the executed real-payload preflight before GPU submission. The
+compact fail-closed artifact records decisions rather than full commands, patch lists, checkpoint
+tensors, HTML, or target text. Its 12 checks cover:
+
+- the one-seed, non-promotional three-cell design and matched LFM geometry;
+- the sub-1B parameter bound and exact random-versus-transfer initialization contrast;
+- the immutable Hub revision and its match to the executed safetensors identity;
+- the realized 80.49% language transfer, operator compatibility, zero skips, and copied-value
+  verification;
+- end-to-end pretraining, SFT, RLVR, baseline, and final evaluation stages;
+- strict-cell-only target-CUDA feasibility preflight;
+- matched task-aware token budgets, exact-cycle termination, task-balanced sampling, and the
+  table/full-page generation-stability release gate;
+- bounded screening data and optimization budgets.
+
+The current result is `pass` and authorizes pilot submission only:
+[`lfm_selective_transfer_pilot_readiness.json`](../results/lfm_selective_transfer_pilot_readiness.json).
+It explicitly does not authorize a target-CUDA feasibility, quality, or promotion claim. The
+target-GPU stage still has to execute successfully, and quality still requires the sealed
+three-seed confirmatory sweep.
+
 ## Decision rule
 
 The confirmatory sweep uses `lfm_random` as the statistical baseline. Only

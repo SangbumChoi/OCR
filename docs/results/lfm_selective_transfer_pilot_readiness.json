@@ -1,0 +1,218 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "arms": [
+          "lfm_random",
+          "lfm_strict_transfer",
+          "native_random"
+        ],
+        "baseline": "lfm_random",
+        "promotion_enabled": false,
+        "replicates": [
+          "seed_0"
+        ]
+      },
+      "id": "screening_design",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "geometry_equal": true,
+        "random_parameters": {
+          "connector": 36853761,
+          "language": 687966720,
+          "task_heads": 732682,
+          "total": 814207243,
+          "vision": 88654080
+        },
+        "transfer_parameters": {
+          "connector": 36853761,
+          "language": 687966720,
+          "task_heads": 732682,
+          "total": 814207243,
+          "vision": 88654080
+        }
+      },
+      "id": "sub1b_geometry_matched_control",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "random_arm": "I0_random",
+        "transfer_arm": "I8_lfm_aligned_language"
+      },
+      "id": "initialization_contrast",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "repo_id": "LiquidAI/LFM2.5-VL-1.6B",
+        "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97"
+      },
+      "id": "immutable_language_source",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "claim_scope": "real_source_initialization_contract_only",
+        "content_fingerprint": "sha256:66e41f3d4f2d31ecfbe7d15037e41371bf68d412d1e7d984d873a28ade612557",
+        "model": "LiquidAI/LFM2.5-VL-1.6B",
+        "quality_claim_authorized": false,
+        "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+        "total_bytes": 3193336592
+      },
+      "id": "executed_source_identity",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "compiled_target_parameters": 814207243,
+        "initialization_arm": "I8_lfm_aligned_language",
+        "target_parameters": 814207243
+      },
+      "id": "executed_target_identity",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "copied_parameters": 553748992,
+        "copied_tensors": 109,
+        "minimum_component_parameter_fraction": 0.5,
+        "missing_source": 0,
+        "realized_component_parameter_fraction": 0.8049066559498692,
+        "semantic_skips": 0,
+        "shape_skips": 0,
+        "structured_groups": 12,
+        "value_verified": true
+      },
+      "id": "executed_transfer_integrity",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "required_stages": [
+          "acquire_language_checkpoint",
+          "evaluate",
+          "evaluate_baseline",
+          "initialize_student",
+          "pretrain",
+          "rlvr",
+          "sft"
+        ],
+        "stage_counts": {
+          "lfm_random": 25,
+          "lfm_strict_transfer": 26,
+          "native_random": 25
+        }
+      },
+      "id": "end_to_end_training_topology",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "training_feasibility_arms": [
+          "lfm_strict_transfer"
+        ]
+      },
+      "id": "strict_only_cuda_preflight",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "matched_across_arms": true,
+        "policy": {
+          "max_new_tokens": 128,
+          "max_new_tokens_by_answer_type": {
+            "H-accounting": 256,
+            "H-comprehension": 256,
+            "chart*": 256,
+            "formula*": 384,
+            "im2latex": 384,
+            "latexocr": 384,
+            "ocr-full": 512,
+            "omnidocbench": 512,
+            "pubtabnet": 512,
+            "reading-order": 384,
+            "recognition_fullpage": 512,
+            "table*": 512
+          },
+          "max_new_tokens_hard_cap": 512,
+          "max_samples": 64,
+          "repetition_guard_max_period": 16,
+          "repetition_guard_min_tokens": 24,
+          "repetition_guard_repetitions": 3,
+          "sample_selection": "answer_type_round_robin"
+        }
+      },
+      "id": "matched_long_output_policy",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "answer_type_patterns": [
+          "full",
+          "html",
+          "latex",
+          "long-context",
+          "omnidoc",
+          "pubtabnet",
+          "reading-order",
+          "table",
+          "transcription"
+        ],
+        "max_degenerate_repetition_rate": 0.0,
+        "max_structure_validity_drop": 0.0,
+        "max_token_rate": 0.05
+      },
+      "id": "long_output_release_gate",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "pretraining_steps": 25,
+        "public_row_cap": 256,
+        "rlvr_steps": 5,
+        "sft_steps": 10,
+        "synthetic_train_documents": 32
+      },
+      "id": "bounded_screening_budget",
+      "status": "pass"
+    }
+  ],
+  "claim_scope": "lfm_selective_transfer_pilot_submission_only",
+  "counts": {
+    "fail": 0,
+    "pass": 12
+  },
+  "fingerprint": "sha256:8cc420423abbede7533758808104bdb79bc3318f142724df1b0fce856ddd7577",
+  "limitations": [
+    "This audit authorizes only submission of the one-seed screening pilot.",
+    "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
+    "Quality and promotion require the sealed paired three-seed confirmatory sweep."
+  ],
+  "overall_status": "pass",
+  "pilot_submission_authorized": true,
+  "quality_claim_authorized": false,
+  "real_source_preflight": {
+    "claim_scope": "real_source_initialization_contract_only",
+    "source": "docs/results/selective_transfer_lfm_real_source_preflight.json",
+    "source_fingerprint": "sha256:0dba17980a41f8b51f521372ee6a57bf5d9dd1b1fceeb24a23cc4a9879bbbe4e"
+  },
+  "schema_version": 1,
+  "sweep": {
+    "arms": [
+      "lfm_random",
+      "lfm_strict_transfer",
+      "native_random"
+    ],
+    "baseline": "lfm_random",
+    "name": "docvlm-lfm-language-transfer-pilot",
+    "replicates": [
+      "seed_0"
+    ],
+    "source": "configs/sub1b_lfm_language_transfer_pilot.yaml",
+    "source_fingerprint": "sha256:f7906e4c1ab414c9b18e2daba110948b5b1e4a51fd3e709566ac42da5b2f1736"
+  },
+  "target_cuda_feasibility_claim_authorized": false
+}
