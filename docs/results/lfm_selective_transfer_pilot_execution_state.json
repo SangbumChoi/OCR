@@ -1,0 +1,38 @@
+{
+  "claim_scope": "native_lfm_pilot_execution_state_only",
+  "local": {
+    "attested_arms": [],
+    "completed_arms": [],
+    "observed_arms": [],
+    "status": "absent",
+    "summary_present": false
+  },
+  "next_action": "Run notebooks/lfm_selective_transfer_pilot.ipynb on native-BF16 hardware.",
+  "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",
+  "pilot_submission_authorized": true,
+  "promotion_claim_authorized": false,
+  "quality_claim_authorized": false,
+  "schema_version": 1,
+  "state": "not_started_in_observed_state",
+  "submission_readiness": {
+    "checks": {
+      "fail": 0,
+      "pass": 14
+    },
+    "fingerprint": "sha256:1d0a305445842420c0539d168ec07194fe89638ac751248068381e8ad691dd03",
+    "status": "pass"
+  },
+  "training_execution_attested": false,
+  "wandb": {
+    "entity": "sbdc",
+    "legacy_or_other_runs": 10,
+    "native_pilot_runs": 0,
+    "observed_at": "2026-07-25",
+    "observed_runs": 10,
+    "project": "docvlm-ablation",
+    "states": {
+      "crashed": 1,
+      "finished": 9
+    }
+  }
+}

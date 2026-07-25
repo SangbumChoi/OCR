@@ -147,6 +147,22 @@ It explicitly does not authorize a target-CUDA feasibility, quality, or promotio
 target-GPU stage still has to execute successfully, and quality still requires the sealed
 three-seed confirmatory sweep.
 
+### Observed execution state
+
+[`scripts/audit_lfm_transfer_pilot_execution.py`](../../scripts/audit_lfm_transfer_pilot_execution.py)
+keeps launch readiness separate from execution evidence. It reads the compact readiness artifact,
+the captured W&B run inventory, and an optional local sweep summary. It does not reproduce metric
+tables, target text, HTML, commands, or full logs. A run is `completed_attested` only when all three
+pilot arms completed and each has a sealed, passing execution-contract attestation.
+
+The W&B inventory captured on July 25, 2026 contains ten legacy LFM LoRA ablation runs and zero
+native pilot runs. No local native-pilot summary is present. Therefore the current state is
+`not_started_in_observed_state`, not completed:
+[`lfm_selective_transfer_pilot_execution_state.json`](../results/lfm_selective_transfer_pilot_execution_state.json).
+This is an observation-scoped statement, not proof that a run cannot exist outside the captured
+inventory. The readiness result still authorizes submission, while training execution, quality,
+and promotion remain unattested.
+
 For Colab execution, use
 [`notebooks/lfm_selective_transfer_pilot.ipynb`](../../notebooks/lfm_selective_transfer_pilot.ipynb).
 Its launcher checks the same readiness fingerprint, W&B credentials, free disk, CUDA availability,
