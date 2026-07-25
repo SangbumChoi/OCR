@@ -4,9 +4,11 @@
     "immutable_revision": true,
     "multilingual_coverage": true,
     "multitask_coverage": true,
+    "pilot_selection_feasibility": true,
     "scale": true,
     "schema": true,
     "shard_integrity": true,
+    "train_fold_intersections": true,
     "training_component_binding": true
   },
   "claim_scope": "public_udd_training_input_readiness_only",
@@ -131,9 +133,58 @@
       "recognition": 8994,
       "table": 1500,
       "vqa": 15133
+    },
+    "train_fold": {
+      "task_counts": {
+        "classification": 1302,
+        "kie": 1482,
+        "localization": 2664,
+        "reasoning": 7296,
+        "recognition": 8102,
+        "table": 1338,
+        "vqa": 13699
+      },
+      "task_language_counts": {
+        "en": {
+          "classification": 1302,
+          "kie": 1393,
+          "localization": 2664,
+          "reasoning": 7238,
+          "recognition": 3277,
+          "table": 1338,
+          "vqa": 11988
+        },
+        "ja": {
+          "classification": 0,
+          "kie": 0,
+          "localization": 0,
+          "reasoning": 0,
+          "recognition": 0,
+          "table": 0,
+          "vqa": 241
+        },
+        "ko": {
+          "classification": 0,
+          "kie": 0,
+          "localization": 0,
+          "reasoning": 0,
+          "recognition": 1341,
+          "table": 0,
+          "vqa": 106
+        },
+        "zh": {
+          "classification": 0,
+          "kie": 0,
+          "localization": 0,
+          "reasoning": 56,
+          "recognition": 789,
+          "table": 0,
+          "vqa": 359
+        }
+      }
     }
   },
-  "fingerprint": "sha256:480891a484428437fd496734c6f9123a8ed7720f42f5b2406f7010124cf6c66e",
+  "fingerprint": "sha256:b41a256cabbfaf1910ac29e45bf671650127871915b52706bece46d411531116",
   "main_revision_at_capture": "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9",
   "overall_status": "pass",
   "parquet_shards": [
@@ -163,6 +214,41 @@
       "size": 507692323
     }
   ],
+  "pilot_selection_plan": {
+    "coverage_languages": [
+      "en",
+      "ja",
+      "ko",
+      "zh"
+    ],
+    "feasible": true,
+    "language_task_reservations": {
+      "en": {
+        "classification": 8
+      },
+      "ja": {
+        "vqa": 8
+      },
+      "ko": {
+        "recognition": 8
+      },
+      "zh": {
+        "reasoning": 8
+      }
+    },
+    "max_rows": 256,
+    "min_rows_per_language": 8,
+    "min_rows_per_task": 16,
+    "task_quotas": {
+      "classification": 21,
+      "kie": 22,
+      "localization": 27,
+      "reasoning": 45,
+      "recognition": 49,
+      "table": 21,
+      "vqa": 71
+    }
+  },
   "quality_claim_authorized": false,
   "repo_id": "danelcsb/UDD",
   "requested_revision": "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9",
@@ -170,7 +256,8 @@
   "schema_version": 1,
   "source_fingerprints": {
     "dataset_card": "sha256:165a2dab8742ab35a5ed8061ed91e0c8f9a871c1c8f6bbc95acce002e2c8d498",
-    "viewer_info": "sha256:039a805c873f876b44d6617d993530546cd0e80b21a5efe76b1a48f538769bdd"
+    "viewer_info": "sha256:039a805c873f876b44d6617d993530546cd0e80b21a5efe76b1a48f538769bdd",
+    "viewer_train_fold_counts": "sha256:47a8e9291a0021e7b740fba6589d2c6e7614882d057f975cdac479f12e915382"
   },
   "training_component_authorized": true
 }

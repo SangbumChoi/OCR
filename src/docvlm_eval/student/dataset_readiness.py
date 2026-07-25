@@ -10,6 +10,8 @@ from typing import Any, Mapping
 
 import yaml
 
+from .acquisition import plan_stratified_coverage
+
 
 REQUIRED_UDD_COLUMNS = {
     "image",
@@ -53,6 +55,12 @@ REQUIRED_CAPABILITY_SOURCES = {
 }
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _COUNT = r"([0-9][0-9,]*)"
+PILOT_SELECTION_POLICY = {
+    "max_rows": 256,
+    "min_rows_per_task": 16,
+    "coverage_languages": ["en", "ja", "ko", "zh"],
+    "min_rows_per_language": 8,
+}
 
 
 def _stable_json(value: Any) -> str:
@@ -189,6 +197,26 @@ def _public_component(experiment: Mapping[str, Any]) -> dict[str, Any]:
     return matches[0]
 
 
+def _normalize_selection_policy(
+    selection_policy: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    policy = (
+        PILOT_SELECTION_POLICY
+        if selection_policy is None
+        else selection_policy
+    )
+    return {
+        "max_rows": int(policy["max_rows"]),
+        "min_rows_per_task": int(policy["min_rows_per_task"]),
+        "coverage_languages": sorted(
+            str(value) for value in policy["coverage_languages"]
+        ),
+        "min_rows_per_language": int(
+            policy["min_rows_per_language"]
+        ),
+    }
+
+
 def build_public_dataset_readiness(
     experiment: Mapping[str, Any],
     *,
@@ -199,6 +227,12 @@ def build_public_dataset_readiness(
     card: str,
     files: list[Mapping[str, Any]],
     viewer_info: Mapping[str, Any],
+    train_fold_task_counts: Mapping[str, int],
+    train_fold_task_language_counts: Mapping[
+        str,
+        Mapping[str, int],
+    ],
+    selection_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bind one immutable Hub snapshot to the executable training mixture."""
 
@@ -225,6 +259,61 @@ def build_public_dataset_readiness(
         capability: sorted(required & set(sources))
         for capability, required in REQUIRED_CAPABILITY_SOURCES.items()
     }
+    fold_task_counts = {
+        str(task): int(count)
+        for task, count in train_fold_task_counts.items()
+    }
+    fold_intersections = {
+        str(language): {
+            str(task): int(count)
+            for task, count in by_task.items()
+        }
+        for language, by_task in train_fold_task_language_counts.items()
+    }
+    normalized_policy = _normalize_selection_policy(selection_policy)
+    try:
+        selection_plan = plan_stratified_coverage(
+            fold_task_counts,
+            fold_intersections,
+            max_rows=normalized_policy["max_rows"],
+            min_rows_per_task=normalized_policy["min_rows_per_task"],
+            coverage_languages=tuple(
+                normalized_policy["coverage_languages"]
+            ),
+            min_rows_per_language=normalized_policy[
+                "min_rows_per_language"
+            ],
+        )
+    except ValueError as exc:
+        selection_plan = {
+            **normalized_policy,
+            "feasible": False,
+            "error": str(exc),
+        }
+    intersection_shape_valid = (
+        set(fold_task_counts) == REQUIRED_UDD_TASKS
+        and set(fold_intersections)
+        == set(normalized_policy["coverage_languages"])
+        and all(
+            set(by_task) == REQUIRED_UDD_TASKS
+            for by_task in fold_intersections.values()
+        )
+        and all(count > 0 for count in fold_task_counts.values())
+        and sum(fold_task_counts.values()) <= release["rows"]
+        and all(
+            0 <= count <= fold_task_counts[task]
+            for by_task in fold_intersections.values()
+            for task, count in by_task.items()
+        )
+        and all(
+            sum(
+                fold_intersections[language][task]
+                for language in fold_intersections
+            )
+            <= fold_task_counts[task]
+            for task in fold_task_counts
+        )
+    )
 
     checks = {
         "immutable_revision": (
@@ -269,6 +358,31 @@ def build_public_dataset_readiness(
         "multilingual_coverage": (
             REQUIRED_UDD_LANGUAGES.issubset(languages)
             and all(languages[language] > 0 for language in REQUIRED_UDD_LANGUAGES)
+        ),
+        "train_fold_intersections": intersection_shape_valid,
+        "pilot_selection_feasibility": (
+            intersection_shape_valid
+            and selection_plan.get("feasible") is True
+            and sum(
+                (selection_plan.get("task_quotas") or {}).values()
+            )
+            == normalized_policy["max_rows"]
+            and set(
+                selection_plan.get("language_task_reservations") or {}
+            )
+            == set(normalized_policy["coverage_languages"])
+            and all(
+                sum(
+                    (
+                        selection_plan["language_task_reservations"].get(
+                            language
+                        )
+                        or {}
+                    ).values()
+                )
+                == normalized_policy["min_rows_per_language"]
+                for language in normalized_policy["coverage_languages"]
+            )
         ),
         "shard_integrity": (
             len(parquet) == 5
@@ -315,12 +429,28 @@ def build_public_dataset_readiness(
             "languages": dict(sorted(languages.items())),
             "capability_sources": capability_sources,
             "card_num_bytes": card_bytes,
+            "train_fold": {
+                "task_counts": dict(sorted(fold_task_counts.items())),
+                "task_language_counts": {
+                    language: dict(sorted(by_task.items()))
+                    for language, by_task in sorted(
+                        fold_intersections.items()
+                    )
+                },
+            },
         },
+        "pilot_selection_plan": selection_plan,
         "parquet_shards": parquet,
         "checks": checks,
         "source_fingerprints": {
             "dataset_card": _text_fingerprint(card),
             "viewer_info": _fingerprint(viewer_info),
+            "viewer_train_fold_counts": _fingerprint(
+                {
+                    "task_counts": fold_task_counts,
+                    "task_language_counts": fold_intersections,
+                }
+            ),
         },
     }
     payload["fingerprint"] = _fingerprint(payload)
@@ -332,6 +462,7 @@ def validate_public_dataset_readiness(
     *,
     repo_id: str,
     revision: str,
+    selection_policy: Mapping[str, Any] | None = None,
 ) -> list[str]:
     """Revalidate compact evidence before it can satisfy goal readiness."""
 
@@ -370,6 +501,59 @@ def validate_public_dataset_readiness(
         (dataset.get("languages") or {}).keys()
     ):
         errors.append("required language coverage is incomplete")
+    normalized_policy = _normalize_selection_policy(selection_policy)
+    selection_plan = payload.get("pilot_selection_plan") or {}
+    if selection_plan.get("feasible") is not True:
+        errors.append("pilot selection is not feasible")
+    if any(
+        selection_plan.get(key) != value
+        for key, value in normalized_policy.items()
+    ):
+        errors.append("pilot selection policy mismatch")
+    task_quotas = selection_plan.get("task_quotas") or {}
+    if sum(task_quotas.values()) != normalized_policy["max_rows"]:
+        errors.append("pilot task quotas are incomplete")
+    reservations = selection_plan.get(
+        "language_task_reservations"
+    ) or {}
+    if any(
+        sum((reservations.get(language) or {}).values())
+        != normalized_policy["min_rows_per_language"]
+        for language in normalized_policy["coverage_languages"]
+    ):
+        errors.append("pilot language reservations are incomplete")
+    train_fold = dataset.get("train_fold") or {}
+    try:
+        recomputed_plan = plan_stratified_coverage(
+            {
+                str(task): int(count)
+                for task, count in (
+                    train_fold.get("task_counts") or {}
+                ).items()
+            },
+            {
+                str(language): {
+                    str(task): int(count)
+                    for task, count in by_task.items()
+                }
+                for language, by_task in (
+                    train_fold.get("task_language_counts") or {}
+                ).items()
+            },
+            max_rows=normalized_policy["max_rows"],
+            min_rows_per_task=normalized_policy["min_rows_per_task"],
+            coverage_languages=tuple(
+                normalized_policy["coverage_languages"]
+            ),
+            min_rows_per_language=normalized_policy[
+                "min_rows_per_language"
+            ],
+        )
+    except (TypeError, ValueError):
+        errors.append("pilot selection matrix is invalid")
+    else:
+        if selection_plan != recomputed_plan:
+            errors.append("pilot selection plan does not match its matrix")
     return errors
 
 

@@ -3,7 +3,7 @@
     {
       "evidence": {
         "authorized": true,
-        "fingerprint": "sha256:808ee3948e6d72f1cf8614c1db4b9bb12968a2da7c8ff22100fc0dc30befa22a",
+        "fingerprint": "sha256:8a782dfb6f1a33446d7d2b1f8484da5028b4ac3f21330da50ff93ae7454a2639",
         "fingerprint_valid": true,
         "status": "pass",
         "topology_matches": true
@@ -13,7 +13,7 @@
     },
     {
       "evidence": {
-        "fingerprint": "sha256:60a64534cba79093214a341045bfefe454763531b1baf4cbbca34c4121262ae4",
+        "fingerprint": "sha256:0f910129c3f85cbc4cdf07d598e6c2dcb8505de8ab5a206751edc593e4afed6e",
         "fingerprint_valid": true,
         "state": "not_started_in_observed_state",
         "training_execution_attested": false
@@ -24,7 +24,7 @@
     {
       "evidence": {
         "baseline": "lfm_language_only",
-        "fingerprint": "sha256:b87b024dc0f4370c5a8e2d71698c11f77f7326c4813910e832e9d8d44caa0313",
+        "fingerprint": "sha256:e57339717be2e8c8863d22c5340a27866595436ccec361d240d54c524b500de9",
         "replicates": [
           "seed_0",
           "seed_1",
@@ -73,7 +73,7 @@
     "pass": 2,
     "pending": 5
   },
-  "fingerprint": "sha256:edb935aa234edcec834bee00284e1706b9170835ec839701a537975c63cd7043",
+  "fingerprint": "sha256:949879a85b2b7ef57b59ea0fc79f62be8bd49a0da514807ba0e848f68e7d5194",
   "next_action": "Complete and seal a positive Smol vision-transfer pilot.",
   "overall_status": "pending",
   "pilot": "docvlm-smol-vision-transfer-pilot",

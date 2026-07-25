@@ -257,7 +257,7 @@
     "fail": 0,
     "pass": 15
   },
-  "fingerprint": "sha256:660830feae4ff885e1f662cfb07ebe11a2a3a549ebef7ef71a8c94af25808fe3",
+  "fingerprint": "sha256:8f1e920cba14da92d33684306cf2a3cc0728b08a5aadae69ac23f48b786defe6",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
@@ -290,7 +290,7 @@
     ],
     "baseline": "lfm_random",
     "name": "docvlm-lfm-language-transfer-pilot",
-    "plan_fingerprint": "sha256:97f151102c93f7ae37d9353e3b8c88b79608cb5bb3383e88b3dbf0c09977473f",
+    "plan_fingerprint": "sha256:87bac35a419acad86b071f6750604a82c60631a54dc434bd7b33fd575e876f68",
     "replicates": [
       "seed_0"
     ],

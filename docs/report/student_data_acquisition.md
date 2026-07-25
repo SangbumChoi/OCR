@@ -17,6 +17,10 @@ Hub metadata at that commit reports 39,837 image-rows, 77,063 QAs, five Parquet 
 snapshot without downloading the image payload. It binds the experiment's repo, immutable
 revision, split, fold, and 0.55 weight to the dataset card and Dataset Viewer schema, all five
 Parquet LFS SHA-256 values, seven task counts, 32-source inventory, and multilingual distribution.
+It also queries the 35 train-fold task and required-language intersections and runs the production
+joint allocator before authorizing the input. The current 256-row plan assigns 21-71 rows per task
+and reserves eight rows each for English classification, Japanese VQA, Korean recognition, and
+Chinese reasoning; these are feasibility reservations, not fixed final row identities.
 The compact result is
 [`public_udd_training_readiness.json`](../results/public_udd_training_readiness.json), which is a
 required input to the end-to-end readiness audit. It authorizes this training component only and

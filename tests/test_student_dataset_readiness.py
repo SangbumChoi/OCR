@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from docvlm_eval.student.dataset_readiness import (
     REQUIRED_UDD_COLUMNS,
+    _fingerprint,
     build_public_dataset_readiness,
     validate_public_dataset_readiness,
 )
@@ -18,6 +19,12 @@ TASK_COUNTS = {
     "kie": 2,
     "table": 2,
     "classification": 1,
+}
+TEST_SELECTION_POLICY = {
+    "max_rows": 7,
+    "min_rows_per_task": 1,
+    "coverage_languages": ["en", "ja", "ko", "zh"],
+    "min_rows_per_language": 1,
 }
 SOURCES = [
     "chartqa",
@@ -120,6 +127,18 @@ def _files() -> list[dict]:
     ]
 
 
+def _task_language_counts() -> dict[str, dict[str, int]]:
+    counts = {
+        language: {task: 0 for task in TASK_COUNTS}
+        for language in TEST_SELECTION_POLICY["coverage_languages"]
+    }
+    counts["en"]["classification"] = 1
+    counts["ja"]["vqa"] = 1
+    counts["ko"]["kie"] = 1
+    counts["zh"]["table"] = 1
+    return counts
+
+
 def _build() -> dict:
     return build_public_dataset_readiness(
         _experiment(),
@@ -130,6 +149,9 @@ def _build() -> dict:
         card=_card(),
         files=_files(),
         viewer_info=_viewer(),
+        train_fold_task_counts=TASK_COUNTS,
+        train_fold_task_language_counts=_task_language_counts(),
+        selection_policy=TEST_SELECTION_POLICY,
     )
 
 
@@ -140,6 +162,17 @@ def test_public_dataset_readiness_binds_multitask_hub_snapshot():
     assert result["training_component_authorized"] is True
     assert result["quality_claim_authorized"] is False
     assert result["dataset"]["task_counts"] == TASK_COUNTS
+    assert result["pilot_selection_plan"]["task_quotas"] == {
+        task: 1 for task in sorted(TASK_COUNTS)
+    }
+    assert result["pilot_selection_plan"][
+        "language_task_reservations"
+    ] == {
+        "en": {"classification": 1},
+        "ja": {"vqa": 1},
+        "ko": {"kie": 1},
+        "zh": {"table": 1},
+    }
     assert result["dataset"]["capability_sources"]["chart_understanding"] == [
         "chartqa",
         "dvqa",
@@ -150,6 +183,7 @@ def test_public_dataset_readiness_binds_multitask_hub_snapshot():
         result,
         repo_id="owner/UDD",
         revision=REVISION,
+        selection_policy=TEST_SELECTION_POLICY,
     ) == []
 
 
@@ -161,6 +195,7 @@ def test_public_dataset_readiness_rejects_mutation_and_moving_revision():
         tampered,
         repo_id="owner/UDD",
         revision=REVISION,
+        selection_policy=TEST_SELECTION_POLICY,
     )
 
     assert "fingerprint mismatch" in errors
@@ -175,5 +210,50 @@ def test_public_dataset_readiness_rejects_mutation_and_moving_revision():
         card=_card(),
         files=_files(),
         viewer_info=_viewer(),
+        train_fold_task_counts=TASK_COUNTS,
+        train_fold_task_language_counts=_task_language_counts(),
+        selection_policy=TEST_SELECTION_POLICY,
     )
     assert moving["overall_status"] == "fail"
+
+
+def test_public_dataset_readiness_rejects_infeasible_pilot_selection():
+    intersections = _task_language_counts()
+    intersections["ja"]["vqa"] = 0
+
+    result = build_public_dataset_readiness(
+        _experiment(),
+        repo_id="owner/UDD",
+        requested_revision=REVISION,
+        resolved_revision=REVISION,
+        main_revision=REVISION,
+        card=_card(),
+        files=_files(),
+        viewer_info=_viewer(),
+        train_fold_task_counts=TASK_COUNTS,
+        train_fold_task_language_counts=intersections,
+        selection_policy=TEST_SELECTION_POLICY,
+    )
+
+    assert result["overall_status"] == "fail"
+    assert result["checks"]["pilot_selection_feasibility"] is False
+    assert result["pilot_selection_plan"]["feasible"] is False
+
+
+def test_public_dataset_readiness_recomputes_selection_plan():
+    result = _build()
+    tampered = deepcopy(result)
+    tampered["pilot_selection_plan"]["task_quotas"]["classification"] = 2
+    unsigned = dict(tampered)
+    unsigned.pop("fingerprint")
+    tampered["fingerprint"] = _fingerprint(unsigned)
+
+    errors = validate_public_dataset_readiness(
+        tampered,
+        repo_id="owner/UDD",
+        revision=REVISION,
+        selection_policy=TEST_SELECTION_POLICY,
+    )
+
+    assert "fingerprint mismatch" not in errors
+    assert "pilot selection plan does not match its matrix" in errors

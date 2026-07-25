@@ -320,6 +320,9 @@ def audit_end_to_end_goal_readiness(
             "tasks": public_summary.get("task_counts"),
             "source_count": public_summary.get("source_count"),
             "languages": sorted((public_summary.get("languages") or {}).keys()),
+            "pilot_selection_plan": public_dataset.get(
+                "pilot_selection_plan"
+            ),
             "mixture_weight": public_component.get("weight"),
             "checks": public_dataset.get("checks"),
             "errors": public_dataset_errors,

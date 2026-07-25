@@ -200,27 +200,23 @@ def _allocate_task_quotas(
     return quotas
 
 
-def _reserve_language_rows(
-    metadata: Any,
-    eligible_indices: list[int],
+def _allocate_language_task_reservations(
+    intersection_counts: dict[str, dict[str, int]],
     *,
     task_quotas: dict[str, int],
     languages: tuple[str, ...],
     minimum: int,
-    seed: int,
-) -> tuple[set[int], dict[str, dict[str, int]]]:
-    intersections: dict[str, dict[str, list[int]]] = {
-        language: {} for language in languages
+) -> dict[str, dict[str, int]]:
+    intersections = {
+        language: {
+            task: int(count)
+            for task, count in intersection_counts.get(language, {}).items()
+            if int(count) > 0
+        }
+        for language in languages
     }
-    for index in eligible_indices:
-        row = metadata[index]
-        language = str(row.get("language") or "und")
-        if language not in intersections:
-            continue
-        task = str(row.get("task") or "unknown")
-        intersections[language].setdefault(task, []).append(index)
     for language, by_task in intersections.items():
-        available = sum(len(indices) for indices in by_task.values())
+        available = sum(by_task.values())
         if available < minimum:
             raise ValueError(
                 "filtered rows cannot satisfy min_rows_per_language for "
@@ -247,9 +243,9 @@ def _reserve_language_rows(
     }
     for language, node in language_nodes.items():
         add_edge(source, node, minimum)
-        for task, indices in sorted(intersections[language].items()):
+        for task, count in sorted(intersections[language].items()):
             if task in task_nodes:
-                add_edge(node, task_nodes[task], len(indices))
+                add_edge(node, task_nodes[task], count)
     for task, node in task_nodes.items():
         add_edge(node, sink, task_quotas[task])
 
@@ -286,23 +282,92 @@ def _reserve_language_rows(
             f"required={required_flow}, feasible={total_flow}"
         )
 
-    reserved: set[int] = set()
     reservation_counts: dict[str, dict[str, int]] = {}
     for language, language_node in language_nodes.items():
         for task, task_node in task_nodes.items():
-            capacity = len(intersections[language].get(task, ()))
+            capacity = intersections[language].get(task, 0)
             count = capacity - residual.get(language_node, {}).get(
                 task_node,
                 0,
             )
             if count <= 0:
                 continue
+            reservation_counts.setdefault(language, {})[task] = count
+    return reservation_counts
+
+
+def plan_stratified_coverage(
+    task_counts: dict[str, int],
+    task_language_counts: dict[str, dict[str, int]],
+    *,
+    max_rows: int,
+    min_rows_per_task: int,
+    coverage_languages: tuple[str, ...],
+    min_rows_per_language: int,
+) -> dict[str, Any]:
+    """Plan deterministic task quotas and feasible language reservations."""
+
+    task_quotas = _allocate_task_quotas(
+        task_counts,
+        max_rows=max_rows,
+        minimum=min_rows_per_task,
+    )
+    language_task_reservations = _allocate_language_task_reservations(
+        task_language_counts,
+        task_quotas=task_quotas,
+        languages=coverage_languages,
+        minimum=min_rows_per_language,
+    )
+    return {
+        "max_rows": max_rows,
+        "min_rows_per_task": min_rows_per_task,
+        "coverage_languages": list(coverage_languages),
+        "min_rows_per_language": min_rows_per_language,
+        "task_quotas": dict(sorted(task_quotas.items())),
+        "language_task_reservations": language_task_reservations,
+        "feasible": True,
+    }
+
+
+def _reserve_language_rows(
+    metadata: Any,
+    eligible_indices: list[int],
+    *,
+    task_quotas: dict[str, int],
+    languages: tuple[str, ...],
+    minimum: int,
+    seed: int,
+) -> tuple[set[int], dict[str, dict[str, int]]]:
+    intersections: dict[str, dict[str, list[int]]] = {
+        language: {} for language in languages
+    }
+    for index in eligible_indices:
+        row = metadata[index]
+        language = str(row.get("language") or "und")
+        if language not in intersections:
+            continue
+        task = str(row.get("task") or "unknown")
+        intersections[language].setdefault(task, []).append(index)
+    reservation_counts = _allocate_language_task_reservations(
+        {
+            language: {
+                task: len(indices)
+                for task, indices in by_task.items()
+            }
+            for language, by_task in intersections.items()
+        },
+        task_quotas=task_quotas,
+        languages=languages,
+        minimum=minimum,
+    )
+    reserved: set[int] = set()
+    for language, by_task in reservation_counts.items():
+        for task, count in by_task.items():
             ranked = sorted(
                 intersections[language][task],
                 key=lambda index: _selection_key(metadata, index, seed),
             )
             reserved.update(ranked[:count])
-            reservation_counts.setdefault(language, {})[task] = count
     return reserved, reservation_counts
 
 

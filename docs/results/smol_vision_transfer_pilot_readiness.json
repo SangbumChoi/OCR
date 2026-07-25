@@ -238,7 +238,7 @@
     "fail": 0,
     "pass": 14
   },
-  "fingerprint": "sha256:808ee3948e6d72f1cf8614c1db4b9bb12968a2da7c8ff22100fc0dc30befa22a",
+  "fingerprint": "sha256:8a782dfb6f1a33446d7d2b1f8484da5028b4ac3f21330da50ff93ae7454a2639",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The dual-source CUDA feasibility stage must execute and pass on the target GPU.",
@@ -275,7 +275,7 @@
     ],
     "baseline": "lfm_language_only",
     "name": "docvlm-smol-vision-transfer-pilot",
-    "plan_fingerprint": "sha256:898e7245d9b726afff973fce8c28c0e9bb740ba717f9321f369b7a03c5755200",
+    "plan_fingerprint": "sha256:cb35ef934c1c62b80b5b22368dc90ef15c9c32f4d7b5c9fa8f89554b74e0c4fa",
     "replicates": [
       "seed_0"
     ],
