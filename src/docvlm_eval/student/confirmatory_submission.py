@@ -96,6 +96,8 @@ def audit_smol_confirmatory_submission(
     readiness_fingerprint_valid = _fingerprint_valid(pilot_readiness)
     readiness_topology_matches = (
         readiness_sweep.get("name") == pilot_plan.name == PILOT
+        and readiness_sweep.get("plan_fingerprint")
+        == pilot_plan.fingerprint
         and readiness_sweep.get("baseline")
         == pilot_plan.baseline
         == BASELINE

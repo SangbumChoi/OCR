@@ -50,13 +50,22 @@ def _audit(tmp_path: Path, *, vision: Path = VISION):
 
 
 def test_smol_vision_transfer_pilot_readiness_passes(tmp_path):
-    result = _audit(tmp_path)
+    plan = _plan(tmp_path)
+    result = audit_smol_vision_transfer_pilot(
+        plan,
+        repo_root=ROOT,
+        sweep_path=SWEEP,
+        vision_preflight_path=VISION,
+        language_preflight_path=LANGUAGE,
+        source_selection_path=SELECTION,
+    )
 
     assert result["overall_status"] == "pass"
     assert result["pilot_submission_authorized"] is True
     assert result["quality_claim_authorized"] is False
     assert result["target_cuda_feasibility_claim_authorized"] is False
     assert result["counts"] == {"pass": 14, "fail": 0}
+    assert result["sweep"]["plan_fingerprint"] == plan.fingerprint
 
 
 def test_smol_vision_readiness_rejects_tampered_scope(tmp_path):

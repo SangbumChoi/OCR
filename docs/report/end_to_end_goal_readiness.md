@@ -23,6 +23,7 @@ The machine-readable result is
 | Implementation | Executable evidence for every adopted method | pass |
 | Implementation | 814,207,243-parameter vision-connector-language model | pass |
 | Implementation | Hard multilingual tables, charts, investment, science, diagrams, packets, and dossiers | pass |
+| Implementation | Immutable uploaded UDD: 39,837 rows, 77,063 QAs, 7 tasks, 32 sources | pass |
 | Implementation | Pretraining, grounded SFT, and GRPO-style RLVR with task-specific rewards | pass |
 | Implementation | Executed LFM language and Smol vision selective-weight transfer | pass |
 | Implementation | Bounded long-output budgets and exact repetition/structure gates | pass |
@@ -31,15 +32,18 @@ The machine-readable result is
 | Quality | Authorized heldout quality evidence | pending |
 | Quality | Multi-seed promotion evidence | pending |
 
-The current aggregate is `implementation_ready_execution_pending`: 8 pass, 3 pending, and 0 fail.
+The current aggregate is `implementation_ready_execution_pending`: 9 pass, 3 pending, and 0 fail.
 `goal_complete` remains false.
 
 ## Evidence boundary
 
 The audit compiles the exact matched pilot and revalidates live adopted-method anchors. It binds
-the 100-method catalog, synthesis policy, real LFM and Smol payload preflights, pilot readiness,
-and observed execution-state artifacts by content fingerprint. It fails if an implementation
-requirement regresses.
+the 100-method catalog, synthesis policy, immutable uploaded UDD snapshot, real LFM and Smol
+payload preflights, pilot readiness, and observed execution-state artifacts by content
+fingerprint. It fails if an implementation requirement regresses. The UDD evidence binds the
+executable 0.55 mixture component to the pinned Hub commit, five Parquet LFS hashes, 21-column
+schema, 39,837 rows, 77,063 QAs, seven task counts, 32 sources, and multilingual coverage without
+copying the 2.3 GB image payload into the repository.
 
 Execution and quality are intentionally not inferred from green unit tests, parameter estimates,
 W&B run names, or successful payload copying. A quality claim without sealed execution is an

@@ -26,6 +26,16 @@ def main() -> None:
         default=ROOT / "configs" / "sub1b_smol_vision_transfer_pilot.yaml",
     )
     parser.add_argument(
+        "--public-dataset-readiness",
+        type=Path,
+        default=(
+            ROOT
+            / "docs"
+            / "results"
+            / "public_udd_training_readiness.json"
+        ),
+    )
+    parser.add_argument(
         "--execution-state",
         type=Path,
         default=(
@@ -68,6 +78,7 @@ def main() -> None:
                 ROOT / "configs" / "frontier_method_evidence.yaml"
             ),
             synth_config_path=ROOT / "configs" / "synth_data.yaml",
+            public_dataset_readiness_path=args.public_dataset_readiness,
             vision_preflight_path=(
                 ROOT
                 / "docs"

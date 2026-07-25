@@ -1,0 +1,176 @@
+{
+  "checks": {
+    "capability_source_coverage": true,
+    "immutable_revision": true,
+    "multilingual_coverage": true,
+    "multitask_coverage": true,
+    "scale": true,
+    "schema": true,
+    "shard_integrity": true,
+    "training_component_binding": true
+  },
+  "claim_scope": "public_udd_training_input_readiness_only",
+  "component": {
+    "decode_checks": 32,
+    "fold": "train",
+    "languages": [],
+    "max_rows": null,
+    "name": "public_udd",
+    "sources": [],
+    "split": "train",
+    "tasks": [],
+    "weight": 0.55
+  },
+  "dataset": {
+    "capability_sources": {
+      "chart_understanding": [
+        "chartqa",
+        "dvqa",
+        "plotqa",
+        "tatqa"
+      ],
+      "document_understanding": [
+        "docmatix",
+        "docvqa",
+        "infovqa",
+        "visualmrc"
+      ],
+      "key_information_extraction": [
+        "cord",
+        "funsd",
+        "sroie"
+      ],
+      "multilingual_documents": [
+        "mtvqa",
+        "synthdog_ko"
+      ],
+      "table_understanding": [
+        "pubtabnet"
+      ]
+    },
+    "card_num_bytes": 2305254751,
+    "columns": [
+      "answers",
+      "elements_json",
+      "fold",
+      "full_text",
+      "hf_config",
+      "hf_id",
+      "image",
+      "image_height",
+      "image_width",
+      "instructions",
+      "language",
+      "license",
+      "metric",
+      "n_fields",
+      "n_regions",
+      "phash",
+      "sample_id",
+      "source",
+      "split",
+      "table_html",
+      "task"
+    ],
+    "languages": {
+      "ar": 211,
+      "de": 233,
+      "en": 32409,
+      "fr": 203,
+      "id": 100,
+      "ja": 263,
+      "ko": 1616,
+      "ru": 191,
+      "und": 2999,
+      "vi": 214,
+      "zh": 1331
+    },
+    "qas": 77063,
+    "rows": 39837,
+    "source_count": 32,
+    "sources": [
+      "ai2d",
+      "chartqa",
+      "charxiv",
+      "cord",
+      "doclaynet",
+      "docmatix",
+      "docvqa",
+      "dvqa",
+      "funsd",
+      "hallusionbench",
+      "iam",
+      "im2latex",
+      "infovqa",
+      "latexocr",
+      "mathvista",
+      "mtvqa",
+      "ocrbench",
+      "ocrbench_v2",
+      "ocrvqa",
+      "omnidocbench",
+      "plotqa",
+      "publaynet",
+      "pubtabnet",
+      "rvl_cdip",
+      "screenqa",
+      "sroie",
+      "stvqa",
+      "synthdog_en",
+      "synthdog_ko",
+      "tatqa",
+      "textvqa",
+      "visualmrc"
+    ],
+    "task_count": 7,
+    "task_counts": {
+      "classification": 1460,
+      "kie": 1650,
+      "localization": 2952,
+      "reasoning": 8148,
+      "recognition": 8994,
+      "table": 1500,
+      "vqa": 15133
+    }
+  },
+  "fingerprint": "sha256:480891a484428437fd496734c6f9123a8ed7720f42f5b2406f7010124cf6c66e",
+  "main_revision_at_capture": "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9",
+  "overall_status": "pass",
+  "parquet_shards": [
+    {
+      "path": "data/train-00000-of-00005.parquet",
+      "sha256": "4aa375c833111a1aceb688cd39931ad009e382c0659be0f2190e643c3010d5e7",
+      "size": 649357284
+    },
+    {
+      "path": "data/train-00001-of-00005.parquet",
+      "sha256": "7448a5f5a1bc602ee42fac78be19b70e3195d76cd32b8ec3c824b65a4a1e296e",
+      "size": 201800934
+    },
+    {
+      "path": "data/train-00002-of-00005.parquet",
+      "sha256": "cf7f228cd2734eb914972214190fec62c9065a96cb359af36eefd70dad06eab6",
+      "size": 506682274
+    },
+    {
+      "path": "data/train-00003-of-00005.parquet",
+      "sha256": "628e402460b36e5a86961403a2209a27b7d92cdf82b831d31e1fcf77f7453816",
+      "size": 415368661
+    },
+    {
+      "path": "data/train-00004-of-00005.parquet",
+      "sha256": "d86333a758918e4c547211bd3bb4edeb4cfdea68b8fe122a65e6e888f91ca6c0",
+      "size": 507692323
+    }
+  ],
+  "quality_claim_authorized": false,
+  "repo_id": "danelcsb/UDD",
+  "requested_revision": "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9",
+  "resolved_revision": "f5eb52104627d20ddd1eab2130ad78f87cb0d7c9",
+  "schema_version": 1,
+  "source_fingerprints": {
+    "dataset_card": "sha256:165a2dab8742ab35a5ed8061ed91e0c8f9a871c1c8f6bbc95acce002e2c8d498",
+    "viewer_info": "sha256:039a805c873f876b44d6617d993530546cd0e80b21a5efe76b1a48f538769bdd"
+  },
+  "training_component_authorized": true
+}

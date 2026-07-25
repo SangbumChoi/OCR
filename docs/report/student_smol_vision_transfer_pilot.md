@@ -82,8 +82,11 @@ payload-verified candidate rather than a promoted source.
 compiles the exact pilot and binds it to both executed source preflights and the cross-model source
 matrix. The compact fail-closed artifact passes 14/14 checks:
 [`smol_vision_transfer_pilot_readiness.json`](../results/smol_vision_transfer_pilot_readiness.json).
-It authorizes pilot submission only. Target-CUDA feasibility, training execution, quality, and
-promotion remain unauthorized until their respective stages produce sealed evidence.
+It stores the compiled plan fingerprint, not only the sweep YAML hash. Confirmatory submission and
+end-to-end readiness therefore reject a readiness artifact produced before a training-code or
+compiled-DAG change. The artifact authorizes pilot submission only. Target-CUDA feasibility,
+training execution, quality, and promotion remain unauthorized until their respective stages
+produce sealed evidence.
 
 The dual cell alone runs the target-GPU feasibility gate and the selective Smol acquisition. Both
 cells retain tracked pretraining, SFT, RLVR, baseline evaluation, and final evaluation stages in

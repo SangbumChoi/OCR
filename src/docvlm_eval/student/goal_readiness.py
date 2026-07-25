@@ -14,6 +14,7 @@ from ..method_catalog import (
     audit_adopted_method_evidence,
     load_method_catalog,
 )
+from .dataset_readiness import validate_public_dataset_readiness
 from .sweep import SweepPlan
 
 
@@ -66,6 +67,14 @@ def _file_fingerprint(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def _artifact_fingerprint_valid(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    unsigned = dict(value)
+    observed = unsigned.pop("fingerprint", None)
+    return observed == _fingerprint(unsigned)
+
+
 def _check(
     checks: list[dict[str, Any]],
     *,
@@ -93,6 +102,7 @@ def audit_end_to_end_goal_readiness(
     method_catalog_path: str | Path,
     method_evidence_path: str | Path,
     synth_config_path: str | Path,
+    public_dataset_readiness_path: str | Path,
     vision_preflight_path: str | Path,
     language_preflight_path: str | Path,
     pilot_readiness_path: str | Path,
@@ -106,6 +116,7 @@ def audit_end_to_end_goal_readiness(
     catalog_source = Path(method_catalog_path).resolve()
     evidence_source = Path(method_evidence_path).resolve()
     synth_source = Path(synth_config_path).resolve()
+    public_dataset_source = Path(public_dataset_readiness_path).resolve()
     vision_source = Path(vision_preflight_path).resolve()
     language_source = Path(language_preflight_path).resolve()
     readiness_source = Path(pilot_readiness_path).resolve()
@@ -131,6 +142,9 @@ def audit_end_to_end_goal_readiness(
         repo_root=repo,
     )
     synth = yaml.safe_load(synth_source.read_text(encoding="utf-8"))
+    public_dataset = json.loads(
+        public_dataset_source.read_text(encoding="utf-8")
+    )
     vision_preflight = json.loads(
         vision_source.read_text(encoding="utf-8")
     )
@@ -157,6 +171,7 @@ def audit_end_to_end_goal_readiness(
     for method in methods:
         category = str(method.get("category") or "")
         categories[category] = categories.get(category, 0) + 1
+    readiness_integrity = _artifact_fingerprint_valid(readiness)
     _check(
         checks,
         check_id="frontier_method_survey",
@@ -270,6 +285,45 @@ def audit_end_to_end_goal_readiness(
             "counterfactual_pairs": synth.get("base", {}).get(
                 "emit_counterfactual_pairs"
             ),
+        },
+    )
+
+    public_components = [
+        component
+        for component in (experiment.get("data") or {}).get("components", [])
+        if isinstance(component, dict)
+        and isinstance(component.get("hub"), dict)
+        and str(component["hub"].get("repo_id") or "").endswith("/UDD")
+    ]
+    public_component = public_components[0] if len(public_components) == 1 else {}
+    public_hub = public_component.get("hub") or {}
+    public_dataset_errors = (
+        ["experiment does not bind exactly one public UDD component"]
+        if len(public_components) != 1
+        else validate_public_dataset_readiness(
+            public_dataset,
+            repo_id=str(public_hub.get("repo_id") or ""),
+            revision=str(public_hub.get("revision") or ""),
+        )
+    )
+    public_summary = public_dataset.get("dataset") or {}
+    _check(
+        checks,
+        check_id="uploaded_multitask_dataset",
+        phase="implementation",
+        status="pass" if not public_dataset_errors else "fail",
+        evidence={
+            "repo_id": public_dataset.get("repo_id"),
+            "revision": public_dataset.get("resolved_revision"),
+            "rows": public_summary.get("rows"),
+            "qas": public_summary.get("qas"),
+            "tasks": public_summary.get("task_counts"),
+            "source_count": public_summary.get("source_count"),
+            "languages": sorted((public_summary.get("languages") or {}).keys()),
+            "mixture_weight": public_component.get("weight"),
+            "checks": public_dataset.get("checks"),
+            "errors": public_dataset_errors,
+            "fingerprint": public_dataset.get("fingerprint"),
         },
     )
 
@@ -417,6 +471,9 @@ def audit_end_to_end_goal_readiness(
             "pass"
             if readiness.get("overall_status") == "pass"
             and readiness.get("pilot_submission_authorized") is True
+            and readiness_integrity
+            and (readiness.get("sweep") or {}).get("plan_fingerprint")
+            == plan.fingerprint
             and readiness.get("quality_claim_authorized") is False
             and readiness.get(
                 "target_cuda_feasibility_claim_authorized"
@@ -428,6 +485,11 @@ def audit_end_to_end_goal_readiness(
             "status": readiness.get("overall_status"),
             "checks": readiness.get("counts"),
             "fingerprint": readiness.get("fingerprint"),
+            "fingerprint_valid": readiness_integrity,
+            "readiness_plan_fingerprint": (
+                readiness.get("sweep") or {}
+            ).get("plan_fingerprint"),
+            "compiled_plan_fingerprint": plan.fingerprint,
             "pilot_submission_authorized": readiness.get(
                 "pilot_submission_authorized"
             ),
@@ -437,17 +499,38 @@ def audit_end_to_end_goal_readiness(
         },
     )
 
+    execution_integrity = (
+        _artifact_fingerprint_valid(execution)
+        and execution.get("pilot") == plan.name
+        and (execution.get("submission_readiness") or {}).get("fingerprint")
+        == readiness.get("fingerprint")
+    )
     execution_attested = (
-        execution.get("state") == "completed_attested"
+        execution_integrity
+        and execution.get("state") == "completed_attested"
         and execution.get("training_execution_attested") is True
     )
     _check(
         checks,
         check_id="target_gpu_execution",
         phase="execution",
-        status="pass" if execution_attested else "pending",
+        status=(
+            "pass"
+            if execution_attested
+            else "pending"
+            if execution_integrity
+            else "fail"
+        ),
         evidence={
             "state": execution.get("state"),
+            "fingerprint": execution.get("fingerprint"),
+            "fingerprint_valid": _artifact_fingerprint_valid(execution),
+            "readiness_linked": (
+                (execution.get("submission_readiness") or {}).get(
+                    "fingerprint"
+                )
+                == readiness.get("fingerprint")
+            ),
             "training_execution_attested": execution.get(
                 "training_execution_attested"
             ),
@@ -455,19 +538,25 @@ def audit_end_to_end_goal_readiness(
         },
     )
 
+    quality_integrity = _artifact_fingerprint_valid(quality_evidence)
+    expected_execution_attestation = (
+        (execution.get("local") or {}).get(
+            "execution_attestation_fingerprint"
+        )
+    )
     quality_authorized = bool(
         isinstance(quality_evidence, dict)
         and quality_evidence.get("quality_claim_authorized") is True
     )
     quality_valid = bool(
         quality_authorized
+        and quality_integrity
         and quality_evidence.get("claim_scope")
         == "heldout_quality_evidence"
         and quality_evidence.get("gate_status") == "pass"
-        and str(
-            quality_evidence.get("execution_attestation_fingerprint")
-            or ""
-        ).startswith("sha256:")
+        and expected_execution_attestation is not None
+        and quality_evidence.get("execution_attestation_fingerprint")
+        == expected_execution_attestation
     )
     quality_status = (
         "pending"
@@ -484,6 +573,15 @@ def audit_end_to_end_goal_readiness(
         evidence={
             "execution_attested": execution_attested,
             "evidence_present": quality_evidence is not None,
+            "fingerprint_valid": quality_integrity,
+            "execution_attestation_linked": (
+                None
+                if quality_evidence is None
+                else quality_evidence.get(
+                    "execution_attestation_fingerprint"
+                )
+                == expected_execution_attestation
+            ),
             "claim_scope": (
                 None
                 if quality_evidence is None
@@ -498,19 +596,23 @@ def audit_end_to_end_goal_readiness(
         },
     )
 
+    promotion_integrity = _artifact_fingerprint_valid(
+        promotion_evidence
+    )
     promotion_authorized = bool(
         isinstance(promotion_evidence, dict)
         and promotion_evidence.get("promotion_claim_authorized") is True
     )
     promotion_valid = bool(
         promotion_authorized
+        and promotion_integrity
         and promotion_evidence.get("claim_scope")
         == "multi_seed_promotion_evidence"
         and int(promotion_evidence.get("replicates") or 0) >= 3
         and promotion_evidence.get("multiplicity_controlled") is True
-        and str(
-            promotion_evidence.get("quality_evidence_fingerprint") or ""
-        ).startswith("sha256:")
+        and quality_evidence is not None
+        and promotion_evidence.get("quality_evidence_fingerprint")
+        == quality_evidence.get("fingerprint")
     )
     promotion_status = (
         "pending"
@@ -528,6 +630,16 @@ def audit_end_to_end_goal_readiness(
             "execution_attested": execution_attested,
             "quality_evidence_passed": quality_status == "pass",
             "evidence_present": promotion_evidence is not None,
+            "fingerprint_valid": promotion_integrity,
+            "quality_evidence_linked": (
+                None
+                if promotion_evidence is None
+                else quality_evidence is not None
+                and promotion_evidence.get(
+                    "quality_evidence_fingerprint"
+                )
+                == quality_evidence.get("fingerprint")
+            ),
             "replicates": (
                 None
                 if promotion_evidence is None
@@ -575,6 +687,9 @@ def audit_end_to_end_goal_readiness(
             "method_catalog": _file_fingerprint(catalog_source),
             "method_evidence": _file_fingerprint(evidence_source),
             "synth_config": _file_fingerprint(synth_source),
+            "public_dataset_readiness": _file_fingerprint(
+                public_dataset_source
+            ),
             "vision_preflight": _file_fingerprint(vision_source),
             "language_preflight": _file_fingerprint(language_source),
             "pilot_readiness": _file_fingerprint(readiness_source),

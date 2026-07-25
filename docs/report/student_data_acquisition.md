@@ -13,6 +13,15 @@ same experiment YAML must not silently receive different rows later.
 Hub metadata at that commit reports 39,837 image-rows, 77,063 QAs, five Parquet shards, and
 2,305,254,751 dataset bytes. Its 21-column schema matches the acquisition contract.
 
+[`audit_public_udd_readiness.py`](../../scripts/audit_public_udd_readiness.py) verifies this
+snapshot without downloading the image payload. It binds the experiment's repo, immutable
+revision, split, fold, and 0.55 weight to the dataset card and Dataset Viewer schema, all five
+Parquet LFS SHA-256 values, seven task counts, 32-source inventory, and multilingual distribution.
+The compact result is
+[`public_udd_training_readiness.json`](../results/public_udd_training_readiness.json), which is a
+required input to the end-to-end readiness audit. It authorizes this training component only and
+cannot authorize model quality.
+
 ```bash
 python scripts/acquire_student_data.py \
   --repo-id danelcsb/UDD \

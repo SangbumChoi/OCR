@@ -31,8 +31,9 @@ def _plan(tmp_path: Path):
 
 
 def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
+    plan = _plan(tmp_path)
     result = audit_lfm_transfer_pilot(
-        _plan(tmp_path),
+        plan,
         repo_root=ROOT,
         sweep_path=SWEEP,
         preflight_path=PREFLIGHT,
@@ -44,6 +45,7 @@ def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
     assert result["quality_claim_authorized"] is False
     assert result["target_cuda_feasibility_claim_authorized"] is False
     assert result["counts"] == {"pass": 15, "fail": 0}
+    assert result["sweep"]["plan_fingerprint"] == plan.fingerprint
 
 
 def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(
