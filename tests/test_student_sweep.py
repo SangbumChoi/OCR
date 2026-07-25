@@ -1218,10 +1218,37 @@ def test_lfm_language_transfer_pilot_is_bounded_and_non_promotional(tmp_path):
     for variant in plan.variants:
         experiment = variant.plan.raw_spec
         assert experiment["runtime"]["visual_backend_benchmark"]["enabled"] is False
+        training_gate_enabled = (
+            variant.arm_id == "lfm_strict_transfer"
+        )
         assert (
             experiment["runtime"]["training_feasibility_benchmark"]["enabled"]
-            is False
+            is training_gate_enabled
         )
+        if training_gate_enabled:
+            benchmark = next(
+                stage
+                for stage in variant.plan.stages
+                if stage.name == "training_feasibility_benchmark"
+            )
+            initialize = next(
+                stage
+                for stage in variant.plan.stages
+                if stage.name == "initialize_student"
+            )
+            assert "--require-deployment-gate" in benchmark.command
+            assert benchmark.command[
+                benchmark.command.index("--text-tokens") + 1
+            ] == "2048"
+            assert "training_feasibility_benchmark" in initialize.dependencies
+            assert variant.plan.stage_names.index(
+                "training_feasibility_benchmark"
+            ) < variant.plan.stage_names.index("synthetic_train")
+        else:
+            assert (
+                "training_feasibility_benchmark"
+                not in variant.plan.stage_names
+            )
         assert experiment["synthetic"]["count"] == 32
         assert experiment["data"]["components"][1]["hub"]["max_rows"] == 256
         assert experiment["pretraining"]["max_steps"] == 25

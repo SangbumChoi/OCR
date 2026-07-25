@@ -117,6 +117,7 @@ variants:
     decision_metrics: {language_width: 2048, language_layers: 12, expected_transfer_groups: 3}
     experiment_patches:
       - {op: replace, path: /initialization/arm, value: I8_lfm_aligned_language}
+      - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: true}
     blueprint_patches: *lfm_geometry
 
 contrasts:

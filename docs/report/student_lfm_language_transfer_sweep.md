@@ -101,10 +101,13 @@ copy zero parameters and terminate rather than produce a meaningful measurement.
 [`configs/sub1b_lfm_language_transfer_pilot.yaml`](../../configs/sub1b_lfm_language_transfer_pilot.yaml)
 compiles the same three cells for one paired seed with 32 generated training documents, at most
 256 public rows, 25 pretraining steps, 10 SFT steps, 5 RLVR steps, and 64 evaluation samples.
-Repeated backend feasibility benchmarks and adaptive synthesis are disabled. The pilot is intended
-to catch initialization failures, unstable losses, latency or memory surprises, generation loops,
-and catastrophic long-context, table, or reasoning regressions before spending the three-seed
-budget.
+The shared visual-backend benchmark and adaptive synthesis are disabled. The strict-transfer cell
+alone runs the production-size 2,048-token full forward/backward/AdamW deployment gate before
+synthetic generation or teacher inference. The geometry-identical random cell does not repeat that
+expensive check. The pilot is intended to catch initialization failures, unstable losses, memory
+surprises, generation loops, and catastrophic long-context, table, or reasoning regressions before
+spending the three-seed budget. Visual-backend latency remains a confirmatory-sweep gate rather
+than a pilot claim.
 
 Run its compilation check with:
 
