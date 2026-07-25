@@ -141,11 +141,18 @@ methods:
       - path: src/docvlm_eval/student/transfer.py
         anchors: ["def _depth_map", "def selective_transfer", "unhealthy_source_weight_role"]
         knobs: [transferred_block_fraction, layer_mapping]
+      - path: src/docvlm_eval/student/checkpoint_acquisition.py
+        anchors:
+          - "def _select_weight_download"
+          - "verify_hashes=True"
     verification:
       - path: tests/test_student_model.py
         anchors:
           - "test_selective_transfer_depth_maps_exact_shape_blocks_only"
           - "test_selective_transfer_skips_unhealthy_sampled_weight_roles"
+      - path: tests/test_student_checkpoint_acquisition.py
+        anchors:
+          - "test_checkpoint_acquisition_prefers_one_safetensors_shard_set"
   T04:
     claim: Two-stage distillation exposes hidden, relation, and logit objectives.
     implementation:

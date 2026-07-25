@@ -54,6 +54,12 @@ resolved revision and cached weight files. A combined SHA-256 over the
 `docvlm_eval` Python source tree and every compiled script entrypoint also invalidates resume after
 generator, model, loss, reward, or runner implementation changes.
 
+Checkpoint acquisition chooses one weight representation, preferring safetensors, instead of
+downloading both safetensors and PyTorch bin when a Hub repository publishes duplicates. It records
+the selected allow patterns and rehashes every manifest file when resolving the source for
+initialization. The inexpensive stage-resume check remains size-based, while the use-time boundary
+is full-hash and fail-closed.
+
 RLVR uses periodic supervised replay from its active samples by default. Set
 `posttraining.rlvr.replay_samples` to an external benchmark JSONL to anchor broader multimodal
 capabilities; the compiler content-addresses that file and passes it to the RLVR stage.

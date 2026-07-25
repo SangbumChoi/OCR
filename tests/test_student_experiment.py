@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -1488,8 +1489,21 @@ def test_checkpoint_placeholder_and_training_resume(tmp_path):
                 "kind": "huggingface_model_checkpoint",
                 "snapshot_path": str(source),
                 "files": [
-                    {"path": "config.json", "bytes": 2},
-                    {"path": "model.safetensors", "bytes": 7},
+                    {
+                        "path": "config.json",
+                        "bytes": 2,
+                        "sha256": (
+                            "sha256:" + hashlib.sha256(b"{}").hexdigest()
+                        ),
+                    },
+                    {
+                        "path": "model.safetensors",
+                        "bytes": 7,
+                        "sha256": (
+                            "sha256:"
+                            + hashlib.sha256(b"weights").hexdigest()
+                        ),
+                    },
                 ],
             }
         ),

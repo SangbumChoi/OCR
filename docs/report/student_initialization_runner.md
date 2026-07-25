@@ -77,6 +77,14 @@ shared Hugging Face cache, so paired runs do not duplicate multi-gigabyte checkp
 stores a checkpoint manifest under `artifacts/initialization_sources/`; missing cache files
 invalidate the acquisition stage.
 
+Acquisition inspects the pinned repository file list before downloading weights. It selects
+exactly one representation in this order: sharded safetensors, single-file safetensors, sharded
+PyTorch bin, then single-file PyTorch bin. The manifest records the selected format and exact Hub
+allow patterns. This prevents repositories that publish both formats from doubling network,
+cache, hashing, and provenance cost. Resume checks use file presence and byte size; immediately
+before an initialization command resolves the checkpoint path, every manifest SHA-256 is
+recomputed. Same-size source tampering therefore fails before model allocation and transfer.
+
 Local checkpoint paths are content-addressed directly in the experiment fingerprint. Changing
 their weights invalidates initialization and every downstream stage.
 
@@ -225,3 +233,20 @@ compares this fixture transfer against random initialization with matched genera
 evaluation samples. Its purpose is to execute the paired statistical and attestation path, not to
 promote the fixture arm. The compact committed result is
 [`selective_transfer_fixture_sweep.json`](../results/selective_transfer_fixture_sweep.json).
+
+## Executed real-source materialization
+
+The production 799,919,884-parameter target was also materialized on CPU with the pinned SigLIP
+and Qwen checkpoints above under `I5_structured_mlp`. Acquisition selected only safetensors and
+verified 812,672,752 SigLIP bytes and 3,087,467,828 Qwen bytes before transfer.
+
+The real transfer copied 42,529,536 vision parameters, or 47.97% of the target vision component,
+above its 40% floor. It copied 283,172,352 language parameters, or 41.80% of the target language
+component, above its 25% floor; 226,492,416 parameters came from 36 structured SwiGLU tensors.
+Both components passed copied-value verification. The final run took 19.81 seconds and reached
+5,454,725,120 bytes maximum resident memory on a 32GB Apple M5 host.
+
+This is stronger than header compatibility or random-fixture evidence because real pretrained
+payloads were loaded and copied into the production target. It still establishes initialization
+feasibility, not downstream quality or CUDA training feasibility. The compact evidence is
+[`selective_transfer_real_source_preflight.json`](../results/selective_transfer_real_source_preflight.json).
