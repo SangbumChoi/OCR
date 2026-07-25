@@ -229,6 +229,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/student_failure_driven_synthesis.md`](report/student_failure_driven_synthesis.md) —
   matched component-level reward deficits and progress drive only compatible exact generator
   families, while validation authorization and heldout isolation remain fail-closed.
+- **Gate long structured generation:**
+  [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
+  — matched candidate/reference token policies must preserve table, HTML, full-page, transcription,
+  reading-order, long-context, and markup quality without repetition or max-token regressions.
 - **Attest execution evidence:**
   [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
   source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,

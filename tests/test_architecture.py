@@ -429,3 +429,23 @@ def test_blueprint_rejects_invalid_visual_efficiency_gate():
     assert any("min_measured_iterations" in error for error in errors)
     assert any("min_rounds" in error for error in errors)
     assert any("min_median_speedup_vs_loop" in error for error in errors)
+
+
+def test_blueprint_rejects_invalid_generation_stability_gate():
+    blueprint = deepcopy(load_blueprint(CONFIG))
+    gate = next(
+        gate
+        for gate in blueprint["evaluation_gates"]
+        if gate["id"] == "generation_stability"
+    )
+    gate["answer_type_patterns"] = []
+    gate["min_target_samples"] = 0
+    gate["max_token_rate"] = 1.1
+    gate["max_target_score_drop"] = -0.1
+
+    _, errors = validate_blueprint(blueprint)
+
+    assert any("answer_type_patterns" in error for error in errors)
+    assert any("min_target_samples" in error for error in errors)
+    assert any("max_token_rate" in error for error in errors)
+    assert any("max_target_score_drop" in error for error in errors)

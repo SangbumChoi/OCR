@@ -237,6 +237,10 @@ It uses compact-GQA KV caching by default and records `generation_backend`; sett
 long-form task labels, but every value must remain within `max_new_tokens_hard_cap`. The compiler
 passes the complete policy to both internal-baseline and final evaluation, preserving matched
 generation conditions without consulting answer length.
+The `generation_stability` deployment gate then compares candidate and baseline heldout rows under
+that identical policy. It fails on excessive exact-cycle repetition or max-token termination in
+table, HTML, full-page, transcription, reading-order, long-context, and markup slices, and it also
+forbids a score or structural-validity regression on the same samples.
 
 Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
 configuration acquires the public UDD train fold at an immutable commit, validates its schema,

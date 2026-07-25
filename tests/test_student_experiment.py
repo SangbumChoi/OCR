@@ -120,6 +120,12 @@ def test_default_experiment_compiles_complete_stage_dag():
         "reading-order=384",
         "table*=512",
         "chart*=256",
+        "pubtabnet=512",
+        "omnidocbench=512",
+        "recognition_fullpage=512",
+        "im2latex=384",
+        "latexocr=384",
+        "formula*=384",
         "H-comprehension=256",
         "H-accounting=256",
     ]
@@ -170,7 +176,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "build_validation_samples",
     )
     assert audit.command.count("--split") == 3
-    assert audit.command.count("--evaluation-token-budget") == 6
+    assert audit.command.count("--evaluation-token-budget") == 12
     assert "--calibration-split" in audit.command
     assert audit.artifacts[0].path.endswith(
         "artifacts/data/generation_budget_audit.json"

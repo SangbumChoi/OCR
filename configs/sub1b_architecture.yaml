@@ -377,6 +377,12 @@ training:
           reading-order: 384
           table*: 512
           chart*: 256
+          pubtabnet: 512
+          omnidocbench: 512
+          recognition_fullpage: 512
+          im2latex: 384
+          latexocr: 384
+          formula*: 384
           H-comprehension: 256
           H-accounting: 256
         temperature: 0.8
@@ -423,6 +429,12 @@ training:
           reading-order: 384
           table*: 512
           chart*: 256
+          pubtabnet: 512
+          omnidocbench: 512
+          recognition_fullpage: 512
+          im2latex: 384
+          latexocr: 384
+          formula*: 384
           H-comprehension: 256
           H-accounting: 256
         temperature: 0.8
@@ -491,6 +503,25 @@ evaluation_gates:
     max_calibrated_ece: 0.15
     max_ece_increase_vs_raw: 0.0
     min_calibrated_ece_reduction: 0.0
+  - id: generation_stability
+    requirement: "long structured outputs do not regress into repetition, truncation, or malformed structure"
+    answer_type_patterns:
+      - table
+      - html
+      - full
+      - transcription
+      - reading-order
+      - long-context
+      - pubtabnet
+      - omnidoc
+      - latex
+    min_target_samples: 2
+    max_degenerate_repetition_rate: 0.0
+    max_degenerate_repetition_increase: 0.0
+    max_token_rate: 0.05
+    max_token_rate_increase: 0.0
+    max_target_score_drop: 0.0
+    max_structure_validity_drop: 0.0
   - id: visual_efficiency
     requirement: "the target-GPU fused visual path preserves parity and improves over loop and dense adaptive execution"
     candidate_requested_backend: auto

@@ -481,6 +481,240 @@ def _reliability(
     )
 
 
+def _generation_stability(
+    gate: Mapping[str, Any],
+    current: Mapping[str, Any],
+    baseline: Mapping[str, Any] | None,
+    pairs: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    pair_error: str | None,
+) -> dict[str, Any]:
+    if baseline is None:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "a reference-checkpoint evaluation is required",
+        )
+    if pair_error:
+        return _result(gate, "insufficient_evidence", pair_error)
+    try:
+        current_policy = current["splits"]["heldout"][
+            "generation_token_budget_policy"
+        ]
+        baseline_policy = baseline["splits"]["heldout"][
+            "generation_token_budget_policy"
+        ]
+    except (KeyError, TypeError):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "heldout generation token policies are missing",
+        )
+    if (
+        not isinstance(current_policy, Mapping)
+        or not isinstance(baseline_policy, Mapping)
+        or dict(current_policy) != dict(baseline_policy)
+    ):
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "current and baseline generation token policies differ",
+        )
+    patterns = tuple(
+        str(value).strip().lower()
+        for value in gate["answer_type_patterns"]
+    )
+    target_pairs = [
+        (current, baseline)
+        for current, baseline in pairs
+        if any(
+            pattern in str(current.get("answer_type", "")).lower()
+            for pattern in patterns
+        )
+    ]
+    minimum_samples = int(gate["min_target_samples"])
+    if len(target_pairs) < minimum_samples:
+        return _result(
+            gate,
+            "insufficient_evidence",
+            "too few matched long structured generation samples",
+            {
+                "matched_target_samples": len(target_pairs),
+                "min_target_samples": minimum_samples,
+                "answer_type_patterns": list(patterns),
+            },
+        )
+
+    required_boolean_fields = (
+        "degenerate_repetition",
+        "reached_max_new_tokens",
+        "structurally_valid",
+    )
+    for current, baseline in target_pairs:
+        sample_id = str(current.get("sample_id") or "")
+        if current.get("answer_type") != baseline.get("answer_type"):
+            return _result(
+                gate,
+                "insufficient_evidence",
+                "matched generation answer types differ",
+                {"sample_id": sample_id},
+            )
+        for label, row in (("current", current), ("baseline", baseline)):
+            if any(
+                not isinstance(row.get(field), bool)
+                for field in required_boolean_fields
+            ):
+                return _result(
+                    gate,
+                    "insufficient_evidence",
+                    "generation diagnostics require boolean repetition, "
+                    "limit, and structure fields",
+                    {"sample_id": sample_id, "artifact": label},
+                )
+            try:
+                generated_tokens = int(row["generated_tokens"])
+                token_budget = int(row["generation_token_budget"])
+                score = float(row["score"])
+            except (KeyError, TypeError, ValueError):
+                return _result(
+                    gate,
+                    "insufficient_evidence",
+                    "generation diagnostics require token counts, budget, "
+                    "and score",
+                    {"sample_id": sample_id, "artifact": label},
+                )
+            if (
+                generated_tokens < 0
+                or token_budget <= 0
+                or generated_tokens > token_budget
+                or not math.isfinite(score)
+                or not 0.0 <= score <= 1.0
+            ):
+                return _result(
+                    gate,
+                    "insufficient_evidence",
+                    "generation diagnostics contain invalid values",
+                    {"sample_id": sample_id, "artifact": label},
+                )
+        if (
+            int(current["generation_token_budget"])
+            != int(baseline["generation_token_budget"])
+            or current.get("generation_token_budget_source")
+            != baseline.get("generation_token_budget_source")
+            or not str(
+                current.get("generation_token_budget_source") or ""
+            ).strip()
+            or not str(
+                baseline.get("generation_token_budget_source") or ""
+            ).strip()
+        ):
+            return _result(
+                gate,
+                "insufficient_evidence",
+                "current and baseline generation token policies differ",
+                {"sample_id": sample_id},
+            )
+
+    current_rows = [pair[0] for pair in target_pairs]
+    baseline_rows = [pair[1] for pair in target_pairs]
+
+    def rate(rows: Sequence[Mapping[str, Any]], field: str) -> float:
+        return _mean([float(row[field]) for row in rows])
+
+    def mean_utilization(rows: Sequence[Mapping[str, Any]]) -> float:
+        return _mean(
+            [
+                int(row["generated_tokens"])
+                / int(row["generation_token_budget"])
+                for row in rows
+            ]
+        )
+
+    current_repetition = rate(current_rows, "degenerate_repetition")
+    baseline_repetition = rate(baseline_rows, "degenerate_repetition")
+    repetition_increase = current_repetition - baseline_repetition
+    current_max_token = rate(current_rows, "reached_max_new_tokens")
+    baseline_max_token = rate(baseline_rows, "reached_max_new_tokens")
+    max_token_increase = current_max_token - baseline_max_token
+    current_score = _mean([float(row["score"]) for row in current_rows])
+    baseline_score = _mean([float(row["score"]) for row in baseline_rows])
+    score_drop = baseline_score - current_score
+    current_structure = rate(current_rows, "structurally_valid")
+    baseline_structure = rate(baseline_rows, "structurally_valid")
+    structure_drop = baseline_structure - current_structure
+    violations = []
+    if current_repetition > float(
+        gate["max_degenerate_repetition_rate"]
+    ):
+        violations.append("degenerate_repetition_rate")
+    if repetition_increase > float(
+        gate["max_degenerate_repetition_increase"]
+    ):
+        violations.append("degenerate_repetition_increase")
+    if current_max_token > float(gate["max_token_rate"]):
+        violations.append("max_token_rate")
+    if max_token_increase > float(gate["max_token_rate_increase"]):
+        violations.append("max_token_rate_increase")
+    if score_drop > float(gate["max_target_score_drop"]):
+        violations.append("target_score_drop")
+    if structure_drop > float(gate["max_structure_validity_drop"]):
+        violations.append("structure_validity_drop")
+    evidence = {
+        "matched_target_samples": len(target_pairs),
+        "answer_type_patterns": list(patterns),
+        "current_degenerate_repetition_rate": _round(
+            current_repetition
+        ),
+        "baseline_degenerate_repetition_rate": _round(
+            baseline_repetition
+        ),
+        "degenerate_repetition_increase": _round(
+            repetition_increase
+        ),
+        "max_degenerate_repetition_rate": float(
+            gate["max_degenerate_repetition_rate"]
+        ),
+        "max_degenerate_repetition_increase": float(
+            gate["max_degenerate_repetition_increase"]
+        ),
+        "current_max_token_rate": _round(current_max_token),
+        "baseline_max_token_rate": _round(baseline_max_token),
+        "max_token_rate_increase": _round(max_token_increase),
+        "max_token_rate": float(gate["max_token_rate"]),
+        "max_allowed_token_rate_increase": float(
+            gate["max_token_rate_increase"]
+        ),
+        "current_target_score": _round(current_score),
+        "baseline_target_score": _round(baseline_score),
+        "target_score_drop": _round(score_drop),
+        "max_target_score_drop": float(gate["max_target_score_drop"]),
+        "current_structure_validity": _round(current_structure),
+        "baseline_structure_validity": _round(baseline_structure),
+        "structure_validity_drop": _round(structure_drop),
+        "max_structure_validity_drop": float(
+            gate["max_structure_validity_drop"]
+        ),
+        "current_mean_budget_utilization": _round(
+            mean_utilization(current_rows)
+        ),
+        "baseline_mean_budget_utilization": _round(
+            mean_utilization(baseline_rows)
+        ),
+        "violations": violations,
+    }
+    return _result(
+        gate,
+        "fail" if violations else "pass",
+        (
+            "long structured generation violates repetition, truncation, "
+            "score, or structure thresholds"
+            if violations
+            else "long structured generation remains stable under a matched "
+            "token policy"
+        ),
+        evidence,
+    )
+
+
 def _visual_efficiency(
     gate: Mapping[str, Any],
     blueprint: Mapping[str, Any],
@@ -1329,6 +1563,14 @@ def evaluate_deployment_gates(
             )
         elif gate_id == "reliability":
             result = _reliability(
+                gate,
+                current_comparison,
+                baseline_comparison,
+                pairs,
+                pair_error,
+            )
+        elif gate_id == "generation_stability":
+            result = _generation_stability(
                 gate,
                 current_comparison,
                 baseline_comparison,

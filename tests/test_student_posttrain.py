@@ -204,6 +204,12 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
         "reading-order": 384,
         "table*": 512,
         "chart*": 256,
+        "pubtabnet": 512,
+        "omnidocbench": 512,
+        "recognition_fullpage": 512,
+        "im2latex": 384,
+        "latexocr": 384,
+        "formula*": 384,
         "H-comprehension": 256,
         "H-accounting": 256,
     }

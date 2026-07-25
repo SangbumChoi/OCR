@@ -25,6 +25,14 @@ def _comparison(train_score, heldout_score, languages=None):
     heldout = {
         "score": heldout_score,
         "by_language": languages,
+        "generation_token_budget_policy": {
+            "base_tokens": 128,
+            "hard_cap": 512,
+            "by_answer_type": {
+                "ocr-full": 512,
+                "table*": 512,
+            },
+        },
         "calibration": {
             "raw_ece": 0.1,
             "calibrated_ece": 0.08 if heldout_score >= 0.75 else 0.12,
@@ -46,6 +54,12 @@ def _row(
     confidence=0.9,
     meta=None,
     components=None,
+    generated_tokens=4,
+    generation_token_budget=16,
+    generation_token_budget_source="default",
+    reached_max_new_tokens=False,
+    degenerate_repetition=False,
+    structurally_valid=True,
 ):
     components = components or {}
     return {
@@ -57,6 +71,12 @@ def _row(
         "meta": meta or {},
         "reward_components": components,
         "applicable_rewards": list(components),
+        "generated_tokens": generated_tokens,
+        "generation_token_budget": generation_token_budget,
+        "generation_token_budget_source": generation_token_budget_source,
+        "reached_max_new_tokens": reached_max_new_tokens,
+        "degenerate_repetition": degenerate_repetition,
+        "structurally_valid": structurally_valid,
     }
 
 
@@ -69,6 +89,7 @@ def _matched_gate_rows():
             answer_type="ocr-transcription",
             components={"normalized_text_similarity": 0.8},
         ),
+        _row("table", 0.8, answer_type="table-html"),
         _row(
             "reason-a",
             0.9,
@@ -108,6 +129,7 @@ def _matched_gate_rows():
             answer_type="ocr-transcription",
             components={"normalized_text_similarity": 0.8},
         ),
+        _row("table", 0.7, answer_type="table-html"),
         _row(
             "reason-a",
             0.7,
@@ -348,7 +370,7 @@ def test_gates_do_not_turn_missing_comparisons_into_success():
     assert report["counts"] == {
         "pass": 1,
         "fail": 0,
-        "insufficient_evidence": 7,
+        "insufficient_evidence": 8,
     }
 
 
@@ -377,7 +399,7 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
 
     assert report["overall_status"] == "pass"
     assert report["counts"] == {
-        "pass": 8,
+        "pass": 9,
         "fail": 0,
         "insufficient_evidence": 0,
     }
@@ -402,6 +424,116 @@ def test_gates_pass_with_matched_reference_and_monolingual_evidence():
         ]
         == 0.8
     )
+    assert (
+        evidence["generation_stability"][
+            "current_degenerate_repetition_rate"
+        ]
+        == 0.0
+    )
+
+
+def test_generation_stability_gate_rejects_table_repetition():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    table = next(
+        row for row in current_rows if row["answer_type"] == "table-html"
+    )
+    table["degenerate_repetition"] = True
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.82, 0.8),
+        {"heldout": current_rows},
+        baseline_comparison=_comparison(0.74, 0.7),
+        baseline_rows={"heldout": baseline_rows},
+    )
+
+    gate = next(
+        gate
+        for gate in report["gates"]
+        if gate["id"] == "generation_stability"
+    )
+    assert gate["status"] == "fail"
+    assert gate["evidence"]["current_degenerate_repetition_rate"] == 0.5
+    assert "degenerate_repetition_rate" in gate["evidence"]["violations"]
+
+
+def test_generation_stability_gate_rejects_table_limit_termination():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    table = next(
+        row for row in current_rows if row["answer_type"] == "table-html"
+    )
+    table["generated_tokens"] = table["generation_token_budget"]
+    table["reached_max_new_tokens"] = True
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.82, 0.8),
+        {"heldout": current_rows},
+        baseline_comparison=_comparison(0.74, 0.7),
+        baseline_rows={"heldout": baseline_rows},
+    )
+
+    gate = next(
+        gate
+        for gate in report["gates"]
+        if gate["id"] == "generation_stability"
+    )
+    assert gate["status"] == "fail"
+    assert gate["evidence"]["current_max_token_rate"] == 0.5
+    assert "max_token_rate" in gate["evidence"]["violations"]
+
+
+def test_generation_stability_gate_requires_matched_token_policy():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    baseline_comparison = _comparison(0.74, 0.7)
+    baseline_comparison["splits"]["heldout"][
+        "generation_token_budget_policy"
+    ]["hard_cap"] = 1024
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.82, 0.8),
+        {"heldout": current_rows},
+        baseline_comparison=baseline_comparison,
+        baseline_rows={"heldout": baseline_rows},
+    )
+
+    gate = next(
+        gate
+        for gate in report["gates"]
+        if gate["id"] == "generation_stability"
+    )
+    assert gate["status"] == "insufficient_evidence"
+    assert "token policies differ" in gate["reason"]
+
+
+def test_generation_stability_gate_rejects_legacy_budget_diagnostics():
+    from docvlm_eval.student.gates import evaluate_deployment_gates
+
+    current_rows, baseline_rows = _matched_gate_rows()
+    current_rows[1]["generation_token_budget_source"] = None
+    baseline_rows[1]["generation_token_budget_source"] = None
+    report = evaluate_deployment_gates(
+        _blueprint(),
+        {"total": 300},
+        _comparison(0.82, 0.8),
+        {"heldout": current_rows},
+        baseline_comparison=_comparison(0.74, 0.7),
+        baseline_rows={"heldout": baseline_rows},
+    )
+
+    gate = next(
+        gate
+        for gate in report["gates"]
+        if gate["id"] == "generation_stability"
+    )
+    assert gate["status"] == "insufficient_evidence"
 
 
 def test_reliability_gate_rejects_calibration_that_worsens_ece():

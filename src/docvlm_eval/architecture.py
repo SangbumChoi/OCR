@@ -1394,6 +1394,7 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
         "reasoning",
         "multilingual",
         "reliability",
+        "generation_stability",
         "visual_efficiency",
         "training_feasibility",
     }
@@ -1444,6 +1445,14 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
                 "max_ece_increase_vs_raw",
                 "min_calibrated_ece_reduction",
             ),
+            "generation_stability": (
+                "max_degenerate_repetition_rate",
+                "max_degenerate_repetition_increase",
+                "max_token_rate",
+                "max_token_rate_increase",
+                "max_target_score_drop",
+                "max_structure_validity_drop",
+            ),
             "visual_efficiency": ("max_abs_delta_vs_loop",),
         }
         for gate_id, fields in nonnegative_fields.items():
@@ -1479,6 +1488,37 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             errors.append(
                 "evaluation_gates.reliability.coverage must be within (0, 1]"
             )
+        stability = by_id.get("generation_stability", {})
+        stability_patterns = stability.get("answer_type_patterns")
+        if (
+            not isinstance(stability_patterns, list)
+            or not stability_patterns
+            or not all(
+                str(pattern).strip() for pattern in stability_patterns
+            )
+        ):
+            errors.append(
+                "evaluation_gates.generation_stability."
+                "answer_type_patterns must be a non-empty string list"
+            )
+        if int(stability.get("min_target_samples", 0)) <= 0:
+            errors.append(
+                "evaluation_gates.generation_stability."
+                "min_target_samples must be positive"
+            )
+        for field in (
+            "max_degenerate_repetition_rate",
+            "max_degenerate_repetition_increase",
+            "max_token_rate",
+            "max_token_rate_increase",
+            "max_target_score_drop",
+            "max_structure_validity_drop",
+        ):
+            if float(stability.get(field, 2.0)) > 1.0:
+                errors.append(
+                    f"evaluation_gates.generation_stability.{field} "
+                    "must be at most one"
+                )
         efficiency = by_id.get("visual_efficiency", {})
         if efficiency.get("candidate_requested_backend") not in {
             "auto",

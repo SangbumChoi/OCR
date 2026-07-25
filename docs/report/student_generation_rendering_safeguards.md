@@ -38,6 +38,9 @@ The production policy uses a 128-token default and a 512-token hard cap. Exact l
 prefix matches, and the longest matching prefix wins among wildcard rules. Resolution uses only
 the public `answer_type`; it never examines gold text, target length, correctness, or hidden
 annotations. The same resolved budget applies to every candidate in one preference or RLVR group.
+Known long public labels such as `pubtabnet`, `omnidocbench`, `recognition_fullpage`, `im2latex`,
+and `latexocr` receive explicit bounded budgets because they do not share the authored
+`table*`, `formula*`, or `ocr-full` prefixes.
 
 Per-sample evaluation writes `generation_token_budget` and
 `generation_token_budget_source`. Summaries report `mean_generation_token_budget` and
@@ -81,6 +84,12 @@ unreadable pixels.
 
 ## Release gates
 
+- The production `generation_stability` gate requires matched heldout sample IDs, answer types,
+  task-aware token budgets, and budget sources between the candidate and reference checkpoint.
+  Missing legacy diagnostics produce `insufficient_evidence`, not a pass.
+- On table, HTML, full-page, transcription, reading-order, and long-context slices, enforce absolute
+  and baseline-relative limits for degenerate repetition and max-token termination while also
+  preventing score or structural-validity regressions.
 - Compare `max_token_rate` and `degenerate_repetition_rate` by answer type and context length.
 - Compare score at a fixed policy and report mean budget and escalation rate; do not call a larger
   horizon a free quality gain.

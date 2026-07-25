@@ -17,6 +17,7 @@ def test_task_label_generation_budgets_are_bounded_and_specific():
             "table*": 384,
             "table-html": 512,
             "OCR-FULL": 512,
+            "pubtabnet": 512,
         },
     )
 
@@ -38,6 +39,12 @@ def test_task_label_generation_budgets_are_bounded_and_specific():
         hard_cap=512,
         by_answer_type=policy,
     ) == (512, "ocr-full")
+    assert resolve_generation_token_budget(
+        "pubtabnet",
+        base_tokens=128,
+        hard_cap=512,
+        by_answer_type=policy,
+    ) == (512, "pubtabnet")
     assert resolve_generation_token_budget(
         "kie",
         base_tokens=128,
