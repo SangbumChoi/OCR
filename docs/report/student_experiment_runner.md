@@ -209,6 +209,10 @@ only on the untouched remainder. See
 [`student_temperature_calibration.md`](student_temperature_calibration.md).
 It uses compact-GQA KV caching by default and records `generation_backend`; setting
 `evaluation.use_kv_cache: false` compiles an explicit full-prefix ablation.
+`evaluation.max_new_tokens_by_answer_type` can increase the 128-token base horizon for declared
+long-form task labels, but every value must remain within `max_new_tokens_hard_cap`. The compiler
+passes the complete policy to both internal-baseline and final evaluation, preserving matched
+generation conditions without consulting answer length.
 
 Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
 configuration acquires the public UDD train fold at an immutable commit, validates its schema,

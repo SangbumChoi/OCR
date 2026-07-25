@@ -23,6 +23,28 @@ sample. Split summaries expose `max_token_rate` and `degenerate_repetition_rate`
 not be accepted as improved when either diagnostic regresses materially, especially on table,
 full-page OCR, and long-context slices.
 
+## Bounded task-aware token budgets
+
+A single 128-token horizon is adequate for concise KIE but can truncate a valid table, full-page
+transcription, reading-order sequence, or evidence-linked reasoning response. Evaluation,
+preference sampling, and RLVR therefore share a task-label policy with three parts:
+
+- `max_new_tokens` is the default budget;
+- `max_new_tokens_by_answer_type` maps exact public task labels or trailing-wildcard prefixes to
+  larger budgets;
+- `max_new_tokens_hard_cap` bounds every override.
+
+The production policy uses a 128-token default and a 512-token hard cap. Exact labels win over
+prefix matches, and the longest matching prefix wins among wildcard rules. Resolution uses only
+the public `answer_type`; it never examines gold text, target length, correctness, or hidden
+annotations. The same resolved budget applies to every candidate in one preference or RLVR group.
+
+Per-sample evaluation writes `generation_token_budget` and
+`generation_token_budget_source`. Summaries report `mean_generation_token_budget` and
+`budget_escalation_rate`; rollouts log the corresponding budget and escalation metrics. Actual
+completion width continues to drive preference and RLVR FLOP accounting. The complete policy is
+checkpointed as part of each rollout contract, so changing it invalidates resume.
+
 ## HTML and full-page integrity
 
 The renderer records total PDF pages separately from rasterized pages. Table and full-text targets
@@ -44,6 +66,8 @@ unreadable pixels.
 ## Release gates
 
 - Compare `max_token_rate` and `degenerate_repetition_rate` by answer type and context length.
+- Compare score at a fixed policy and report mean budget and escalation rate; do not call a larger
+  horizon a free quality gain.
 - Require zero omitted pages and zero missing cells for table and full-text synthetic examples.
 - Inspect representative all-page canvases at both native and model-input resolution.
 - Keep token-cycle controls identical across training rollout and evaluation checkpoints.

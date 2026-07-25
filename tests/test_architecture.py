@@ -350,12 +350,17 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
     preference["sequence_reduction"] = "median"
     preference["rollout"]["use_kv_cache"] = "yes"
     preference["rollout"]["repetition_guard_repetitions"] = 1
+    preference["rollout"]["max_new_tokens_hard_cap"] = 64
     rlvr = blueprint["training"]["posttraining"]["rlvr"]
     rlvr["group_size"] = 1
     rlvr["advantage_estimator"] = "critic"
     rlvr["rollout"]["top_p"] = 2.0
     rlvr["rollout"]["use_kv_cache"] = "yes"
     rlvr["rollout"]["repetition_guard_max_period"] = 0
+    rlvr["rollout"]["max_new_tokens_by_answer_type"] = {
+        "table*middle": 256,
+        "ocr-full": 1024,
+    }
     rlvr["supervised_replay"]["every_steps"] = 0
     rlvr["rationale_verifier"] = "nonempty"
     rlvr["reward_mix"]["unsupported_reward"] = 0.0
@@ -375,11 +380,19 @@ def test_blueprint_rejects_invalid_posttraining_contracts():
         "preference.rollout.repetition_guard_repetitions" in error
         for error in errors
     )
+    assert any(
+        "preference.rollout.max_new_tokens_hard_cap" in error
+        for error in errors
+    )
     assert any("advantage_estimator" in error for error in errors)
     assert any("rollout.top_p must be within" in error for error in errors)
     assert any("rollout.use_kv_cache must be a boolean" in error for error in errors)
     assert any(
         "rlvr.rollout.repetition_guard_max_period" in error
+        for error in errors
+    )
+    assert any(
+        "rlvr.rollout.max_new_tokens_by_answer_type patterns" in error
         for error in errors
     )
     assert any("interval and coefficient" in error for error in errors)

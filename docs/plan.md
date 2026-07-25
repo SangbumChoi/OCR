@@ -190,8 +190,8 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   architecture and aligned-transfer sweep.
 - **Guard long structured generation and rendering:**
   [`report/student_generation_rendering_safeguards.md`](report/student_generation_rendering_safeguards.md)
-  — exact suffix-cycle termination, token-limit telemetry, all-page expansion, table-cell survival,
-  and bounded-canvas checks.
+  — exact suffix-cycle termination, bounded task-aware token horizons, token-limit telemetry,
+  all-page expansion, table-cell survival, and bounded-canvas checks.
 - **Test structured initialization:**
   [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md)
   — exact-shape selective transfer versus a shared-channel reduction of wider teacher MLPs.

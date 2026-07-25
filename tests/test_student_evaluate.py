@@ -99,6 +99,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     from docvlm_eval.student.evaluate import (
         StructuredEvalConfig,
         evaluate_structured_student,
+        wandb_metrics_for_split,
     )
 
     class Model(torch.nn.Module):
@@ -106,6 +107,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
             super().__init__()
             self.anchor = torch.nn.Parameter(torch.tensor(0.0))
             self.calls = 0
+            self.token_budgets = []
 
         def generate(
             self,
@@ -122,10 +124,10 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
                 pixel_values,
                 pixel_mask,
                 attention_mask,
-                max_new_tokens,
                 use_kv_cache,
             )
             self.calls += 1
+            self.token_budgets.append(max_new_tokens)
             assert input_ids.shape == (1, 1)
             token = 20 if int(input_ids[0, 0]) == 5 else 21
             completion = torch.tensor(
@@ -143,6 +145,8 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         StructuredEvalConfig(
             output_dir=str(tmp_path),
             max_new_tokens=8,
+            max_new_tokens_hard_cap=16,
+            max_new_tokens_by_answer_type=(("chart*", 16),),
             precision="float32",
             device="cpu",
         ),
@@ -151,6 +155,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     )
 
     assert model.calls == 2
+    assert model.token_budgets == [16, 8]
     assert model.training
     assert result.summary["dataset_size"] == 2
     assert result.summary["n_samples"] == 2
@@ -158,6 +163,33 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     assert result.summary["reward"] == pytest.approx(0.5)
     assert result.summary["valid_structure_fraction"] == pytest.approx(0.5)
     assert result.summary["generation_backend"] == "kv_cache"
+    assert result.summary["mean_generation_token_budget"] == 12.0
+    assert result.summary["budget_escalation_rate"] == 0.5
+    assert result.summary["generation_token_budget_policy"] == {
+        "base_tokens": 8,
+        "hard_cap": 16,
+        "by_answer_type": {"chart*": 16},
+    }
+    assert result.per_sample[0]["generation_token_budget"] == 16
+    assert (
+        result.per_sample[0]["generation_token_budget_source"]
+        == "chart*"
+    )
+    assert result.per_sample[1]["generation_token_budget"] == 8
+    wandb_metrics = wandb_metrics_for_split(
+        result.summary,
+        "heldout",
+    )
+    assert (
+        wandb_metrics[
+            "eval_by_axis/mean_generation_token_budget/heldout"
+        ]
+        == 12.0
+    )
+    assert (
+        wandb_metrics["eval/heldout_budget_escalation_rate"]
+        == 0.5
+    )
     assert result.summary["answer_rate"] == pytest.approx(0.5)
     assert result.summary["by_answer_type"]["chart-numeric"]["score"] == 1.0
     assert result.summary["by_answer_type"]["kie"]["score"] == 0.0

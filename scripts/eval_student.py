@@ -58,6 +58,26 @@ def _parse_splits(values: list[str]) -> list[tuple[str, Path]]:
     return parsed
 
 
+def _parse_answer_type_token_budgets(
+    values: list[str] | None,
+) -> tuple[tuple[str, int], ...]:
+    parsed: list[tuple[str, int]] = []
+    for value in values or []:
+        if "=" not in value:
+            raise SystemExit(
+                "--answer-type-token-budget must be PATTERN=TOKENS"
+            )
+        pattern, raw_budget = value.rsplit("=", 1)
+        try:
+            budget = int(raw_budget)
+        except ValueError as error:
+            raise SystemExit(
+                "--answer-type-token-budget TOKENS must be an integer"
+            ) from error
+        parsed.append((pattern, budget))
+    return tuple(parsed)
+
+
 def _metadata(checkpoint: Path) -> dict:
     path = checkpoint / "metadata.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -163,6 +183,13 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-new-tokens", type=int, default=128)
+    parser.add_argument("--max-new-tokens-hard-cap", type=int)
+    parser.add_argument(
+        "--answer-type-token-budget",
+        action="append",
+        metavar="PATTERN=TOKENS",
+        help="Repeat for exact labels or trailing-wildcard task prefixes.",
+    )
     parser.add_argument("--max-samples", type=int)
     parser.add_argument("--repetition-guard-min-tokens", type=int, default=24)
     parser.add_argument("--repetition-guard-max-period", type=int, default=16)
@@ -228,6 +255,9 @@ def main() -> None:
     args = parser.parse_args()
 
     split_paths = _parse_splits(args.split)
+    answer_type_token_budgets = _parse_answer_type_token_budgets(
+        args.answer_type_token_budget
+    )
     samples_by_split = {
         split_name: load_jsonl(path)
         for split_name, path in split_paths
@@ -303,6 +333,12 @@ def main() -> None:
     base_config = StructuredEvalConfig(
         output_dir=str(args.output),
         max_new_tokens=args.max_new_tokens,
+        max_new_tokens_hard_cap=(
+            args.max_new_tokens
+            if args.max_new_tokens_hard_cap is None
+            else args.max_new_tokens_hard_cap
+        ),
+        max_new_tokens_by_answer_type=answer_type_token_budgets,
         max_samples=args.max_samples,
         use_kv_cache=not args.no_kv_cache,
         precision=args.precision,

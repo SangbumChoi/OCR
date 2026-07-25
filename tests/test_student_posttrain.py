@@ -198,10 +198,24 @@ def test_posttraining_configs_share_blueprint_checkpointing(tmp_path):
     assert preference.repetition_guard_min_tokens == 24
     assert preference.repetition_guard_max_period == 16
     assert preference.repetition_guard_repetitions == 3
+    assert preference.max_new_tokens_hard_cap == 512
+    assert dict(preference.max_new_tokens_by_answer_type) == {
+        "ocr-full": 512,
+        "reading-order": 384,
+        "table*": 512,
+        "chart*": 256,
+        "H-comprehension": 256,
+        "H-accounting": 256,
+    }
     assert rlvr.use_kv_cache is True
     assert rlvr.repetition_guard_min_tokens == 24
     assert rlvr.repetition_guard_max_period == 16
     assert rlvr.repetition_guard_repetitions == 3
+    assert rlvr.max_new_tokens_hard_cap == 512
+    assert (
+        rlvr.max_new_tokens_by_answer_type
+        == preference.max_new_tokens_by_answer_type
+    )
     assert rlvr.advantage_estimator == "group_standardized"
     assert sft.as_pretrain_config().optimizer == sft.optimizer
 
@@ -481,6 +495,8 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     tmp_path,
     monkeypatch,
 ):
+    from dataclasses import replace
+
     import torch
 
     from docvlm_eval.student.config import StudentConfig
@@ -489,9 +505,11 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     from docvlm_eval.student.rewards import RewardConfig, build_structured_target
 
     target = build_structured_target("42")
+    observed_budgets = []
 
     def tied_group(model, prompt_batch, tokenizer, config):
-        del model, tokenizer, config
+        del model, tokenizer
+        observed_budgets.append(config.max_new_tokens)
         device = prompt_batch["input_ids"].device
         return (
             torch.tensor([[5, 2], [5, 2]], device=device),
@@ -512,7 +530,11 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
         _dataset(),
         _collator(),
         _Tokenizer(),
-        _preference_config(tmp_path / "tied", 1),
+        replace(
+            _preference_config(tmp_path / "tied", 1),
+            max_new_tokens_hard_cap=4,
+            max_new_tokens_by_answer_type=(("chart*", 4),),
+        ),
         RewardConfig(weights={"answer_correctness": 1.0}),
     )
 
@@ -522,6 +544,15 @@ def test_dpo_tied_verifier_group_skips_optimizer_but_counts_rollout(
     assert result.skipped_pairs == 1
     assert result.student_flops_seen > 0
     assert result.final_metrics["preference/accepted_pair"] == 0
+    assert observed_budgets == [4]
+    assert (
+        result.final_metrics["preference/generation_token_budget"]
+        == 4.0
+    )
+    assert (
+        result.final_metrics["preference/generation_budget_escalated"]
+        == 1.0
+    )
     for name, expected in initial.state_dict().items():
         assert torch.equal(expected, policy.state_dict()[name]), name
 

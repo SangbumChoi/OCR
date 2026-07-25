@@ -19,6 +19,7 @@ from typing import Any, Iterable
 import yaml
 
 from ..architecture import estimate_parameters, load_blueprint, validate_blueprint
+from ..generation_policy import validate_generation_token_budget_policy
 from .acquisition import HubComponentSpec
 from .checkpoint_acquisition import (
     HubCheckpointSpec,
@@ -840,6 +841,17 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             )
     if int(evaluation.get("max_new_tokens", 0)) <= 0:
         raise ValueError("evaluation.max_new_tokens must be positive")
+    validate_generation_token_budget_policy(
+        base_tokens=evaluation["max_new_tokens"],
+        hard_cap=evaluation.get(
+            "max_new_tokens_hard_cap",
+            evaluation["max_new_tokens"],
+        ),
+        by_answer_type=evaluation.get(
+            "max_new_tokens_by_answer_type",
+            {},
+        ),
+    )
     if not isinstance(evaluation.get("use_kv_cache"), bool):
         raise ValueError("evaluation.use_kv_cache must be a boolean")
     if evaluation.get("precision", "auto") not in {
@@ -2298,6 +2310,15 @@ def build_experiment_plan(
         str(evaluation.get("precision") or "bfloat16"),
         "--max-new-tokens",
         str(int(evaluation.get("max_new_tokens", 128))),
+        "--max-new-tokens-hard-cap",
+        str(
+            int(
+                evaluation.get(
+                    "max_new_tokens_hard_cap",
+                    evaluation.get("max_new_tokens", 128),
+                )
+            )
+        ),
         "--seed",
         str(int(evaluation.get("seed", 0))),
     ]
@@ -2313,6 +2334,15 @@ def build_experiment_plan(
         f"heldout={heldout_samples}",
     ]
     _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
+    for pattern, budget in (
+        evaluation.get("max_new_tokens_by_answer_type") or {}
+    ).items():
+        eval_command.extend(
+            [
+                "--answer-type-token-budget",
+                f"{pattern}={int(budget)}",
+            ]
+        )
     if not bool(evaluation["use_kv_cache"]):
         eval_command.append("--no-kv-cache")
     calibration = evaluation["temperature_calibration"]

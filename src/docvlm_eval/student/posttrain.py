@@ -6,13 +6,17 @@ import json
 import os
 import random
 import tempfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import torch
 import torch.nn.functional as F
 
+from ..generation_policy import (
+    resolve_generation_token_budget,
+    validate_generation_token_budget_policy,
+)
 from ..schema import Sample
 from .data import (
     DeterministicDistributedBatchSampler,
@@ -386,6 +390,8 @@ class RLVRConfig:
     group_size: int = 8
     advantage_estimator: str = "group_standardized"
     max_new_tokens: int = 128
+    max_new_tokens_hard_cap: int = 128
+    max_new_tokens_by_answer_type: tuple[tuple[str, int], ...] = ()
     temperature: float = 0.8
     top_p: float = 0.95
     use_kv_cache: bool = True
@@ -435,6 +441,11 @@ class RLVRConfig:
             )
         if self.group_size < 2 or self.max_new_tokens <= 0:
             raise ValueError("RLVR steps/tokens must be positive and group_size at least two")
+        validate_generation_token_budget_policy(
+            base_tokens=self.max_new_tokens,
+            hard_cap=self.max_new_tokens_hard_cap,
+            by_answer_type=dict(self.max_new_tokens_by_answer_type),
+        )
         if (
             not isinstance(self.advantage_estimator, str)
             or self.advantage_estimator
@@ -533,6 +544,18 @@ class RLVRConfig:
                 raw.get("advantage_estimator", "group_standardized")
             ),
             "max_new_tokens": int(rollout["max_new_tokens"]),
+            "max_new_tokens_hard_cap": int(
+                rollout.get(
+                    "max_new_tokens_hard_cap",
+                    rollout["max_new_tokens"],
+                )
+            ),
+            "max_new_tokens_by_answer_type": tuple(
+                (str(pattern), int(budget))
+                for pattern, budget in (
+                    rollout.get("max_new_tokens_by_answer_type") or {}
+                ).items()
+            ),
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
             "use_kv_cache": bool(rollout["use_kv_cache"]),
@@ -594,6 +617,8 @@ class PreferenceConfig:
     ipo_tau: float = 0.1
     sequence_reduction: str = "sum"
     max_new_tokens: int = 128
+    max_new_tokens_hard_cap: int = 128
+    max_new_tokens_by_answer_type: tuple[tuple[str, int], ...] = ()
     temperature: float = 0.8
     top_p: float = 0.95
     use_kv_cache: bool = True
@@ -646,6 +671,11 @@ class PreferenceConfig:
             raise ValueError(
                 "preference candidate group must contain at least two completions"
             )
+        validate_generation_token_budget_policy(
+            base_tokens=self.max_new_tokens,
+            hard_cap=self.max_new_tokens_hard_cap,
+            by_answer_type=dict(self.max_new_tokens_by_answer_type),
+        )
         if (
             self.minimum_reward_margin < 0
             or self.dpo_beta <= 0
@@ -728,6 +758,18 @@ class PreferenceConfig:
             "ipo_tau": float(raw["ipo_tau"]),
             "sequence_reduction": str(raw["sequence_reduction"]),
             "max_new_tokens": int(rollout["max_new_tokens"]),
+            "max_new_tokens_hard_cap": int(
+                rollout.get(
+                    "max_new_tokens_hard_cap",
+                    rollout["max_new_tokens"],
+                )
+            ),
+            "max_new_tokens_by_answer_type": tuple(
+                (str(pattern), int(budget))
+                for pattern, budget in (
+                    rollout.get("max_new_tokens_by_answer_type") or {}
+                ).items()
+            ),
             "temperature": float(rollout["temperature"]),
             "top_p": float(rollout["top_p"]),
             "use_kv_cache": bool(rollout["use_kv_cache"]),
@@ -891,6 +933,7 @@ def sample_completion_group(
     """Sample one group of completions for one document prompt."""
 
     group_size = config.group_size
+    token_budget = config.max_new_tokens
     prompt_ids = _repeat_batch(prompt_batch["input_ids"], group_size)
     generated = prompt_ids
     completion_tokens: list[torch.Tensor] = []
@@ -913,9 +956,9 @@ def sample_completion_group(
                 generated,
                 visual_prefix=visual_prefix,
                 attention_mask=torch.ones_like(generated),
-                max_new_tokens=config.max_new_tokens,
+                max_new_tokens=token_budget,
             )
-        for step in range(config.max_new_tokens):
+        for step in range(token_budget):
             if not config.use_kv_cache:
                 output = model(
                     generated,
@@ -958,7 +1001,7 @@ def sample_completion_group(
                 break
             if (
                 config.use_kv_cache
-                and step + 1 < config.max_new_tokens
+                and step + 1 < token_budget
             ):
                 next_logits, generation_state = model.decode_generation(
                     next_token[:, None],
@@ -1290,10 +1333,14 @@ def _rlvr_budget_contract(config: RLVRConfig) -> dict[str, int | bool | None]:
 
 def _rlvr_rollout_contract(
     config: RLVRConfig,
-) -> dict[str, int | float | bool]:
+) -> dict[str, Any]:
     return {
         "group_size": config.group_size,
         "max_new_tokens": config.max_new_tokens,
+        "max_new_tokens_hard_cap": config.max_new_tokens_hard_cap,
+        "max_new_tokens_by_answer_type": dict(
+            config.max_new_tokens_by_answer_type
+        ),
         "temperature": config.temperature,
         "top_p": config.top_p,
         "use_kv_cache": config.use_kv_cache,
@@ -1469,10 +1516,14 @@ def _load_rlvr_checkpoint(
 
 def _preference_rollout_contract(
     config: PreferenceConfig,
-) -> dict[str, int | float | bool]:
+) -> dict[str, Any]:
     return {
         "group_size": config.group_size,
         "max_new_tokens": config.max_new_tokens,
+        "max_new_tokens_hard_cap": config.max_new_tokens_hard_cap,
+        "max_new_tokens_by_answer_type": dict(
+            config.max_new_tokens_by_answer_type
+        ),
         "temperature": config.temperature,
         "top_p": config.top_p,
         "use_kv_cache": config.use_kv_cache,
@@ -1744,6 +1795,14 @@ def train_preference(
 
     while budget_remaining():
         sample_index = random.randrange(len(dataset))
+        generation_token_budget, generation_budget_source = (
+            resolve_generation_token_budget(
+                dataset.samples[sample_index].answer_type,
+                base_tokens=config.max_new_tokens,
+                hard_cap=config.max_new_tokens_hard_cap,
+                by_answer_type=config.max_new_tokens_by_answer_type,
+            )
+        )
         raw_batch = collator([dataset[sample_index]])
         prompt_batch = posttraining_prompt_batch(raw_batch, device)
         with _autocast_context(device, config.precision):
@@ -1751,7 +1810,11 @@ def train_preference(
                 reference,
                 prompt_batch,
                 tokenizer,
-                config,
+                replace(
+                    config,
+                    max_new_tokens=generation_token_budget,
+                    max_new_tokens_by_answer_type=(),
+                ),
             )
         gold_anchor_applied = (
             config.preference_source == "gold_anchored_verifier_ranked"
@@ -1915,6 +1978,12 @@ def train_preference(
                     sampled_valid_fraction
                 ),
                 "preference/gradient_norm": float(gradient_norm),
+                "preference/generation_token_budget": float(
+                    generation_token_budget
+                ),
+                "preference/generation_budget_escalated": float(
+                    generation_budget_source != "default"
+                ),
                 "preference/preference_step": float(state.preference_step),
                 "preference/optimizer_step": float(state.optimizer_step),
                 "preference/accepted_pairs": float(state.accepted_pairs),
@@ -1972,6 +2041,9 @@ def train_preference(
                     "objective": config.objective,
                     "preference_source": config.preference_source,
                     "sequence_reduction": config.sequence_reduction,
+                    "generation_token_budget_source": (
+                        generation_budget_source
+                    ),
                     **final_metrics,
                 },
                 metric_callback,
@@ -2105,6 +2177,14 @@ def train_grpo(
 
     while budget_remaining():
         sample_index = random.randrange(len(dataset))
+        generation_token_budget, generation_budget_source = (
+            resolve_generation_token_budget(
+                dataset.samples[sample_index].answer_type,
+                base_tokens=config.max_new_tokens,
+                hard_cap=config.max_new_tokens_hard_cap,
+                by_answer_type=config.max_new_tokens_by_answer_type,
+            )
+        )
         raw_batch = collator([dataset[sample_index]])
         prompt_batch = posttraining_prompt_batch(raw_batch, device)
         with _autocast_context(device, config.precision):
@@ -2112,7 +2192,11 @@ def train_grpo(
                 policy,
                 prompt_batch,
                 tokenizer,
-                config,
+                replace(
+                    config,
+                    max_new_tokens=generation_token_budget,
+                    max_new_tokens_by_answer_type=(),
+                ),
             )
         reward_results: list[RewardResult] = [
             score_structured_response(
@@ -2243,6 +2327,12 @@ def train_grpo(
                     state.replay_only_steps
                 ),
                 "rlvr/malformed_fraction": malformed_fraction,
+                "rlvr/generation_token_budget": float(
+                    generation_token_budget
+                ),
+                "rlvr/generation_budget_escalated": float(
+                    generation_budget_source != "default"
+                ),
                 "rlvr/student_flops_seen": float(
                     state.student_flops_seen
                 ),
@@ -2304,6 +2394,9 @@ def train_grpo(
                     "sample_id": dataset.samples[sample_index].sample_id,
                     "supervised_replay_sample_id": replay_sample_id,
                     "advantage_estimator": config.advantage_estimator,
+                    "generation_token_budget_source": (
+                        generation_budget_source
+                    ),
                     **final_metrics,
                 },
                 metric_callback,

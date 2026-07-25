@@ -63,6 +63,25 @@ def test_default_experiment_compiles_complete_stage_dag():
         "sequence_targets"
     ]
     assert sequence_targets["probability"] == pytest.approx(0.5)
+    evaluate = next(
+        stage for stage in plan.stages if stage.name == "evaluate"
+    )
+    assert evaluate.command[
+        evaluate.command.index("--max-new-tokens-hard-cap") + 1
+    ] == "512"
+    budget_flags = [
+        evaluate.command[index + 1]
+        for index, value in enumerate(evaluate.command)
+        if value == "--answer-type-token-budget"
+    ]
+    assert budget_flags == [
+        "ocr-full=512",
+        "reading-order=384",
+        "table*=512",
+        "chart*=256",
+        "H-comprehension=256",
+        "H-accounting=256",
+    ]
     acquisition = next(
         stage for stage in plan.stages if stage.name == "acquire_component_public_udd"
     )
@@ -175,6 +194,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "--tokenizer",
         "--precision",
         "--max-new-tokens",
+        "--max-new-tokens-hard-cap",
         "--seed",
         "--calibration-source-split",
         "--calibration-fraction",
@@ -238,6 +258,34 @@ def test_experiment_rejects_non_boolean_generation_cache(tmp_path):
     )
 
     with pytest.raises(ValueError, match="use_kv_cache must be a boolean"):
+        build_experiment_plan(
+            config,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
+
+
+def test_experiment_rejects_unbounded_answer_type_generation_budget(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["max_new_tokens_hard_cap"] = 16
+    raw["evaluation"]["max_new_tokens_by_answer_type"] = {
+        "table*": 17,
+    }
+    config = tmp_path / "invalid-generation-budget.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="answer-type generation budgets",
+    ):
         build_experiment_plan(
             config,
             repo_root=ROOT,

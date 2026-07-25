@@ -23,6 +23,10 @@ from ..metrics.calibration import (
 )
 from ..metrics.text import score_sample
 from ..schema import Sample
+from ..generation_policy import (
+    resolve_generation_token_budget,
+    validate_generation_token_budget_policy,
+)
 from .data import StudentCollator, visual_model_inputs
 from .generation import has_repeated_suffix_cycle
 from .model import DocumentVLMStudent
@@ -65,6 +69,8 @@ ROBUSTNESS_AXES = (
 class StructuredEvalConfig:
     output_dir: str
     max_new_tokens: int = 128
+    max_new_tokens_hard_cap: int = 128
+    max_new_tokens_by_answer_type: tuple[tuple[str, int], ...] = ()
     max_samples: int | None = None
     use_kv_cache: bool = True
     precision: str = "bfloat16"
@@ -77,6 +83,11 @@ class StructuredEvalConfig:
     def __post_init__(self) -> None:
         if self.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
+        validate_generation_token_budget_policy(
+            base_tokens=self.max_new_tokens,
+            hard_cap=self.max_new_tokens_hard_cap,
+            by_answer_type=dict(self.max_new_tokens_by_answer_type),
+        )
         if self.max_samples is not None and self.max_samples <= 0:
             raise ValueError("max_samples must be positive when set")
         if not isinstance(self.use_kv_cache, bool):
@@ -137,6 +148,22 @@ def _slice_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             _mean(
                 [
                     float(row["degenerate_repetition"])
+                    for row in rows
+                ]
+            )
+        ),
+        "mean_generation_token_budget": _round(
+            _mean(
+                [
+                    float(row["generation_token_budget"])
+                    for row in rows
+                ]
+            )
+        ),
+        "budget_escalation_rate": _round(
+            _mean(
+                [
+                    float(row["generation_token_budget_source"] != "default")
                     for row in rows
                 ]
             )
@@ -452,6 +479,14 @@ def evaluate_structured_student(
     try:
         for position, index in enumerate(indices, start=1):
             sample = dataset.samples[index]
+            generation_token_budget, budget_source = (
+                resolve_generation_token_budget(
+                    sample.answer_type,
+                    base_tokens=config.max_new_tokens,
+                    hard_cap=config.max_new_tokens_hard_cap,
+                    by_answer_type=config.max_new_tokens_by_answer_type,
+                )
+            )
             raw_batch = collator([dataset[index]])
             prompt_batch = posttraining_prompt_batch(raw_batch, device)
             prompt_length = int(prompt_batch["input_ids"].shape[1])
@@ -467,7 +502,7 @@ def evaluate_structured_student(
                         {
                             **visual_model_inputs(prompt_batch),
                             "attention_mask": prompt_batch["attention_mask"],
-                            "max_new_tokens": config.max_new_tokens,
+                            "max_new_tokens": generation_token_budget,
                             "eos_token_id": int(tokenizer.eos_token_id),
                             "use_kv_cache": config.use_kv_cache,
                             "repetition_guard_min_tokens": (
@@ -491,7 +526,7 @@ def evaluate_structured_student(
                         prompt_batch["input_ids"],
                         **visual_model_inputs(prompt_batch),
                         attention_mask=prompt_batch["attention_mask"],
-                        max_new_tokens=config.max_new_tokens,
+                        max_new_tokens=generation_token_budget,
                         eos_token_id=int(tokenizer.eos_token_id),
                         use_kv_cache=config.use_kv_cache,
                         repetition_guard_min_tokens=(
@@ -515,7 +550,7 @@ def evaluate_structured_student(
                 skip_special_tokens=True,
             ).strip()
             reached_max_new_tokens = (
-                len(completion_ids) >= config.max_new_tokens
+                len(completion_ids) >= generation_token_budget
                 and (
                     not completion_ids
                     or completion_ids[-1] != int(tokenizer.eos_token_id)
@@ -567,6 +602,8 @@ def evaluate_structured_student(
                     "image_path": sample.image_path,
                     "prediction": raw_prediction,
                     "generated_tokens": len(completion_ids),
+                    "generation_token_budget": generation_token_budget,
+                    "generation_token_budget_source": budget_source,
                     "reached_max_new_tokens": reached_max_new_tokens,
                     "degenerate_repetition": degenerate_repetition,
                     "confidence": (
@@ -606,6 +643,14 @@ def evaluate_structured_student(
         "reward": overall["reward"],
         "valid_structure_fraction": overall["valid_structure_fraction"],
         "answer_rate": overall["answer_rate"],
+        "max_token_rate": overall["max_token_rate"],
+        "degenerate_repetition_rate": overall[
+            "degenerate_repetition_rate"
+        ],
+        "mean_generation_token_budget": overall[
+            "mean_generation_token_budget"
+        ],
+        "budget_escalation_rate": overall["budget_escalation_rate"],
         "elapsed_seconds": _round(elapsed),
         "milliseconds_per_sample": _round(
             elapsed * 1000 / len(rows) if rows else 0.0
@@ -613,6 +658,13 @@ def evaluate_structured_student(
         "generation_backend": (
             "kv_cache" if config.use_kv_cache else "full_prefix"
         ),
+        "generation_token_budget_policy": {
+            "base_tokens": config.max_new_tokens,
+            "hard_cap": config.max_new_tokens_hard_cap,
+            "by_answer_type": dict(
+                config.max_new_tokens_by_answer_type
+            ),
+        },
         "by_answer_type": _group_summaries(rows, "answer_type"),
         "by_source": _group_summaries(rows, "source"),
         "by_language": _group_summaries(rows, "language"),
@@ -710,6 +762,16 @@ def wandb_metrics_for_split(
             summary["answer_rate"]
         ),
     }
+    for name in (
+        "max_token_rate",
+        "degenerate_repetition_rate",
+        "mean_generation_token_budget",
+        "budget_escalation_rate",
+    ):
+        if name in summary:
+            value = float(summary[name])
+            metrics[f"eval/{split_name}_{name}"] = value
+            metrics[f"eval_by_axis/{name}/{split_name}"] = value
     for axis, values in summary.get("by_answer_type", {}).items():
         metrics[f"eval/{split_name}_{axis}"] = float(values["score"])
         metrics[f"eval_by_axis/{axis}/{split_name}"] = float(values["score"])

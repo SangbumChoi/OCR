@@ -8,6 +8,10 @@ from typing import Any
 
 import yaml
 
+from .generation_policy import (
+    validate_generation_token_budget_policy,
+)
+
 
 def load_blueprint(path: str | Path) -> dict[str, Any]:
     with Path(path).open(encoding="utf-8") as handle:
@@ -1090,6 +1094,23 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "sum or mean"
         )
     preference_rollout = preference.get("rollout", {})
+    try:
+        validate_generation_token_budget_policy(
+            base_tokens=preference_rollout.get("max_new_tokens"),
+            hard_cap=preference_rollout.get(
+                "max_new_tokens_hard_cap",
+                preference_rollout.get("max_new_tokens"),
+            ),
+            by_answer_type=preference_rollout.get(
+                "max_new_tokens_by_answer_type",
+                {},
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        errors.append(
+            "training.posttraining.preference.rollout."
+            f"{error}"
+        )
     if int(preference_rollout.get("max_new_tokens", 0)) <= 0:
         errors.append(
             "training.posttraining.preference.rollout.max_new_tokens must be "
@@ -1245,6 +1266,20 @@ def validate_blueprint(blueprint: dict[str, Any]) -> tuple[dict[str, int], list[
             "evidence_semantic or evidence_program_trace"
         )
     rollout = rlvr.get("rollout", {})
+    try:
+        validate_generation_token_budget_policy(
+            base_tokens=rollout.get("max_new_tokens"),
+            hard_cap=rollout.get(
+                "max_new_tokens_hard_cap",
+                rollout.get("max_new_tokens"),
+            ),
+            by_answer_type=rollout.get(
+                "max_new_tokens_by_answer_type",
+                {},
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        errors.append(f"training.posttraining.rlvr.rollout.{error}")
     if int(rollout.get("max_new_tokens", 0)) <= 0:
         errors.append(
             "training.posttraining.rlvr.rollout.max_new_tokens must be positive"

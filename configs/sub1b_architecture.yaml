@@ -363,6 +363,14 @@ training:
       sequence_reduction: sum
       rollout:
         max_new_tokens: 128
+        max_new_tokens_hard_cap: 512
+        max_new_tokens_by_answer_type:
+          ocr-full: 512
+          reading-order: 384
+          table*: 512
+          chart*: 256
+          H-comprehension: 256
+          H-accounting: 256
         temperature: 0.8
         top_p: 0.95
         use_kv_cache: true
@@ -401,6 +409,14 @@ training:
       rationale_verifier: evidence_program_trace
       rollout:
         max_new_tokens: 128
+        max_new_tokens_hard_cap: 512
+        max_new_tokens_by_answer_type:
+          ocr-full: 512
+          reading-order: 384
+          table*: 512
+          chart*: 256
+          H-comprehension: 256
+          H-accounting: 256
         temperature: 0.8
         top_p: 0.95
         use_kv_cache: true

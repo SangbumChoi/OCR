@@ -173,6 +173,12 @@ the trailing period repeats consecutively three times after the minimum completi
 not prohibit recurring table tags or labels elsewhere in a structured answer. Policy and
 frozen-reference log-probabilities are each computed in one
 teacher-forced pass over the completed sequences.
+The contract also resolves a bounded completion horizon from the public task label. Concise tasks
+retain the 128-token base budget, while declared full-page, reading-order, table, chart, and
+evidence-linked reasoning labels can use up to the 512-token hard cap. Every candidate in a group
+receives the same horizon, and `preference/generation_token_budget`,
+`rlvr/generation_token_budget`, and their `generation_budget_escalated` companions expose the
+executed policy.
 Activation checkpointing applies only to the trainable policy's gradient-bearing log-probability
 and replay passes. No-grad rollout generation and the frozen reference remain uncheckpointed.
 `rlvr/student_flops_seen` remains the algorithmic compute-matching counter, while

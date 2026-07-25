@@ -96,6 +96,10 @@ eval/<split>_<axis>   ← that split, sliced by capability (x = epoch)   [which 
 eval_by_axis/<axis>/<split>  ← same numbers regrouped by axis (x = epoch) [train-vs-heldout per capability on one chart]
 eval_by_axis/ece_raw/<split> ← raw confidence ECE from native final evaluation
 eval_by_axis/ece_calibrated/<split> ← temperature-scaled ECE on the same split
+eval_by_axis/max_token_rate/<split> ← fraction ending at the resolved token limit
+eval_by_axis/degenerate_repetition_rate/<split> ← exact suffix-cycle diagnostic
+eval_by_axis/mean_generation_token_budget/<split> ← mean resolved horizon
+eval_by_axis/budget_escalation_rate/<split> ← fraction using a task-specific override
 ```
 
 > **Two groupings, same data.** `eval/<split>_<axis>` is keyed *split-first* (good for "how does the
