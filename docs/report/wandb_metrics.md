@@ -120,9 +120,12 @@ python scripts/configure_wandb_eval_workspace.py \
   --project docvlm-ablation
 ```
 
-The script discovers the project's metric keys, creates panels only when both splits exist, fixes
-the score range to 0–1, and prints the saved workspace URL. It also accepts the legacy
-`eval/held_<axis>` spelling, while preferring the canonical `heldout` key when both exist.
+The script discovers both canonical `eval_by_axis/<axis>/<split>` and legacy
+`eval/<split>_<axis>` keys, creates panels only when both splits exist, fixes the score range to
+0–1, and prints the saved workspace URL. Canonical axis-first keys win when both representations
+exist. It accepts the legacy `held` split alias while preferring `heldout`. The default x-axis is
+`epoch` for historical ablation projects, `evaluation/checkpoint_step` for native evaluation-only
+projects, and W&B `_step` as a final fallback; use `--x-axis` to override mixed projects.
 
 ### Native student checkpoint evaluation
 

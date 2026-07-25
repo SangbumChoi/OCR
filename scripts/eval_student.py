@@ -150,6 +150,7 @@ def _start_wandb(args, metadata: dict, split_paths: list[tuple[str, Path]]):
         "eval_by_axis/*",
         "eval_by_source/*",
         "eval_by_language/*",
+        "eval_by_slice/*",
         "eval_reward/*",
         "gate/*",
     ):
