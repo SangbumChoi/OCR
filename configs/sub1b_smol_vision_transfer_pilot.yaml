@@ -15,17 +15,10 @@ shared_experiment_patches:
       hub:
         repo_id: LiquidAI/LFM2.5-VL-1.6B
         revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
-  - {op: add, path: /initialization/vision_family, value: siglip}
-  - op: replace
-    path: /initialization/vision_source
-    value:
-      hub:
-        repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
-        revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
-        tensor_prefixes:
-          - model.vision_model.encoder.layers.
   - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
   - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: false}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_entity, value: sbdc}
   - {op: replace, path: /synthetic/count, value: 32}
   - {op: replace, path: /synthetic/validation_count, value: 8}
   - {op: replace, path: /synthetic/heldout_count, value: 32}
@@ -54,8 +47,6 @@ shared_experiment_patches:
 
 matched_controls:
   - {document: experiment, path: /initialization/seed}
-  - {document: experiment, path: /initialization/vision_family}
-  - {document: experiment, path: /initialization/vision_source}
   - {document: experiment, path: /initialization/language_family}
   - {document: experiment, path: /initialization/language_source}
   - {document: experiment, path: /synthetic/train_seed}
@@ -131,6 +122,16 @@ variants:
     decision_metrics: {vision_transfer: 1, language_transfer: 1}
     experiment_patches:
       - {op: replace, path: /initialization/arm, value: I9_lfm_smol_dual}
+      - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: true}
+      - {op: add, path: /initialization/vision_family, value: siglip}
+      - op: replace
+        path: /initialization/vision_source
+        value:
+          hub:
+            repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+            revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467
+            tensor_prefixes:
+              - model.vision_model.encoder.layers.
     blueprint_patches: *lfm_geometry
 
 contrasts:

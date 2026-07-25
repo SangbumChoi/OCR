@@ -1,0 +1,276 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "arms": [
+          "lfm_language_only",
+          "lfm_smol_dual"
+        ],
+        "baseline": "lfm_language_only",
+        "promotion_enabled": false,
+        "replicates": [
+          "seed_0"
+        ]
+      },
+      "id": "screening_design",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "dual_parameters": {
+          "connector": 36853761,
+          "language": 687966720,
+          "task_heads": 732682,
+          "total": 814207243,
+          "vision": 88654080
+        },
+        "geometry_equal": true,
+        "language_only_parameters": {
+          "connector": 36853761,
+          "language": 687966720,
+          "task_heads": 732682,
+          "total": 814207243,
+          "vision": 88654080
+        }
+      },
+      "id": "sub1b_geometry_matched_control",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "dual_arm": "I9_lfm_smol_dual",
+        "language_only_arm": "I8_lfm_aligned_language",
+        "language_source_matched": true,
+        "unused_vision_source_acquired_by_control": false
+      },
+      "id": "initialization_contrast",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "language_repo_id": "LiquidAI/LFM2.5-VL-1.6B",
+        "language_revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+        "vision_repo_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "vision_revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+        "vision_tensor_prefixes": [
+          "model.vision_model.encoder.layers."
+        ]
+      },
+      "id": "immutable_sources",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "claim_scope": "real_source_vision_initialization_contract_only",
+        "content_fingerprint": "sha256:4b800d8bb77adbee0e349c01d809fc4bda27b4ee7dd2aafdb23f12886d3dda13",
+        "model": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "payload_bytes": 340217856,
+        "quality_claim_authorized": false,
+        "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467"
+      },
+      "id": "executed_vision_payload_identity",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "compiled_vision_parameters": 88654080,
+        "copied_parameters": 85054464,
+        "copied_tensors": 192,
+        "missing_source": 0,
+        "realized_component_parameter_fraction": 0.9593970632823667,
+        "scope_valid": true,
+        "semantic_skips": 0,
+        "shape_skips": 0,
+        "target_vision_parameters": 88654080,
+        "value_verified": true
+      },
+      "id": "executed_vision_transfer_integrity",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "direct_copy_candidates": 1,
+        "matrix_validation_status": "pass",
+        "promotion_claim_authorized": false,
+        "quality_claim_authorized": false,
+        "real_payload_status": "verified",
+        "source": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "target": "docvlm-lfm-aligned-814m"
+      },
+      "id": "cross_model_source_selection",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "dual_acquires_vision": true,
+        "language_only_acquires_vision": false,
+        "stage_counts": {
+          "lfm_language_only": 25,
+          "lfm_smol_dual": 27
+        }
+      },
+      "id": "single_selective_acquisition",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "training_feasibility_arms": [
+          "lfm_smol_dual"
+        ]
+      },
+      "id": "dual_only_cuda_preflight",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "gradient_checkpointing": true,
+        "gradient_checkpointing_components": [
+          "vision",
+          "connector",
+          "language"
+        ],
+        "gradient_checkpointing_use_reentrant": false,
+        "required_device_type": "cuda",
+        "required_precision": "bfloat16",
+        "required_visual_backend": "flex"
+      },
+      "id": "target_gpu_training_contract",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "entity": "sbdc",
+        "project": "docvlm-ablation",
+        "stages_by_arm": {
+          "lfm_language_only": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft"
+          ],
+          "lfm_smol_dual": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft",
+            "training_feasibility_benchmark"
+          ]
+        }
+      },
+      "id": "observable_wandb_runs",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "matched_across_arms": true,
+        "policy": {
+          "max_new_tokens": 128,
+          "max_new_tokens_by_answer_type": {
+            "H-accounting": 256,
+            "H-comprehension": 256,
+            "chart*": 256,
+            "formula*": 384,
+            "im2latex": 384,
+            "latexocr": 384,
+            "ocr-full": 512,
+            "omnidocbench": 512,
+            "pubtabnet": 512,
+            "reading-order": 384,
+            "recognition_fullpage": 512,
+            "table*": 512
+          },
+          "max_new_tokens_hard_cap": 512,
+          "max_samples": 64,
+          "repetition_guard_max_period": 16,
+          "repetition_guard_min_tokens": 24,
+          "repetition_guard_repetitions": 3,
+          "sample_selection": "answer_type_round_robin"
+        }
+      },
+      "id": "matched_long_output_policy",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "answer_type_patterns": [
+          "full",
+          "html",
+          "latex",
+          "long-context",
+          "omnidoc",
+          "pubtabnet",
+          "reading-order",
+          "table",
+          "transcription"
+        ],
+        "max_degenerate_repetition_rate": 0.0,
+        "max_structure_validity_drop": 0.0,
+        "max_token_rate": 0.05
+      },
+      "id": "long_output_release_gate",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "pretraining_steps": 25,
+        "public_row_cap": 256,
+        "rlvr_steps": 5,
+        "sft_steps": 10,
+        "synthetic_train_documents": 32
+      },
+      "id": "bounded_screening_budget",
+      "status": "pass"
+    }
+  ],
+  "claim_scope": "smol_vision_transfer_pilot_submission_only",
+  "counts": {
+    "fail": 0,
+    "pass": 14
+  },
+  "fingerprint": "sha256:3bbf62c8c334bd48f3a09f684df26ce7c169cffa6e2ae73be88100e5045b900d",
+  "limitations": [
+    "This audit authorizes only submission of the one-seed screening pilot.",
+    "The dual-source CUDA feasibility stage must execute and pass on the target GPU.",
+    "Quality and promotion require a sealed paired multi-seed experiment."
+  ],
+  "overall_status": "pass",
+  "pilot_submission_authorized": true,
+  "quality_claim_authorized": false,
+  "real_source_preflights": {
+    "language": {
+      "claim_scope": "real_source_initialization_contract_only",
+      "source": "docs/results/selective_transfer_lfm_real_source_preflight.json",
+      "source_fingerprint": "sha256:0dba17980a41f8b51f521372ee6a57bf5d9dd1b1fceeb24a23cc4a9879bbbe4e"
+    },
+    "vision": {
+      "claim_scope": "real_source_vision_initialization_contract_only",
+      "source": "docs/results/selective_transfer_smol_vision_real_source_preflight.json",
+      "source_fingerprint": "sha256:d66f9707db46c4b870dd425095ddae006d51b06f7cd4d4381f787f4fdf1f5b87"
+    }
+  },
+  "schema_version": 1,
+  "source_selection": {
+    "architecture_report_fingerprint": "sha256:406ea9d266644d175ab995878f149c7583953e758863bc686db78896dbfabebf",
+    "catalog_fingerprint": "sha256:8b518c54f51c96bf95cc6e6603e6eaa5b4eb78a54cb03ad205134efecf3408b9",
+    "report_fingerprint": "sha256:ff03a56387d2375e96c99beee4463ebcb83f29846e7f5d5ea6cc28a8dd6df66b",
+    "source": "docs/results/selective_transfer_source_matrix.json",
+    "source_fingerprint": "sha256:cbbc7a9c23d7150663956dbaaee3e98ba246ac02f7e4be52c0eb8af0d2ad22fd",
+    "weight_report_fingerprint": "sha256:789c74acdbe6c8f061b85dbb851f7b536f1a643fcf59b955a29450c881e56b61"
+  },
+  "sweep": {
+    "arms": [
+      "lfm_language_only",
+      "lfm_smol_dual"
+    ],
+    "baseline": "lfm_language_only",
+    "name": "docvlm-smol-vision-transfer-pilot",
+    "replicates": [
+      "seed_0"
+    ],
+    "source": "configs/sub1b_smol_vision_transfer_pilot.yaml",
+    "source_fingerprint": "sha256:1d9e083791fe353bebdc4028725f1b70f1ef0d2ca15657a81a5937281cc111f1"
+  },
+  "target_cuda_feasibility_claim_authorized": false
+}

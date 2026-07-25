@@ -387,6 +387,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_structured_mlp_transfer_sweep.md`](report/student_structured_mlp_transfer_sweep.md) ·
    [`report/student_attention_geometry_transfer_factorial.md`](report/student_attention_geometry_transfer_factorial.md) ·
    [`report/student_lfm_language_transfer_sweep.md`](report/student_lfm_language_transfer_sweep.md) ·
+   [`report/student_smol_vision_transfer_pilot.md`](report/student_smol_vision_transfer_pilot.md) ·
    [`report/student_lora_placement_interaction.md`](report/student_lora_placement_interaction.md) ·
    [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) ·
    [`report/student_posttraining_sweeps.md`](report/student_posttraining_sweeps.md) ·

@@ -1333,22 +1333,28 @@ def test_smol_vision_transfer_pilot_is_matched_and_selective(tmp_path):
     }
     for variant in plan.variants:
         experiment = variant.plan.raw_spec
-        vision_hub = experiment["initialization"]["vision_source"]["hub"]
-        assert vision_hub["tensor_prefixes"] == [
-            "model.vision_model.encoder.layers."
-        ]
-        acquire = next(
-            stage
-            for stage in variant.plan.stages
-            if stage.name == "acquire_vision_checkpoint"
-        )
-        assert acquire.command[1].endswith(
-            "acquire_selective_checkpoint.py"
-        )
-        assert "--tensor-prefix" in acquire.command
         assert variant.parameters["total"] == 814_207_243
         assert experiment["evaluation"]["max_samples"] == 64
         assert "screening-only" in experiment["evaluation"]["wandb_tags"]
+        if variant.arm_id == "lfm_smol_dual":
+            vision_hub = experiment["initialization"]["vision_source"][
+                "hub"
+            ]
+            assert vision_hub["tensor_prefixes"] == [
+                "model.vision_model.encoder.layers."
+            ]
+            acquire = next(
+                stage
+                for stage in variant.plan.stages
+                if stage.name == "acquire_vision_checkpoint"
+            )
+            assert acquire.command[1].endswith(
+                "acquire_selective_checkpoint.py"
+            )
+            assert "--tensor-prefix" in acquire.command
+        else:
+            assert experiment["initialization"]["vision_source"] is None
+            assert "acquire_vision_checkpoint" not in variant.plan.stage_names
 
 
 def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):

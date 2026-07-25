@@ -50,10 +50,12 @@ compiles two one-seed cells:
 | `lfm_language_only` | strict LFM exact and structured transfer | random |
 | `lfm_smol_dual` | same strict LFM transfer | exact SmolVLM2 transformer blocks |
 
-Both cells acquire the same pinned sources and share the LFM-aligned 814M geometry, data,
-initialization seed, synthetic splits, teacher dose, pretraining/SFT/RLVR steps, and heldout
-evaluation. The sole contrast is `lfm_smol_dual - lfm_language_only`. The configuration has no
-promotion block; one seed is screening evidence only.
+Both cells share the same pinned LFM source, LFM-aligned 814M geometry, data, initialization seed,
+synthetic splits, teacher dose, pretraining/SFT/RLVR steps, and heldout evaluation. Only the dual
+cell acquires the Smol source because the language-only arm never reads vision weights; this avoids
+a duplicate 340 MB range request without changing either trained model or its compute budget. The
+sole contrast is `lfm_smol_dual - lfm_language_only`. The configuration has no promotion block;
+one seed is screening evidence only.
 
 Long table, HTML, full-page, transcription, and reading-order outputs retain the production
 generation safeguards. Exact trailing token cycles terminate with EOS, task labels receive bounded
@@ -68,3 +70,24 @@ Advance to a sealed multi-seed run only if the dual cell passes all execution an
 stability gates and improves heldout document perception without degrading grounding, reasoning,
 multilingual behavior, or reliability. Until the matched run completes, SmolVLM2 remains a
 payload-verified candidate rather than a promoted source.
+
+## Submission readiness
+
+[`audit_smol_vision_transfer_pilot.py`](../../scripts/audit_smol_vision_transfer_pilot.py)
+compiles the exact pilot and binds it to both executed source preflights and the cross-model source
+matrix. The compact fail-closed artifact passes 14/14 checks:
+[`smol_vision_transfer_pilot_readiness.json`](../results/smol_vision_transfer_pilot_readiness.json).
+It authorizes pilot submission only. Target-CUDA feasibility, training execution, quality, and
+promotion remain unauthorized until their respective stages produce sealed evidence.
+
+The dual cell alone runs the target-GPU feasibility gate and the selective Smol acquisition. Both
+cells retain tracked pretraining, SFT, RLVR, baseline evaluation, and final evaluation stages in
+`sbdc/docvlm-ablation`. To launch from Colab with compact console output and full file logging:
+
+```bash
+python scripts/run_transfer_pilot_colab.py --pilot smol-vision
+```
+
+The launcher re-runs readiness, checks W&B credentials, free disk, CUDA memory, and native BF16,
+then delegates to the resumable sweep runner. T4 is rejected because the experiment contract
+requires native BF16; L4, A10, A100, or newer hardware is appropriate.

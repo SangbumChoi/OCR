@@ -40,3 +40,39 @@ def test_colab_lfm_pilot_launcher_dry_run_is_compact(tmp_path):
     assert lines[-1]["dry_run"] is True
     assert log.is_file()
     assert log.stat().st_size < 100_000
+
+
+def test_colab_smol_pilot_launcher_dry_run_is_compact(tmp_path):
+    log = tmp_path / "smol-pilot.log"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run_transfer_pilot_colab.py"),
+            "--pilot",
+            "smol-vision",
+            "--dry-run",
+            "--poll-seconds",
+            "0.05",
+            "--heartbeat-seconds",
+            "60",
+            "--log",
+            str(log),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    lines = [
+        json.loads(line)
+        for line in completed.stdout.splitlines()
+        if line.startswith("{") and line.endswith("}")
+    ]
+    assert lines[0]["readiness"] == "pass"
+    assert lines[0]["checks"] == {"pass": 14, "fail": 0}
+    assert lines[-1]["status"] == "completed"
+    assert lines[-1]["pilot"] == "smol-vision"
+    assert lines[-1]["dry_run"] is True
+    assert log.is_file()
+    assert log.stat().st_size < 100_000

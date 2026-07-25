@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the native LFM selective-transfer pilot with compact Colab output."""
+"""Run a selective-transfer pilot with compact Colab output."""
 
 from __future__ import annotations
 
@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any
 
 from docvlm_eval.student.sweep import compile_sweep_plan
-from docvlm_eval.student.transfer_readiness import audit_lfm_transfer_pilot
+from docvlm_eval.student.transfer_readiness import (
+    audit_lfm_transfer_pilot,
+    audit_smol_vision_transfer_pilot,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +37,28 @@ SOURCE_SELECTION = (
     / "selective_transfer_source_matrix.json"
 )
 SWEEP_ROOT = ROOT / "outputs" / "sweeps" / "docvlm-lfm-language-transfer-pilot"
+SMOL_SWEEP = ROOT / "configs" / "sub1b_smol_vision_transfer_pilot.yaml"
+SMOL_PREFLIGHT = (
+    ROOT
+    / "docs"
+    / "results"
+    / "selective_transfer_smol_vision_real_source_preflight.json"
+)
+SMOL_SWEEP_ROOT = (
+    ROOT / "outputs" / "sweeps" / "docvlm-smol-vision-transfer-pilot"
+)
+PILOTS = {
+    "lfm-language": {
+        "sweep": SWEEP,
+        "root": SWEEP_ROOT,
+        "readiness_prefix": "docvlm-lfm-colab-readiness-",
+    },
+    "smol-vision": {
+        "sweep": SMOL_SWEEP,
+        "root": SMOL_SWEEP_ROOT,
+        "readiness_prefix": "docvlm-smol-colab-readiness-",
+    },
+}
 
 
 def _wandb_credentials_available() -> bool:
@@ -117,20 +142,30 @@ def _tail(path: Path, *, lines: int = 20, width: int = 500) -> list[str]:
     return [line[:width] for line in values[-lines:]]
 
 
-def _readiness() -> dict[str, Any]:
+def _readiness(pilot: str) -> dict[str, Any]:
+    profile = PILOTS[pilot]
     with tempfile.TemporaryDirectory(
-        prefix="docvlm-lfm-colab-readiness-"
+        prefix=str(profile["readiness_prefix"])
     ) as temporary:
         plan = compile_sweep_plan(
-            SWEEP,
+            profile["sweep"],
             repo_root=ROOT,
             python=sys.executable,
             compile_root=temporary,
         )
+        if pilot == "smol-vision":
+            return audit_smol_vision_transfer_pilot(
+                plan,
+                repo_root=ROOT,
+                sweep_path=profile["sweep"],
+                vision_preflight_path=SMOL_PREFLIGHT,
+                language_preflight_path=PREFLIGHT,
+                source_selection_path=SOURCE_SELECTION,
+            )
         return audit_lfm_transfer_pilot(
             plan,
             repo_root=ROOT,
-            sweep_path=SWEEP,
+            sweep_path=profile["sweep"],
             preflight_path=PREFLIGHT,
             source_selection_path=SOURCE_SELECTION,
         )
@@ -138,6 +173,11 @@ def _readiness() -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--pilot",
+        choices=sorted(PILOTS),
+        default="lfm-language",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--variant", action="append", dest="variants")
     parser.add_argument("--no-resume", action="store_true")
@@ -148,9 +188,14 @@ def main() -> None:
     parser.add_argument(
         "--log",
         type=Path,
-        default=SWEEP_ROOT / "colab_pilot.log",
+        default=None,
     )
     args = parser.parse_args()
+    profile = PILOTS[args.pilot]
+    sweep = Path(profile["sweep"])
+    sweep_root = Path(profile["root"])
+    if args.log is None:
+        args.log = sweep_root / "colab_pilot.log"
     if args.poll_seconds <= 0:
         parser.error("--poll-seconds must be positive")
     if args.heartbeat_seconds < args.poll_seconds:
@@ -158,7 +203,7 @@ def main() -> None:
     if args.min_free_gib <= 0 or args.min_gpu_gib <= 0:
         parser.error("memory thresholds must be positive")
 
-    readiness = _readiness()
+    readiness = _readiness(args.pilot)
     print(
         json.dumps(
             {
@@ -171,7 +216,7 @@ def main() -> None:
         flush=True,
     )
     if readiness["overall_status"] != "pass":
-        raise SystemExit("LFM pilot readiness audit failed")
+        raise SystemExit(f"{args.pilot} pilot readiness audit failed")
 
     free_bytes = shutil.disk_usage(ROOT).free
     environment = {
@@ -207,7 +252,7 @@ def main() -> None:
         sys.executable,
         str(ROOT / "scripts" / "run_student_sweep.py"),
         "--sweep",
-        str(SWEEP),
+        str(sweep),
     ]
     if args.dry_run:
         command.append("--dry-run")
@@ -218,7 +263,7 @@ def main() -> None:
 
     args.log = args.log.resolve()
     args.log.parent.mkdir(parents=True, exist_ok=True)
-    summary_path = SWEEP_ROOT / "sweep_run_summary.json"
+    summary_path = sweep_root / "sweep_run_summary.json"
     started = time.monotonic()
     last_heartbeat = started
     last_snapshot = None
@@ -228,6 +273,7 @@ def main() -> None:
             + json.dumps(
                 {
                     "launcher_started_at_unix": time.time(),
+                    "pilot": args.pilot,
                     "command": command,
                 },
                 sort_keys=True,
@@ -279,6 +325,7 @@ def main() -> None:
         result = {
             "status": "completed" if return_code == 0 else "failed",
             "dry_run": True,
+            "pilot": args.pilot,
             "log": str(args.log),
         }
     else:

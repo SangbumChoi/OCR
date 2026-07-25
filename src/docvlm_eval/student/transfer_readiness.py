@@ -715,3 +715,578 @@ def audit_lfm_transfer_pilot(
     }
     result["fingerprint"] = _fingerprint(result)
     return result
+
+
+def audit_smol_vision_transfer_pilot(
+    plan: SweepPlan,
+    *,
+    repo_root: str | Path,
+    sweep_path: str | Path,
+    vision_preflight_path: str | Path,
+    language_preflight_path: str | Path,
+    source_selection_path: str | Path,
+) -> dict[str, Any]:
+    """Audit the bounded Smol vision-block screening pilot."""
+
+    repo = Path(repo_root).resolve()
+    sweep_source = Path(sweep_path).resolve()
+    vision_source = Path(vision_preflight_path).resolve()
+    language_source = Path(language_preflight_path).resolve()
+    selection_source = Path(source_selection_path).resolve()
+    vision_preflight = json.loads(vision_source.read_text(encoding="utf-8"))
+    language_preflight = json.loads(
+        language_source.read_text(encoding="utf-8")
+    )
+    source_selection = json.loads(
+        selection_source.read_text(encoding="utf-8")
+    )
+    architecture_report_source = (
+        repo / "docs" / "results" / "small_vlm_architecture_commonality.json"
+    )
+    weight_report_source = (
+        repo / "docs" / "results" / "small_vlm_weight_commonality.json"
+    )
+    architecture_catalog_source = (
+        repo / "configs" / "small_vlm_architectures.yaml"
+    )
+    architecture_report = json.loads(
+        architecture_report_source.read_text(encoding="utf-8")
+    )
+    weight_report = json.loads(
+        weight_report_source.read_text(encoding="utf-8")
+    )
+    profiles = load_architecture_catalog(architecture_catalog_source)
+    variants = {variant.arm_id: variant for variant in plan.variants}
+    required_arms = {"lfm_language_only", "lfm_smol_dual"}
+    language_only = variants.get("lfm_language_only")
+    dual = variants.get("lfm_smol_dual")
+    checks: list[dict[str, Any]] = []
+
+    _check(
+        checks,
+        "screening_design",
+        set(variants) == required_arms
+        and plan.baseline == "lfm_language_only"
+        and len(plan.replicates) == 1
+        and plan.promotion is None,
+        {
+            "arms": sorted(variants),
+            "baseline": plan.baseline,
+            "replicates": list(plan.replicates),
+            "promotion_enabled": plan.promotion is not None,
+        },
+    )
+
+    pair_present = language_only is not None and dual is not None
+    geometry_equal = bool(
+        pair_present
+        and language_only.plan.resolved_blueprint
+        == dual.plan.resolved_blueprint
+        and language_only.parameters == dual.parameters
+    )
+    target_parameters = (
+        dual.parameters.get("total") if dual is not None else None
+    )
+    _check(
+        checks,
+        "sub1b_geometry_matched_control",
+        geometry_equal
+        and isinstance(target_parameters, int)
+        and target_parameters < 1_000_000_000,
+        {
+            "geometry_equal": geometry_equal,
+            "language_only_parameters": (
+                None if language_only is None else language_only.parameters
+            ),
+            "dual_parameters": None if dual is None else dual.parameters,
+        },
+    )
+
+    language_initialization = (
+        {}
+        if language_only is None
+        else language_only.plan.raw_spec.get("initialization", {})
+    )
+    dual_initialization = (
+        {}
+        if dual is None
+        else dual.plan.raw_spec.get("initialization", {})
+    )
+    language_hub = (
+        dual_initialization.get("language_source", {}).get("hub", {})
+        if isinstance(dual_initialization.get("language_source"), dict)
+        else {}
+    )
+    vision_hub = (
+        dual_initialization.get("vision_source", {}).get("hub", {})
+        if isinstance(dual_initialization.get("vision_source"), dict)
+        else {}
+    )
+    language_revision = str(language_hub.get("revision") or "")
+    vision_revision = str(vision_hub.get("revision") or "")
+    _check(
+        checks,
+        "initialization_contrast",
+        language_initialization.get("arm") == "I8_lfm_aligned_language"
+        and dual_initialization.get("arm") == "I9_lfm_smol_dual"
+        and language_initialization.get("vision_source") is None
+        and language_initialization.get("language_source")
+        == dual_initialization.get("language_source"),
+        {
+            "language_only_arm": language_initialization.get("arm"),
+            "dual_arm": dual_initialization.get("arm"),
+            "unused_vision_source_acquired_by_control": (
+                language_initialization.get("vision_source") is not None
+            ),
+            "language_source_matched": (
+                language_initialization.get("language_source")
+                == dual_initialization.get("language_source")
+            ),
+        },
+    )
+    _check(
+        checks,
+        "immutable_sources",
+        language_hub.get("repo_id") == "LiquidAI/LFM2.5-VL-1.6B"
+        and bool(_IMMUTABLE_REVISION.fullmatch(language_revision))
+        and vision_hub.get("repo_id")
+        == "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+        and bool(_IMMUTABLE_REVISION.fullmatch(vision_revision))
+        and vision_hub.get("tensor_prefixes")
+        == ["model.vision_model.encoder.layers."],
+        {
+            "language_repo_id": language_hub.get("repo_id"),
+            "language_revision": language_revision,
+            "vision_repo_id": vision_hub.get("repo_id"),
+            "vision_revision": vision_revision,
+            "vision_tensor_prefixes": vision_hub.get("tensor_prefixes"),
+        },
+    )
+
+    preflight_source = vision_preflight.get("source") or {}
+    preflight_target = vision_preflight.get("target") or {}
+    transfer = vision_preflight.get("transfer") or {}
+    _check(
+        checks,
+        "executed_vision_payload_identity",
+        vision_preflight.get("claim_scope")
+        == "real_source_vision_initialization_contract_only"
+        and vision_preflight.get("quality_claim_authorized") is False
+        and vision_preflight.get("promotion_claim_authorized") is False
+        and preflight_source.get("model") == vision_hub.get("repo_id")
+        and preflight_source.get("revision") == vision_revision
+        and int(preflight_source.get("source_payload_bytes") or 0) > 0
+        and str(
+            preflight_source.get("selected_content_fingerprint") or ""
+        ).startswith("sha256:"),
+        {
+            "claim_scope": vision_preflight.get("claim_scope"),
+            "model": preflight_source.get("model"),
+            "revision": preflight_source.get("revision"),
+            "payload_bytes": preflight_source.get("source_payload_bytes"),
+            "content_fingerprint": preflight_source.get(
+                "selected_content_fingerprint"
+            ),
+            "quality_claim_authorized": vision_preflight.get(
+                "quality_claim_authorized"
+            ),
+        },
+    )
+    expected_vision_parameters = (
+        None if dual is None else dual.parameters.get("vision")
+    )
+    _check(
+        checks,
+        "executed_vision_transfer_integrity",
+        preflight_target.get("parameters") == expected_vision_parameters
+        and transfer.get("family") == "siglip"
+        and transfer.get("vision_scope") == "transformer_blocks"
+        and transfer.get("shape_policy") == "exact"
+        and transfer.get("all_copied_keys_within_scope") is True
+        and int(transfer.get("shape_skips") or 0) == 0
+        and int(transfer.get("semantic_skips") or 0) == 0
+        and int(transfer.get("missing_source") or 0) == 0
+        and not transfer.get("unhealthy_source_weight_roles")
+        and transfer.get("value_verified") is True
+        and float(
+            transfer.get("realized_component_parameter_fraction") or 0.0
+        )
+        >= 0.95,
+        {
+            "target_vision_parameters": preflight_target.get("parameters"),
+            "compiled_vision_parameters": expected_vision_parameters,
+            "copied_tensors": transfer.get("copied_tensors"),
+            "copied_parameters": transfer.get("copied_parameters"),
+            "realized_component_parameter_fraction": transfer.get(
+                "realized_component_parameter_fraction"
+            ),
+            "shape_skips": transfer.get("shape_skips"),
+            "semantic_skips": transfer.get("semantic_skips"),
+            "missing_source": transfer.get("missing_source"),
+            "scope_valid": transfer.get("all_copied_keys_within_scope"),
+            "value_verified": transfer.get("value_verified"),
+        },
+    )
+
+    selection_audit = validate_source_selection_matrix(
+        source_selection,
+        architecture_report=architecture_report,
+        weight_report=weight_report,
+        profiles=profiles,
+        real_payload_preflights=[
+            language_preflight,
+            vision_preflight,
+        ],
+    )
+    aligned = next(
+        (
+            target
+            for target in source_selection.get("targets", [])
+            if isinstance(target, dict)
+            and target.get("target") == "docvlm-lfm-aligned-814m"
+        ),
+        {},
+    )
+    smol = next(
+        (
+            source
+            for source in aligned.get("sources", [])
+            if isinstance(source, dict)
+            and source.get("model_id") == vision_hub.get("repo_id")
+            and source.get("revision") == vision_revision
+        ),
+        {},
+    )
+    payload = smol.get("real_payload_evidence") or {}
+    actions = smol.get("action_counts") or {}
+    _check(
+        checks,
+        "cross_model_source_selection",
+        selection_audit["status"] == "pass"
+        and source_selection.get("quality_claim_authorized") is False
+        and source_selection.get("promotion_claim_authorized") is False
+        and int(actions.get("direct_copy_candidate") or 0) >= 1
+        and payload.get("status") == "verified"
+        and payload.get("source_content_fingerprint")
+        == preflight_source.get("selected_content_fingerprint"),
+        {
+            "matrix_validation_status": selection_audit["status"],
+            "target": aligned.get("target"),
+            "source": smol.get("model_id"),
+            "direct_copy_candidates": actions.get(
+                "direct_copy_candidate"
+            ),
+            "real_payload_status": payload.get("status"),
+            "quality_claim_authorized": source_selection.get(
+                "quality_claim_authorized"
+            ),
+            "promotion_claim_authorized": source_selection.get(
+                "promotion_claim_authorized"
+            ),
+        },
+    )
+
+    stage_names = {
+        arm: _stage_names(variant) for arm, variant in variants.items()
+    }
+    common_stages = {
+        "acquire_language_checkpoint",
+        "initialize_student",
+        "pretrain",
+        "sft",
+        "rlvr",
+        "evaluate_baseline",
+        "evaluate",
+    }
+    topology_valid = bool(
+        pair_present
+        and common_stages.issubset(stage_names["lfm_language_only"])
+        and common_stages.issubset(stage_names["lfm_smol_dual"])
+        and "acquire_vision_checkpoint"
+        not in stage_names["lfm_language_only"]
+        and "acquire_vision_checkpoint" in stage_names["lfm_smol_dual"]
+    )
+    _check(
+        checks,
+        "single_selective_acquisition",
+        topology_valid,
+        {
+            "language_only_acquires_vision": (
+                "acquire_vision_checkpoint"
+                in stage_names.get("lfm_language_only", [])
+            ),
+            "dual_acquires_vision": (
+                "acquire_vision_checkpoint"
+                in stage_names.get("lfm_smol_dual", [])
+            ),
+            "stage_counts": {
+                arm: len(names) for arm, names in stage_names.items()
+            },
+        },
+    )
+    feasibility_arms = sorted(
+        arm
+        for arm, names in stage_names.items()
+        if "training_feasibility_benchmark" in names
+    )
+    _check(
+        checks,
+        "dual_only_cuda_preflight",
+        feasibility_arms == ["lfm_smol_dual"],
+        {"training_feasibility_arms": feasibility_arms},
+    )
+
+    training_gate = (
+        dual.plan.resolved_blueprint.get("evaluation_gates", [])
+        if dual is not None
+        else []
+    )
+    training_gate = next(
+        (
+            gate
+            for gate in training_gate
+            if gate.get("id") == "training_feasibility"
+        ),
+        {},
+    )
+    _check(
+        checks,
+        "target_gpu_training_contract",
+        training_gate.get("required_device_type") == "cuda"
+        and training_gate.get("required_precision") == "bfloat16"
+        and training_gate.get(
+            "required_resolved_visual_attention_backend"
+        )
+        == "flex"
+        and training_gate.get("require_gradient_checkpointing") is True
+        and training_gate.get(
+            "required_gradient_checkpointing_components"
+        )
+        == ["vision", "connector", "language"]
+        and training_gate.get(
+            "required_gradient_checkpointing_use_reentrant"
+        )
+        is False,
+        {
+            "required_device_type": training_gate.get(
+                "required_device_type"
+            ),
+            "required_precision": training_gate.get(
+                "required_precision"
+            ),
+            "required_visual_backend": training_gate.get(
+                "required_resolved_visual_attention_backend"
+            ),
+            "gradient_checkpointing": training_gate.get(
+                "require_gradient_checkpointing"
+            ),
+            "gradient_checkpointing_components": training_gate.get(
+                "required_gradient_checkpointing_components"
+            ),
+            "gradient_checkpointing_use_reentrant": training_gate.get(
+                "required_gradient_checkpointing_use_reentrant"
+            ),
+        },
+    )
+
+    tracked = {
+        "pretrain",
+        "sft",
+        "rlvr",
+        "evaluate_baseline",
+        "evaluate",
+    }
+    tracking_valid = True
+    tracked_by_arm: dict[str, list[str]] = {}
+    for arm, variant in variants.items():
+        observed = []
+        for stage in variant.plan.stages:
+            if stage.name not in tracked and stage.name != (
+                "training_feasibility_benchmark"
+            ):
+                continue
+            observed.append(stage.name)
+            tracking_valid &= (
+                _command_option(stage.command, "--wandb-project")
+                == "docvlm-ablation"
+                and _command_option(stage.command, "--wandb-entity")
+                == "sbdc"
+                and bool(_command_option(stage.command, "--wandb-run"))
+                and bool(_command_option(stage.command, "--wandb-group"))
+            )
+        expected = set(tracked)
+        if arm == "lfm_smol_dual":
+            expected.add("training_feasibility_benchmark")
+        tracking_valid &= set(observed) == expected
+        tracked_by_arm[arm] = sorted(observed)
+    _check(
+        checks,
+        "observable_wandb_runs",
+        tracking_valid,
+        {
+            "entity": "sbdc",
+            "project": "docvlm-ablation",
+            "stages_by_arm": tracked_by_arm,
+        },
+    )
+
+    policies = {
+        arm: _evaluation_policy(variant)
+        for arm, variant in variants.items()
+    }
+    unique_policies = {
+        json.dumps(policy, sort_keys=True)
+        for policy in policies.values()
+    }
+    policy = next(iter(policies.values()), {})
+    budgets = policy.get("max_new_tokens_by_answer_type") or {}
+    _check(
+        checks,
+        "matched_long_output_policy",
+        len(unique_policies) == 1
+        and policy.get("max_new_tokens") == 128
+        and policy.get("max_new_tokens_hard_cap") == 512
+        and policy.get("repetition_guard_min_tokens") == 24
+        and policy.get("repetition_guard_max_period") == 16
+        and policy.get("repetition_guard_repetitions") == 3
+        and policy.get("sample_selection") == "answer_type_round_robin"
+        and budgets.get("table*") == 512
+        and budgets.get("recognition_fullpage") == 512,
+        {
+            "policy": policy,
+            "matched_across_arms": len(unique_policies) == 1,
+        },
+    )
+
+    generation_gate = (
+        dual.plan.resolved_blueprint.get("evaluation_gates", [])
+        if dual is not None
+        else []
+    )
+    generation_gate = next(
+        (
+            gate
+            for gate in generation_gate
+            if gate.get("id") == "generation_stability"
+        ),
+        {},
+    )
+    patterns = {
+        str(pattern)
+        for pattern in generation_gate.get("answer_type_patterns", [])
+    }
+    _check(
+        checks,
+        "long_output_release_gate",
+        _LONG_OUTPUT_PATTERNS.issubset(patterns)
+        and generation_gate.get("max_degenerate_repetition_rate") == 0.0
+        and float(generation_gate.get("max_token_rate", 1.0)) <= 0.05
+        and generation_gate.get("max_structure_validity_drop") == 0.0,
+        {
+            "answer_type_patterns": sorted(patterns),
+            "max_degenerate_repetition_rate": generation_gate.get(
+                "max_degenerate_repetition_rate"
+            ),
+            "max_token_rate": generation_gate.get("max_token_rate"),
+            "max_structure_validity_drop": generation_gate.get(
+                "max_structure_validity_drop"
+            ),
+        },
+    )
+
+    pilot_spec = dual.plan.raw_spec if dual is not None else {}
+    public_row_cap = _public_row_cap(pilot_spec)
+    synthetic_count = int(
+        pilot_spec.get("synthetic", {}).get("count") or 0
+    )
+    pretraining_steps = int(
+        pilot_spec.get("pretraining", {}).get("max_steps") or 0
+    )
+    sft_steps = int(
+        pilot_spec.get("posttraining", {})
+        .get("sft", {})
+        .get("max_steps")
+        or 0
+    )
+    rlvr_steps = int(
+        pilot_spec.get("posttraining", {})
+        .get("rlvr", {})
+        .get("max_steps")
+        or 0
+    )
+    _check(
+        checks,
+        "bounded_screening_budget",
+        0 < synthetic_count <= 32
+        and public_row_cap is not None
+        and 0 < public_row_cap <= 256
+        and 0 < pretraining_steps <= 25
+        and 0 < sft_steps <= 10
+        and 0 < rlvr_steps <= 5,
+        {
+            "synthetic_train_documents": synthetic_count,
+            "public_row_cap": public_row_cap,
+            "pretraining_steps": pretraining_steps,
+            "sft_steps": sft_steps,
+            "rlvr_steps": rlvr_steps,
+        },
+    )
+
+    statuses = [check["status"] for check in checks]
+    passed = all(status == "pass" for status in statuses)
+    result = {
+        "schema_version": 1,
+        "claim_scope": "smol_vision_transfer_pilot_submission_only",
+        "overall_status": "pass" if passed else "fail",
+        "pilot_submission_authorized": passed,
+        "quality_claim_authorized": False,
+        "target_cuda_feasibility_claim_authorized": False,
+        "sweep": {
+            "name": plan.name,
+            "source": _source_label(sweep_source, repo),
+            "source_fingerprint": _file_fingerprint(sweep_source),
+            "baseline": plan.baseline,
+            "replicates": list(plan.replicates),
+            "arms": sorted(variants),
+        },
+        "real_source_preflights": {
+            "vision": {
+                "source": _source_label(vision_source, repo),
+                "source_fingerprint": _file_fingerprint(vision_source),
+                "claim_scope": vision_preflight.get("claim_scope"),
+            },
+            "language": {
+                "source": _source_label(language_source, repo),
+                "source_fingerprint": _file_fingerprint(language_source),
+                "claim_scope": language_preflight.get("claim_scope"),
+            },
+        },
+        "source_selection": {
+            "source": _source_label(selection_source, repo),
+            "source_fingerprint": _file_fingerprint(selection_source),
+            "report_fingerprint": source_selection.get(
+                "report_fingerprint"
+            ),
+            "architecture_report_fingerprint": _file_fingerprint(
+                architecture_report_source
+            ),
+            "weight_report_fingerprint": _file_fingerprint(
+                weight_report_source
+            ),
+            "catalog_fingerprint": _file_fingerprint(
+                architecture_catalog_source
+            ),
+        },
+        "checks": checks,
+        "counts": {
+            "pass": statuses.count("pass"),
+            "fail": statuses.count("fail"),
+        },
+        "limitations": [
+            "This audit authorizes only submission of the one-seed screening pilot.",
+            "The dual-source CUDA feasibility stage must execute and pass on the target GPU.",
+            "Quality and promotion require a sealed paired multi-seed experiment.",
+        ],
+    }
+    result["fingerprint"] = _fingerprint(result)
+    return result
