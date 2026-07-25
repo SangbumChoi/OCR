@@ -45,6 +45,22 @@ Per-sample evaluation writes `generation_token_budget` and
 completion width continues to drive preference and RLVR FLOP accounting. The complete policy is
 checkpointed as part of each rollout contract, so changing it invalidates resume.
 
+## Tokenized target-fit audit
+
+The production experiment runs `audit_generation_budgets` after the tokenizer and structured
+samples exist but before student initialization. It serializes each target through the same SFT
+dataset contract, counts tokenizer pieces plus EOS, and evaluates the exact evaluation,
+preference, and RLVR policies. The gate requires policy identity and the configured coverage on
+train, validation, and heldout. A continuation run audits its active replay mixture with the
+attested parent tokenizer before SFT.
+
+Budget recommendations use train and validation only. Heldout targets test coverage but never
+alter a recommendation. The JSON artifact contains aggregate length quantiles, coverage,
+near-budget counts, and a bounded list of overflow sample IDs. It deliberately excludes target
+text, repeated completion tokens, and rendered HTML bodies. Complex tables and full pages remain
+inspectable through the rendering audit, while the budget audit stays compact enough to compare
+without duplicating a long context.
+
 ## HTML and full-page integrity
 
 The renderer records total PDF pages separately from rasterized pages. Table and full-text targets
@@ -71,5 +87,6 @@ unreadable pixels.
 - Require zero omitted pages and zero missing cells for table and full-text synthetic examples.
 - Inspect representative all-page canvases at both native and model-input resolution.
 - Keep token-cycle controls identical across training rollout and evaluation checkpoints.
+- Require the tokenized target-fit audit to pass before allocating the student model.
 - Treat a lower token count as a correction only when task score and structural validity do not
   regress.

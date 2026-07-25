@@ -259,6 +259,7 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         "acquire_language_checkpoint",
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
+        "audit_generation_budgets",
     )
 
 

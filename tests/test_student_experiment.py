@@ -45,6 +45,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         "generate_teacher_predictions",
         "apply_teacher_targets",
         "train_tokenizer",
+        "audit_generation_budgets",
         "initialize_student",
         "pretrain",
         "sft",
@@ -117,6 +118,23 @@ def test_default_experiment_compiles_complete_stage_dag():
         stage for stage in plan.stages if stage.name == "train_tokenizer"
     )
     assert "--exclude-teacher-targets" in tokenizer.command
+    audit = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "audit_generation_budgets"
+    )
+    assert audit.dependencies == (
+        "train_tokenizer",
+        "build_train_samples",
+        "build_heldout_samples",
+        "build_validation_samples",
+    )
+    assert audit.command.count("--split") == 3
+    assert audit.command.count("--evaluation-token-budget") == 6
+    assert "--calibration-split" in audit.command
+    assert audit.artifacts[0].path.endswith(
+        "artifacts/data/generation_budget_audit.json"
+    )
     visual_benchmark = next(
         stage for stage in plan.stages if stage.name == "visual_backend_benchmark"
     )
@@ -164,6 +182,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     )
     assert "visual_backend_benchmark" in initialize.dependencies
     assert "training_feasibility_benchmark" in initialize.dependencies
+    assert "audit_generation_budgets" in initialize.dependencies
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
     baseline = next(
         stage for stage in plan.stages if stage.name == "evaluate_baseline"
@@ -286,6 +305,31 @@ def test_experiment_rejects_unbounded_answer_type_generation_budget(tmp_path):
         ValueError,
         match="answer-type generation budgets",
     ):
+        build_experiment_plan(
+            config,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
+
+
+def test_experiment_rejects_invalid_generation_budget_audit(tmp_path):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"]["generation_budget_audit"] = {
+        "enabled": True,
+        "minimum_coverage": 1.1,
+    }
+    config = tmp_path / "invalid-generation-budget-audit.yaml"
+    config.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="minimum_coverage"):
         build_experiment_plan(
             config,
             repo_root=ROOT,

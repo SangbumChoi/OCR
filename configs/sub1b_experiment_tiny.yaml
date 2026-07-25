@@ -95,6 +95,8 @@ posttraining:
 
 evaluation:
   max_new_tokens: 8
+  generation_budget_audit:
+    enabled: false
   max_samples: 1
   use_kv_cache: true
   precision: float32

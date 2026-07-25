@@ -852,6 +852,55 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             {},
         ),
     )
+    generation_budget_audit = evaluation.get("generation_budget_audit") or {}
+    if not isinstance(generation_budget_audit, dict):
+        raise ValueError(
+            "evaluation.generation_budget_audit must be a mapping"
+        )
+    if "enabled" in generation_budget_audit and not isinstance(
+        generation_budget_audit["enabled"],
+        bool,
+    ):
+        raise ValueError(
+            "evaluation.generation_budget_audit.enabled must be a boolean"
+        )
+    if generation_budget_audit.get(
+        "target_mode",
+        "evidence_linked",
+    ) not in {"answer_only", "free_rationale", "evidence_linked"}:
+        raise ValueError(
+            "evaluation.generation_budget_audit.target_mode is unsupported"
+        )
+    minimum_coverage = float(
+        generation_budget_audit.get("minimum_coverage", 1.0)
+    )
+    if not 0.0 < minimum_coverage <= 1.0:
+        raise ValueError(
+            "evaluation.generation_budget_audit.minimum_coverage must be "
+            "within (0, 1]"
+        )
+    for key, default in (
+        ("recommendation_multiple", 32),
+        ("max_overflow_examples", 20),
+    ):
+        value = generation_budget_audit.get(key, default)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+        ):
+            raise ValueError(
+                "evaluation.generation_budget_audit."
+                f"{key} must be a positive integer"
+            )
+    if "require_policy_consistency" in generation_budget_audit and not isinstance(
+        generation_budget_audit["require_policy_consistency"],
+        bool,
+    ):
+        raise ValueError(
+            "evaluation.generation_budget_audit."
+            "require_policy_consistency must be a boolean"
+        )
     if not isinstance(evaluation.get("use_kv_cache"), bool):
         raise ValueError("evaluation.use_kv_cache must be a boolean")
     if evaluation.get("precision", "auto") not in {
@@ -1175,6 +1224,9 @@ def build_experiment_plan(
         continuation_dir / "train_with_replay.manifest.json"
     )
     leakage_report = artifacts / "data" / "split_leakage.json"
+    generation_budget_report = (
+        artifacts / "data" / "generation_budget_audit.json"
+    )
     resolved_blueprint_path = output_root / "resolved_blueprint.yaml"
     component_root = artifacts / "data" / "components"
     acquired_paths: dict[str, Path] = {}
@@ -2047,6 +2099,144 @@ def build_experiment_plan(
         )
     )
 
+    generation_budget_audit = (
+        evaluation_spec.get("generation_budget_audit") or {}
+    )
+    generation_budget_audit_enabled = bool(
+        generation_budget_audit.get("enabled", False)
+    )
+
+    def generation_budget_audit_stage(
+        *,
+        tokenizer_path: Path,
+        training_samples: Path,
+        dependencies: tuple[str, ...],
+    ) -> ExperimentStage:
+        command = [
+            python,
+            script("audit_generation_budgets.py"),
+            "--config",
+            str(resolved_blueprint_path),
+            "--tokenizer",
+            str(tokenizer_path),
+            "--split",
+            f"train={training_samples}",
+            "--split",
+            f"heldout={heldout_samples}",
+        ]
+        if validation_enabled:
+            command.extend(
+                [
+                    "--split",
+                    f"validation={validation_samples}",
+                ]
+            )
+        command.extend(
+            [
+                "--calibration-split",
+                "train",
+            ]
+        )
+        if validation_enabled:
+            command.extend(
+                [
+                    "--calibration-split",
+                    "validation",
+                ]
+            )
+        command.extend(
+            [
+                "--evaluation-base-tokens",
+                str(int(evaluation_spec["max_new_tokens"])),
+                "--evaluation-hard-cap",
+                str(
+                    int(
+                        evaluation_spec.get(
+                            "max_new_tokens_hard_cap",
+                            evaluation_spec["max_new_tokens"],
+                        )
+                    )
+                ),
+                "--target-mode",
+                str(
+                    generation_budget_audit.get(
+                        "target_mode",
+                        "evidence_linked",
+                    )
+                ),
+                "--minimum-coverage",
+                str(
+                    float(
+                        generation_budget_audit.get(
+                            "minimum_coverage",
+                            1.0,
+                        )
+                    )
+                ),
+                "--recommendation-multiple",
+                str(
+                    int(
+                        generation_budget_audit.get(
+                            "recommendation_multiple",
+                            32,
+                        )
+                    )
+                ),
+                "--max-overflow-examples",
+                str(
+                    int(
+                        generation_budget_audit.get(
+                            "max_overflow_examples",
+                            20,
+                        )
+                    )
+                ),
+                "--output",
+                str(generation_budget_report),
+            ]
+        )
+        for pattern, budget in (
+            evaluation_spec.get("max_new_tokens_by_answer_type") or {}
+        ).items():
+            command.extend(
+                [
+                    "--evaluation-token-budget",
+                    f"{pattern}={int(budget)}",
+                ]
+            )
+        if not bool(
+            generation_budget_audit.get(
+                "require_policy_consistency",
+                True,
+            )
+        ):
+            command.append("--allow-policy-mismatch")
+        return ExperimentStage(
+            "audit_generation_budgets",
+            tuple(command),
+            dependencies,
+            (Artifact(str(generation_budget_report)),),
+        )
+
+    if (
+        generation_budget_audit_enabled
+        and continuation_contract is None
+    ):
+        audit_dependencies = [
+            "train_tokenizer",
+            "build_train_samples",
+            "build_heldout_samples",
+        ]
+        if validation_enabled:
+            audit_dependencies.append("build_validation_samples")
+        stages.append(
+            generation_budget_audit_stage(
+                tokenizer_path=tokenizer_dir,
+                training_samples=train_samples,
+                dependencies=tuple(audit_dependencies),
+            )
+        )
+
     init_command = [
         python,
         script("build_sub1b_student.py"),
@@ -2098,6 +2288,12 @@ def build_experiment_plan(
                 *checkpoint_stage_names,
                 *visual_benchmark_stage_names,
                 *training_benchmark_stage_names,
+                *(
+                    ("audit_generation_budgets",)
+                    if generation_budget_audit_enabled
+                    and continuation_contract is None
+                    else ()
+                ),
             ),
             (
                 Artifact(str(initial_dir / "student_config.json")),
@@ -2174,6 +2370,25 @@ def build_experiment_plan(
         posttraining_samples = curriculum_samples
         sft_checkpoint = continuation_contract.checkpoint
         sft_dependencies = ("build_curriculum_samples",)
+        if generation_budget_audit_enabled:
+            audit_dependencies = [
+                "attest_continuation",
+                "build_curriculum_samples",
+                "build_heldout_samples",
+            ]
+            if validation_enabled:
+                audit_dependencies.append("build_validation_samples")
+            stages.append(
+                generation_budget_audit_stage(
+                    tokenizer_path=active_tokenizer,
+                    training_samples=posttraining_samples,
+                    dependencies=tuple(audit_dependencies),
+                )
+            )
+            sft_dependencies = (
+                *sft_dependencies,
+                "audit_generation_budgets",
+            )
 
     posttraining = raw.get("posttraining") or {}
     sft = posttraining.get("sft") or {}

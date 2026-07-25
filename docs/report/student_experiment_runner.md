@@ -9,6 +9,12 @@ of the next synthetic train batch. The full configuration first benchmarks packe
 active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
 and peak memory as a checked run artifact.
 
+After tokenizer training, the production DAG audits exact structured-target token lengths under
+the evaluation, preference, and RLVR budget policies. It derives recommendations from train and
+validation only, checks heldout without tuning on it, and blocks initialization on inadequate
+coverage or policy drift. Its compact JSON stores quantiles and bounded sample-ID diagnostics
+rather than full table HTML or repeated long completions.
+
 To execute that plan for multiple rounds while preserving the complete student and tokenizer, use
 [`student_curriculum_runner.md`](student_curriculum_runner.md). Its continuation DAG skips
 acquisition, tokenizer construction, initialization, and pretraining only after a full-hash parent
@@ -90,7 +96,8 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 24 stages, including target-device visual-backend and full-training preflights,
+The full plan has 25 stages, including target-device visual-backend and full-training preflights,
+the pre-initialization generation-budget audit,
 an initial-checkpoint matched baseline, validation conversion/evaluation, and next-batch
 synthesis planning.
 The CPU contract test disables those deployment preflights and omits the full plan's public-Hub acquisition, leaving
