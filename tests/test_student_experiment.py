@@ -111,6 +111,18 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert evaluate.command[
         evaluate.command.index("--max-new-tokens-hard-cap") + 1
     ] == "512"
+    assert evaluate.command[
+        evaluate.command.index("--repetition-guard-min-tokens") + 1
+    ] == "24"
+    assert evaluate.command[
+        evaluate.command.index("--repetition-guard-max-period") + 1
+    ] == "16"
+    assert evaluate.command[
+        evaluate.command.index("--repetition-guard-repetitions") + 1
+    ] == "3"
+    assert evaluate.command[
+        evaluate.command.index("--sample-selection") + 1
+    ] == "answer_type_round_robin"
     budget_flags = [
         evaluate.command[index + 1]
         for index, value in enumerate(evaluate.command)
@@ -265,6 +277,9 @@ def test_default_experiment_compiles_complete_stage_dag():
         "--precision",
         "--max-new-tokens",
         "--max-new-tokens-hard-cap",
+        "--repetition-guard-min-tokens",
+        "--repetition-guard-max-period",
+        "--repetition-guard-repetitions",
         "--seed",
         "--calibration-source-split",
         "--calibration-fraction",
@@ -352,6 +367,33 @@ def test_experiment_compiles_answer_type_round_robin_evaluation(tmp_path):
     assert evaluate.command[
         evaluate.command.index("--sample-selection") + 1
     ] == "answer_type_round_robin"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("repetition_guard_min_tokens", 0),
+        ("repetition_guard_max_period", False),
+        ("repetition_guard_repetitions", 1),
+    ],
+)
+def test_experiment_rejects_invalid_evaluation_repetition_guard(
+    tmp_path,
+    field,
+    value,
+):
+    raw = yaml.safe_load(
+        (ROOT / "configs" / "sub1b_experiment_tiny.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    raw["evaluation"][field] = value
+    config = tmp_path / "invalid-repetition-guard.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=field):
+        build_experiment_plan(config, repo_root=ROOT, python=sys.executable)
 
 
 def test_capability_smoke_covers_representative_hard_document_cases(tmp_path):

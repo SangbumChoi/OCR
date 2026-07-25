@@ -17,6 +17,9 @@ Student inference, preference rollout, RLVR rollout, and held-out evaluation sha
 When appending a candidate would satisfy all three conditions, generation emits EOS instead. The
 guard is intentionally narrower than no-repeat n-gram decoding. Repeated HTML tags, table columns,
 punctuation, and labels remain legal when they do not form one consecutive trailing cycle.
+The production experiment pins these values explicitly and the experiment compiler forwards them
+to both baseline and final evaluation, so a library default change cannot create an unmatched
+comparison.
 
 Evaluation records `generated_tokens`, `reached_max_new_tokens`, and `degenerate_repetition` per
 sample. Split summaries expose `max_token_rate` and `degenerate_repetition_rate`. Accuracy should
@@ -53,6 +56,8 @@ selector takes one sample from each public `answer_type` before taking a second 
 with deterministic within-type shuffling. It never reads answers, target length, reward, or
 correctness. Baseline and final evaluation therefore retain identical task coverage under a small
 sample budget instead of accidentally omitting tables, grounding, or reasoning slices.
+The production experiment uses this selector as well; it is a no-op when every sample is evaluated
+and preserves task coverage when a pilot applies `max_samples`.
 
 ## Tokenized target-fit audit
 

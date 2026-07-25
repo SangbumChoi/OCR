@@ -192,6 +192,9 @@ posttraining:
 evaluation:
   max_new_tokens: 128
   max_new_tokens_hard_cap: 512
+  repetition_guard_min_tokens: 24
+  repetition_guard_max_period: 16
+  repetition_guard_repetitions: 3
   max_new_tokens_by_answer_type:
     ocr-full: 512
     reading-order: 384
@@ -213,6 +216,7 @@ evaluation:
     max_overflow_examples: 20
     require_policy_consistency: true
   max_samples: null
+  sample_selection: answer_type_round_robin
   use_kv_cache: true
   precision: bfloat16
   seed: 31

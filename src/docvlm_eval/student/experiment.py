@@ -974,6 +974,20 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
         "answer_type_round_robin",
     }:
         raise ValueError("evaluation.sample_selection is unsupported")
+    for key, default, minimum in (
+        ("repetition_guard_min_tokens", 24, 1),
+        ("repetition_guard_max_period", 16, 1),
+        ("repetition_guard_repetitions", 3, 2),
+    ):
+        value = evaluation.get(key, default)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < minimum
+        ):
+            raise ValueError(
+                f"evaluation.{key} must be an integer at least {minimum}"
+            )
     validate_generation_token_budget_policy(
         base_tokens=evaluation["max_new_tokens"],
         hard_cap=evaluation.get(
@@ -2826,6 +2840,12 @@ def build_experiment_plan(
                 )
             )
         ),
+        "--repetition-guard-min-tokens",
+        str(int(evaluation.get("repetition_guard_min_tokens", 24))),
+        "--repetition-guard-max-period",
+        str(int(evaluation.get("repetition_guard_max_period", 16))),
+        "--repetition-guard-repetitions",
+        str(int(evaluation.get("repetition_guard_repetitions", 3))),
         "--seed",
         str(int(evaluation.get("seed", 0))),
     ]
