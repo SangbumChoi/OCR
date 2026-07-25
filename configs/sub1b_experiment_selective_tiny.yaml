@@ -1,0 +1,142 @@
+# CPU contract smoke for cross-architecture selective transfer and feedback planning.
+# Source fixtures contain deterministic random weights and do not support quality claims.
+
+schema_version: 1
+name: docvlm-selective-tiny-smoke
+blueprint: configs/sub1b_architecture.yaml
+output_root: outputs/docvlm-selective-tiny-smoke
+
+method_evidence:
+  enabled: false
+
+weight_commonality:
+  enabled: false
+
+runtime:
+  device: cpu
+  visual_backend_benchmark:
+    enabled: false
+  training_feasibility_benchmark:
+    enabled: false
+
+synthetic:
+  enabled: true
+  config: configs/synth_data.yaml
+  cases: [hard_table]
+  count: 2
+  train_count: null
+  validation_count: 2
+  heldout_count: null
+  difficulty_level: 2
+  train_seed: 117
+  validation_seed: 10117
+  heldout_seed: 20117
+  no_degrade: true
+  variant: clean
+  training_policy_plan: null
+  adaptation_policy:
+    enabled: true
+    config: configs/sub1b_synthesis_policy.yaml
+    budget: 4
+    seed: 30117
+
+data:
+  components:
+    - name: synthetic_documents
+      path: "@synthetic"
+      weight: 1.0
+
+sequence_teacher:
+  enabled: true
+  model: dummy-echo
+  revision: null
+  predictions: null
+  device: cpu
+  dtype: float32
+  max_new_tokens: 16
+  temperature: 0.0
+  min_score: 0.8
+  min_acceptance_rate: 0.0
+  max_requests: 4
+  accepted_target_count: null
+  selection_seed: 107
+  target_probability: 0.5
+  target_format: answer
+  seed: 107
+
+tokenizer:
+  vocab_size: 512
+  min_frequency: 1
+  include_teacher_targets: false
+  no_progress: true
+
+initialization:
+  arm: I5_structured_mlp
+  seed: 105
+  device: cpu
+  allow_full_memory: false
+  tiny: true
+  vision_family: student
+  vision_source:
+    fixture:
+      seed: 1001
+      vocab_size: 512
+      vision_layers: 3
+      language_layers: 2
+      language_mlp_width: 256
+  language_family: student
+  language_source:
+    fixture:
+      seed: 1003
+      vocab_size: 512
+      vision_layers: 2
+      language_layers: 3
+      language_mlp_width: 320
+
+continuation:
+  enabled: false
+
+pretraining:
+  max_steps: 1
+  batch_size: 1
+  num_workers: 0
+  eval_group_by: component
+  no_grounding: false
+
+posttraining:
+  sft:
+    max_steps: 1
+    num_workers: 0
+    target_mode: evidence_linked
+  preference:
+    enabled: false
+    max_steps: null
+  rlvr:
+    enabled: true
+    max_steps: 1
+    replay_every_steps: 1
+    replay_loss_coefficient: 0.10
+    replay_samples: null
+
+evaluation:
+  max_new_tokens: 8
+  generation_budget_audit:
+    enabled: false
+  max_samples: 2
+  use_kv_cache: true
+  precision: float32
+  seed: 131
+  temperature_calibration:
+    enabled: false
+    source_split: heldout
+    fraction: 0.2
+    min_samples: 20
+    correct_threshold: 0.5
+    min_temperature: 0.05
+    max_temperature: 20.0
+    seed: 147
+  wandb_project: null
+  wandb_tags: [native-student, selective-transfer, smoke]
+  baseline_checkpoint_stage: initial
+  baseline_evaluation: null
+  monolingual_control_evaluation: null

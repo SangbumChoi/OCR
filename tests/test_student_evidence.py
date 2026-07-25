@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from docvlm_eval.student.checkpoint import checkpoint_content_identity
 from docvlm_eval.student.evidence import (
     build_experiment_attestation,
     verify_experiment_attestation,
@@ -504,3 +505,49 @@ def test_attestation_binds_transfer_lineage_to_planned_source_content(
     assert mismatching_attestation["contract_status"] == "fail"
     assert mismatching_check["status"] == "fail"
     assert mismatching_check["evidence"]["sources"][0]["matches"] is False
+
+
+def test_attestation_binds_generated_fixture_transfer_content(tmp_path):
+    fixture_path = (
+        tmp_path
+        / "fixture"
+        / "run"
+        / "artifacts"
+        / "initialization_sources"
+        / "vision_fixture"
+    )
+    fixture_path.mkdir(parents=True)
+    (fixture_path / "model.pt").write_bytes(b"test")
+    source_identity = checkpoint_content_identity(fixture_path)
+    lineage, _ = _transfer_lineage()
+    report = dict(lineage["transfer_reports"][0])
+    report["source_identity"] = source_identity
+    lineage = build_initialization_lineage(
+        initialization_arm="I1_vision",
+        initialization_seed=5,
+        transfer_reports=[report],
+        architecture_fingerprint="sha256:test-architecture",
+    )
+    plan = _evidence_plan(
+        tmp_path / "fixture",
+        initialization_lineage=lineage,
+        input_fingerprints={
+            "initialization_vision_fixture": {
+                "sha256": f"sha256:{'f' * 64}",
+            }
+        },
+    )
+
+    attestation = build_experiment_attestation(plan, repo_root=ROOT)
+    source_check = next(
+        check
+        for check in attestation["contract_checks"]
+        if check["id"] == "selective_transfer_source_identity"
+    )
+
+    assert source_check["status"] == "pass"
+    assert source_check["evidence"]["sources"][0]["matches"] is True
+    assert (
+        source_check["evidence"]["sources"][0]["expected_source"]
+        == "generated_fixture"
+    )

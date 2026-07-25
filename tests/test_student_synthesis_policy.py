@@ -91,6 +91,10 @@ def _reward_routed_config():
         "coefficient": 1.0,
         "prior_strength": 1.0,
         "components": {
+            "structural_validity": {
+                "weight": 1.0,
+                "cases": ["*"],
+            },
             "table_tree_similarity": {
                 "weight": 1.0,
                 "cases": ["hard_table"],
@@ -308,6 +312,30 @@ def test_reward_routing_rejects_changed_baseline_applicability():
             [baseline],
             _reward_routed_config(),
         )
+
+
+def test_structural_failure_routes_when_task_rewards_are_inapplicable():
+    row = _row("en", 0.0, 0.0, False)
+    row["applicable_rewards"] = []
+    row["reward_components"] = {}
+    baseline = json.loads(json.dumps(row))
+
+    plan = _plan_with_baseline(
+        [row],
+        [baseline],
+        _reward_routed_config(),
+    )
+
+    structural = plan["reward_component_statistics"][
+        "structural_validity"
+    ]
+    assert structural["n"] == 1
+    assert structural["mean_deficit"] == 1.0
+    assert structural["routed_utility"] == 1.0
+    assert all(
+        job["reward_route_evidence_count"] >= 1
+        for job in plan["jobs"]
+    )
 
 
 def test_reward_routing_rejects_resigned_job_tampering():

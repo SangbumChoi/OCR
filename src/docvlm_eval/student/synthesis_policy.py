@@ -21,6 +21,7 @@ POLICY_FACTORS = (
 )
 COMPOSITION_TIERS = {"single_document", "multi_page", "multi_document"}
 ROUTABLE_REWARD_COMPONENTS = {
+    "structural_validity",
     "answer_correctness",
     "normalized_text_similarity",
     "box_iou",
@@ -471,13 +472,24 @@ def _applicable_reward_components(
         raise ValueError(
             "reward-routed evaluation rows require applicable_rewards"
         )
-    return set(raw)
+    if not isinstance(row.get("structurally_valid"), bool):
+        raise ValueError(
+            "reward-routed evaluation rows require structurally_valid"
+        )
+    return {*raw, "structural_validity"}
 
 
 def _reward_component_value(
     row: Mapping[str, Any],
     component: str,
 ) -> float:
+    if component == "structural_validity":
+        value = row.get("structurally_valid")
+        if not isinstance(value, bool):
+            raise ValueError(
+                "structural_validity requires a boolean structure diagnostic"
+            )
+        return float(value)
     raw = row.get("reward_components")
     if not isinstance(raw, dict):
         raise ValueError(

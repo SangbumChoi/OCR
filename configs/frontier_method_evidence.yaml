@@ -249,7 +249,9 @@ methods:
       - path: tests/test_student_rewards.py
         anchors: ["test_chart_grounding_and_rationale_rewards_are_independently_reported"]
       - path: tests/test_student_synthesis_policy.py
-        anchors: ["test_decomposed_reward_deficit_routes_the_next_generator_family"]
+        anchors:
+          - "test_decomposed_reward_deficit_routes_the_next_generator_family"
+          - "test_structural_failure_routes_when_task_rewards_are_inapplicable"
   O02:
     claim: Grounding optimization uses generalized IoU with explicit box parameterization.
     implementation:

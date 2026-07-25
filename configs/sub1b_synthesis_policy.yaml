@@ -34,6 +34,9 @@ reward_routing:
   coefficient: 0.35
   prior_strength: 4.0
   components:
+    structural_validity:
+      weight: 0.10
+      cases: ["*"]
     answer_correctness:
       weight: 0.25
       cases: ["*"]

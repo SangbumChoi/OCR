@@ -199,3 +199,22 @@ The LFM-specific aligned profile and three-arm paired sweep are documented in
 [`student_lfm_language_transfer_sweep.md`](student_lfm_language_transfer_sweep.md). Its meta-device
 preflight executes the real adapter and proves an 80.49% language-parameter transfer dose before
 checkpoint payloads are downloaded.
+
+## Executed CPU transfer contract
+
+[`configs/sub1b_experiment_selective_tiny.yaml`](../../configs/sub1b_experiment_selective_tiny.yaml)
+materializes deterministic cross-architecture fixture checkpoints inside the experiment DAG.
+The vision source has three layers while the target copies the selected depth into its smaller
+component. The language source has three layers and a 320-wide MLP while the target uses a
+different MLP width, forcing the `structured_mlp` channel-selection path.
+
+The verified 2026-07-25 run copied 50,048 vision parameters, or 59.92% of the target vision
+component, above its 40% floor. It copied 205,632 language parameters, including 98,304 through
+three structured tensors, for 59.32% of the target language component, above its 25% floor.
+Both reports passed copied-value verification and were bound to the generated source checkpoint
+content. All 23 stages completed and the evidence attestation passed the execution contract.
+
+This test establishes that selective transfer survives the complete training and feedback loop.
+Because both sources contain deterministic random weights and the 587,019-parameter target trains
+for one step per phase, its failed capability gate is expected and no quality claim is authorized.
+Use the pinned-source matched sweeps above for the causal quality comparison.

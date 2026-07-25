@@ -240,11 +240,13 @@ def _checkpoint_sources(
     dict[str, str],
     dict[str, HubCheckpointSpec],
     dict[str, Path],
+    dict[str, dict[str, Any]],
     dict[str, Any],
 ]:
     resolved: dict[str, str] = {}
     hub_specs: dict[str, HubCheckpointSpec] = {}
     manifests: dict[str, Path] = {}
+    fixture_specs: dict[str, dict[str, Any]] = {}
     fingerprints: dict[str, Any] = {}
     for component in ("vision", "language"):
         source = initialization.get(f"{component}_source")
@@ -261,9 +263,76 @@ def _checkpoint_sources(
                 _checkpoint_path_fingerprint(path)
             )
             continue
-        if not isinstance(source, dict) or not isinstance(source.get("hub"), dict):
+        if isinstance(source, dict) and isinstance(
+            source.get("fixture"),
+            dict,
+        ):
+            if not bool(initialization.get("tiny", False)):
+                raise ValueError(
+                    "initialization checkpoint fixtures require tiny=true"
+                )
+            if family != "student":
+                raise ValueError(
+                    "initialization checkpoint fixtures require family=student"
+                )
+            fixture = dict(source["fixture"])
+            expected = {
+                "seed",
+                "vocab_size",
+                "vision_layers",
+                "language_layers",
+                "language_mlp_width",
+            }
+            if set(fixture) != expected:
+                raise ValueError(
+                    "initialization checkpoint fixture must define seed, "
+                    "vocab_size, vision_layers, language_layers, and "
+                    "language_mlp_width"
+                )
+            normalized = {
+                key: int(fixture[key])
+                for key in sorted(expected)
+            }
+            if (
+                normalized["seed"] < 0
+                or normalized["vocab_size"] < 260
+                or normalized["vision_layers"] <= 0
+                or normalized["language_layers"] <= 0
+                or normalized["language_mlp_width"] <= 0
+            ):
+                raise ValueError(
+                    "initialization checkpoint fixture values are invalid"
+                )
+            output = (
+                artifacts
+                / "initialization_sources"
+                / f"{component}_fixture"
+            )
+            resolved[component] = str(output)
+            fixture_specs[component] = {
+                **normalized,
+                "output": str(output),
+            }
+            fingerprints[f"initialization_{component}_fixture"] = {
+                "component": component,
+                "family": family,
+                "spec": normalized,
+                "sha256": _fingerprint(
+                    {
+                        "component": component,
+                        "family": family,
+                        "spec": normalized,
+                    }
+                ),
+            }
+            continue
+        if not isinstance(source, dict) or not isinstance(
+            source.get("hub"),
+            dict,
+        ):
             raise ValueError(
-                f"initialization.{component}_source must be a path or a hub mapping"
+                f"initialization.{component}_source must be a path, hub "
+                "mapping, or tiny fixture mapping"
             )
         hub = source["hub"]
         checkpoint_kwargs: dict[str, Any] = {}
@@ -285,7 +354,13 @@ def _checkpoint_sources(
         resolved[component] = f"@checkpoint:{component}"
         hub_specs[component] = spec
         manifests[component] = manifest
-    return resolved, hub_specs, manifests, fingerprints
+    return (
+        resolved,
+        hub_specs,
+        manifests,
+        fixture_specs,
+        fingerprints,
+    )
 
 
 def _require_mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
@@ -1395,6 +1470,7 @@ def build_experiment_plan(
         initialization_sources,
         checkpoint_specs,
         checkpoint_manifests,
+        checkpoint_fixture_specs,
         checkpoint_fingerprints,
     ) = _checkpoint_sources(
         initialization,
@@ -1794,6 +1870,37 @@ def build_experiment_plan(
         )
 
     checkpoint_stage_names: list[str] = []
+    for component, fixture in checkpoint_fixture_specs.items():
+        stage_name = f"build_{component}_fixture_checkpoint"
+        output = Path(fixture["output"])
+        stages.append(
+            ExperimentStage(
+                stage_name,
+                (
+                    python,
+                    script("build_tiny_transfer_source.py"),
+                    "--output",
+                    str(output),
+                    "--seed",
+                    str(fixture["seed"]),
+                    "--vocab-size",
+                    str(fixture["vocab_size"]),
+                    "--vision-layers",
+                    str(fixture["vision_layers"]),
+                    "--language-layers",
+                    str(fixture["language_layers"]),
+                    "--language-mlp-width",
+                    str(fixture["language_mlp_width"]),
+                ),
+                (),
+                (
+                    Artifact(str(output / "student_config.json")),
+                    Artifact(str(output / "model.pt")),
+                    Artifact(str(output / "metadata.json")),
+                ),
+            )
+        )
+        checkpoint_stage_names.append(stage_name)
     for component, spec in checkpoint_specs.items():
         stage_name = f"acquire_{component}_checkpoint"
         manifest = checkpoint_manifests[component]

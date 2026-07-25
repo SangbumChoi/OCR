@@ -150,7 +150,9 @@ the final and baseline row for a sample; a changed verifier mask fails rather th
 spurious gain. Components are routed only to generator families that can author their ground
 truth. Table-tree deficits target table-bearing families, chart tolerance targets chart-bearing
 families, and formula equivalence targets scientific pages. Answer, text, box, rationale, and
-abstention components can route across all families.
+abstention components can route across all families. Boolean structural validity is always
+applicable, so an early checkpoint whose every response is malformed still produces a residual
+deficit and a valid next-batch plan instead of losing every task-specific verifier signal.
 
 The candidate priority becomes:
 

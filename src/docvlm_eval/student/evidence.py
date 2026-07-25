@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from .checkpoint import checkpoint_content_identity
 from .experiment import (
     ExperimentPlan,
     ExperimentRunner,
@@ -286,6 +287,15 @@ def _semantic_evidence(
                 plan_record.get("content_fingerprint")
                 or plan_record.get("sha256")
             )
+        fixture_record = plan.input_fingerprints.get(
+            f"initialization_{component}_fixture"
+        )
+        fixture_path = (
+            root
+            / "artifacts"
+            / "initialization_sources"
+            / f"{component}_fixture"
+        )
         manifest_path = (
             root
             / "artifacts"
@@ -294,7 +304,14 @@ def _semantic_evidence(
         )
         expected_source = "experiment_input"
         source_records_match = True
-        if manifest_path.is_file():
+        if isinstance(fixture_record, dict) and fixture_path.exists():
+            fixture_identity = checkpoint_content_identity(fixture_path)
+            expected_fingerprint = fixture_identity["content_fingerprint"]
+            source_records_match = (
+                source_identity.get("files") == fixture_identity["files"]
+            )
+            expected_source = "generated_fixture"
+        elif manifest_path.is_file():
             manifest = _read_json(manifest_path)
             manifest_files = {
                 str(record.get("path")): record

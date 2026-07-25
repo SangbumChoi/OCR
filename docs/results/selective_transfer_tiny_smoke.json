@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "executed_on": "2026-07-25",
+  "experiment": "configs/sub1b_experiment_selective_tiny.yaml",
+  "initialization_arm": "I5_structured_mlp",
+  "claim_scope": "execution_contract_only",
+  "quality_claim_authorized": false,
+  "pipeline": {
+    "stage_count": 23,
+    "complete": true,
+    "contract_status": "pass",
+    "capability_status": "fail",
+    "attestation_sha256": "sha256:17dc2b3b1974ebce77d8e4a17f721b1694411856618a4d627a604aec5d2a2002"
+  },
+  "target": {
+    "total_parameters": 587019,
+    "initialization_lineage_fingerprint": "sha256:8019f5f8bce3d33038e3bf98457a4bbcf4aa89b5523ba07f5860580a89497ff3"
+  },
+  "transfers": {
+    "vision": {
+      "source_content_fingerprint": "sha256:fec9bdf9942671120c93146a37dc3ac5d2f96869064342e23771af9e1d8c848e",
+      "copied_tensors": 21,
+      "copied_parameters": 50048,
+      "realized_component_parameter_fraction": 0.5992337164750958,
+      "minimum_component_parameter_fraction": 0.4,
+      "value_verified": true
+    },
+    "language": {
+      "source_content_fingerprint": "sha256:fe380da0de0cc357e42feff02946f222b231213d6e91f7a930bafb0fa51eb342",
+      "copied_tensors": 16,
+      "structured_tensors": 3,
+      "copied_parameters": 205632,
+      "structured_parameters": 98304,
+      "realized_component_parameter_fraction": 0.5932422451994092,
+      "minimum_component_parameter_fraction": 0.25,
+      "value_verified": true
+    }
+  },
+  "feedback_plan": {
+    "schema_version": 3,
+    "budget": 4,
+    "candidate_count": 191,
+    "job_count": 4,
+    "training_authorized": true,
+    "plan_fingerprint": "sha256:631ab35b4dd51b541c0e2a37d8680c07762046440b472f991853ef69cdc98da3"
+  },
+  "limitations": [
+    "The source checkpoints contain deterministic random fixture weights.",
+    "The target executes one optimizer step per training phase.",
+    "No transfer-quality or deployment-capability conclusion is authorized."
+  ]
+}

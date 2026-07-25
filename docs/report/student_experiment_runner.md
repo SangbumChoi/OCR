@@ -121,6 +121,23 @@ python scripts/run_student_experiment.py \
   --experiment configs/sub1b_experiment_tiny.yaml
 ```
 
+The selective-transfer CPU contract adds deterministic, differently shaped vision and language
+fixture checkpoints. Its 23 stages execute real exact and structured-MLP transfer before the same
+pretraining, SFT, RLVR, matched evaluation, and schema-v3 feedback-plan path:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_selective_tiny.yaml \
+  --no-resume
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment_selective_tiny.yaml
+```
+
+The fixture weights are random and authorize only an execution-contract claim. They do not
+substitute for the pinned-source, multi-seed GPU sweep required to claim a quality benefit.
+The committed compact result is
+[`selective_transfer_tiny_smoke.json`](../results/selective_transfer_tiny_smoke.json).
+
 The resolved full blueprint uses a hard 20B effective-token pretraining budget. It repeats
 deterministic sampler epochs until that counter is reached; `pretraining.max_steps` is a deliberate
 smoke or ablation ceiling. Checkpoints preserve supervised, text, and effective counters so a

@@ -1093,6 +1093,63 @@ def test_experiment_fingerprints_local_initialization_sources(tmp_path):
     )
 
 
+def test_selective_tiny_smoke_compiles_cross_architecture_fixtures():
+    plan = build_experiment_plan(
+        ROOT / "configs" / "sub1b_experiment_selective_tiny.yaml",
+        repo_root=ROOT,
+        python=sys.executable,
+    )
+    assert plan.stage_names[:2] == [
+        "build_vision_fixture_checkpoint",
+        "build_language_fixture_checkpoint",
+    ]
+    initialize = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "initialize_student"
+    )
+    assert initialize.dependencies == (
+        "train_tokenizer",
+        "build_vision_fixture_checkpoint",
+        "build_language_fixture_checkpoint",
+    )
+    assert (
+        plan.input_fingerprints["initialization_vision_fixture"]["spec"][
+            "vision_layers"
+        ]
+        == 3
+    )
+    assert (
+        plan.input_fingerprints["initialization_language_fixture"]["spec"][
+            "language_mlp_width"
+        ]
+        == 320
+    )
+    assert plan.stage_names[-1] == "plan_next_synthetic_batch"
+
+
+def test_checkpoint_fixtures_are_restricted_to_tiny_experiments(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT / "configs" / "sub1b_experiment_selective_tiny.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["initialization"]["tiny"] = False
+    raw["output_root"] = str(tmp_path / "output")
+    path = tmp_path / "experiment.yaml"
+    path.write_text(
+        yaml.safe_dump(raw, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="fixtures require tiny=true"):
+        build_experiment_plan(
+            path,
+            repo_root=ROOT,
+            python=sys.executable,
+        )
+
+
 def test_experiment_wires_resume_stable_wandb_runs_to_training_stages(
     tmp_path,
 ):
