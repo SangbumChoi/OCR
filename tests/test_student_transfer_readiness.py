@@ -39,7 +39,7 @@ def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
     assert result["pilot_submission_authorized"] is True
     assert result["quality_claim_authorized"] is False
     assert result["target_cuda_feasibility_claim_authorized"] is False
-    assert result["counts"] == {"pass": 13, "fail": 0}
+    assert result["counts"] == {"pass": 14, "fail": 0}
 
 
 def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(

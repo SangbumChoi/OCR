@@ -349,6 +349,59 @@ def audit_lfm_transfer_pilot(
         {"training_feasibility_arms": feasibility_arms},
     )
 
+    training_gate = (
+        transfer_variant.plan.resolved_blueprint.get("evaluation_gates", [])
+        if transfer_variant is not None
+        else []
+    )
+    training_gate = next(
+        (
+            gate
+            for gate in training_gate
+            if gate.get("id") == "training_feasibility"
+        ),
+        {},
+    )
+    _check(
+        checks,
+        "target_gpu_training_contract",
+        training_gate.get("required_device_type") == "cuda"
+        and training_gate.get("required_precision") == "bfloat16"
+        and training_gate.get(
+            "required_resolved_visual_attention_backend"
+        )
+        == "flex"
+        and training_gate.get("require_gradient_checkpointing") is True
+        and training_gate.get(
+            "required_gradient_checkpointing_components"
+        )
+        == ["vision", "connector", "language"]
+        and training_gate.get(
+            "required_gradient_checkpointing_use_reentrant"
+        )
+        is False,
+        {
+            "required_device_type": training_gate.get(
+                "required_device_type"
+            ),
+            "required_precision": training_gate.get(
+                "required_precision"
+            ),
+            "required_visual_backend": training_gate.get(
+                "required_resolved_visual_attention_backend"
+            ),
+            "gradient_checkpointing": training_gate.get(
+                "require_gradient_checkpointing"
+            ),
+            "gradient_checkpointing_components": training_gate.get(
+                "required_gradient_checkpointing_components"
+            ),
+            "gradient_checkpointing_use_reentrant": training_gate.get(
+                "required_gradient_checkpointing_use_reentrant"
+            ),
+        },
+    )
+
     tracked_stage_names = {
         "pretrain",
         "sft",

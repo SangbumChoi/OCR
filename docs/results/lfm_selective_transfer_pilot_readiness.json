@@ -120,6 +120,22 @@
     },
     {
       "evidence": {
+        "gradient_checkpointing": true,
+        "gradient_checkpointing_components": [
+          "vision",
+          "connector",
+          "language"
+        ],
+        "gradient_checkpointing_use_reentrant": false,
+        "required_device_type": "cuda",
+        "required_precision": "bfloat16",
+        "required_visual_backend": "flex"
+      },
+      "id": "target_gpu_training_contract",
+      "status": "pass"
+    },
+    {
+      "evidence": {
         "entity": "sbdc",
         "project": "docvlm-ablation",
         "stages_by_arm": {
@@ -215,9 +231,9 @@
   "claim_scope": "lfm_selective_transfer_pilot_submission_only",
   "counts": {
     "fail": 0,
-    "pass": 13
+    "pass": 14
   },
-  "fingerprint": "sha256:354aac3bbc5611abe949f0a00f5db42f56c3f85ac478d132b83751076dd11e12",
+  "fingerprint": "sha256:1d0a305445842420c0539d168ec07194fe89638ac751248068381e8ad691dd03",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",

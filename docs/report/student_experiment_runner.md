@@ -234,6 +234,9 @@ optimizer steps to advance, exact agreement with the production optimizer contra
 and gradients, and effective peak reserved memory below
 95% of device memory. It also requires the benchmark to use the exact production
 `vision`/`connector`/`language` non-reentrant activation-checkpointing contract.
+The report must explicitly attest native CUDA BF16 hardware support. A T4 report is rejected even
+if the framework accepts a BF16 dtype request, because silently emulated or downgraded precision is
+not the declared production experiment.
 
 Run both authoritative target-GPU preflights before committing to a full training job:
 

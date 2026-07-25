@@ -345,6 +345,7 @@ def _training_report(
             "device_type": "cuda",
             "device_name": "test-gpu",
             "device_total_memory_bytes": 40 * 1024**3,
+            "bfloat16_supported": True,
         },
         "parameter_count": 799_919_884,
         "status": status,
@@ -625,6 +626,16 @@ def test_reliability_gate_rejects_calibration_that_worsens_ece():
             "resolved_visual_attention_backend",
         ),
         (
+            {
+                **_training_report(),
+                "environment": {
+                    **_training_report()["environment"],
+                    "bfloat16_supported": False,
+                },
+            },
+            "bfloat16_hardware_support",
+        ),
+        (
             _training_report(all_finite=False),
             "non_finite_training_values",
         ),
@@ -659,6 +670,20 @@ def test_training_feasibility_gate_requires_steady_contrastive_memory():
     assert gate["status"] == "insufficient_evidence"
     assert gate["evidence"]["contrastive_memory_size"] is None
     assert gate["evidence"]["contrastive_negative_pairs"] is None
+
+
+def test_training_feasibility_gate_requires_bfloat16_hardware_evidence():
+    from docvlm_eval.student.gates import (
+        evaluate_training_feasibility_gate,
+    )
+
+    report = _training_report()
+    del report["environment"]["bfloat16_supported"]
+
+    gate = evaluate_training_feasibility_gate(_blueprint(), report)
+
+    assert gate["status"] == "insufficient_evidence"
+    assert gate["evidence"]["bfloat16_supported"] is None
 
 
 def test_training_feasibility_gate_rejects_optimizer_mismatch():

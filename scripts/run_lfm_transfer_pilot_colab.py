@@ -54,6 +54,10 @@ def _gpu_evidence() -> dict[str, Any]:
         "device": device,
         "name": properties.name,
         "total_memory_bytes": int(properties.total_memory),
+        "compute_capability": list(
+            torch.cuda.get_device_capability(device)
+        ),
+        "bfloat16_supported": bool(torch.cuda.is_bf16_supported()),
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
     }
@@ -182,6 +186,11 @@ def main() -> None:
         gpu = environment["gpu"]
         if not gpu.get("available"):
             raise SystemExit(str(gpu.get("reason") or "CUDA is unavailable"))
+        if not gpu.get("bfloat16_supported"):
+            raise SystemExit(
+                "the production pilot requires native CUDA bfloat16 support; "
+                "T4 is not compatible, use an L4, A10, A100, or newer GPU"
+            )
         if int(gpu["total_memory_bytes"]) < args.min_gpu_gib * 2**30:
             raise SystemExit(
                 f"need at least {args.min_gpu_gib:g} GiB GPU memory"

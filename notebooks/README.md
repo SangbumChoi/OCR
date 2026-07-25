@@ -12,7 +12,9 @@ For the native 814M LFM selective-transfer screening experiment, use
 [`lfm_selective_transfer_pilot.ipynb`](lfm_selective_transfer_pilot.ipynb). It runs the fail-closed
 readiness audit first, requires W&B authentication and sufficient GPU/disk capacity, resumes valid
 stages, writes full logs to the sweep output directory, and prints only compact progress summaries.
-Do not use the legacy LoRA ablation notebook as evidence for the native student.
+It requires native CUDA BF16 support (L4, A10, A100, or newer); a T4 is valid for the comparison
+notebook above but not for this production-precision training pilot. Do not use the legacy LoRA
+ablation notebook as evidence for the native student.
 
 ## Option B — paste ONE cell into your existing Colab
 ```python

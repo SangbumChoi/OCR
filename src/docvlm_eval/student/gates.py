@@ -1332,6 +1332,7 @@ def _training_feasibility(
         "device_total_memory_bytes": environment.get(
             "device_total_memory_bytes"
         ),
+        "bfloat16_supported": environment.get("bfloat16_supported"),
         "precision": benchmark.get("resolved_precision"),
         "micro_batch_size": benchmark.get("micro_batch_size"),
         "grad_accum_steps": benchmark.get("grad_accum_steps"),
@@ -1410,6 +1411,13 @@ def _training_feasibility(
             and int(benchmark["warmup_steps"]) >= minimum_warmup
             and int(benchmark["measured_steps"]) >= minimum_measured
             and benchmark["resolved_precision"] == required_precision
+            and (
+                required_precision != "bfloat16"
+                or isinstance(
+                    environment.get("bfloat16_supported"),
+                    bool,
+                )
+            )
             and bool(benchmark["gradient_checkpointing"])
             == bool(gate["require_gradient_checkpointing"])
             and list(
@@ -1475,6 +1483,11 @@ def _training_feasibility(
     violations = []
     if report.get("resolved_visual_attention_backend") != required_backend:
         violations.append("resolved_visual_attention_backend")
+    if (
+        required_precision == "bfloat16"
+        and environment.get("bfloat16_supported") is False
+    ):
+        violations.append("bfloat16_hardware_support")
     if not report.get("all_finite"):
         violations.append("non_finite_training_values")
     if not report.get("all_optimizer_steps_succeeded"):
