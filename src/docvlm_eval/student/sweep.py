@@ -1059,6 +1059,34 @@ def compile_sweep_plan(
                         ]
                     )
                 )
+            benchmark_sections = {
+                "visual_backend_benchmark": experiment.setdefault(
+                    "runtime", {}
+                ).setdefault("visual_backend_benchmark", {}),
+                "training_feasibility_benchmark": experiment["runtime"].setdefault(
+                    "training_feasibility_benchmark",
+                    {},
+                ),
+            }
+            for stage_name, section in benchmark_sections.items():
+                section["wandb_group"] = name
+                section["wandb_run"] = (
+                    f"{name}--{run_id}--{stage_name}"
+                )
+                stage_tags = [
+                    str(tag) for tag in section.get("wandb_tags") or []
+                ]
+                section["wandb_tags"] = list(
+                    dict.fromkeys(
+                        [
+                            *stage_tags,
+                            "native-student-sweep",
+                            f"stage:{stage_name}",
+                            f"variant:{variant_id}",
+                            f"replicate:{replicate_id}",
+                        ]
+                    )
+                )
             _atomic_write_yaml(blueprint_path, blueprint)
             _atomic_write_yaml(experiment_path, experiment)
 

@@ -120,6 +120,38 @@
     },
     {
       "evidence": {
+        "entity": "sbdc",
+        "project": "docvlm-ablation",
+        "stages_by_arm": {
+          "lfm_random": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft"
+          ],
+          "lfm_strict_transfer": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft",
+            "training_feasibility_benchmark"
+          ],
+          "native_random": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft"
+          ]
+        }
+      },
+      "id": "observable_wandb_runs",
+      "status": "pass"
+    },
+    {
+      "evidence": {
         "matched_across_arms": true,
         "policy": {
           "max_new_tokens": 128,
@@ -183,9 +215,9 @@
   "claim_scope": "lfm_selective_transfer_pilot_submission_only",
   "counts": {
     "fail": 0,
-    "pass": 12
+    "pass": 13
   },
-  "fingerprint": "sha256:8cc420423abbede7533758808104bdb79bc3318f142724df1b0fce856ddd7577",
+  "fingerprint": "sha256:354aac3bbc5611abe949f0a00f5db42f56c3f85ac478d132b83751076dd11e12",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
@@ -212,7 +244,7 @@
       "seed_0"
     ],
     "source": "configs/sub1b_lfm_language_transfer_pilot.yaml",
-    "source_fingerprint": "sha256:f7906e4c1ab414c9b18e2daba110948b5b1e4a51fd3e709566ac42da5b2f1736"
+    "source_fingerprint": "sha256:1a6dac95d6d0eb4121200f94b7a04bdf8945fc66f4bd8df8a566626e03fefab6"
   },
   "target_cuda_feasibility_claim_authorized": false
 }

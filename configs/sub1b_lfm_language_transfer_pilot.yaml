@@ -18,6 +18,8 @@ shared_experiment_patches:
         revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
   - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
   - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: false}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/wandb_entity, value: sbdc}
   - {op: replace, path: /synthetic/count, value: 32}
   - {op: replace, path: /synthetic/validation_count, value: 8}
   - {op: replace, path: /synthetic/heldout_count, value: 32}
@@ -28,11 +30,19 @@ shared_experiment_patches:
   - {op: replace, path: /pretraining/max_steps, value: 25}
   - {op: replace, path: /pretraining/batch_size, value: 1}
   - {op: replace, path: /pretraining/num_workers, value: 2}
+  - {op: replace, path: /pretraining/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /pretraining/wandb_entity, value: sbdc}
   - {op: replace, path: /posttraining/sft/max_steps, value: 10}
   - {op: replace, path: /posttraining/sft/num_workers, value: 2}
+  - {op: replace, path: /posttraining/sft/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /posttraining/sft/wandb_entity, value: sbdc}
   - {op: replace, path: /posttraining/rlvr/max_steps, value: 5}
+  - {op: replace, path: /posttraining/rlvr/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /posttraining/rlvr/wandb_entity, value: sbdc}
   - {op: replace, path: /evaluation/max_samples, value: 64}
   - {op: replace, path: /evaluation/temperature_calibration/enabled, value: false}
+  - {op: replace, path: /evaluation/wandb_project, value: docvlm-ablation}
+  - {op: replace, path: /evaluation/wandb_entity, value: sbdc}
   - {op: add, path: /evaluation/wandb_tags/-, value: lfm-language-transfer-pilot}
   - {op: add, path: /evaluation/wandb_tags/-, value: screening-only}
 

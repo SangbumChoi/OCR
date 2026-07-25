@@ -191,6 +191,20 @@ def test_tiny_sweep_compiles_matched_independent_experiments(tmp_path):
         assert f"stage:{stage_name}" in section["wandb_tags"]
         assert "variant:baseline" in section["wandb_tags"]
         assert "replicate:seed_0" in section["wandb_tags"]
+    for stage_name, section in baseline.plan.raw_spec["runtime"].items():
+        if stage_name not in {
+            "visual_backend_benchmark",
+            "training_feasibility_benchmark",
+        }:
+            continue
+        assert section["wandb_group"] == "docvlm-tiny-sweep"
+        assert section["wandb_run"] == (
+            "docvlm-tiny-sweep--baseline--seed_0"
+            f"--{stage_name}"
+        )
+        assert f"stage:{stage_name}" in section["wandb_tags"]
+        assert "variant:baseline" in section["wandb_tags"]
+        assert "replicate:seed_0" in section["wandb_tags"]
     assert (
         plan.control_values_by_replicate["seed_0"][
             "experiment:/pretraining/max_steps"
@@ -1172,6 +1186,7 @@ def test_lfm_language_transfer_sweep_compiles_aligned_sub1b_runs(tmp_path):
         "lfm_random",
         "lfm_strict_transfer",
     }
+    wandb_runs = set()
     for variant in plan.variants:
         initialization = variant.plan.raw_spec["initialization"]
         source = initialization["language_source"]["hub"]
@@ -1190,6 +1205,23 @@ def test_lfm_language_transfer_sweep_compiles_aligned_sub1b_runs(tmp_path):
             else "I0_random"
         )
         assert initialization["arm"] == expected_arm
+        tracked = [
+            stage
+            for stage in variant.plan.stages
+            if "--wandb-project" in stage.command
+        ]
+        assert len(tracked) == 7
+        for stage in tracked:
+            assert stage.command[
+                stage.command.index("--wandb-project") + 1
+            ] == "docvlm-ablation"
+            assert stage.command[
+                stage.command.index("--wandb-entity") + 1
+            ] == "sbdc"
+            wandb_runs.add(
+                stage.command[stage.command.index("--wandb-run") + 1]
+            )
+    assert len(wandb_runs) == 63
 
 
 def test_lfm_language_transfer_pilot_is_bounded_and_non_promotional(tmp_path):
@@ -1249,6 +1281,20 @@ def test_lfm_language_transfer_pilot_is_bounded_and_non_promotional(tmp_path):
                 "training_feasibility_benchmark"
                 not in variant.plan.stage_names
             )
+        tracked = [
+            stage
+            for stage in variant.plan.stages
+            if "--wandb-project" in stage.command
+        ]
+        expected_count = 6 if training_gate_enabled else 5
+        assert len(tracked) == expected_count
+        assert all(
+            stage.command[stage.command.index("--wandb-project") + 1]
+            == "docvlm-ablation"
+            and stage.command[stage.command.index("--wandb-entity") + 1]
+            == "sbdc"
+            for stage in tracked
+        )
         assert experiment["synthetic"]["count"] == 32
         assert experiment["data"]["components"][1]["hub"]["max_rows"] == 256
         assert experiment["pretraining"]["max_steps"] == 25

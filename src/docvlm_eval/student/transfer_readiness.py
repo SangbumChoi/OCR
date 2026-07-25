@@ -69,6 +69,13 @@ def _stage_names(variant: Any) -> list[str]:
     return [stage.name for stage in variant.plan.stages]
 
 
+def _command_option(command: tuple[str, ...], flag: str) -> str | None:
+    try:
+        return command[command.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
+
+
 def _evaluation_policy(variant: Any) -> dict[str, Any]:
     evaluation = variant.plan.raw_spec.get("evaluation") or {}
     return {
@@ -340,6 +347,56 @@ def audit_lfm_transfer_pilot(
         "strict_only_cuda_preflight",
         feasibility_arms == ["lfm_strict_transfer"],
         {"training_feasibility_arms": feasibility_arms},
+    )
+
+    tracked_stage_names = {
+        "pretrain",
+        "sft",
+        "rlvr",
+        "evaluate_baseline",
+        "evaluate",
+    }
+    tracking: dict[str, dict[str, dict[str, str | None]]] = {}
+    tracking_valid = True
+    for arm, variant in variants.items():
+        arm_tracking = {}
+        for stage in variant.plan.stages:
+            if (
+                stage.name not in tracked_stage_names
+                and stage.name != "training_feasibility_benchmark"
+            ):
+                continue
+            values = {
+                "project": _command_option(
+                    stage.command, "--wandb-project"
+                ),
+                "entity": _command_option(stage.command, "--wandb-entity"),
+                "run": _command_option(stage.command, "--wandb-run"),
+                "group": _command_option(stage.command, "--wandb-group"),
+            }
+            arm_tracking[stage.name] = values
+            tracking_valid &= (
+                values["project"] == "docvlm-ablation"
+                and values["entity"] == "sbdc"
+                and bool(values["run"])
+                and bool(values["group"])
+            )
+        expected = set(tracked_stage_names)
+        if arm == "lfm_strict_transfer":
+            expected.add("training_feasibility_benchmark")
+        tracking_valid &= set(arm_tracking) == expected
+        tracking[arm] = arm_tracking
+    _check(
+        checks,
+        "observable_wandb_runs",
+        tracking_valid,
+        {
+            "entity": "sbdc",
+            "project": "docvlm-ablation",
+            "stages_by_arm": {
+                arm: sorted(stages) for arm, stages in tracking.items()
+            },
+        },
     )
 
     policies = {

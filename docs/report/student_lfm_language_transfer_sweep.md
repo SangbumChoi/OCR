@@ -125,7 +125,7 @@ combined with the confirmatory replicates or used to select a deployment model.
 [`scripts/audit_lfm_transfer_pilot.py`](../../scripts/audit_lfm_transfer_pilot.py) compiles the
 current pilot and checks it against the executed real-payload preflight before GPU submission. The
 compact fail-closed artifact records decisions rather than full commands, patch lists, checkpoint
-tensors, HTML, or target text. Its 12 checks cover:
+tensors, HTML, or target text. Its 13 checks cover:
 
 - the one-seed, non-promotional three-cell design and matched LFM geometry;
 - the sub-1B parameter bound and exact random-versus-transfer initialization contrast;
@@ -134,6 +134,8 @@ tensors, HTML, or target text. Its 12 checks cover:
   verification;
 - end-to-end pretraining, SFT, RLVR, baseline, and final evaluation stages;
 - strict-cell-only target-CUDA feasibility preflight;
+- explicit `sbdc/docvlm-ablation` tracking for pretraining, SFT, RLVR, matched baseline/final
+  evaluation, and the strict-cell CUDA preflight;
 - matched task-aware token budgets, exact-cycle termination, task-balanced sampling, and the
   table/full-page generation-stability release gate;
 - bounded screening data and optimization budgets.
@@ -143,6 +145,12 @@ The current result is `pass` and authorizes pilot submission only:
 It explicitly does not authorize a target-CUDA feasibility, quality, or promotion claim. The
 target-GPU stage still has to execute successfully, and quality still requires the sealed
 three-seed confirmatory sweep.
+
+The confirmatory compiler emits 63 unique tracked stage names across nine runs, all grouped under
+`docvlm-lfm-language-transfer-sweep` in
+[`sbdc/docvlm-ablation`](https://wandb.ai/sbdc/docvlm-ablation). The pilot uses the separate
+`docvlm-lfm-language-transfer-pilot` group, so screening metrics cannot be mistaken for
+confirmatory replicates.
 
 ## Decision rule
 
