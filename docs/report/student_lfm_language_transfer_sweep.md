@@ -35,7 +35,7 @@ hybrid profile uses only four full-attention layers, so its analytical forward c
 and its language generation state is 82.5% smaller than the all-attention native profile despite
 the wider hidden state. Runtime latency and peak memory remain measured promotion gates.
 
-## Transfer proof
+## Structural transfer preflight
 
 [`scripts/analyze_small_vlm_architectures.py`](../../scripts/analyze_small_vlm_architectures.py)
 constructs both the Transformers LFM source and native target on the meta device. It then executes
@@ -53,6 +53,23 @@ The pinned preflight reports:
 The `I8_lfm_aligned_language` arm fails initialization unless at least 50% of deployed language
 parameters are copied. Token embeddings remain random unless a separate exact token-identity map is
 provided.
+
+## Executed pretrained payload transfer
+
+The aligned 814,207,243-parameter target was also materialized on CPU with the pinned
+`LiquidAI/LFM2.5-VL-1.6B` safetensors payload. Acquisition verified 3,193,336,592 bytes at the
+declared revision before initialization.
+
+The real run copied 553,748,992 language parameters, or 80.49% of the 687,966,720-parameter
+language component, above the 50% arm floor. This included 109 tensors and 377,487,360 parameters
+from 36 structured SwiGLU tensors across all 12 target blocks. Attention geometry, short
+convolution, and MLP operator checks passed, with zero shape, semantic, or missing-source skips.
+Copied-value verification passed. The run took 21.92 seconds and reached 6,469,451,776 bytes
+maximum resident memory on a 32GB Apple M5 host.
+
+This proves that real pretrained LFM payloads can initialize the sub-1B aligned target; it does not
+prove downstream quality or target-CUDA feasibility. The compact evidence is
+[`selective_transfer_lfm_real_source_preflight.json`](../results/selective_transfer_lfm_real_source_preflight.json).
 
 ## Paired design
 

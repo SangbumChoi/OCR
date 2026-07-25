@@ -1839,6 +1839,53 @@ def test_student_builder_records_the_realized_component_transfer_dose(tmp_path):
         DocumentVLMStudent.from_pretrained(output)
 
 
+def test_student_builder_prints_compact_transfer_report_by_default(tmp_path):
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+
+    model = DocumentVLMStudent(StudentConfig.tiny(vocab_size=260))
+    checkpoint = tmp_path / "compatible.pt"
+    torch.save(model.state_dict(), checkpoint)
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "build_sub1b_student.py"),
+        "--tiny",
+        "--tiny-vocab-size",
+        "260",
+        "--device",
+        "cpu",
+        "--init-arm",
+        "I1_vision",
+        "--vision-source",
+        str(checkpoint),
+        "--vision-family",
+        "student",
+    ]
+
+    compact = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    full = subprocess.run(
+        [*command, "--full-transfer-report"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert '"full_detail_omitted"' in compact.stdout
+    assert '"tensor_mappings": [' not in compact.stdout
+    assert '"copied_keys": [' not in compact.stdout
+    assert '"tensor_mappings": [' in full.stdout
+    assert '"copied_keys": [' in full.stdout
+
+
 def test_student_builder_routes_strict_structured_arm_and_records_groups(
     tmp_path,
 ):

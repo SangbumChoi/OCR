@@ -6,12 +6,82 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from docvlm_eval.architecture import load_blueprint, validate_blueprint
 from docvlm_eval.student.config import StudentConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _compact_transfer_report(
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    source_identity = report.get("source_identity") or {}
+    return {
+        "schema_version": 1,
+        "component": report["component"],
+        "family": report["family"],
+        "shape_policy": report["shape_policy"],
+        "source_identity": {
+            "content_fingerprint": source_identity.get(
+                "content_fingerprint"
+            ),
+            "total_bytes": source_identity.get("total_bytes"),
+            "file_count": len(source_identity.get("files") or []),
+        },
+        "operator_compatibility": {
+            "attention_geometry": report.get(
+                "attention_geometry_compatible"
+            ),
+            "short_convolution": report.get(
+                "short_convolution_compatible"
+            ),
+            "mlp": report.get("mlp_operator_compatible"),
+        },
+        "source_weight_profile_fingerprint": report.get(
+            "source_weight_profile_fingerprint"
+        ),
+        "unhealthy_source_weight_roles": report.get(
+            "unhealthy_source_weight_roles",
+            [],
+        ),
+        "copied_tensors": report["copied_tensors"],
+        "copied_parameters": report["copied_parameters"],
+        "structured_tensors": report["structured_tensors"],
+        "structured_parameters": report["structured_parameters"],
+        "structured_groups": len(report.get("structured_groups") or []),
+        "token_rows_copied": report["token_rows_copied"],
+        "skipped_by_policy": report["skipped_by_policy"],
+        "skipped_shape": len(report.get("skipped_shape") or []),
+        "skipped_semantic": len(report.get("skipped_semantic") or []),
+        "missing_source": len(report.get("missing_source") or []),
+        "source_topology_fingerprint": report[
+            "source_topology_fingerprint"
+        ],
+        "target_topology_fingerprint": report[
+            "target_topology_fingerprint"
+        ],
+        "mapping_fingerprint": report["mapping_fingerprint"],
+        "copied_values_fingerprint": report[
+            "copied_values_fingerprint"
+        ],
+        "value_verified": report["value_verified"],
+        "target_component_parameters": report[
+            "target_component_parameters"
+        ],
+        "realized_component_parameter_fraction": report[
+            "realized_component_parameter_fraction"
+        ],
+        "minimum_component_parameter_fraction": report[
+            "minimum_component_parameter_fraction"
+        ],
+        "full_detail_omitted": {
+            "copied_keys": len(report.get("copied_keys") or []),
+            "tensor_mappings": len(report.get("tensor_mappings") or []),
+        },
+    }
 
 
 def main() -> None:
@@ -44,6 +114,11 @@ def main() -> None:
         "--token-map",
         type=Path,
         help="JSON mapping of target token IDs to source token IDs for embedding transfer.",
+    )
+    parser.add_argument(
+        "--full-transfer-report",
+        action="store_true",
+        help="print tensor-level transfer provenance when not saving",
     )
     parser.add_argument("--save", type=Path)
     args = parser.parse_args()
@@ -246,7 +321,12 @@ def main() -> None:
         model.save_pretrained(args.save, metadata=metadata)
         print(f"Saved {args.save}")
     elif reports:
-        print(json.dumps(reports, indent=2))
+        output_reports = (
+            reports
+            if args.full_transfer_report
+            else [_compact_transfer_report(report) for report in reports]
+        )
+        print(json.dumps(output_reports, indent=2))
 
 
 if __name__ == "__main__":

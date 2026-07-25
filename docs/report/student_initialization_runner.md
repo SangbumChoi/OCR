@@ -250,3 +250,14 @@ This is stronger than header compatibility or random-fixture evidence because re
 payloads were loaded and copied into the production target. It still establishes initialization
 feasibility, not downstream quality or CUDA training feasibility. The compact evidence is
 [`selective_transfer_real_source_preflight.json`](../results/selective_transfer_real_source_preflight.json).
+
+When `build_sub1b_student.py` materializes transfers without saving a checkpoint, stdout is compact
+by default: it preserves component doses, operator compatibility, skip counts, and every
+attestation fingerprint while omitting repeated copied-key and tensor-mapping arrays. Pass
+`--full-transfer-report` only for a targeted tensor-level audit. Saved checkpoint metadata always
+retains the complete transfer report.
+
+The separate LFM-aligned target has also completed real-payload transfer under
+`I8_lfm_aligned_language`; see
+[`student_lfm_language_transfer_sweep.md`](student_lfm_language_transfer_sweep.md) and its compact
+[`preflight evidence`](../results/selective_transfer_lfm_real_source_preflight.json).
