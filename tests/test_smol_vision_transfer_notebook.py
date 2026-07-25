@@ -28,6 +28,11 @@ def test_smol_vision_transfer_notebook_is_compact_and_pinned():
     assert "'smol-vision'" in source
     assert "docvlm-smol-vision-transfer-pilot" in source
     assert "WANDB_API_KEY" in source
+    assert "torch.cuda.is_available()" in source
+    assert "torch.cuda.is_bf16_supported()" in source
+    assert "14 * 2**30" in source
+    assert "25 * 2**30" in source
+    assert "audit_public_udd_readiness.py" in source
     assert "lfm_language_only" not in source
     assert "lfm_smol_dual" not in source
     assert NOTEBOOK.stat().st_size < 10_000

@@ -18,6 +18,10 @@ from typing import Any
 from docvlm_eval.student.confirmatory_submission import (
     audit_smol_confirmatory_submission,
 )
+from docvlm_eval.student.dataset_readiness import (
+    load_experiment,
+    validate_public_dataset_readiness,
+)
 from docvlm_eval.student.sweep import compile_sweep_plan
 from docvlm_eval.student.transfer_readiness import (
     audit_lfm_transfer_pilot,
@@ -63,6 +67,10 @@ SMOL_EXECUTION = (
     / "smol_vision_transfer_pilot_execution_state.json"
 )
 SMOL_PILOT_COMPARISON = SMOL_SWEEP_ROOT / "comparison.json"
+PUBLIC_DATASET_READINESS = (
+    ROOT / "docs" / "results" / "public_udd_training_readiness.json"
+)
+BASE_EXPERIMENT = ROOT / "configs" / "sub1b_experiment.yaml"
 PILOTS = {
     "lfm-language": {
         "sweep": SWEEP,
@@ -238,6 +246,41 @@ def _readiness(pilot: str) -> dict[str, Any]:
         )
 
 
+def _public_dataset_readiness() -> dict[str, Any]:
+    experiment = load_experiment(BASE_EXPERIMENT)
+    public_components = [
+        component
+        for component in (experiment.get("data") or {}).get(
+            "components",
+            [],
+        )
+        if isinstance(component, dict)
+        and isinstance(component.get("hub"), dict)
+        and str(component["hub"].get("repo_id") or "").endswith("/UDD")
+    ]
+    if len(public_components) != 1:
+        errors = ["base experiment must bind exactly one public UDD component"]
+        return {"status": "fail", "errors": errors}
+    hub = public_components[0]["hub"]
+    try:
+        payload = json.loads(
+            PUBLIC_DATASET_READINESS.read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        return {"status": "fail", "errors": [str(exc)]}
+    errors = validate_public_dataset_readiness(
+        payload,
+        repo_id=str(hub.get("repo_id") or ""),
+        revision=str(hub.get("revision") or ""),
+    )
+    return {
+        "status": "pass" if not errors else "fail",
+        "fingerprint": payload.get("fingerprint"),
+        "pilot_selection_plan": payload.get("pilot_selection_plan"),
+        "errors": errors,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -287,6 +330,24 @@ def main() -> None:
         raise SystemExit(
             f"{args.pilot} submission readiness audit did not pass"
         )
+    dataset_readiness = _public_dataset_readiness()
+    compact_dataset_readiness = {
+        "status": dataset_readiness["status"],
+        "fingerprint": dataset_readiness.get("fingerprint"),
+        "pilot_selection_feasible": (
+            dataset_readiness.get("pilot_selection_plan") or {}
+        ).get("feasible"),
+        "errors": dataset_readiness["errors"],
+    }
+    print(
+        json.dumps(
+            {"public_dataset_readiness": compact_dataset_readiness},
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    if dataset_readiness["status"] != "pass" and not args.dry_run:
+        raise SystemExit("public UDD readiness audit did not pass")
 
     free_bytes = shutil.disk_usage(ROOT).free
     environment = {

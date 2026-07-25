@@ -109,9 +109,12 @@ requires native BF16; L4, A10, A100, or newer hardware is appropriate.
 
 The ready-to-run notebook is
 [`smol_vision_transfer_pilot.ipynb`](../../notebooks/smol_vision_transfer_pilot.ipynb). It checks
-out the pinned experiment branch, installs the production extras, authenticates W&B, performs the
-compact dry run, launches the resumable matched pilot, and prints only bounded status and
-comparison fields.
+CUDA, native BF16, at least 14 GiB GPU memory, and 25 GiB free disk before installing anything. It
+then checks out the pinned experiment branch, installs the production extras, refreshes the public
+UDD feasibility artifact, authenticates W&B, performs the compact dry run, launches the resumable
+matched pilot, and prints only bounded status and comparison fields. The launcher independently
+revalidates the committed UDD fingerprint, revision, task quotas, and language reservations before
+allowing a live run.
 
 ## Observed execution state
 

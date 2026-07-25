@@ -37,6 +37,10 @@ def test_colab_lfm_pilot_launcher_dry_run_is_compact(tmp_path):
     ]
     assert lines[0]["readiness"] == "pass"
     assert lines[0]["checks"] == {"pass": 15, "fail": 0}
+    assert lines[1]["public_dataset_readiness"]["status"] == "pass"
+    assert lines[1]["public_dataset_readiness"][
+        "pilot_selection_feasible"
+    ] is True
     assert lines[-1]["status"] == "completed"
     assert lines[-1]["dry_run"] is True
     assert log.is_file()
@@ -72,6 +76,10 @@ def test_colab_smol_pilot_launcher_dry_run_is_compact(tmp_path):
     ]
     assert lines[0]["readiness"] == "pass"
     assert lines[0]["checks"] == {"pass": 14, "fail": 0}
+    assert lines[1]["public_dataset_readiness"]["status"] == "pass"
+    assert lines[1]["public_dataset_readiness"][
+        "pilot_selection_feasible"
+    ] is True
     assert lines[-1]["status"] == "completed"
     assert lines[-1]["pilot"] == "smol-vision"
     assert lines[-1]["dry_run"] is True
@@ -106,6 +114,7 @@ def test_colab_smol_confirmatory_dry_run_reports_pending_gate(tmp_path):
     ]
     assert lines[0]["readiness"] == "pending"
     assert lines[0]["checks"] == {"pass": 2, "pending": 5, "fail": 0}
+    assert lines[1]["public_dataset_readiness"]["status"] == "pass"
     assert lines[-1]["status"] == "completed"
     assert lines[-1]["pilot"] == "smol-confirmatory"
     assert lines[-1]["dry_run"] is True
