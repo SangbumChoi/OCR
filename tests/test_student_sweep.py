@@ -1095,7 +1095,20 @@ def test_lfm_language_transfer_sweep_compiles_aligned_sub1b_runs(tmp_path):
     )
 
     assert len(plan.variants) == 9
-    assert plan.baseline == "native_random"
+    assert plan.baseline == "lfm_random"
+    assert plan.promotion is not None
+    assert plan.promotion.eligible_variants == ("lfm_strict_transfer",)
+    assert plan.promotion.minimum_replicates == 3
+    assert set(plan.promotion.required_gates) == FULL_PROMOTION_GATES
+    assert set(plan.promotion.required_axis_deltas) == {
+        "L1-locate",
+        "L1-region",
+        "H-comprehension",
+        "H-accounting",
+        "multilingual",
+        "ocr-full",
+        "reading-order",
+    }
     assert {variant.arm_id for variant in plan.variants} == {
         "native_random",
         "lfm_random",
@@ -1119,6 +1132,45 @@ def test_lfm_language_transfer_sweep_compiles_aligned_sub1b_runs(tmp_path):
             else "I0_random"
         )
         assert initialization["arm"] == expected_arm
+
+
+def test_lfm_language_transfer_pilot_is_bounded_and_non_promotional(tmp_path):
+    raw = yaml.safe_load(
+        (
+            ROOT
+            / "configs"
+            / "sub1b_lfm_language_transfer_pilot.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    raw["output_root"] = str(tmp_path / "output")
+    config = tmp_path / "lfm-language-transfer-pilot.yaml"
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    plan = compile_sweep_plan(
+        config,
+        repo_root=ROOT,
+        python=sys.executable,
+        compile_root=tmp_path / "compiled",
+    )
+
+    assert len(plan.variants) == 3
+    assert plan.replicates == ("seed_0",)
+    assert plan.baseline == "lfm_random"
+    assert plan.promotion is None
+    for variant in plan.variants:
+        experiment = variant.plan.raw_spec
+        assert experiment["runtime"]["visual_backend_benchmark"]["enabled"] is False
+        assert (
+            experiment["runtime"]["training_feasibility_benchmark"]["enabled"]
+            is False
+        )
+        assert experiment["synthetic"]["count"] == 32
+        assert experiment["data"]["components"][1]["hub"]["max_rows"] == 256
+        assert experiment["pretraining"]["max_steps"] == 25
+        assert experiment["posttraining"]["sft"]["max_steps"] == 10
+        assert experiment["posttraining"]["rlvr"]["max_steps"] == 5
+        assert experiment["evaluation"]["max_samples"] == 64
+        assert "screening-only" in experiment["evaluation"]["wandb_tags"]
 
 
 def test_visual_canvas_sweep_decomposes_packing_bucketing_and_canvas(tmp_path):
@@ -1331,6 +1383,26 @@ def test_sweep_rejects_an_invalid_promotion_contract(tmp_path):
         )
 
 
+@pytest.mark.parametrize("eligible", [[], ["missing"], ["baseline"]])
+def test_sweep_rejects_invalid_promotion_eligible_variants(
+    tmp_path,
+    eligible,
+):
+    def mutate(raw):
+        raw["promotion"]["eligible_variants"] = eligible
+
+    with pytest.raises(
+        ValueError,
+        match="promotion.eligible_variants",
+    ):
+        compile_sweep_plan(
+            _tiny_sweep(tmp_path, mutate=mutate),
+            repo_root=ROOT,
+            python=sys.executable,
+            compile_root=tmp_path / "compiled",
+        )
+
+
 def test_sweep_rejects_an_empty_axis_primary_metric(tmp_path):
     def mutate(raw):
         raw["promotion"]["primary_metric"] = "axis."
@@ -1458,6 +1530,54 @@ def test_promotion_corrects_all_candidates_and_axis_guardrails():
     assert decision["multiple_comparisons"][
         "per_comparison_alpha"
     ] == pytest.approx(0.0125)
+
+
+def test_promotion_only_tests_prespecified_eligible_variants():
+    plan = SimpleNamespace(
+        promotion=PromotionRule(
+            primary_metric="heldout_score",
+            direction="maximize",
+            minimum_effect=0.05,
+            minimum_replicates=2,
+            familywise_alpha=0.05,
+            max_promotions=1,
+            required_gates=("parameter_budget",),
+            required_axis_deltas={},
+            eligible_variants=("transfer",),
+        ),
+        baseline="aligned_random",
+        replicates=("seed_0", "seed_1"),
+        fingerprint="sha256:test-eligible-promotion",
+    )
+    arm_records = {
+        "aligned_random": {},
+        "architecture_control": {
+            "gate_statuses": {"parameter_budget": "pass"},
+            "parameters": {"total": 600},
+        },
+        "transfer": {
+            "gate_statuses": {"parameter_budget": "pass"},
+            "parameters": {"total": 700},
+        },
+    }
+    records_by_arm = {
+        "transfer": {
+            replicate: {
+                "replicate_id": replicate,
+                "delta_vs_baseline": {"heldout_score": score},
+                "heldout_axis_delta_vs_baseline": {},
+            }
+            for replicate, score in (("seed_0", 0.10), ("seed_1", 0.12))
+        }
+    }
+
+    decision = _promotion_decision(plan, arm_records, records_by_arm)
+
+    assert decision["selected_variants"] == ["transfer"]
+    assert set(decision["candidates"]) == {"transfer"}
+    assert decision["multiple_comparisons"]["candidate_count"] == 1
+    assert decision["multiple_comparisons"]["comparison_count"] == 1
+    assert decision["multiple_comparisons"]["per_comparison_alpha"] == 0.05
 
 
 def test_pareto_promotion_filters_dominated_candidates_and_uses_priority():

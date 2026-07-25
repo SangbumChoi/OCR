@@ -251,9 +251,10 @@ class PromotionRule:
     max_promotions: int
     required_gates: tuple[str, ...]
     required_axis_deltas: dict[str, float]
+    eligible_variants: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "primary_metric": self.primary_metric,
             "direction": self.direction,
             "minimum_effect": self.minimum_effect,
@@ -263,6 +264,9 @@ class PromotionRule:
             "required_gates": list(self.required_gates),
             "required_axis_deltas": self.required_axis_deltas,
         }
+        if self.eligible_variants:
+            result["eligible_variants"] = list(self.eligible_variants)
+        return result
 
 
 @dataclass(frozen=True)
@@ -290,9 +294,10 @@ class ParetoPromotionRule:
     max_promotions: int
     required_gates: tuple[str, ...]
     required_axis_deltas: dict[str, float]
+    eligible_variants: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "mode": "pareto",
             "objectives": [
                 objective.to_dict() for objective in self.objectives
@@ -304,6 +309,9 @@ class ParetoPromotionRule:
             "required_gates": list(self.required_gates),
             "required_axis_deltas": self.required_axis_deltas,
         }
+        if self.eligible_variants:
+            result["eligible_variants"] = list(self.eligible_variants)
+        return result
 
 
 @dataclass(frozen=True)
@@ -510,7 +518,14 @@ def _parse_replicates(
 
 def _promotion_common(
     value: dict[str, Any],
-) -> tuple[int, float, int, tuple[str, ...], dict[str, float]]:
+) -> tuple[
+    int,
+    float,
+    int,
+    tuple[str, ...],
+    dict[str, float],
+    tuple[str, ...],
+]:
     minimum_replicates = value.get("minimum_replicates", 3)
     if (
         not isinstance(minimum_replicates, int)
@@ -563,12 +578,35 @@ def _promotion_common(
                 "promotion.required_axis_deltas values must be finite"
             )
         normalized_axes[axis] = float(threshold)
+    eligible_raw = value.get("eligible_variants")
+    if eligible_raw is None:
+        eligible_variants: tuple[str, ...] = ()
+    else:
+        normalized_eligible = (
+            [str(variant) for variant in eligible_raw]
+            if isinstance(eligible_raw, list)
+            else []
+        )
+        if (
+            not isinstance(eligible_raw, list)
+            or not normalized_eligible
+            or any(
+                not _NAME.fullmatch(variant)
+                for variant in normalized_eligible
+            )
+            or len(set(normalized_eligible)) != len(normalized_eligible)
+        ):
+            raise ValueError(
+                "promotion.eligible_variants must contain unique safe names"
+            )
+        eligible_variants = tuple(normalized_eligible)
     return (
         minimum_replicates,
         float(familywise_alpha),
         max_promotions,
         tuple(normalized_gates),
         normalized_axes,
+        eligible_variants,
     )
 
 
@@ -646,6 +684,7 @@ def _parse_pareto_promotion(
         max_promotions,
         required_gates,
         required_axis_deltas,
+        eligible_variants,
     ) = _promotion_common(value)
     return ParetoPromotionRule(
         objectives=tuple(objectives),
@@ -655,6 +694,7 @@ def _parse_pareto_promotion(
         max_promotions=max_promotions,
         required_gates=required_gates,
         required_axis_deltas=required_axis_deltas,
+        eligible_variants=eligible_variants,
     )
 
 
@@ -696,6 +736,7 @@ def _parse_promotion(
         max_promotions,
         required_gates,
         required_axis_deltas,
+        eligible_variants,
     ) = _promotion_common(value)
     return PromotionRule(
         primary_metric=primary_metric,
@@ -706,6 +747,7 @@ def _parse_promotion(
         max_promotions=max_promotions,
         required_gates=required_gates,
         required_axis_deltas=required_axis_deltas,
+        eligible_variants=eligible_variants,
     )
 
 
@@ -810,6 +852,15 @@ def compile_sweep_plan(
         )
     if baseline not in ids:
         raise ValueError("sweep baseline must name one compiled variant")
+    if promotion is not None and promotion.eligible_variants:
+        invalid_eligible = (
+            set(promotion.eligible_variants) - ids
+        ) | ({baseline} & set(promotion.eligible_variants))
+        if invalid_eligible:
+            raise ValueError(
+                "promotion.eligible_variants must name non-baseline variants: "
+                f"{sorted(invalid_eligible)}"
+            )
     contrasts = _parse_contrasts(raw, ids)
 
     compiled: list[CompiledVariant] = []
@@ -1201,13 +1252,30 @@ def _promotion_metric_delta(
     return None if value is None else float(value)
 
 
+def _promotion_candidate_ids(
+    plan: SweepPlan,
+    rule: PromotionRule | ParetoPromotionRule,
+    arm_records: dict[str, dict[str, Any]],
+) -> list[str]:
+    available = set(arm_records) - {plan.baseline}
+    if not rule.eligible_variants:
+        return sorted(available)
+    missing = set(rule.eligible_variants) - available
+    if missing:
+        raise ValueError(
+            "promotion eligible variants are missing from results: "
+            f"{sorted(missing)}"
+        )
+    return sorted(rule.eligible_variants)
+
+
 def _pareto_promotion_decision(
     plan: SweepPlan,
     rule: ParetoPromotionRule,
     arm_records: dict[str, dict[str, Any]],
     records_by_arm: dict[str, dict[str, dict[str, Any]]],
 ) -> dict[str, Any]:
-    candidate_ids = sorted(set(arm_records) - {plan.baseline})
+    candidate_ids = _promotion_candidate_ids(plan, rule, arm_records)
     if not candidate_ids:
         raise ValueError("promotion requires at least one non-baseline arm")
     comparisons_per_candidate = (
@@ -1463,7 +1531,7 @@ def _promotion_decision(
             arm_records,
             records_by_arm,
         )
-    candidate_ids = sorted(set(arm_records) - {plan.baseline})
+    candidate_ids = _promotion_candidate_ids(plan, rule, arm_records)
     if not candidate_ids:
         raise ValueError("promotion requires at least one non-baseline arm")
     comparisons_per_candidate = 1 + len(rule.required_axis_deltas)

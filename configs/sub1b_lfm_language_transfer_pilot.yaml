@@ -1,35 +1,12 @@
-# Native versus LFM-aligned language operators with an aligned-transfer arm.
+# One-seed screening pilot for the LFM language-operator transfer experiment.
+# This configuration is intentionally non-promotional. Use the paired three-seed
+# sweep for confirmatory evidence.
 
 schema_version: 1
-name: docvlm-lfm-language-transfer-sweep
+name: docvlm-lfm-language-transfer-pilot
 base_experiment: configs/sub1b_experiment.yaml
-output_root: outputs/sweeps/docvlm-lfm-language-transfer-sweep
+output_root: outputs/sweeps/docvlm-lfm-language-transfer-pilot
 baseline: lfm_random
-
-promotion:
-  primary_metric: heldout_score
-  direction: maximize
-  minimum_effect: 0.005
-  minimum_replicates: 3
-  familywise_alpha: 0.05
-  max_promotions: 1
-  eligible_variants:
-    - lfm_strict_transfer
-  required_gates:
-    - parameter_budget
-    - generalization
-    - grounding
-    - reasoning
-    - multilingual
-    - reliability
-  required_axis_deltas:
-    L1-locate: 0.0
-    L1-region: 0.0
-    H-comprehension: 0.0
-    H-accounting: 0.0
-    multilingual: 0.0
-    ocr-full: 0.0
-    reading-order: 0.0
 
 shared_experiment_patches:
   - {op: add, path: /initialization/language_family, value: lfm2}
@@ -39,8 +16,25 @@ shared_experiment_patches:
       hub:
         repo_id: LiquidAI/LFM2.5-VL-1.6B
         revision: 919fde3d022e3f90a4716006f993938ee8c2eb97
-  - {op: add, path: /evaluation/wandb_tags/-, value: lfm-language-transfer-sweep}
-  - {op: add, path: /evaluation/wandb_tags/-, value: operator-semantic-gate}
+  - {op: replace, path: /runtime/visual_backend_benchmark/enabled, value: false}
+  - {op: replace, path: /runtime/training_feasibility_benchmark/enabled, value: false}
+  - {op: replace, path: /synthetic/count, value: 32}
+  - {op: replace, path: /synthetic/validation_count, value: 8}
+  - {op: replace, path: /synthetic/heldout_count, value: 32}
+  - {op: replace, path: /synthetic/adaptation_policy/enabled, value: false}
+  - {op: replace, path: /data/components/1/hub/max_rows, value: 256}
+  - {op: replace, path: /sequence_teacher/max_requests, value: 128}
+  - {op: replace, path: /sequence_teacher/accepted_target_count, value: 12}
+  - {op: replace, path: /pretraining/max_steps, value: 25}
+  - {op: replace, path: /pretraining/batch_size, value: 1}
+  - {op: replace, path: /pretraining/num_workers, value: 2}
+  - {op: replace, path: /posttraining/sft/max_steps, value: 10}
+  - {op: replace, path: /posttraining/sft/num_workers, value: 2}
+  - {op: replace, path: /posttraining/rlvr/max_steps, value: 5}
+  - {op: replace, path: /evaluation/max_samples, value: 64}
+  - {op: replace, path: /evaluation/temperature_calibration/enabled, value: false}
+  - {op: add, path: /evaluation/wandb_tags/-, value: lfm-language-transfer-pilot}
+  - {op: add, path: /evaluation/wandb_tags/-, value: screening-only}
 
 matched_controls:
   - {document: experiment, path: /initialization/seed}
@@ -49,6 +43,7 @@ matched_controls:
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
   - {document: experiment, path: /data/components}
+  - {document: experiment, path: /sequence_teacher/max_requests}
   - {document: experiment, path: /pretraining/max_steps}
   - {document: experiment, path: /posttraining/sft/max_steps}
   - {document: experiment, path: /posttraining/rlvr/max_steps}
@@ -58,7 +53,6 @@ matched_controls:
   - {document: blueprint, path: /training/pretraining/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/sft/optimizer/seed}
   - {document: blueprint, path: /training/posttraining/rlvr/optimizer/seed}
-  - {document: blueprint, path: /training/pretraining/optimizer/total_tokens}
 
 replicate_controls:
   - {document: experiment, path: /initialization/seed}
@@ -83,39 +77,15 @@ replicates:
       - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 17}
       - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 23}
 
-  - id: seed_1
-    experiment_patches:
-      - {op: replace, path: /initialization/seed, value: 105}
-      - {op: replace, path: /synthetic/train_seed, value: 107}
-      - {op: replace, path: /synthetic/heldout_seed, value: 7107}
-      - {op: replace, path: /evaluation/seed, value: 131}
-    blueprint_patches:
-      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 107}
-      - {op: replace, path: /training/pretraining/optimizer/seed, value: 107}
-      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 117}
-      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 123}
-
-  - id: seed_2
-    experiment_patches:
-      - {op: replace, path: /initialization/seed, value: 205}
-      - {op: replace, path: /synthetic/train_seed, value: 207}
-      - {op: replace, path: /synthetic/heldout_seed, value: 7207}
-      - {op: replace, path: /evaluation/seed, value: 231}
-    blueprint_patches:
-      - {op: replace, path: /training/pretraining/input_pipeline/augmentation_seed, value: 207}
-      - {op: replace, path: /training/pretraining/optimizer/seed, value: 207}
-      - {op: replace, path: /training/posttraining/sft/optimizer/seed, value: 217}
-      - {op: replace, path: /training/posttraining/rlvr/optimizer/seed, value: 223}
-
 variants:
   - id: native_random
-    hypothesis: "Measures the native 1536-wide all-attention language operator from random initialization."
+    hypothesis: "Screens the native all-attention operator from random initialization."
     decision_metrics: {language_width: 1536, language_layers: 23, expected_transfer_groups: 0}
     experiment_patches:
       - {op: replace, path: /initialization/arm, value: I0_random}
 
   - id: lfm_random
-    hypothesis: "Measures the sub-1B LFM-aligned hybrid operator without inherited language weights."
+    hypothesis: "Screens the LFM-aligned hybrid operator without inherited language weights."
     decision_metrics: {language_width: 2048, language_layers: 12, expected_transfer_groups: 0}
     blueprint_patches: &lfm_geometry
       - {op: replace, path: /tokenizer/vocab_size, value: 65536}
@@ -143,7 +113,7 @@ variants:
         value: [[2, 2], [5, 5], [8, 8], [11, 11]]
 
   - id: lfm_strict_transfer
-    hypothesis: "Measures exact LFM attention/convolution transfer plus structured SwiGLU reduction."
+    hypothesis: "Screens strict LFM transfer under the aligned operator."
     decision_metrics: {language_width: 2048, language_layers: 12, expected_transfer_groups: 3}
     experiment_patches:
       - {op: replace, path: /initialization/arm, value: I8_lfm_aligned_language}
@@ -151,11 +121,8 @@ variants:
 
 contrasts:
   - id: geometry_effect_without_transfer
-    hypothesis: "Effect of the LFM-aligned operator under random initialization."
+    hypothesis: "Screens the LFM-aligned operator effect under random initialization."
     coefficients: {native_random: -1, lfm_random: 1}
   - id: transfer_effect_lfm_geometry
-    hypothesis: "Strict LFM transfer effect under an aligned operator."
+    hypothesis: "Screens strict LFM transfer against its aligned random control."
     coefficients: {lfm_random: -1, lfm_strict_transfer: 1}
-  - id: aligned_transfer_end_to_end
-    hypothesis: "End-to-end effect of adopting both the aligned operator and strict initialization."
-    coefficients: {native_random: -1, lfm_strict_transfer: 1}

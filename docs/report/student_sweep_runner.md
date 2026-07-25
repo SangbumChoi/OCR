@@ -197,6 +197,8 @@ promotion:
   minimum_replicates: 3
   familywise_alpha: 0.05
   max_promotions: 1
+  eligible_variants:
+    - treatment
   required_gates:
     - parameter_budget
     - generalization
@@ -215,6 +217,10 @@ promotion:
 The named primary axis should not also appear in `required_axis_deltas`; those
 entries are simultaneous non-regression guardrails for other capabilities.
 Missing target-axis evidence produces `insufficient_evidence`.
+When `eligible_variants` is present, only those prespecified non-baseline arms enter promotion
+testing and multiplicity correction. Other arms remain in the descriptive ranking and declared
+linear contrasts. This supports factorials where architecture controls must be reported but only
+a treatment arm is eligible for deployment. Omitting the field tests every non-baseline arm.
 
 The aggregator converts every paired primary-metric delta into a positive-is-better benefit,
 including metrics configured with `direction: minimize`. It then computes a deterministic

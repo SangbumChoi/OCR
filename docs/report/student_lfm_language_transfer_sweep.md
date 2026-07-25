@@ -79,14 +79,40 @@ contract for which LFM copy is valid. The end-to-end aligned-transfer contrast i
 incompatible native-transfer cell is deliberately absent because fail-closed initialization would
 copy zero parameters and terminate rather than produce a meaningful measurement.
 
+## Screening pilot
+
+[`configs/sub1b_lfm_language_transfer_pilot.yaml`](../../configs/sub1b_lfm_language_transfer_pilot.yaml)
+compiles the same three cells for one paired seed with 32 generated training documents, at most
+256 public rows, 25 pretraining steps, 10 SFT steps, 5 RLVR steps, and 64 evaluation samples.
+Repeated backend feasibility benchmarks and adaptive synthesis are disabled. The pilot is intended
+to catch initialization failures, unstable losses, latency or memory surprises, generation loops,
+and catastrophic long-context, table, or reasoning regressions before spending the three-seed
+budget.
+
+Run its compilation check with:
+
+```bash
+python scripts/run_student_sweep.py \
+  --sweep configs/sub1b_lfm_language_transfer_pilot.yaml \
+  --dry-run
+```
+
+The pilot has no promotion block. Its single-seed deltas are screening signals only and must not be
+combined with the confirmatory replicates or used to select a deployment model.
+
 ## Decision rule
+
+The confirmatory sweep uses `lfm_random` as the statistical baseline. Only
+`lfm_strict_transfer` is eligible for promotion; `native_random` remains an architecture control
+in the descriptive results and the `geometry_effect_without_transfer` contrast. This prevents the
+architecture control from consuming a promotion hypothesis or weakening the transfer test.
 
 Promote the aligned initialization only if all of the following hold:
 
 1. the 50% realized-transfer gate and every deployment gate pass;
-2. strict transfer improves the paired LFM-aligned random control on heldout score;
-3. multilingual OCR, reading order, grounding, tables, charts, and scientific/investment reasoning
-   do not regress beyond their paired confidence bounds;
+2. the Bonferroni-adjusted one-sided paired-bootstrap lower bound for heldout score exceeds 0.005;
+3. the corresponding simultaneous lower bounds for localization, region grounding, comprehension,
+   accounting, multilingual OCR, full-page OCR, and reading order are all non-negative;
 4. initial-to-final learning progress exceeds the aligned random control rather than only its
    initial score;
 5. measured latency and memory remain acceptable for the target deployment despite the wider
