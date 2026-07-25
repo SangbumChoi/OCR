@@ -45,6 +45,7 @@ def test_external_pilot_run_is_activity_not_execution_attestation():
     snapshot = _read("lfm_ablation_wandb_snapshot.json")
     snapshot["runs"].append(
         {
+            "id": "pilot-running",
             "name": "docvlm-lfm-language-transfer-pilot--pretrain--"
             "lfm_random--seed_0",
             "state": "running",
@@ -162,6 +163,7 @@ def test_failed_local_summary_wins_over_external_activity():
     snapshot = _read("lfm_ablation_wandb_snapshot.json")
     snapshot["runs"].append(
         {
+            "id": "pilot-crashed",
             "name": "docvlm-lfm-language-transfer-pilot--sft--"
             "lfm_strict_transfer--seed_0",
             "state": "crashed",

@@ -8,6 +8,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from .wandb_inventory import wandb_run_inventory_valid
+
 
 @dataclass(frozen=True)
 class PilotExecutionProfile:
@@ -65,6 +67,23 @@ def _pilot_wandb_runs(
     runs = snapshot.get("runs")
     if not isinstance(runs, list):
         raise ValueError("W&B snapshot runs must be a list")
+    if (
+        snapshot.get("claim_scope") == "wandb_run_inventory_only"
+        and not wandb_run_inventory_valid(snapshot)
+    ):
+        raise ValueError("W&B run inventory failed integrity validation")
+    run_ids: list[str] = []
+    for index, run in enumerate(runs):
+        if not isinstance(run, dict):
+            raise ValueError(f"W&B run {index} must be a mapping")
+        for field in ("id", "name", "state"):
+            if not isinstance(run.get(field), str) or not run[field]:
+                raise ValueError(
+                    f"W&B run {index} is missing {field!r}"
+                )
+        run_ids.append(run["id"])
+    if len(run_ids) != len(set(run_ids)):
+        raise ValueError("W&B snapshot contains duplicate run IDs")
     return [
         run
         for run in runs

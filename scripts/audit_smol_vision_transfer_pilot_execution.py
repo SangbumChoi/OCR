@@ -38,7 +38,12 @@ def main() -> None:
     parser.add_argument(
         "--wandb-snapshot",
         type=Path,
-        default=ROOT / "docs" / "results" / "lfm_ablation_wandb_snapshot.json",
+        default=(
+            ROOT
+            / "docs"
+            / "results"
+            / "docvlm_ablation_wandb_run_inventory.json"
+        ),
     )
     parser.add_argument(
         "--local-summary",

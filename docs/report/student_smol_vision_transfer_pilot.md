@@ -110,15 +110,27 @@ keeps launch readiness separate from execution. It accepts completion only when 
 summary contains both expected arms and each has a sealed passing execution attestation. A W&B run
 name alone is external activity, not proof that all training stages completed.
 
-The available authenticated W&B snapshot was captured on July 25, 2026 and contains ten legacy
-LFM ablation runs, no Smol pilot runs, and no local Smol sweep summary. The current bounded
-observation is therefore `not_started_in_observed_state`:
+The authenticated W&B workspace was checked on July 25, 2026 and contains ten legacy LFM ablation
+runs, no Smol pilot runs, and no local Smol sweep summary. The current bounded observation is
+therefore `not_started_in_observed_state`:
 [`smol_vision_transfer_pilot_execution_state.json`](../results/smol_vision_transfer_pilot_execution_state.json).
-Because the project is private and no newer authenticated snapshot is stored in the repository,
-this does not prove that no newer run exists outside the captured evidence. Training execution,
-quality, and promotion remain unattested.
+Because the project is private and the inventory is a point-in-time observation, this does not
+prove that no newer run exists after capture. Training execution, quality, and promotion remain
+unattested.
 
 The execution audit accepts both execution-only seals and stronger deployment-capability seals,
 but only when claim scope and quality authorization agree and the attestation digest is valid. It
 also fingerprints the compact arm-to-attestation mapping so the confirmatory submission gate can
 prove that its pilot comparison references the same completed runs.
+
+External activity now uses the metric-free
+[`docvlm_ablation_wandb_run_inventory.json`](../results/docvlm_ablation_wandb_run_inventory.json)
+rather than the legacy ablation metric snapshot. It stores only run identity, state, timestamps,
+when available, state counts, and a content fingerprint. Configs, histories, summaries, artifacts,
+and metric tables remain excluded. Refresh it after `wandb.login()` with:
+
+```bash
+python scripts/snapshot_wandb_run_inventory.py
+```
+
+Both Smol Colab notebooks refresh this inventory before rebuilding execution evidence.

@@ -21,6 +21,8 @@ def test_smol_vision_transfer_notebook_is_compact_and_pinned():
     assert all(not cell.get("outputs") for cell in cells)
     assert "claude/new-session-w79q0i" in source
     assert "run_transfer_pilot_colab.py" in source
+    assert "snapshot_wandb_run_inventory.py" in source
+    assert "audit_smol_vision_transfer_pilot_execution.py" in source
     assert "'smol-vision'" in source
     assert "docvlm-smol-vision-transfer-pilot" in source
     assert "WANDB_API_KEY" in source

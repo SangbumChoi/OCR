@@ -76,6 +76,7 @@ def test_smol_external_activity_is_not_execution_attestation():
     snapshot = _read("lfm_ablation_wandb_snapshot.json")
     snapshot["runs"].append(
         {
+            "id": "smol-pilot-running",
             "name": (
                 "docvlm-smol-vision-transfer-pilot--pretrain--"
                 "lfm_smol_dual--seed_0"

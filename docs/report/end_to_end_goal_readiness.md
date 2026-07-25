@@ -64,3 +64,7 @@ The confirmatory budget is independently fail-closed by
 Its current status is `pending` because no sealed local Smol pilot comparison is present. It will
 authorize the three-seed run only when pilot execution hashes match the comparison, all required
 gates pass, and the treatment has a positive heldout screening effect.
+
+W&B monitoring is represented by a separate compact run inventory. This keeps external activity
+fresh without copying run configs, histories, metric tables, or long structured outputs into the
+goal audit. W&B state remains observational; only local sealed attestations satisfy execution.

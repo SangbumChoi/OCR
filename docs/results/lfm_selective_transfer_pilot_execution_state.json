@@ -1,11 +1,16 @@
 {
   "claim_scope": "native_lfm_pilot_execution_state_only",
+  "fingerprint": "sha256:77adb07945d89bc6038c3d3892c6c4e14123471947f9ae801ac69b30062eb2c9",
   "local": {
+    "attestation_sha256_by_arm": {},
     "attested_arms": [],
     "completed_arms": [],
+    "duplicate_arms": [],
+    "execution_attestation_fingerprint": null,
     "observed_arms": [],
     "status": "absent",
-    "summary_present": false
+    "summary_present": false,
+    "unexpected_arms": []
   },
   "next_action": "Run notebooks/lfm_selective_transfer_pilot.ipynb on native-BF16 hardware.",
   "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",

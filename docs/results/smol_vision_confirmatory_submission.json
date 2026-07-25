@@ -24,7 +24,7 @@
     {
       "evidence": {
         "baseline": "lfm_language_only",
-        "fingerprint": "sha256:eeef95cd85809526b1eff9b9c40f4a0653a64001688b6779311afb6ad3f5a548",
+        "fingerprint": "sha256:9bffc4144db21ffb253e71e9e6b24e32ada97fcf0778ca98e03099efe74987dd",
         "replicates": [
           "seed_0",
           "seed_1",
@@ -73,7 +73,7 @@
     "pass": 2,
     "pending": 5
   },
-  "fingerprint": "sha256:f2b615d5408c9d978f7539dde0d8b361bac4389876fbb44fe73a3c26832949b1",
+  "fingerprint": "sha256:992aab819ec569310aec33b3699b8d063d67f7f85eb04cd240de2d8680fc7f4d",
   "next_action": "Complete and seal a positive Smol vision-transfer pilot.",
   "overall_status": "pending",
   "pilot": "docvlm-smol-vision-transfer-pilot",
