@@ -22,6 +22,12 @@ python scripts/run_student_sweep.py \
   --dry-run
 ```
 
+Dry-run output is compact by default. Shared stage topology, arm patches, replicate patches, and
+run fingerprints appear once instead of repeating every long command for every arm-replicate
+pair. This keeps large factorial and structured-output sweeps inspectable without producing
+table-sized JSON dominated by duplicated paths and arguments. Add `--full-dry-run` only when a
+targeted audit needs every resolved command.
+
 The full suite compares:
 
 - the complete random-initialized recipe;

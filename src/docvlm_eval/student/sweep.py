@@ -2741,16 +2741,129 @@ class SweepRunner:
         _atomic_write_json(root / "sweep_plan.json", self.plan.to_dict())
         _atomic_write_json(root / "sweep_spec.json", self.plan.raw_spec)
 
+    def _compact_dry_run(
+        self,
+        variants: list[CompiledVariant],
+        results: list[dict[str, Any]],
+        *,
+        resume: bool,
+        start: str | None,
+        stop: str | None,
+    ) -> dict[str, Any]:
+        raw_arms = {
+            str(item["id"]): item
+            for item in self.plan.raw_spec.get("variants") or []
+        }
+        raw_replicates = {
+            str(item["id"]): item
+            for item in self.plan.raw_spec.get("replicates") or []
+        }
+        topologies: dict[tuple[str, ...], dict[str, Any]] = {}
+        runs: list[dict[str, Any]] = []
+        arms: dict[str, dict[str, Any]] = {}
+        replicates: dict[str, dict[str, Any]] = {}
+        for variant, result in zip(variants, results, strict=True):
+            stages = result.get("stages") or []
+            stage_names = tuple(str(stage["name"]) for stage in stages)
+            topology_id = _fingerprint({"stage_names": stage_names})
+            topology = topologies.setdefault(
+                stage_names,
+                {
+                    "id": topology_id,
+                    "stage_count": len(stage_names),
+                    "stage_names": list(stage_names),
+                    "runs": [],
+                },
+            )
+            topology["runs"].append(variant.id)
+            skipped = [
+                str(stage["name"])
+                for stage in stages
+                if bool(stage.get("would_skip"))
+            ]
+            runs.append(
+                {
+                    "run": variant.id,
+                    "variant": variant.arm_id,
+                    "replicate": variant.replicate_id,
+                    "experiment_fingerprint": result.get("fingerprint"),
+                    "stage_topology": topology_id,
+                    "would_run_count": len(stages) - len(skipped),
+                    "would_skip": skipped,
+                }
+            )
+            arms.setdefault(
+                variant.arm_id,
+                {
+                    "id": variant.arm_id,
+                    "hypothesis": variant.hypothesis,
+                    "experiment_patches": copy.deepcopy(
+                        raw_arms.get(variant.arm_id, {}).get(
+                            "experiment_patches",
+                            [],
+                        )
+                    ),
+                    "blueprint_patches": copy.deepcopy(
+                        raw_arms.get(variant.arm_id, {}).get(
+                            "blueprint_patches",
+                            [],
+                        )
+                    ),
+                    "decision_metrics": variant.decision_metrics,
+                    "parameters": variant.parameters,
+                },
+            )
+            raw_replicate = raw_replicates.get(variant.replicate_id, {})
+            replicates.setdefault(
+                variant.replicate_id,
+                {
+                    "id": variant.replicate_id,
+                    "experiment_patches": copy.deepcopy(
+                        raw_replicate.get("experiment_patches", [])
+                    ),
+                    "blueprint_patches": copy.deepcopy(
+                        raw_replicate.get("blueprint_patches", [])
+                    ),
+                },
+            )
+        return {
+            "detail": "compact",
+            "selection": {
+                "run_count": len(runs),
+                "variant_count": len(arms),
+                "replicate_count": len(replicates),
+                "resume": resume,
+                "from_stage": start,
+                "to_stage": stop,
+            },
+            "shared_patches": {
+                "experiment": copy.deepcopy(
+                    self.plan.raw_spec.get("shared_experiment_patches") or []
+                ),
+                "blueprint": copy.deepcopy(
+                    self.plan.raw_spec.get("shared_blueprint_patches") or []
+                ),
+            },
+            "stage_topologies": list(topologies.values()),
+            "variant_definitions": list(arms.values()),
+            "replicate_definitions": list(replicates.values()),
+            "variants": runs,
+            "commands_omitted": True,
+        }
+
     def run(
         self,
         *,
         dry_run: bool = False,
+        dry_run_detail: str = "compact",
         resume: bool = True,
         variant_ids: set[str] | None = None,
         replicate_ids: set[str] | None = None,
         start: str | None = None,
         stop: str | None = None,
     ) -> dict[str, Any]:
+        if dry_run_detail not in {"compact", "full"}:
+            raise ValueError("dry_run_detail must be 'compact' or 'full'")
         known = {variant.id for variant in self.plan.variants}
         known_arms = {variant.arm_id for variant in self.plan.variants}
         selected_arms = known_arms if variant_ids is None else set(variant_ids)
@@ -2774,6 +2887,8 @@ class SweepRunner:
         }
         outcomes = []
         if dry_run:
+            selected_variants = []
+            dry_run_results = []
             for variant in self.plan.variants:
                 if variant.id not in selected:
                     continue
@@ -2786,14 +2901,17 @@ class SweepRunner:
                     start=start,
                     stop=stop,
                 )
-                outcomes.append(
-                    {
-                        "run": variant.id,
-                        "variant": variant.arm_id,
-                        "replicate": variant.replicate_id,
-                        "result": result,
-                    }
-                )
+                selected_variants.append(variant)
+                dry_run_results.append(result)
+                if dry_run_detail == "full":
+                    outcomes.append(
+                        {
+                            "run": variant.id,
+                            "variant": variant.arm_id,
+                            "replicate": variant.replicate_id,
+                            "result": result,
+                        }
+                    )
         response: dict[str, Any] = {
             "dry_run": dry_run,
             "sweep": self.plan.name,
@@ -2801,6 +2919,18 @@ class SweepRunner:
             "variants": outcomes,
         }
         if dry_run:
+            if dry_run_detail == "compact":
+                response.update(
+                    self._compact_dry_run(
+                        selected_variants,
+                        dry_run_results,
+                        resume=resume,
+                        start=start,
+                        stop=stop,
+                    )
+                )
+            else:
+                response["detail"] = "full"
             return response
         self._write_plan()
         summary_path = Path(self.plan.root) / "sweep_run_summary.json"

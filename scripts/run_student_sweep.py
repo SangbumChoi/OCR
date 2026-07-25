@@ -25,10 +25,17 @@ def main() -> None:
     parser.add_argument("--variant", action="append", dest="variants")
     parser.add_argument("--replicate", action="append", dest="replicates")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--full-dry-run",
+        action="store_true",
+        help="include every per-run command instead of the compact topology summary",
+    )
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--from-stage")
     parser.add_argument("--to-stage")
     args = parser.parse_args()
+    if args.full_dry_run and not args.dry_run:
+        parser.error("--full-dry-run requires --dry-run")
 
     if args.dry_run:
         with tempfile.TemporaryDirectory(prefix="docvlm-sweep-") as temporary:
@@ -40,6 +47,7 @@ def main() -> None:
             )
             result = SweepRunner(plan, repo_root=ROOT).run(
                 dry_run=True,
+                dry_run_detail="full" if args.full_dry_run else "compact",
                 resume=not args.no_resume,
                 variant_ids=set(args.variants) if args.variants else None,
                 replicate_ids=set(args.replicates) if args.replicates else None,

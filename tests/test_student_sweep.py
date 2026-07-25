@@ -2147,8 +2147,53 @@ def test_sweep_runner_dry_run_does_not_create_the_output_root(tmp_path):
     result = SweepRunner(plan, repo_root=ROOT).run(dry_run=True)
 
     assert result["dry_run"] is True
+    assert result["detail"] == "compact"
+    assert result["commands_omitted"] is True
     assert len(result["variants"]) == 4
+    assert len(result["stage_topologies"]) == 2
+    topology_runs = [
+        run
+        for topology in result["stage_topologies"]
+        for run in topology["runs"]
+    ]
+    assert sorted(topology_runs) == sorted(
+        run["run"] for run in result["variants"]
+    )
+    assert all(
+        topology["stage_count"] == len(topology["stage_names"])
+        for topology in result["stage_topologies"]
+    )
+    assert len(result["variant_definitions"]) == 2
+    assert len(result["replicate_definitions"]) == 2
+    assert all("result" not in run for run in result["variants"])
+    assert '"command"' not in json.dumps(result)
     assert not output.exists()
+
+
+def test_sweep_runner_can_emit_full_dry_run_details(tmp_path):
+    plan = _compile_tiny(tmp_path)
+
+    result = SweepRunner(plan, repo_root=ROOT).run(
+        dry_run=True,
+        dry_run_detail="full",
+        variant_ids={"baseline"},
+        replicate_ids={"seed_0"},
+    )
+
+    assert result["detail"] == "full"
+    assert len(result["variants"]) == 1
+    assert result["variants"][0]["result"]["stages"]
+    assert "command" in result["variants"][0]["result"]["stages"][0]
+
+
+def test_sweep_runner_rejects_unknown_dry_run_detail(tmp_path):
+    plan = _compile_tiny(tmp_path)
+
+    with pytest.raises(ValueError, match="dry_run_detail"):
+        SweepRunner(plan, repo_root=ROOT).run(
+            dry_run=True,
+            dry_run_detail="verbose",
+        )
 
 
 def test_sweep_runner_records_each_variant_once_and_updates_suite_state(
