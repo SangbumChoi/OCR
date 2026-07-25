@@ -16,6 +16,7 @@ controls:
   batch_size: 2
   lora_rank: 16
   lora_alpha: 32
+  quantization_bits: 4
   lora_budget_reference: vision
   learning_rate: 0.0001
   eval_max_samples: 128

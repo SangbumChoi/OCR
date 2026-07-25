@@ -6,6 +6,9 @@ name: docvlm-tiny-smoke
 blueprint: configs/sub1b_architecture.yaml
 output_root: outputs/docvlm-tiny-smoke
 
+method_evidence:
+  enabled: false
+
 runtime:
   device: cpu
   visual_backend_benchmark:

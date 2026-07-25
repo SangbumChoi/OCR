@@ -20,6 +20,10 @@ import yaml
 
 from ..architecture import estimate_parameters, load_blueprint, validate_blueprint
 from ..generation_policy import validate_generation_token_budget_policy
+from ..method_catalog import (
+    audit_adopted_method_evidence,
+    load_method_catalog,
+)
 from .acquisition import HubComponentSpec
 from .checkpoint_acquisition import (
     HubCheckpointSpec,
@@ -329,6 +333,24 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
     )
     if not blueprint.is_file():
         raise ValueError(f"experiment blueprint does not exist: {blueprint}")
+    method_evidence = raw.get("method_evidence") or {}
+    if not isinstance(method_evidence, dict):
+        raise ValueError("experiment.method_evidence must be a mapping")
+    if "enabled" in method_evidence and not isinstance(
+        method_evidence["enabled"],
+        bool,
+    ):
+        raise ValueError("experiment.method_evidence.enabled must be a boolean")
+    if bool(method_evidence.get("enabled", False)):
+        for key, default in (
+            ("catalog", "configs/frontier_method_catalog.jsonl"),
+            ("evidence", "configs/frontier_method_evidence.yaml"),
+        ):
+            path = _resolve_path(repo_root, method_evidence.get(key) or default)
+            if not path.is_file():
+                raise ValueError(
+                    f"experiment.method_evidence.{key} does not exist: {path}"
+                )
     runtime = raw.get("runtime") or {}
     if not isinstance(runtime, dict):
         raise ValueError("experiment.runtime must be a mapping")
@@ -1127,6 +1149,20 @@ def build_experiment_plan(
     if not isinstance(raw, dict):
         raise ValueError("experiment root must be a mapping")
     experiment_name, output_root, blueprint_path = _validate_spec(raw, repo_root)
+    method_evidence_spec = raw.get("method_evidence") or {}
+    method_evidence_enabled = bool(
+        method_evidence_spec.get("enabled", False)
+    )
+    method_catalog_path = _resolve_path(
+        repo_root,
+        method_evidence_spec.get("catalog")
+        or "configs/frontier_method_catalog.jsonl",
+    )
+    method_evidence_path = _resolve_path(
+        repo_root,
+        method_evidence_spec.get("evidence")
+        or "configs/frontier_method_evidence.yaml",
+    )
     continuation_spec = raw.get("continuation") or {"enabled": False}
     continuation_enabled = bool(continuation_spec.get("enabled", False))
     runtime = raw.get("runtime") or {}
@@ -1145,6 +1181,26 @@ def build_experiment_plan(
     input_fingerprints: dict[str, Any] = {
         "synthetic_config": _file_fingerprint(synth_config_path),
     }
+    if method_evidence_enabled:
+        input_fingerprints["frontier_method_catalog"] = _file_fingerprint(
+            method_catalog_path
+        )
+        input_fingerprints["frontier_method_evidence"] = _file_fingerprint(
+            method_evidence_path
+        )
+        method_evidence_contract = audit_adopted_method_evidence(
+            load_method_catalog(method_catalog_path),
+            yaml.safe_load(method_evidence_path.read_text(encoding="utf-8")),
+            repo_root=repo_root,
+        )
+        if method_evidence_contract["status"] != "pass":
+            raise ValueError(
+                "frontier method evidence failed:\n- "
+                + "\n- ".join(method_evidence_contract["errors"])
+            )
+        input_fingerprints["frontier_method_evidence_contract"] = (
+            method_evidence_contract
+        )
     training_policy_plan_path = (
         _resolve_path(repo_root, synthetic["training_policy_plan"])
         if synthetic.get("training_policy_plan")
@@ -1224,6 +1280,7 @@ def build_experiment_plan(
         continuation_dir / "train_with_replay.manifest.json"
     )
     leakage_report = artifacts / "data" / "split_leakage.json"
+    method_evidence_report = artifacts / "data" / "method_evidence.json"
     generation_budget_report = (
         artifacts / "data" / "generation_budget_audit.json"
     )
@@ -1440,6 +1497,29 @@ def build_experiment_plan(
     def script(name: str) -> str:
         return str((repo_root / "scripts" / name).resolve())
 
+    method_evidence_stage_names: list[str] = []
+    if method_evidence_enabled:
+        stages.append(
+            ExperimentStage(
+                "audit_method_evidence",
+                (
+                    python,
+                    script("audit_method_evidence.py"),
+                    "--catalog",
+                    str(method_catalog_path),
+                    "--evidence",
+                    str(method_evidence_path),
+                    "--repo-root",
+                    str(repo_root),
+                    "--output",
+                    str(method_evidence_report),
+                ),
+                (),
+                (Artifact(str(method_evidence_report)),),
+            )
+        )
+        method_evidence_stage_names.append("audit_method_evidence")
+
     if continuation_contract is not None:
         stages.append(
             ExperimentStage(
@@ -1464,7 +1544,7 @@ def build_experiment_plan(
                     "--tokenizer-output",
                     str(tokenizer_dir),
                 ),
-                (),
+                tuple(method_evidence_stage_names),
                 (
                     Artifact(str(continuation_manifest)),
                     Artifact(str(tokenizer_dir / "tokenizer.json")),
@@ -1549,7 +1629,7 @@ def build_experiment_plan(
             ExperimentStage(
                 "visual_backend_benchmark",
                 tuple(command),
-                (),
+                tuple(method_evidence_stage_names),
                 (Artifact(str(output)),),
             )
         )
@@ -1607,7 +1687,10 @@ def build_experiment_plan(
             ExperimentStage(
                 "training_feasibility_benchmark",
                 tuple(command),
-                tuple(visual_benchmark_stage_names),
+                (
+                    *method_evidence_stage_names,
+                    *visual_benchmark_stage_names,
+                ),
                 (Artifact(str(output)),),
             )
         )
@@ -2288,6 +2371,7 @@ def build_experiment_plan(
                 *checkpoint_stage_names,
                 *visual_benchmark_stage_names,
                 *training_benchmark_stage_names,
+                *method_evidence_stage_names,
                 *(
                     ("audit_generation_budgets",)
                     if generation_budget_audit_enabled

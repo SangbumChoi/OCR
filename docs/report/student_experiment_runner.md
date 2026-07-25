@@ -9,6 +9,11 @@ of the next synthetic train batch. The full configuration first benchmarks packe
 active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
 and peak memory as a checked run artifact.
 
+The production DAG begins with `audit_method_evidence`. It verifies that all 29 methods marked
+`adopt` in the 100-method frontier catalog bind every declared knob to live implementation and
+test anchors. Target-device preflights and initialization depend on its fingerprinted report, so
+stale research claims fail before model allocation.
+
 After tokenizer training, the production DAG audits exact structured-target token lengths under
 the evaluation, preference, and RLVR budget policies. It derives recommendations from train and
 validation only, checks heldout without tuning on it, and blocks initialization on inadequate
@@ -96,7 +101,8 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 25 stages, including target-device visual-backend and full-training preflights,
+The full plan has 26 stages, including adopted-method evidence, target-device visual-backend and
+full-training preflights,
 the pre-initialization generation-budget audit,
 an initial-checkpoint matched baseline, validation conversion/evaluation, and next-batch
 synthesis planning.

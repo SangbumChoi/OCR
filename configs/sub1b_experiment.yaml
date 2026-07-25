@@ -7,6 +7,11 @@ name: docvlm-800m-hard
 blueprint: configs/sub1b_architecture.yaml
 output_root: outputs/docvlm-800m-hard
 
+method_evidence:
+  enabled: true
+  catalog: configs/frontier_method_catalog.jsonl
+  evidence: configs/frontier_method_evidence.yaml
+
 runtime:
   device: auto
   visual_backend_benchmark:

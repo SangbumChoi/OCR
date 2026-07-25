@@ -17,6 +17,11 @@ mechanism, the likely failure mode below one billion parameters, and one of four
 Decision totals: **29 adopt**, **41 ablate**, **27 reference**, **3 reject**.
 The sources span **58 organizations**, **2014-2025**, and expose **221 distinct adjustable knobs**.
 
+Adoption is separately fail-closed by [`configs/frontier_method_evidence.yaml`](../../configs/frontier_method_evidence.yaml):
+every adopted method must bind all catalog knobs to live implementation anchors and at
+least one live verification anchor. The production experiment runs this audit before any
+model-allocating stage.
+
 ## Recommended end-to-end stack
 
 1. **Visual input:** ViT with native-resolution packing, SigLIP-style contrastive transfer,

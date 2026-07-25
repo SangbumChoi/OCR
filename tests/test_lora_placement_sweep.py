@@ -36,6 +36,7 @@ def test_confirmatory_sweep_compiles_matched_paired_commands():
         command = item["command"]
         assert "--lora-budget-reference" in command
         assert command[command.index("--lora-budget-reference") + 1] == "vision"
+        assert command[command.index("--quantization-bits") + 1] == "4"
         assert item["record_key"].endswith(
             f"{item['variant']}:{item['replicate']}"
         )
@@ -54,4 +55,12 @@ def test_confirmatory_sweep_rejects_unmatched_design():
     raw["placements"] = ["vision", "connector"]
 
     with pytest.raises(ValueError, match="vision_connector"):
+        compile_commands(raw, python=sys.executable, repo_root=ROOT)
+
+
+def test_confirmatory_sweep_rejects_unsupported_quantization():
+    raw = _raw()
+    raw["controls"]["quantization_bits"] = 8
+
+    with pytest.raises(ValueError, match="quantization_bits"):
         compile_commands(raw, python=sys.executable, repo_root=ROOT)

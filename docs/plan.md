@@ -256,6 +256,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   catalog of 100 primary methods across vision, connectors, document models, compact LMs,
   transfer/distillation, data construction, RL, and reliability. Every entry records both the
   useful mechanism and the failure risk in the sub-1B document regime.
+- **Trace adopted methods to executable evidence:**
+  [`report/student_method_evidence.md`](report/student_method_evidence.md) — exact knob coverage,
+  live implementation and test anchors, compact fingerprints, and a fail-closed pre-allocation
+  experiment stage.
 - **Audit multi-loss interference:**
   [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) —
   trajectory-preserving shared-trunk gradient telemetry, a three-arm by three-replicate anchor audit,
@@ -369,7 +373,8 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/student_language_mixer_sweep.md`](report/student_language_mixer_sweep.md) ·
    [`report/student_visual_canvas_sweep.md`](report/student_visual_canvas_sweep.md) ·
    [`report/student_factorial_runner.md`](report/student_factorial_runner.md) ·
-   [`report/frontier_method_survey.md`](report/frontier_method_survey.md)
+   [`report/frontier_method_survey.md`](report/frontier_method_survey.md) ·
+   [`report/student_method_evidence.md`](report/student_method_evidence.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
    [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md) ·

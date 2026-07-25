@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -59,6 +60,184 @@ def load_method_catalog(path: str | Path) -> list[dict[str, Any]]:
                 raise ValueError(f"{path}:{line_number}: each row must be an object")
             rows.append(row)
     return rows
+
+
+def _fingerprint(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def _validate_evidence_locator(
+    method_id: str,
+    kind: str,
+    locator: Any,
+    *,
+    repo_root: Path,
+) -> tuple[list[str], set[str], dict[str, Any] | None]:
+    errors = []
+    if not isinstance(locator, dict):
+        return [f"{method_id}: {kind} locator must be a mapping"], set(), None
+    raw_path = locator.get("path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return [f"{method_id}: {kind} locator requires a path"], set(), None
+    path = Path(raw_path)
+    if path.is_absolute() or ".." in path.parts:
+        errors.append(f"{method_id}: {kind} path must stay within the repository")
+        return errors, set(), None
+    if kind == "implementation" and path.parts[0] not in {
+        "configs",
+        "scripts",
+        "src",
+    }:
+        errors.append(
+            f"{method_id}: implementation path must be under configs, scripts, or src"
+        )
+    if kind == "verification" and path.parts[0] != "tests":
+        errors.append(f"{method_id}: verification path must be under tests")
+    resolved = repo_root / path
+    if not resolved.is_file():
+        errors.append(f"{method_id}: evidence file does not exist: {raw_path}")
+        return errors, set(), None
+    anchors = locator.get("anchors")
+    if (
+        not isinstance(anchors, list)
+        or not anchors
+        or any(not isinstance(anchor, str) or not anchor for anchor in anchors)
+    ):
+        errors.append(f"{method_id}: {kind} locator requires non-empty anchors")
+        return errors, set(), None
+    content = resolved.read_text(encoding="utf-8")
+    missing = [anchor for anchor in anchors if anchor not in content]
+    if missing:
+        errors.append(
+            f"{method_id}: stale {kind} anchors in {raw_path}: {missing}"
+        )
+    knobs = locator.get("knobs", [])
+    if kind == "implementation" and (
+        not isinstance(knobs, list)
+        or any(not isinstance(knob, str) or not knob for knob in knobs)
+    ):
+        errors.append(f"{method_id}: implementation knobs must be a list")
+        knobs = []
+    if kind == "verification" and "knobs" in locator:
+        errors.append(f"{method_id}: verification locators cannot bind knobs")
+    record = {
+        "path": raw_path,
+        "anchors": len(anchors),
+        "sha256": f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}",
+    }
+    return errors, set(knobs), record
+
+
+def audit_adopted_method_evidence(
+    rows: Iterable[dict[str, Any]],
+    evidence: dict[str, Any],
+    *,
+    repo_root: str | Path,
+) -> dict[str, Any]:
+    """Prove that every adopted method has live code and verification anchors."""
+
+    rows = list(rows)
+    catalog_errors = validate_method_catalog(rows)
+    if catalog_errors:
+        raise ValueError(
+            "invalid method catalog:\n"
+            + "\n".join(f"- {error}" for error in catalog_errors)
+        )
+    if not isinstance(evidence, dict) or evidence.get("schema_version") != 1:
+        raise ValueError("method evidence schema_version must be 1")
+    records = evidence.get("methods")
+    if not isinstance(records, dict):
+        raise ValueError("method evidence methods must be a mapping")
+    by_id = {str(row["id"]): row for row in rows}
+    adopted = {
+        method_id: row
+        for method_id, row in by_id.items()
+        if row["decision"] == "adopt"
+    }
+    errors = []
+    missing = sorted(set(adopted) - set(records))
+    unknown = sorted(set(records) - set(by_id))
+    non_adopted = sorted(set(records) - set(adopted))
+    if missing:
+        errors.append(f"adopted methods lack evidence: {missing}")
+    if unknown:
+        errors.append(f"evidence references unknown methods: {unknown}")
+    if non_adopted:
+        errors.append(f"evidence certifies non-adopted methods: {non_adopted}")
+
+    root = Path(repo_root).resolve()
+    method_reports = {}
+    for method_id, row in adopted.items():
+        record = records.get(method_id)
+        if not isinstance(record, dict):
+            continue
+        claim = record.get("claim")
+        if not isinstance(claim, str) or len(claim.split()) < 6:
+            errors.append(f"{method_id}: evidence claim is too short")
+        implementation = record.get("implementation")
+        verification = record.get("verification")
+        if not isinstance(implementation, list) or not implementation:
+            errors.append(f"{method_id}: implementation evidence is required")
+            implementation = []
+        if not isinstance(verification, list) or not verification:
+            errors.append(f"{method_id}: verification evidence is required")
+            verification = []
+        covered_knobs: set[str] = set()
+        implementation_records = []
+        verification_records = []
+        for locator in implementation:
+            locator_errors, knobs, locator_record = _validate_evidence_locator(
+                method_id,
+                "implementation",
+                locator,
+                repo_root=root,
+            )
+            errors.extend(locator_errors)
+            covered_knobs.update(knobs)
+            if locator_record is not None:
+                implementation_records.append(locator_record)
+        for locator in verification:
+            locator_errors, _, locator_record = _validate_evidence_locator(
+                method_id,
+                "verification",
+                locator,
+                repo_root=root,
+            )
+            errors.extend(locator_errors)
+            if locator_record is not None:
+                verification_records.append(locator_record)
+        expected_knobs = set(str(knob) for knob in row["knobs"])
+        if covered_knobs != expected_knobs:
+            errors.append(
+                f"{method_id}: knob evidence mismatch; "
+                f"missing={sorted(expected_knobs - covered_knobs)}, "
+                f"extra={sorted(covered_knobs - expected_knobs)}"
+            )
+        method_reports[method_id] = {
+            "name": row["name"],
+            "stage": row["stage"],
+            "claim": claim,
+            "knobs": sorted(covered_knobs),
+            "implementation": implementation_records,
+            "verification": verification_records,
+        }
+    report = {
+        "schema_version": 1,
+        "status": "pass" if not errors else "fail",
+        "catalog_methods": len(rows),
+        "adopted_methods": len(adopted),
+        "certified_methods": len(method_reports),
+        "errors": errors,
+        "methods": method_reports,
+    }
+    report["fingerprint"] = _fingerprint(report)
+    return report
 
 
 def validate_method_catalog(rows: Iterable[dict[str, Any]]) -> list[str]:
@@ -157,6 +336,12 @@ def render_method_survey(rows: Iterable[dict[str, Any]]) -> str:
         f"**{decisions['reference']} reference**, **{decisions['reject']} reject**.",
         f"The sources span **{organization_count} organizations**, **{min(years)}-{max(years)}**, "
         f"and expose **{knob_count} distinct adjustable knobs**.",
+        "",
+        "Adoption is separately fail-closed by "
+        "[`configs/frontier_method_evidence.yaml`](../../configs/frontier_method_evidence.yaml):",
+        "every adopted method must bind all catalog knobs to live implementation anchors and at",
+        "least one live verification anchor. The production experiment runs this audit before any",
+        "model-allocating stage.",
         "",
         "## Recommended end-to-end stack",
         "",

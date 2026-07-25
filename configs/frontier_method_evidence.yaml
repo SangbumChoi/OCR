@@ -1,0 +1,263 @@
+schema_version: 1
+methods:
+  V01:
+    claim: The native vision tower is a configurable patch transformer.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class VisionTower", "class VisionBlock"]
+        knobs: [patch_size, vision_width, vision_layers]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_tiny_student_multimodal_forward_and_auxiliary_losses"]
+  V05:
+    claim: Region-text alignment uses the multi-positive SigLIP objective.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["def _multi_positive_siglip_loss"]
+        knobs: [sigmoid_contrastive_weight, negative_ratio]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_siglip_objective_trains_logit_scale_and_bias"]
+  V08:
+    claim: Variable-resolution images execute as packed patch sequences.
+    implementation:
+      - path: src/docvlm_eval/student/data.py
+        anchors: ["visual_sequence_mode", "packed_cu_seqlens"]
+        knobs: [max_visual_tokens, resolution_sampling, sequence_packing]
+    verification:
+      - path: tests/test_student_data.py
+        anchors: ["test_packed_visual_sequences_match_dense_outputs_without_padding_compute"]
+  C05:
+    claim: Connector family, latent dose, and data mixture are explicit controls.
+    implementation:
+      - path: configs/sub1b_architecture.yaml
+        anchors: ["family: gated_resampler", "latent_tokens:", "data_mix:"]
+        knobs: [connector_family, latent_tokens, pretraining_data_mix]
+    verification:
+      - path: tests/test_student_sweep.py
+        anchors: ["test_connector_family_sweep_compiles_compute_matched_pareto_arms"]
+  C09:
+    claim: The connector is a learned latent cross-attention bottleneck.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class GatedResampler", "class ResamplerLayer"]
+        knobs: [latent_tokens, latent_width, cross_attention_layers]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_tiny_student_multimodal_forward_and_auxiliary_losses"]
+  D04:
+    claim: OCR-free tasks train direct structured sequence serialization.
+    implementation:
+      - path: src/docvlm_eval/student/posttrain.py
+        anchors: ["class StructuredPostTrainingDataset", "def target("]
+        knobs: [serialization_format, synthetic_ratio, decoder_length]
+    verification:
+      - path: tests/test_student_posttrain.py
+        anchors: ["test_structured_posttraining_dataset_exposes_ablation_targets"]
+  D07:
+    claim: Scientific pages include executable transcription and markup supervision.
+    implementation:
+      - path: src/docvlm_eval/synth/hard_cases.py
+        anchors: ["def hard_science_case", "scientific-table", "scientific-figure"]
+        knobs: [scientific_mix, markup_normalizer, sequence_length]
+    verification:
+      - path: tests/test_synth_latent.py
+        anchors: ["test_scientific_interval_and_significance_programs_are_executable"]
+  D10:
+    claim: Unified OCR supervision includes full-page and region-conditioned targets.
+    implementation:
+      - path: src/docvlm_eval/unified/core.py
+        anchors: ["if self.full_text:", "def to_grounding_samples"]
+        knobs: [ocr_teacher, formatted_ocr_mix, region_prompting]
+    verification:
+      - path: tests/test_unified_loader.py
+        anchors: ["recognition with full_text", "test_to_grounding_samples_format"]
+  D12:
+    claim: Spatially aware pretraining couples line content with grounded boxes.
+    implementation:
+      - path: src/docvlm_eval/student/data.py
+        anchors: ["grounding", "box_targets"]
+        knobs: [line_grounding_weight, markdown_mix]
+    verification:
+      - path: tests/test_student_data.py
+        anchors: ["test_collator_masks_prompts_and_transforms_boxes_to_the_padded_canvas"]
+  D13:
+    claim: Document conversion preserves tables, formulas, reading order, and structure.
+    implementation:
+      - path: src/docvlm_eval/student/rewards.py
+        anchors: ["table_tree_similarity", "formula_equivalent"]
+        knobs: [structure_tokens, teacher_model, document_mix]
+    verification:
+      - path: tests/test_student_rewards.py
+        anchors: ["test_table_formula_and_abstention_rewards_use_task_specific_masks"]
+  L02:
+    claim: The native decoder implements configurable grouped-query attention.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class GroupedQueryAttention", "kv_heads"]
+        knobs: [attention_heads, kv_heads, uptraining_tokens]
+    verification:
+      - path: tests/test_student_compute.py
+        anchors: ["test_gqa_kv_cache_uses_only_configured_kv_heads"]
+  L03:
+    claim: Rotary position encoding exposes base, layout, and visual mapping.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class RotaryEmbedding", "def _apply_rope"]
+        knobs: [rope_base, rope_scaling, visual_position_mapping]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_half_split_rope_uses_lfm_channel_layout"]
+  L04:
+    claim: Vision, connector, and language stacks use RMS normalization.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class RMSNorm"]
+        knobs: [norm_epsilon]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_full_meta_model_matches_the_blueprint_estimator"]
+  L05:
+    claim: Decoder feed-forward blocks use configurable SwiGLU projections.
+    implementation:
+      - path: src/docvlm_eval/student/model.py
+        anchors: ["class SwiGLU"]
+        knobs: [mlp_width, activation]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_full_meta_model_matches_the_blueprint_estimator"]
+  T01:
+    claim: Same-tokenizer online distillation supports softened causal logits.
+    implementation:
+      - path: src/docvlm_eval/student/distillation.py
+        anchors: ["class DistillationLoss", "teacher_kl"]
+        knobs: [teacher_kl, temperature]
+    verification:
+      - path: tests/test_student_distillation.py
+        anchors: ["test_distillation_uses_logits_preceding_supervised_labels"]
+  T03:
+    claim: Selective initialization maps source depth into exact-shape student blocks.
+    implementation:
+      - path: src/docvlm_eval/student/transfer.py
+        anchors: ["def _depth_map", "def selective_transfer"]
+        knobs: [transferred_block_fraction, layer_mapping]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_selective_transfer_depth_maps_exact_shape_blocks_only"]
+  T04:
+    claim: Two-stage distillation exposes hidden, relation, and logit objectives.
+    implementation:
+      - path: src/docvlm_eval/student/distillation.py
+        anchors: ["hidden_feature_distillation", "token_relation_distillation", "teacher_kl"]
+        knobs: [embedding_kd, attention_kd, hidden_kd, logit_kd]
+    verification:
+      - path: tests/test_student_pretrain.py
+        anchors: ["test_distilled_pretraining_saves_projection_state"]
+  T11:
+    claim: Wider teacher MLPs transfer through joint structured channel selection.
+    implementation:
+      - path: src/docvlm_eval/student/transfer.py
+        anchors: ["def _structured_mlp_group", "joint_l2_salience"]
+        knobs: [depth_prune, width_prune, head_prune, mlp_prune]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_structured_mlp_transfer_uses_one_joint_channel_selection"]
+  T14:
+    claim: LFM adapter training loads NF4 double-quantized base weights.
+    implementation:
+      - path: src/docvlm_eval/finetune/lora_vlm.py
+        anchors: ["BitsAndBytesConfig", "bnb_4bit_quant_type", "prepare_model_for_kbit_training"]
+        knobs: [quantization_bits, lora_rank, lora_placement]
+    verification:
+      - path: tests/test_lora_placement.py
+        anchors: ["test_qlora_requires_cuda_and_rejects_unsupported_precision"]
+  T15:
+    claim: LoRA placement and rank are resolved under a matched parameter budget.
+    implementation:
+      - path: src/docvlm_eval/finetune/lora_vlm.py
+        anchors: ["def resolve_lora_targets", "def resolve_lora_budget"]
+        knobs: [lora_rank, lora_alpha, lora_placement]
+    verification:
+      - path: tests/test_lora_placement.py
+        anchors: ["test_combined_placement_matches_reference_adapter_budget"]
+  A03:
+    claim: Synthetic documents vary scripts, fonts, layouts, and degradations.
+    implementation:
+      - path: configs/synth_data.yaml
+        anchors: ["languages: [en, es, ko, ja, zh]", "layout_families", "degradation"]
+        knobs: [languages, font_pool, layout_pool, augmentation]
+    verification:
+      - path: tests/test_hard_document_locales.py
+        anchors: ["test_hard_document_render_and_labels_share_one_locale"]
+  A06:
+    claim: Acquired and synthetic data pass deterministic quality and deduplication gates.
+    implementation:
+      - path: src/docvlm_eval/student/acquisition.py
+        anchors: ["def _validate_selected", "duplicate"]
+        knobs: [quality_filter, dedup_threshold, data_budget]
+    verification:
+      - path: tests/test_student_acquisition.py
+        anchors: ["test_materialize_component_rejects_duplicate_image_identity"]
+  A12:
+    claim: Charts are generated from executable values and question programs.
+    implementation:
+      - path: src/docvlm_eval/synth/hard_cases.py
+        anchors: ["def hard_chart_case", "H-chart-percent-change"]
+        knobs: [chart_grammar, question_programs, human_synthetic_ratio]
+    verification:
+      - path: tests/test_synth_latent.py
+        anchors: ["test_hard_case_programs_validate_at_every_curriculum_level"]
+  A13:
+    claim: Financial reasoning uses executable ownership and arithmetic programs.
+    implementation:
+      - path: src/docvlm_eval/synth/hard_cases.py
+        anchors: ["def hard_investment_case", "beneficial-ownership"]
+        knobs: [financial_programs, operation_depth, evidence_count]
+    verification:
+      - path: tests/test_synth_latent.py
+        anchors: ["test_weighted_paths_are_executable"]
+  A14:
+    claim: Hybrid financial examples join table values with explanatory text.
+    implementation:
+      - path: src/docvlm_eval/synth/hard_cases.py
+        anchors: ["def hard_investment_case", "investment-relations"]
+        knobs: [table_text_join_depth, unit_perturbation, page_rendering]
+    verification:
+      - path: tests/test_hard_document_locales.py
+        anchors: ["test_hard_document_numeric_programs_are_locale_invariant"]
+  R08:
+    claim: Online post-training uses group-relative policy optimization without a critic.
+    implementation:
+      - path: src/docvlm_eval/student/posttrain.py
+        anchors: ["def group_relative_policy_loss", "def train_grpo"]
+        knobs: [group_size, kl_coefficient, reward_mix]
+    verification:
+      - path: tests/test_student_posttrain.py
+        anchors: ["test_group_relative_policy_loss_uses_reward_rank_and_reference_kl"]
+  R15:
+    claim: Visual reinforcement uses decomposed authored task rewards.
+    implementation:
+      - path: src/docvlm_eval/student/rewards.py
+        anchors: ["def score_structured_response", "def _box_reward"]
+        knobs: [visual_reward, group_size, rollout_length]
+    verification:
+      - path: tests/test_student_rewards.py
+        anchors: ["test_chart_grounding_and_rationale_rewards_are_independently_reported"]
+  O02:
+    claim: Grounding optimization uses generalized IoU with explicit box parameterization.
+    implementation:
+      - path: src/docvlm_eval/student/losses.py
+        anchors: ["def generalized_box_iou_loss", "def decode_normalized_box"]
+        knobs: [giou_weight, box_parameterization]
+    verification:
+      - path: tests/test_student_model.py
+        anchors: ["test_box_iou_losses_are_zero_for_an_exact_match"]
+  O05:
+    claim: Evaluation fits scalar temperature on an exclusive calibration partition.
+    implementation:
+      - path: src/docvlm_eval/student/evaluate.py
+        anchors: ["def apply_temperature_calibration", "def partition_calibration_samples"]
+        knobs: [calibration_temperature, calibration_slice]
+    verification:
+      - path: tests/test_student_evaluate.py
+        anchors: ["test_temperature_calibration_partition_is_stable_and_exclusive"]

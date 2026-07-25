@@ -119,6 +119,7 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                 output_dir=f"outputs/{model}/A0_n{n}",
                 lora_r=args.lora_r,
                 lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
                 lora_budget_reference_placement=args.lora_budget_reference,
                 learning_rate=args.lr,
                 seed=args.seed,
@@ -209,6 +210,13 @@ def main() -> None:
         ),
     )
     p.add_argument("--lr", type=float, default=1e-4, help="A6: learning rate")
+    p.add_argument(
+        "--quantization-bits",
+        type=int,
+        choices=[4, 16],
+        default=4,
+        help="base-weight precision for LoRA training; 4 enables NF4 QLoRA",
+    )
     p.add_argument("--seed", type=int, default=7, help="LoRA optimizer/data-loader seed")
     p.add_argument(
         "--data-seed",
@@ -254,9 +262,11 @@ def main() -> None:
     try:
         import accelerate  # noqa: F401  (the [finetune] extra)
         import peft  # noqa: F401  (the [finetune] extra)
+        if args.quantization_bits == 4:
+            import bitsandbytes  # noqa: F401  (NF4 QLoRA)
     except ModuleNotFoundError as e:
         sys.exit(f"[run_ablation] missing fine-tuning dependency '{e.name}'. "
-                 f"Run: pip install -e '.[models,finetune]'")
+                 f"Run: pip install -e '.[newvlms,finetune]'")
 
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
 
@@ -342,7 +352,9 @@ def main() -> None:
                     f"outputs/{model}/public_{args.placement}_"
                     f"{args._mils}_s{args.seed}"
                 ),
-                lora_r=args.lora_r, lora_alpha=args.lora_alpha, learning_rate=args.lr,
+                lora_r=args.lora_r, lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
+                learning_rate=args.lr,
                 lora_budget_reference_placement=args.lora_budget_reference,
                 seed=args.seed,
                 wandb_project=args.wandb_project,
@@ -398,6 +410,7 @@ def main() -> None:
                 ),
                 lora_r=args.lora_r,
                 lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
                 lora_budget_reference_placement=args.lora_budget_reference,
                 seed=args.seed,
                 wandb_project=args.wandb_project,

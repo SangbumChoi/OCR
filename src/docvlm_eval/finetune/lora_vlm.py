@@ -207,6 +207,7 @@ class LoraVLMConfig:
     batch_size: int = 2                    # micro-batch (images/forward); effective batch = bs * grad_accum
     grad_accum: int = 8
     dtype: str = "bfloat16"
+    quantization_bits: int | None = 4
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
     grounding_repeat: int = 1              # A1 curriculum: repeat grounding rows so boxes are not diluted
@@ -230,6 +231,21 @@ def _device_dtype(prefer_dtype: str):
     if torch.cuda.is_available():
         return "cuda", getattr(torch, prefer_dtype)
     return "cpu", torch.float32
+
+
+def resolve_lora_quantization(
+    quantization_bits: int | None,
+    device: str,
+) -> str:
+    """Resolve the base-weight loading mode before allocating the model."""
+
+    if quantization_bits is None or quantization_bits == 16:
+        return "dense"
+    if quantization_bits != 4:
+        raise ValueError("LoRA quantization_bits must be 4, 16, or null")
+    if device != "cuda":
+        raise RuntimeError("4-bit QLoRA requires a CUDA device")
+    return "nf4_double_quant"
 
 
 def _norm_box_answer(answer: str) -> str | None:
@@ -390,6 +406,7 @@ def _wandb_init(cfg: "LoraVLMConfig"):
         run = wandb.init(project=cfg.wandb_project, name=cfg.wandb_run,
                          config={"model": cfg.model_id, "placement": cfg.placement,
                                  "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
+                                 "quantization_bits": cfg.quantization_bits,
                                  "train_jsonl": cfg.train_jsonl})
         print(f"[wandb] logging to project={cfg.wandb_project} run={cfg.wandb_run}")
         return run
@@ -412,18 +429,50 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     from pathlib import Path
 
     import torch
-    from peft import LoraConfig, get_peft_model
+    from peft import (
+        LoraConfig,
+        get_peft_model,
+        prepare_model_for_kbit_training,
+    )
     from torch.utils.data import DataLoader, Dataset
-    from transformers import AutoProcessor
+    from transformers import AutoProcessor, BitsAndBytesConfig
     from PIL import Image
 
     torch.manual_seed(cfg.seed)
     device, dt = _device_dtype(cfg.dtype)
+    quantization_mode = resolve_lora_quantization(
+        cfg.quantization_bits,
+        device,
+    )
     print(f"[lora_vlm.train] device={device} dtype={dt}"
+          + f" quantization={quantization_mode}"
           + ("" if device == "cuda" else "  (CPU — training will be slow; expected a GPU?)"))
     proc = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
-    model = _auto_vlm().from_pretrained(cfg.model_id, torch_dtype=dt,
-                                        trust_remote_code=True).to(device)
+    model_kwargs = {
+        "torch_dtype": dt,
+        "trust_remote_code": True,
+    }
+    if quantization_mode == "nf4_double_quant":
+        model_kwargs.update(
+            {
+                "device_map": {"": 0},
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype=dt,
+                ),
+            }
+        )
+    model = _auto_vlm().from_pretrained(cfg.model_id, **model_kwargs)
+    if quantization_mode == "dense":
+        model = model.to(device)
+    else:
+        model = prepare_model_for_kbit_training(
+            model,
+            use_gradient_checkpointing=cfg.grad_checkpointing,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
 
     named_modules = list(model.named_modules())
     targets, budget_report = resolve_lora_budget(
@@ -470,6 +519,13 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         for parameter in model.parameters()
         if parameter.requires_grad
     )
+    budget_report["base_weight_quantization"] = {
+        "bits": cfg.quantization_bits,
+        "mode": quantization_mode,
+        "quant_type": "nf4" if quantization_mode != "dense" else None,
+        "double_quant": quantization_mode != "dense",
+        "compute_dtype": str(dt),
+    }
     budget_report["realized_relative_budget_error"] = (
         abs(
             budget_report["realized_trainable_parameters"]

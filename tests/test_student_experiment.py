@@ -28,6 +28,7 @@ def test_default_experiment_compiles_complete_stage_dag():
         python=sys.executable,
     )
     assert plan.stage_names == [
+        "audit_method_evidence",
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
         "synthetic_train",
@@ -55,6 +56,23 @@ def test_default_experiment_compiles_complete_stage_dag():
         "plan_next_synthetic_batch",
     ]
     pipeline = plan.resolved_blueprint["training"]["pretraining"]["input_pipeline"]
+    method_audit = next(
+        stage
+        for stage in plan.stages
+        if stage.name == "audit_method_evidence"
+    )
+    assert method_audit.dependencies == ()
+    assert method_audit.artifacts[0].path.endswith(
+        "artifacts/data/method_evidence.json"
+    )
+    assert plan.input_fingerprints["frontier_method_catalog"]["sha256"]
+    assert plan.input_fingerprints["frontier_method_evidence"]["sha256"]
+    assert (
+        plan.input_fingerprints["frontier_method_evidence_contract"][
+            "status"
+        ]
+        == "pass"
+    )
     assert pipeline["balance_by"] == "component"
     assert pipeline["group_weights"] == {
         "synthetic_documents": pytest.approx(0.45),
@@ -159,12 +177,14 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert visual_benchmark.artifacts[0].path.endswith(
         "artifacts/benchmarks/visual_backend.json"
     )
+    assert visual_benchmark.dependencies == ("audit_method_evidence",)
     training_benchmark = next(
         stage
         for stage in plan.stages
         if stage.name == "training_feasibility_benchmark"
     )
     assert training_benchmark.dependencies == (
+        "audit_method_evidence",
         "visual_backend_benchmark",
     )
     assert training_benchmark.command[
@@ -182,6 +202,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     )
     assert "visual_backend_benchmark" in initialize.dependencies
     assert "training_feasibility_benchmark" in initialize.dependencies
+    assert "audit_method_evidence" in initialize.dependencies
     assert "audit_generation_budgets" in initialize.dependencies
     evaluate = next(stage for stage in plan.stages if stage.name == "evaluate")
     baseline = next(

@@ -35,6 +35,14 @@ the analytical or realized PEFT trainable-parameter error exceeds 5%. Every adap
 This controls parameter count, not optimization geometry. The combined arm still distributes its
 rank across a different set of matrices, which is the intended treatment.
 
+## Base-weight memory contract
+
+LoRA rank controls adapter parameters but does not by itself reduce the frozen LFM base-weight
+footprint. The runner therefore defaults to four-bit NF4 QLoRA with double quantization and
+bfloat16 compute. `--quantization-bits 16` is the explicit dense-base control. Four-bit mode
+requires CUDA and fails before model loading on CPU. Each `lora_budget.json` records the requested
+bits, realized loading mode, quantization type, double-quantization flag, and compute dtype.
+
 ## Paired design
 
 [`../../configs/lora_vision_connector_sweep.yaml`](../../configs/lora_vision_connector_sweep.yaml)

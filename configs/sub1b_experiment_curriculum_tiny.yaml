@@ -5,6 +5,9 @@ name: docvlm-tiny-curriculum
 blueprint: configs/sub1b_architecture.yaml
 output_root: outputs/docvlm-tiny-curriculum
 
+method_evidence:
+  enabled: false
+
 runtime:
   device: cpu
   visual_backend_benchmark:

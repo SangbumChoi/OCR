@@ -63,9 +63,12 @@ def compile_commands(
             "batch_size",
             "lora_rank",
             "lora_alpha",
+            "quantization_bits",
             "eval_max_samples",
         )
     }
+    if int_controls["quantization_bits"] not in {4, 16}:
+        raise ValueError("controls.quantization_bits must be 4 or 16")
     learning_rate = controls.get("learning_rate")
     if (
         isinstance(learning_rate, bool)
@@ -135,6 +138,8 @@ def compile_commands(
                 str(int_controls["lora_rank"]),
                 "--lora-alpha",
                 str(int_controls["lora_alpha"]),
+                "--quantization-bits",
+                str(int_controls["quantization_bits"]),
                 "--lora-budget-reference",
                 "vision",
                 "--lr",

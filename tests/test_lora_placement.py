@@ -10,6 +10,7 @@ import pytest
 from docvlm_eval.finetune.lora_vlm import (
     PLACEMENT_GROUPS,
     resolve_lora_budget,
+    resolve_lora_quantization,
     resolve_lora_targets,
 )
 
@@ -145,3 +146,13 @@ def test_lora_budget_rejects_nonpositive_rank():
             requested_rank=0,
             requested_alpha=32,
         )
+
+
+def test_qlora_requires_cuda_and_rejects_unsupported_precision():
+    assert resolve_lora_quantization(4, "cuda") == "nf4_double_quant"
+    assert resolve_lora_quantization(16, "cpu") == "dense"
+    assert resolve_lora_quantization(None, "cpu") == "dense"
+    with pytest.raises(RuntimeError, match="requires a CUDA"):
+        resolve_lora_quantization(4, "cpu")
+    with pytest.raises(ValueError, match="must be 4, 16, or null"):
+        resolve_lora_quantization(8, "cuda")
