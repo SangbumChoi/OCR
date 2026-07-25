@@ -34,6 +34,7 @@ def test_live_snapshot_excludes_incomplete_runs_and_limits_claim():
     assert result["run_quality"]["evaluated_runs"] == 5
     assert len(result["run_quality"]["finished_without_evaluation"]) == 4
     assert result["run_quality"]["crashed_runs"] == ["r0t65g1h"]
+    assert result["run_quality"]["crash_diagnostics"]["r0t65g1h"]["planned_micro_steps"] == 7728
     pair = result["comparable_preliminary_pair"]
     assert pair["heldout_vision_minus_connector"]["score"] == pytest.approx(0.0486)
     assert pair["heldout_vision_minus_connector"]["grounding"] == pytest.approx(0.0607)

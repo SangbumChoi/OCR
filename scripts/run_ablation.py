@@ -76,11 +76,12 @@ def _subsample_jsonl(src: str, n: int, out_path: Path, seed: int = 7) -> tuple[s
 def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     """A0 PREREQUISITE — memorization vs understanding as a function of training-data SIZE.
 
-    For each size N (variants/case): train LoRA for a FIXED #epochs on seed=7 data, then score BOTH
-    (a) the TRAIN set it just fit (memorization signal) and (b) a FIXED held-out set on a DIFFERENT
-    seed (understanding/generalization signal). A big train≫held-out gap that grows as N shrinks =
-    memorization; the held-out curve flattening = the recommended synthetic size. Result lands in
-    ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite section."""
+    For each size N (variants/case): train LoRA under the same explicit micro-step cap, then score
+    BOTH (a) the TRAIN set it just fit (memorization signal) and (b) a FIXED held-out set on a
+    DIFFERENT seed (understanding/generalization signal). A big train≫held-out gap that grows as N
+    shrinks = memorization; the held-out curve flattening = the recommended synthetic size. Result
+    lands in ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite
+    section."""
     # Validation/held-out set is ALWAYS synthetic (built ONCE so every size scores the identical set).
     # In public-data mode (--train-jsonl) this means: TRAIN on public benchmark data, VALIDATE on
     # synthetic — the train-vs-synthetic gap then also reflects domain shift, not memorization alone.
@@ -98,24 +99,26 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     done = 0
     for model in args.models:
         hf = HF_ID[model]
-        rec = {"epochs": args.a0_epochs, "test_seed": args.a0_test_seed,
+        rec = {"epochs": args.a0_epochs, "max_micro_steps": args.steps,
+               "data_seed": args.data_seed, "test_seed": args.a0_test_seed,
                "n_test_samples": n_test, "mode": "public" if public else "synthetic",
                "train_source": public or "synthetic(realistic_cases)", "sizes": {}}
         for n in sizes:
             done += 1
             unit = f"{n} images (public)" if public else f"{n} (x14 cases)"
             print(f"[{done}/{total}] ({total-done} left) {model} :: A0 size={unit} "
-                  f"epochs={args.a0_epochs}")
+                  f"epochs<={args.a0_epochs} micro_steps<={args.steps}")
             if public:
                 train_jsonl, n_train = _subsample_jsonl(
                     public, n, ROOT / "data" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
             else:
-                train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
+                train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases",
+                                             seed=args.data_seed, count=n)
                 n_train = _n_samples(train_jsonl)
             # per-epoch eval on BOTH train (memorization) and held-out (understanding) -> W&B curves
             _, last = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                epochs=args.a0_epochs, max_steps=None,
+                epochs=args.a0_epochs, max_steps=args.steps,
                 output_dir=f"outputs/{model}/A0_n{n}",
                 lora_r=args.lora_r,
                 lora_alpha=args.lora_alpha,
@@ -133,6 +136,7 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
             gap = (ts - hs) if (ts is not None and hs is not None) else None
             rec["sizes"][str(n)] = {"variants_per_case": n, "n_images": n_train,
                                     "n_train_samples": n_train,
+                                    "max_micro_steps": args.steps,
                                     "train": train_s, "heldout": held_s, "gap": gap}
             print(f"    train={ts}  heldout={hs}  gap(train-heldout)={gap}")
             _record(model, "A0", rec)   # checkpoint after every size
@@ -167,7 +171,8 @@ def main() -> None:
     # CONTROL FACTOR — held fixed across arms so a delta is attributable to the factor alone:
     p.add_argument("--count", type=int, default=50,
                    help="variants per case = the fixed #images/iterations control (keep equal across arms)")
-    p.add_argument("--steps", type=int, default=300, help="fixed max training steps (the iteration control)")
+    p.add_argument("--steps", type=int, default=300,
+                   help="fixed maximum micro-steps (the iteration control; also caps every A0 size)")
     p.add_argument("--heldout-seed", type=int, default=None,
                    help="A0 memorization test: also eval on a realistic set generated with THIS seed "
                         "(different from training) -> unseen content; reports the train/held-out gap")
@@ -186,8 +191,7 @@ def main() -> None:
                    help="A0: train-data scale sweep = variants/case (x14 cases = #images). Span a wide "
                         "range so the held-out plateau is visible; the config's full curve adds 3200.")
     p.add_argument("--a0-epochs", type=int, default=3,
-                   help="A0: epochs per size (FIXED across sizes so each example is seen equally -> the "
-                        "only thing changing is dataset size). Train-to-fit reveals memorization.")
+                   help="A0: maximum epochs per size; --steps may stop a size earlier.")
     p.add_argument("--a0-test-seed", type=int, default=999, help="A0: held-out TEST seed (never trained on)")
     p.add_argument("--a0-test-count", type=int, default=5,
                    help="A0: held-out TEST scale (variants/case). FIXED across sizes so the test set is "
@@ -244,6 +248,8 @@ def main() -> None:
                    help="A1 curriculum target format. 'norm' teaches 0-1 boxes, which are scale-stable "
                         "and still accepted by the grounding metric.")
     args = p.parse_args()
+    if args.steps <= 0:
+        p.error("--steps must be positive")
     args._mils = args.max_image_long_side or None      # 0 -> None (native resolution)
     if args.results:
         global RESULTS

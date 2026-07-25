@@ -48,7 +48,7 @@ simulation-only space — and must guard against the model simply **memorising**
 
 Because the space is finite, a model with enough capacity can **fit the templates** instead of
 learning the task. A0 detects this directly: train at increasing data **scale** (`count` = #images,
-seed 7) for a fixed #epochs and, at every scale, score **two splits**:
+seed 7) under a fixed micro-step cap and, at every scale, score **two splits**:
 
 - **train split** — the exact images/QA the model just fit (the *memorization* signal). If this
   climbs toward **~100%** it only proves the model *can* fit the finite data, **not** that it
@@ -73,6 +73,13 @@ adds `3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` pl
 held-out** learning curves + the gap and reads off the size. **A0's result fixes the data scale used
 by A1–A7.** (Per-epoch `train`/`heldout` curves stream to W&B — see
 [`wandb_metrics.md`](wandb_metrics.md) for what each logged key means and how to read it.)
+
+`--steps` is a hard cap shared by every size, while `--a0-epochs` is only the maximum number of
+passes. This is both the compute-matching control and the Colab safety boundary: one generated
+document expands into many QA rows, so fixed epochs alone can silently schedule thousands of
+micro-steps. The observed LFM A0 run scheduled 7,728 micro-steps, reached only step 630 after 62.5
+minutes at 0.17 iterations/s, and ended without a traceback or OOM. The runner now applies the
+default 300-step cap to A0 instead of discarding it.
 
 ### 4.3 Two synthetic-quality axes A0 trades off
 

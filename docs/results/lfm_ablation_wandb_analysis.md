@@ -23,6 +23,7 @@
 
 - Finished without evaluation: 4
 - Crashed runs: 1
+- A0 terminal progress: 630/7728 micro-steps
 - Missing promotion controls: `base_model_revision`, `data_seed`, `heldout_sample_ids_fingerprint`, `max_steps`, `optimizer_seed`, `training_sample_count`
 
 The result is direction-only. Execute [`configs/lora_vision_connector_sweep.yaml`](../../configs/lora_vision_connector_sweep.yaml) before promoting a placement.

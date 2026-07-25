@@ -78,6 +78,11 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         run["id"] for run in runs if run["state"] == "finished" and not _score_map(run)
     ]
     crashed = [run["id"] for run in runs if run["state"] == "crashed"]
+    crash_diagnostics = {
+        run["id"]: run["termination"]
+        for run in runs
+        if run["state"] == "crashed" and isinstance(run.get("termination"), dict)
+    }
     duplicate_names = {
         name: count
         for name, count in sorted(Counter(run["name"] for run in runs).items())
@@ -144,6 +149,7 @@ def analyze_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "evaluated_runs": len(evaluated),
             "finished_without_evaluation": unevaluated_finished,
             "crashed_runs": crashed,
+            "crash_diagnostics": crash_diagnostics,
             "duplicate_names": duplicate_names,
             "evaluated_A0_baselines": [run["id"] for run in baseline],
         },
@@ -230,6 +236,16 @@ def _write_markdown(path: Path, result: dict[str, Any]) -> None:
             "",
             (f"- Finished without evaluation: {len(quality['finished_without_evaluation'])}"),
             f"- Crashed runs: {len(quality['crashed_runs'])}",
+            (
+                "- A0 terminal progress: "
+                + (
+                    f"{quality['crash_diagnostics']['r0t65g1h']['last_reported_micro_step']}"
+                    f"/{quality['crash_diagnostics']['r0t65g1h']['planned_micro_steps']} "
+                    "micro-steps"
+                    if "r0t65g1h" in quality["crash_diagnostics"]
+                    else "not recorded"
+                )
+            ),
             (
                 "- Missing promotion controls: "
                 + ", ".join(f"`{field}`" for field in pair["missing_promotion_controls"])

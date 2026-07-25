@@ -166,7 +166,19 @@
       "train_loss": 0.047732,
       "epoch_loss": null,
       "train_score": null,
-      "heldout": null
+      "heldout": null,
+      "termination": {
+        "last_timestamp": "2026-06-21T13:45:28",
+        "last_reported_micro_step": 630,
+        "planned_micro_steps": 7728,
+        "epoch": 1,
+        "planned_epochs": 3,
+        "iterations_per_second": 0.17,
+        "elapsed_minutes": 62.5,
+        "remaining_eta_minutes": 704.5,
+        "traceback_matches": 0,
+        "out_of_memory_matches": 0
+      }
     },
     {
       "id": "5s1asdma",

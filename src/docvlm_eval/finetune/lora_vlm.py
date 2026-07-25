@@ -224,6 +224,20 @@ class LoraVLMConfig:
     log_every: int = 10                    # stdout + W&B train-loss cadence (micro-steps)
 
 
+def validate_lora_runtime_config(cfg: LoraVLMConfig) -> None:
+    """Reject invalid loop controls before importing or allocating the model."""
+    if cfg.epochs <= 0:
+        raise ValueError(f"epochs must be positive, got {cfg.epochs}")
+    if cfg.max_steps is not None and cfg.max_steps <= 0:
+        raise ValueError(f"max_steps must be positive when set, got {cfg.max_steps}")
+    if cfg.batch_size <= 0 or cfg.grad_accum <= 0:
+        raise ValueError(
+            f"batch_size and grad_accum must be positive, got {cfg.batch_size} and {cfg.grad_accum}"
+        )
+    if cfg.log_every <= 0:
+        raise ValueError(f"log_every must be positive, got {cfg.log_every}")
+
+
 def _device_dtype(prefer_dtype: str):
     """Pick a device + a safe dtype: GPU keeps the requested dtype; CPU forces float32
     (bf16/fp16 matmul is slow/unsupported for some ops on CPU)."""
@@ -425,6 +439,8 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     loss and — for every (name, jsonl) in ``eval_specs`` (e.g. train + held-out) — an in-process eval
     summary, to stdout and to Weights & Biases (when cfg.wandb_project is set). ``last_eval`` maps
     each spec name to its final-epoch summary so callers can record it without reloading the model."""
+    validate_lora_runtime_config(cfg)
+
     import json
     from pathlib import Path
 

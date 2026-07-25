@@ -8,10 +8,12 @@ from dataclasses import dataclass
 import pytest
 
 from docvlm_eval.finetune.lora_vlm import (
+    LoraVLMConfig,
     PLACEMENT_GROUPS,
     resolve_lora_budget,
     resolve_lora_quantization,
     resolve_lora_targets,
+    validate_lora_runtime_config,
 )
 
 # a representative VLM module tree (Qwen-VL-ish + LFM-ish names); "L" marks an adaptable Linear
@@ -156,3 +158,21 @@ def test_qlora_requires_cuda_and_rejects_unsupported_precision():
         resolve_lora_quantization(4, "cpu")
     with pytest.raises(ValueError, match="must be 4, 16, or null"):
         resolve_lora_quantization(8, "cuda")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("epochs", 0, "epochs"),
+        ("max_steps", 0, "max_steps"),
+        ("batch_size", 0, "batch_size"),
+        ("grad_accum", 0, "grad_accum"),
+        ("log_every", 0, "log_every"),
+    ],
+)
+def test_lora_runtime_config_rejects_nonpositive_training_controls(field, value, message):
+    config = LoraVLMConfig(model_id="fixture", train_jsonl="fixture.jsonl")
+    setattr(config, field, value)
+
+    with pytest.raises(ValueError, match=message):
+        validate_lora_runtime_config(config)
