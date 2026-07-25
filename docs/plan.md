@@ -206,7 +206,9 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Test the spotting module interaction:**
   [`report/student_lora_placement_interaction.md`](report/student_lora_placement_interaction.md)
   — an exact vision+connector target union, fail-closed LoRA parameter matching, and a paired
-  three-seed confirmatory sweep on the LFM spotting arm.
+  three-seed confirmatory sweep on the LFM spotting arm. Its compact authenticated W&B snapshot
+  audit rejects crashed runs and finished runs without heldout metrics, and limits the observed
+  single-pair vision advantage to direction-only evidence.
 - **Post-train:** [`report/student_posttraining_runner.md`](report/student_posttraining_runner.md) —
   exhaustive structured SFT, strict answer/evidence/rationale outputs, decomposed verifiable
   rewards, visual-prefix-cached rollout, verifier-ranked DPO/IPO, optional preference-to-GRPO

@@ -7,6 +7,20 @@ does not test whether the connector adds value after the visual representation h
 existing `all` placement is not an answer because it also adapts the language model. It changes
 three module families and cannot identify a vision-by-connector interaction.
 
+The authenticated W&B snapshot is preserved in
+[`../results/lfm_ablation_wandb_snapshot.json`](../results/lfm_ablation_wandb_snapshot.json), with
+its fail-closed audit in
+[`../results/lfm_ablation_wandb_analysis.md`](../results/lfm_ablation_wandb_analysis.md). Of ten
+observed runs, five have heldout metrics, four are marked finished without evaluation, and the A0
+baseline crashed. W&B run state is therefore not accepted as experimental completion.
+
+Within the only directly comparable preliminary pair, both A1 spotting runs share the visible
+epoch, learning-rate, rank, and training-file controls. Vision minus connector is +0.0486 overall,
++0.0607 grounding, +0.0234 L1-locate, -0.0581 L1-region, and 0.0000 KIE. This is one pair with
+missing immutable seed, dose, heldout-ID, and base-revision controls. It establishes direction for
+the confirmatory design, not a promotion result, and cross-arm A2/A4/A7 score comparisons remain
+confounded.
+
 The resolver now exposes `vision_connector` as the exact union of the two disjoint target sets.
 This creates the direct comparison required by the current hypothesis:
 
