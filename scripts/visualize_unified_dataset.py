@@ -18,13 +18,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from docvlm_eval.unified import UnifiedLoader, render_grid  # noqa: E402
+from docvlm_eval.unified import UnifiedLoader, render_detail_report, render_grid  # noqa: E402
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" / "unified_examples.png"))
+    p.add_argument(
+        "--details-out",
+        default=str(ROOT / "docs" / "report" / "figures" / "unified_details.html"),
+    )
     p.add_argument("--cache", default=str(ROOT / "data" / "unified_dataset" / "images"))
     p.add_argument("--per-bench", type=int, default=1, help="examples (distinct images) per dataset")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys")
@@ -47,10 +51,12 @@ def main() -> None:
     else:                                          # all loaded records (a dataset may yield several)
         rows = [r for k in by_key for r in by_key[k]]
     if not rows:
-        print("No examples loaded (network?)."); return
+        print("No examples loaded (network?).")
+        return
     render_grid(rows, args.out, cols=args.cols,
                 title=f"Unified loader — examples across {len(by_key)} datasets / "
                       f"{len({r.task for r in rows})} tasks")
+    render_detail_report(rows, args.details_out)
 
 
 if __name__ == "__main__":

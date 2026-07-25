@@ -39,8 +39,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from docvlm_eval.unified import (UnifiedLoader, enrich_dataset, push,  # noqa: E402
-                                 render_grid, safety_check, to_hf_dataset)
+from docvlm_eval.unified import (  # noqa: E402
+    UnifiedLoader,
+    enrich_dataset,
+    render_detail_report,
+    render_grid,
+    safety_check,
+)
 
 HARD_CAP = 1_000_000   # sanity backstop only — DISK is the real limit (a full no-cap
                        # ingest of every source is terabytes; run those on a big-disk box)
@@ -68,6 +73,10 @@ def main() -> None:
                         "(out/hf/<key>) — only new sources are converted; the merge still includes "
                         "everything on disk. Adding one dataset costs one dataset, not 21.")
     p.add_argument("--viz", default=str(ROOT / "docs" / "report" / "figures" / "udd_examples.png"))
+    p.add_argument(
+        "--details-viz",
+        default=str(ROOT / "docs" / "report" / "figures" / "udd_details.html"),
+    )
     args = p.parse_args()
 
     if args.push and not (args.repo and args.token):
@@ -82,7 +91,8 @@ def main() -> None:
     keys = [k for k in loader.streamable_keys()
             if (only is None or k in only) and k not in skip]
     if not keys:
-        print("No benchmarks matched the filter."); return
+        print("No benchmarks matched the filter.")
+        return
 
     mode = "PUSH" if args.push else "LOCAL MOCKUP"
     print(f"[udd] {mode}: {per} examples/dataset from {len(keys)} datasets -> {out}"
@@ -102,12 +112,14 @@ def main() -> None:
         rows = loader.load(k, limit=per, max_scan=args.max_scan, max_px=args.max_px,
                            cache_dir=str(out / "images"), global_index=hash_index)
         if not rows:
-            print(f"[skip] {k}: no records"); continue
+            print(f"[skip] {k}: no records")
+            continue
         # 1) safety-check the converter BEFORE trusting/uploading it
         try:
             rep = safety_check(rows, str(out / "hf" / k))
         except Exception as exc:
-            print(f"[FAIL] {k}: safety check failed -> {type(exc).__name__}: {exc}"); continue
+            print(f"[FAIL] {k}: safety check failed -> {type(exc).__name__}: {exc}")
+            continue
         report[k] = {"records": len(rows), **rep}
         print(f"[ok]   {k:14} {rep['rows']:4} rows  fields={rep['fields']} regions={rep['regions']} "
               f"image_ok={rep['image_ok']}  (split={rows[0].split})")
@@ -147,6 +159,7 @@ def main() -> None:
     # 3) visualize the unified mockup
     if viz_rows:
         render_grid(viz_rows, args.viz, title=f"UDD mockup — {len(viz_rows)} datasets")
+        render_detail_report(viz_rows, args.details_viz)
 
     print(f"\n=== UDD {'uploaded' if args.push else 'mockup built'} for {len(report)} datasets ===")
     if not args.push:

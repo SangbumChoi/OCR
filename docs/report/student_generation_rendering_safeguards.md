@@ -21,10 +21,13 @@ The production experiment pins these values explicitly and the experiment compil
 to both baseline and final evaluation, so a library default change cannot create an unmatched
 comparison.
 
-Evaluation records `generated_tokens`, `reached_max_new_tokens`, and `degenerate_repetition` per
-sample. Split summaries expose `max_token_rate` and `degenerate_repetition_rate`. Accuracy should
-not be accepted as improved when either diagnostic regresses materially, especially on table,
-full-page OCR, and long-context slices.
+Evaluation records `generated_tokens`, `reached_max_new_tokens`,
+`repetition_guard_triggered`, and `degenerate_repetition` per sample. A guard-triggered cycle is
+classified as degenerate even though replacing its final candidate with EOS removes the cycle from
+the stored token suffix. Split summaries and W&B expose `max_token_rate`,
+`repetition_guard_trigger_rate`, and `degenerate_repetition_rate`. Accuracy should not be accepted
+as improved when these diagnostics regress materially, especially on table, full-page OCR, and
+long-context slices.
 
 ## Bounded task-aware token budgets
 
@@ -92,6 +95,13 @@ counts, missing cells, canvas pixels, and failures. Complex layouts should be vi
 all-page canvas only while they fit the explicit pixel budget; beyond that budget they must be
 split into page-level or tiled samples with shared document identity rather than downscaled into
 unreadable pixels.
+
+Dataset visualization follows the same separation. The PNG montage remains a bounded source/task
+overview. `render_detail_report` and the visualization scripts additionally write a responsive HTML
+report for table and tall full-page rows. Each document image is embedded once at a bounded preview
+resolution and links to the original full-resolution file. Table markup is rendered through a
+strict table-element and span-attribute allowlist inside an independently scrollable pane; the
+report does not duplicate the long raw HTML source.
 
 ## Release gates
 

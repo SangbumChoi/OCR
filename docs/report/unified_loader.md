@@ -97,11 +97,16 @@ python scripts/visualize_unified_dataset.py --per-bench 1
 One montage cell per dataset: the image + a `source · task · N boxes` badge + a task-appropriate
 overlay — **KIE field boxes in green, localization regions in orange** (normalized boxes are scaled to
 the image), tables/recognition/vqa show the prompt+answer. This is the "see every dataset in one
-standardized view" check that the loader mapped each source correctly.
+standardized view" check that the loader mapped each source correctly. The command also writes
+`docs/report/figures/unified_details.html` for table and tall full-page samples. That report embeds
+one bounded image preview, links to the original full-resolution page, and renders allowlisted table
+markup in a scrollable pane instead of shrinking complex content into a montage cell or repeating
+the raw HTML source.
 
 ![Unified loader examples](figures/unified_examples.png)
 
-(Programmatic API: `from docvlm_eval.unified import render_grid; render_grid(rows, "out.png")`.)
+(Programmatic API: `render_grid(rows, "out.png")` for the overview and
+`render_detail_report(rows, "details.html")` for complex rows.)
 
 ## UDD — the Universal Document Dataset on HuggingFace
 

@@ -173,6 +173,33 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
             )
             return torch.cat((input_ids, completion), dim=1)
 
+        def generate_with_confidence_and_diagnostics(
+            self,
+            input_ids,
+            **kwargs,
+        ):
+            from types import SimpleNamespace
+
+            generated = self.generate(
+                input_ids,
+                pixel_values=kwargs.get("pixel_values"),
+                pixel_mask=kwargs.get("pixel_mask"),
+                attention_mask=kwargs.get("attention_mask"),
+                max_new_tokens=kwargs["max_new_tokens"],
+                eos_token_id=kwargs["eos_token_id"],
+                use_kv_cache=kwargs["use_kv_cache"],
+            )
+            return (
+                generated,
+                torch.tensor([0.8], device=input_ids.device),
+                SimpleNamespace(
+                    repetition_guard_triggered=torch.tensor(
+                        [self.calls == 1],
+                        device=input_ids.device,
+                    )
+                ),
+            )
+
     model = Model().train()
     result = evaluate_structured_student(
         model,
@@ -202,6 +229,10 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     assert result.summary["generation_backend"] == "kv_cache"
     assert result.summary["mean_generation_token_budget"] == 12.0
     assert result.summary["budget_escalation_rate"] == 0.5
+    assert result.summary["repetition_guard_trigger_rate"] == 0.5
+    assert result.summary["degenerate_repetition_rate"] == 0.5
+    assert result.per_sample[0]["repetition_guard_triggered"]
+    assert result.per_sample[0]["degenerate_repetition"]
     assert result.summary["generation_token_budget_policy"] == {
         "base_tokens": 8,
         "hard_cap": 16,
@@ -225,6 +256,10 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
     )
     assert (
         wandb_metrics["eval/heldout_budget_escalation_rate"]
+        == 0.5
+    )
+    assert (
+        wandb_metrics["eval/heldout_repetition_guard_trigger_rate"]
         == 0.5
     )
     assert result.summary["answer_rate"] == pytest.approx(0.5)
@@ -259,7 +294,7 @@ def test_structured_evaluation_writes_scores_rewards_and_slices(tmp_path):
         "page_count": "3",
         "document_count": "2",
     }
-    assert result.per_sample[0]["confidence"] is None
+    assert result.per_sample[0]["confidence"] == 0.8
     assert (tmp_path / "summary.json").exists()
     rows = [
         json.loads(line)

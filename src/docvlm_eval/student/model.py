@@ -27,6 +27,13 @@ class _PackedAttentionPlan:
     block_mask: Any = None
 
 
+@dataclass(frozen=True)
+class GenerationDiagnostics:
+    """Per-sequence signals produced while decoding."""
+
+    repetition_guard_triggered: torch.Tensor
+
+
 _COMPILED_FLEX_ATTENTION: Any = None
 _FLEX_DISABLED_DEVICES: set[str] = set()
 _SDPA_SUPPORTS_GQA = "enable_gqa" in (
@@ -2264,7 +2271,7 @@ class DocumentVLMStudent(nn.Module):
         repetition_guard_min_tokens: int = 24,
         repetition_guard_max_period: int = 16,
         repetition_guard_repetitions: int = 3,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, GenerationDiagnostics]:
         from .generation import repeated_suffix_cycle_mask
 
         if max_new_tokens <= 0:
@@ -2311,6 +2318,7 @@ class DocumentVLMStudent(nn.Module):
             dtype=torch.bool,
             device=input_ids.device,
         )
+        repetition_guard_triggered = torch.zeros_like(active)
         next_logits = None
         generation_state = None
         if use_kv_cache:
@@ -2338,6 +2346,7 @@ class DocumentVLMStudent(nn.Module):
                     max_period=repetition_guard_max_period,
                     repetitions=repetition_guard_repetitions,
                 )
+                repetition_guard_triggered |= active & repeated
                 next_token_flat = torch.where(
                     active & ~repeated,
                     next_token_flat,
@@ -2381,7 +2390,9 @@ class DocumentVLMStudent(nn.Module):
         confidence = torch.exp(
             log_probability_sum / token_count.clamp_min(1.0)
         )
-        return generated, confidence
+        return generated, confidence, GenerationDiagnostics(
+            repetition_guard_triggered=repetition_guard_triggered,
+        )
 
     @torch.no_grad()
     def generate(
@@ -2401,7 +2412,7 @@ class DocumentVLMStudent(nn.Module):
         repetition_guard_max_period: int = 16,
         repetition_guard_repetitions: int = 3,
     ) -> torch.Tensor:
-        generated, _ = self._generate_with_confidence(
+        generated, _, _ = self._generate_with_confidence(
             input_ids,
             pixel_values=pixel_values,
             pixel_mask=pixel_mask,
@@ -2438,6 +2449,44 @@ class DocumentVLMStudent(nn.Module):
         repetition_guard_repetitions: int = 3,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return greedy sequences and geometric-mean generated-token probabilities."""
+
+        generated, confidence, _ = self._generate_with_confidence(
+            input_ids,
+            pixel_values=pixel_values,
+            pixel_mask=pixel_mask,
+            packed_pixel_values=packed_pixel_values,
+            packed_position_ids=packed_position_ids,
+            packed_cu_seqlens=packed_cu_seqlens,
+            packed_attention_backend=packed_attention_backend,
+            attention_mask=attention_mask,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=eos_token_id,
+            use_kv_cache=use_kv_cache,
+            repetition_guard_min_tokens=repetition_guard_min_tokens,
+            repetition_guard_max_period=repetition_guard_max_period,
+            repetition_guard_repetitions=repetition_guard_repetitions,
+        )
+        return generated, confidence
+
+    @torch.no_grad()
+    def generate_with_confidence_and_diagnostics(
+        self,
+        input_ids: torch.Tensor,
+        pixel_values: torch.Tensor | None = None,
+        pixel_mask: torch.Tensor | None = None,
+        packed_pixel_values: torch.Tensor | None = None,
+        packed_position_ids: torch.Tensor | None = None,
+        packed_cu_seqlens: torch.Tensor | None = None,
+        packed_attention_backend: str = "auto",
+        attention_mask: torch.Tensor | None = None,
+        max_new_tokens: int = 64,
+        eos_token_id: int | None = None,
+        use_kv_cache: bool = True,
+        repetition_guard_min_tokens: int = 24,
+        repetition_guard_max_period: int = 16,
+        repetition_guard_repetitions: int = 3,
+    ) -> tuple[torch.Tensor, torch.Tensor, GenerationDiagnostics]:
+        """Return sequences, confidence, and non-reconstructible decode signals."""
 
         return self._generate_with_confidence(
             input_ids,

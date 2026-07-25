@@ -201,6 +201,14 @@ def _slice_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 ]
             )
         ),
+        "repetition_guard_trigger_rate": _round(
+            _mean(
+                [
+                    float(row.get("repetition_guard_triggered", False))
+                    for row in rows
+                ]
+            )
+        ),
         "mean_generation_token_budget": _round(
             _mean(
                 [
@@ -540,31 +548,49 @@ def evaluate_structured_student(
             raw_batch = collator([dataset[index]])
             prompt_batch = posttraining_prompt_batch(raw_batch, device)
             prompt_length = int(prompt_batch["input_ids"].shape[1])
+            repetition_guard_triggered = False
             with torch.no_grad(), _autocast_context(device, config.precision):
+                generate_with_diagnostics = getattr(
+                    model,
+                    "generate_with_confidence_and_diagnostics",
+                    None,
+                )
                 generate_with_confidence = getattr(
                     model,
                     "generate_with_confidence",
                     None,
                 )
-                if generate_with_confidence is None:
+                generation_kwargs = {
+                    **visual_model_inputs(prompt_batch),
+                    "attention_mask": prompt_batch["attention_mask"],
+                    "max_new_tokens": generation_token_budget,
+                    "eos_token_id": int(tokenizer.eos_token_id),
+                    "use_kv_cache": config.use_kv_cache,
+                    "repetition_guard_min_tokens": (
+                        config.repetition_guard_min_tokens
+                    ),
+                    "repetition_guard_max_period": (
+                        config.repetition_guard_max_period
+                    ),
+                    "repetition_guard_repetitions": (
+                        config.repetition_guard_repetitions
+                    ),
+                }
+                if generate_with_diagnostics is not None:
+                    generated, confidence_tensor, diagnostics = (
+                        generate_with_diagnostics(
+                            prompt_batch["input_ids"],
+                            **generation_kwargs,
+                        )
+                    )
+                    confidence = float(confidence_tensor[0].item())
+                    repetition_guard_triggered = bool(
+                        diagnostics.repetition_guard_triggered[0].item()
+                    )
+                elif generate_with_confidence is None:
                     generation_kwargs = _supported_generation_kwargs(
                         model.generate,
-                        {
-                            **visual_model_inputs(prompt_batch),
-                            "attention_mask": prompt_batch["attention_mask"],
-                            "max_new_tokens": generation_token_budget,
-                            "eos_token_id": int(tokenizer.eos_token_id),
-                            "use_kv_cache": config.use_kv_cache,
-                            "repetition_guard_min_tokens": (
-                                config.repetition_guard_min_tokens
-                            ),
-                            "repetition_guard_max_period": (
-                                config.repetition_guard_max_period
-                            ),
-                            "repetition_guard_repetitions": (
-                                config.repetition_guard_repetitions
-                            ),
-                        },
+                        generation_kwargs,
                     )
                     generated = model.generate(
                         prompt_batch["input_ids"],
@@ -574,20 +600,7 @@ def evaluate_structured_student(
                 else:
                     generated, confidence_tensor = generate_with_confidence(
                         prompt_batch["input_ids"],
-                        **visual_model_inputs(prompt_batch),
-                        attention_mask=prompt_batch["attention_mask"],
-                        max_new_tokens=generation_token_budget,
-                        eos_token_id=int(tokenizer.eos_token_id),
-                        use_kv_cache=config.use_kv_cache,
-                        repetition_guard_min_tokens=(
-                            config.repetition_guard_min_tokens
-                        ),
-                        repetition_guard_max_period=(
-                            config.repetition_guard_max_period
-                        ),
-                        repetition_guard_repetitions=(
-                            config.repetition_guard_repetitions
-                        ),
+                        **generation_kwargs,
                     )
                     confidence = float(confidence_tensor[0].item())
             if generated.ndim != 2 or generated.shape[0] != 1:
@@ -606,11 +619,14 @@ def evaluate_structured_student(
                     or completion_ids[-1] != int(tokenizer.eos_token_id)
                 )
             )
-            degenerate_repetition = has_repeated_suffix_cycle(
-                completion_ids,
-                min_tokens=config.repetition_guard_min_tokens,
-                max_period=config.repetition_guard_max_period,
-                repetitions=config.repetition_guard_repetitions,
+            degenerate_repetition = (
+                repetition_guard_triggered
+                or has_repeated_suffix_cycle(
+                    completion_ids,
+                    min_tokens=config.repetition_guard_min_tokens,
+                    max_period=config.repetition_guard_max_period,
+                    repetitions=config.repetition_guard_repetitions,
+                )
             )
             reward = score_structured_response(
                 raw_prediction,
@@ -655,6 +671,7 @@ def evaluate_structured_student(
                     "generation_token_budget": generation_token_budget,
                     "generation_token_budget_source": budget_source,
                     "reached_max_new_tokens": reached_max_new_tokens,
+                    "repetition_guard_triggered": repetition_guard_triggered,
                     "degenerate_repetition": degenerate_repetition,
                     "confidence": (
                         _round(confidence) if confidence is not None else None
@@ -696,6 +713,9 @@ def evaluate_structured_student(
         "max_token_rate": overall["max_token_rate"],
         "degenerate_repetition_rate": overall[
             "degenerate_repetition_rate"
+        ],
+        "repetition_guard_trigger_rate": overall[
+            "repetition_guard_trigger_rate"
         ],
         "mean_generation_token_budget": overall[
             "mean_generation_token_budget"
@@ -816,6 +836,7 @@ def wandb_metrics_for_split(
     for name in (
         "max_token_rate",
         "degenerate_repetition_rate",
+        "repetition_guard_trigger_rate",
         "mean_generation_token_budget",
         "budget_escalation_rate",
     ):

@@ -19,7 +19,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from docvlm_eval.unified import render_grid, unified_from_hf_row  # noqa: E402
+from docvlm_eval.unified import (  # noqa: E402
+    render_detail_report,
+    render_grid,
+    unified_from_hf_row,
+)
 
 
 def main() -> None:
@@ -28,6 +32,10 @@ def main() -> None:
     p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
     p.add_argument("--repo", default=None, help="HF repo to pull instead of --src")
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" / "udd_examples.png"))
+    p.add_argument(
+        "--details-out",
+        default=str(ROOT / "docs" / "report" / "figures" / "udd_details.html"),
+    )
     p.add_argument("--tmp", default=str(ROOT / "data" / "udd" / "viz_imgs"))
     p.add_argument("--cols", type=int, default=4)
     args = p.parse_args()
@@ -39,7 +47,8 @@ def main() -> None:
         from datasets import load_from_disk
         ds = load_from_disk(args.src)
 
-    tmp = Path(args.tmp); tmp.mkdir(parents=True, exist_ok=True)
+    tmp = Path(args.tmp)
+    tmp.mkdir(parents=True, exist_ok=True)
     sources = ds["source"]
     seen: set[str] = set()
     rows = []
@@ -55,6 +64,7 @@ def main() -> None:
     render_grid(rows, args.out, cols=args.cols,
                 title=f"UDD — {len(rows)} datasets, one example each "
                       f"(KIE=green, localization=orange)")
+    render_detail_report(rows, args.details_out)
 
 
 if __name__ == "__main__":
