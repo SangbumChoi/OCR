@@ -143,6 +143,11 @@ execution; heldout-derived plans are rejected. See
 resolved architecture blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions
 match the experiment.
 
+The production synthesis policy uses schema version 3. It preserves decomposed validation
+verifier deficits and matched progress, routing table, chart, formula, grounding, rationale, text,
+and abstention signals only to generator families that can author the corresponding exact target.
+The plan stores component statistics once and compact route diagnostics per job.
+
 W&B is optional and stage-specific. Set `wandb_project`, entity, group, run, and tags under
 `pretraining`, `posttraining.sft`, `posttraining.preference`, `posttraining.rlvr`, or `evaluation`.
 Training stages stream the same numeric records persisted in their local `metrics.jsonl`; rank zero

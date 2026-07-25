@@ -64,6 +64,46 @@ def _progress_config():
     return config
 
 
+def _reward_routed_config():
+    config = _progress_config()
+    config["schema_version"] = 3
+    config["factor_weights"] = {
+        "generator_case": 0.0,
+        "language": 0.0,
+        "difficulty_level": 0.0,
+        "layout_family": 0.0,
+        "composition_tier": 1.0,
+    }
+    config["candidate_space"]["languages"] = ["en"]
+    config["candidate_space"]["cases"] = [
+        {
+            "generator_case": "hard_table",
+            "composition_tier": "single_document",
+            "layout_families": ["compact-v1"],
+        },
+        {
+            "generator_case": "hard_chart",
+            "composition_tier": "single_document",
+            "layout_families": ["compact-v1"],
+        },
+    ]
+    config["reward_routing"] = {
+        "coefficient": 1.0,
+        "prior_strength": 1.0,
+        "components": {
+            "table_tree_similarity": {
+                "weight": 1.0,
+                "cases": ["hard_table"],
+            },
+            "chart_numeric_tolerance": {
+                "weight": 1.0,
+                "cases": ["hard_chart"],
+            },
+        },
+    }
+    return config
+
+
 def _row(language, score, reward, valid, *, split="validation"):
     return {
         "sample_id": f"{split}-{language}",
@@ -93,6 +133,15 @@ def _plan_with_baseline(rows, baseline_rows, config=None):
         baseline_source_fingerprint="sha256:baseline",
         baseline_source_path="/tmp/baseline/validation/per_sample.jsonl",
     )
+
+
+def _reward_row(case, component, value):
+    row = _row("en", 0.5, 0.5, True)
+    row["sample_id"] = f"validation-{case}"
+    row["meta"]["generator_case"] = case
+    row["reward_components"] = {component: value}
+    row["applicable_rewards"] = [component]
+    return row
 
 
 def test_validation_failures_deterministically_shift_the_next_batch():
@@ -193,6 +242,102 @@ def test_matched_learning_progress_requires_immutable_sample_identity():
 
     with pytest.raises(ValueError, match="sample identity differs"):
         _plan_with_baseline([row], [baseline])
+
+
+def test_decomposed_reward_deficit_routes_the_next_generator_family():
+    rows = [
+        _reward_row(
+            "hard_table",
+            "table_tree_similarity",
+            0.0,
+        ),
+        _reward_row(
+            "hard_chart",
+            "chart_numeric_tolerance",
+            1.0,
+        ),
+    ]
+    baseline_rows = json.loads(json.dumps(rows))
+
+    plan = _plan_with_baseline(
+        rows,
+        baseline_rows,
+        _reward_routed_config(),
+    )
+
+    counts = {
+        job["generator_case"]: job["count"] for job in plan["jobs"]
+    }
+    assert counts["hard_table"] > counts["hard_chart"]
+    assert plan["schema_version"] == 3
+    assert plan["policy"] == (
+        "reward_routed_learning_progress_curriculum"
+    )
+    assert (
+        plan["reward_component_statistics"]["table_tree_similarity"][
+            "routed_utility"
+        ]
+        > plan["reward_component_statistics"]["chart_numeric_tolerance"][
+            "routed_utility"
+        ]
+    )
+    table_job = next(
+        job
+        for job in plan["jobs"]
+        if job["generator_case"] == "hard_table"
+    )
+    assert table_job["dominant_reward_route"] == (
+        "table_tree_similarity"
+    )
+    validate_generation_plan(plan, require_training_authorized=True)
+
+
+def test_reward_routing_rejects_changed_baseline_applicability():
+    row = _reward_row(
+        "hard_table",
+        "table_tree_similarity",
+        0.0,
+    )
+    baseline = json.loads(json.dumps(row))
+    baseline["applicable_rewards"] = ["chart_numeric_tolerance"]
+    baseline["reward_components"] = {"chart_numeric_tolerance": 0.0}
+
+    with pytest.raises(ValueError, match="applicability differs"):
+        _plan_with_baseline(
+            [row],
+            [baseline],
+            _reward_routed_config(),
+        )
+
+
+def test_reward_routing_rejects_resigned_job_tampering():
+    rows = [
+        _reward_row(
+            "hard_table",
+            "table_tree_similarity",
+            0.0,
+        ),
+        _reward_row(
+            "hard_chart",
+            "chart_numeric_tolerance",
+            1.0,
+        ),
+    ]
+    plan = _plan_with_baseline(
+        rows,
+        json.loads(json.dumps(rows)),
+        _reward_routed_config(),
+    )
+    tampered = json.loads(json.dumps(plan))
+    tampered["jobs"][0]["dominant_reward_route"] = (
+        "chart_numeric_tolerance"
+    )
+    unsigned = dict(tampered)
+    unsigned.pop("plan_fingerprint")
+    tampered["plan_fingerprint"] = payload_fingerprint(unsigned)
+
+    with pytest.raises(ValueError, match="component statistics"):
+        validate_generation_plan(tampered)
 
 
 def test_schema_two_requires_a_matched_baseline():

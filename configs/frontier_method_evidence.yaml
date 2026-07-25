@@ -237,14 +237,19 @@ methods:
       - path: tests/test_student_posttrain.py
         anchors: ["test_group_relative_policy_loss_uses_reward_rank_and_reference_kl"]
   R15:
-    claim: Visual reinforcement uses decomposed authored task rewards.
+    claim: Visual reinforcement uses decomposed rewards that route compatible exact generators.
     implementation:
       - path: src/docvlm_eval/student/rewards.py
         anchors: ["def score_structured_response", "def _box_reward"]
         knobs: [visual_reward, group_size, rollout_length]
+      - path: src/docvlm_eval/student/synthesis_policy.py
+        anchors: ["def _reward_component_statistics", "def _routed_reward_priority"]
+        knobs: []
     verification:
       - path: tests/test_student_rewards.py
         anchors: ["test_chart_grounding_and_rationale_rewards_are_independently_reported"]
+      - path: tests/test_student_synthesis_policy.py
+        anchors: ["test_decomposed_reward_deficit_routes_the_next_generator_family"]
   O02:
     claim: Grounding optimization uses generalized IoU with explicit box parameterization.
     implementation:

@@ -1,7 +1,7 @@
 # Failure-driven allocation for the next exact synthetic training batch.
 # Only validation per-sample artifacts may authorize a training plan.
 
-schema_version: 2
+schema_version: 3
 budget: 700
 seed: 9107
 
@@ -27,6 +27,42 @@ factor_weights:
   difficulty_level: 0.15
   layout_family: 0.15
   composition_tier: 0.20
+
+# Preserve decomposed verifier failures instead of collapsing every task into
+# one scalar reward before choosing the next generator family.
+reward_routing:
+  coefficient: 0.35
+  prior_strength: 4.0
+  components:
+    answer_correctness:
+      weight: 0.25
+      cases: ["*"]
+    normalized_text_similarity:
+      weight: 0.15
+      cases: ["*"]
+    box_iou:
+      weight: 0.15
+      cases: ["*"]
+    table_tree_similarity:
+      weight: 0.10
+      cases:
+        - hard_table
+        - hard_investment
+        - hard_science
+        - audit_packet
+        - investment_dossier
+    chart_numeric_tolerance:
+      weight: 0.10
+      cases: [hard_chart, hard_science, audit_packet]
+    formula_equivalence:
+      weight: 0.10
+      cases: [hard_science]
+    grounded_rationale_consistency:
+      weight: 0.10
+      cases: ["*"]
+    calibrated_abstention:
+      weight: 0.05
+      cases: ["*"]
 
 candidate_space:
   languages: [en, es, ko, ja, zh]

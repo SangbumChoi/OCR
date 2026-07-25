@@ -20,6 +20,16 @@ POLICY_FACTORS = (
     "composition_tier",
 )
 COMPOSITION_TIERS = {"single_document", "multi_page", "multi_document"}
+ROUTABLE_REWARD_COMPONENTS = {
+    "answer_correctness",
+    "normalized_text_similarity",
+    "box_iou",
+    "table_tree_similarity",
+    "chart_numeric_tolerance",
+    "formula_equivalence",
+    "grounded_rationale_consistency",
+    "calibrated_abstention",
+}
 
 
 def _canonical_json(payload: Any) -> str:
@@ -79,8 +89,10 @@ def _positive_number(mapping: Mapping[str, Any], key: str) -> float:
 
 def validate_synthesis_policy_config(config: Mapping[str, Any]) -> None:
     schema_version = int(config.get("schema_version", 0))
-    if schema_version not in {1, 2}:
-        raise ValueError("synthesis policy schema_version must be 1 or 2")
+    if schema_version not in {1, 2, 3}:
+        raise ValueError(
+            "synthesis policy schema_version must be 1, 2, or 3"
+        )
     if int(config.get("budget", 0)) <= 0:
         raise ValueError("synthesis policy budget must be positive")
     if int(config.get("seed", -1)) < 0:
@@ -207,6 +219,71 @@ def validate_synthesis_policy_config(config: Mapping[str, Any]) -> None:
             raise ValueError(
                 f"candidate case {name!r} difficulty_levels must be null "
                 "or a non-empty list within [1, 5]"
+            )
+    if schema_version >= 3:
+        routing = config.get("reward_routing")
+        if not isinstance(routing, dict):
+            raise ValueError(
+                "schema_version 3 requires reward_routing"
+            )
+        if _positive_number(routing, "coefficient") <= 0:
+            raise ValueError(
+                "reward_routing.coefficient must be positive"
+            )
+        if _positive_number(routing, "prior_strength") <= 0:
+            raise ValueError(
+                "reward_routing.prior_strength must be positive"
+            )
+        components = routing.get("components")
+        if not isinstance(components, dict) or not components:
+            raise ValueError(
+                "reward_routing.components must be a non-empty mapping"
+            )
+        unknown = set(components) - ROUTABLE_REWARD_COMPONENTS
+        if unknown:
+            raise ValueError(
+                "reward_routing contains unknown components: "
+                f"{sorted(unknown)}"
+            )
+        candidate_cases = {
+            str(case["generator_case"]) for case in cases
+        }
+        total_weight = 0.0
+        for component, route in components.items():
+            if not isinstance(route, dict):
+                raise ValueError(
+                    f"reward route {component} must be a mapping"
+                )
+            weight = _positive_number(route, "weight")
+            if weight <= 0:
+                raise ValueError(
+                    f"reward route {component} weight must be positive"
+                )
+            total_weight += weight
+            route_cases = route.get("cases")
+            if (
+                not isinstance(route_cases, list)
+                or not route_cases
+                or any(not str(case).strip() for case in route_cases)
+            ):
+                raise ValueError(
+                    f"reward route {component} cases must be non-empty"
+                )
+            unknown_cases = set(map(str, route_cases)) - (
+                candidate_cases | {"*"}
+            )
+            if unknown_cases:
+                raise ValueError(
+                    f"reward route {component} has unknown cases: "
+                    f"{sorted(unknown_cases)}"
+                )
+            if "*" in route_cases and len(route_cases) != 1:
+                raise ValueError(
+                    f"reward route {component} wildcard must stand alone"
+                )
+        if total_weight <= 0:
+            raise ValueError(
+                "reward_routing component weights must have positive total"
             )
     generation = config.get("generation") or {}
     if not isinstance(generation, dict):
@@ -384,6 +461,148 @@ def _learning_progress(
     ) / total
 
 
+def _applicable_reward_components(
+    row: Mapping[str, Any],
+) -> set[str]:
+    raw = row.get("applicable_rewards")
+    if not isinstance(raw, list) or any(
+        not isinstance(name, str) or not name for name in raw
+    ):
+        raise ValueError(
+            "reward-routed evaluation rows require applicable_rewards"
+        )
+    return set(raw)
+
+
+def _reward_component_value(
+    row: Mapping[str, Any],
+    component: str,
+) -> float:
+    raw = row.get("reward_components")
+    if not isinstance(raw, dict):
+        raise ValueError(
+            "reward-routed evaluation rows require reward_components"
+        )
+    try:
+        value = float(raw[component])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"applicable reward {component!r} has no numeric score"
+        ) from exc
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError(
+            f"reward component {component!r} must be within [0, 1]"
+        )
+    return value
+
+
+def _reward_component_statistics(
+    matched_rows: Sequence[
+        tuple[Mapping[str, Any], Mapping[str, Any]]
+    ],
+    routing: Mapping[str, Any],
+    *,
+    learning_progress_coefficient: float,
+) -> dict[str, dict[str, Any]]:
+    observations: dict[str, list[tuple[float, float]]] = {
+        component: [] for component in routing["components"]
+    }
+    for row, baseline_row in matched_rows:
+        current_applicable = _applicable_reward_components(row)
+        baseline_applicable = _applicable_reward_components(baseline_row)
+        if current_applicable != baseline_applicable:
+            raise ValueError(
+                "matched reward applicability differs for sample_id "
+                f"{_sample_id(row)!r}"
+            )
+        for component in observations:
+            if component not in current_applicable:
+                continue
+            current = _reward_component_value(row, component)
+            baseline = _reward_component_value(
+                baseline_row,
+                component,
+            )
+            observations[component].append(
+                (1.0 - current, current - baseline)
+            )
+    pooled = [
+        value
+        for component_values in observations.values()
+        for value in component_values
+    ]
+    if not pooled:
+        raise ValueError(
+            "reward routing has no applicable component observations"
+        )
+    global_deficit = sum(value[0] for value in pooled) / len(pooled)
+    global_progress = sum(value[1] for value in pooled) / len(pooled)
+    prior_strength = float(routing["prior_strength"])
+    result = {}
+    for component, values in sorted(observations.items()):
+        count = len(values)
+        deficit_total = sum(value[0] for value in values)
+        progress_total = sum(value[1] for value in values)
+        posterior_deficit = (
+            deficit_total + prior_strength * global_deficit
+        ) / (count + prior_strength)
+        posterior_progress = (
+            progress_total + prior_strength * global_progress
+        ) / (count + prior_strength)
+        routed_utility = max(
+            0.0,
+            posterior_deficit
+            + learning_progress_coefficient * posterior_progress,
+        )
+        route = routing["components"][component]
+        result[component] = {
+            "n": count,
+            "weight": float(route["weight"]),
+            "cases": list(route["cases"]),
+            "mean_deficit": (
+                round(deficit_total / count, 8) if count else None
+            ),
+            "mean_learning_progress": (
+                round(progress_total / count, 8) if count else None
+            ),
+            "posterior_deficit": round(posterior_deficit, 8),
+            "posterior_learning_progress": round(
+                posterior_progress,
+                8,
+            ),
+            "routed_utility": round(routed_utility, 8),
+        }
+    return result
+
+
+def _routed_reward_priority(
+    generator_case: str,
+    statistics: Mapping[str, Mapping[str, Any]],
+) -> tuple[float, str | None, int]:
+    applicable = []
+    for component, values in statistics.items():
+        cases = set(map(str, values["cases"]))
+        if "*" in cases or generator_case in cases:
+            applicable.append((component, values))
+    if not applicable:
+        return 0.0, None, 0
+    total_weight = sum(float(values["weight"]) for _, values in applicable)
+    score = sum(
+        float(values["weight"]) * float(values["routed_utility"])
+        for _, values in applicable
+    ) / total_weight
+    dominant = max(
+        applicable,
+        key=lambda item: (
+            float(item[1]["weight"])
+            * float(item[1]["routed_utility"]),
+            item[0],
+        ),
+    )[0]
+    evidence = sum(int(values["n"]) for _, values in applicable)
+    return score, dominant, evidence
+
+
 def _candidate_arms(config: Mapping[str, Any]) -> list[dict[str, Any]]:
     space = config["candidate_space"]
     arms: list[dict[str, Any]] = []
@@ -523,6 +742,7 @@ def plan_synthesis_batch(
     failure_weights = config["failure_weights"]
     schema_version = int(config["schema_version"])
     progress_required = schema_version >= 2
+    reward_routing_enabled = schema_version >= 3
     progress_enabled = progress_required and baseline_rows is not None
     if progress_required and baseline_rows is None:
         raise ValueError(
@@ -535,6 +755,9 @@ def plan_synthesis_batch(
         raise ValueError(
             "matched baseline requires source path and SHA-256 fingerprint"
         )
+    matched_rows: list[
+        tuple[Mapping[str, Any], Mapping[str, Any]]
+    ] = []
     if progress_enabled:
         matched_rows = _match_baseline_rows(rows, baseline_rows or [])
         learning_progress_weights = config.get(
@@ -589,6 +812,22 @@ def plan_synthesis_batch(
         global_utility=global_utility,
         prior_strength=prior_strength,
     )
+    reward_component_stats = (
+        _reward_component_statistics(
+            matched_rows,
+            config["reward_routing"],
+            learning_progress_coefficient=(
+                learning_progress_coefficient
+            ),
+        )
+        if reward_routing_enabled
+        else {}
+    )
+    reward_routing_coefficient = (
+        float(config["reward_routing"]["coefficient"])
+        if reward_routing_enabled
+        else 0.0
+    )
     factor_weights = {
         factor: float(config["factor_weights"][factor])
         for factor in POLICY_FACTORS
@@ -633,7 +872,19 @@ def plan_synthesis_batch(
             posterior_totals["utility"] / factor_weight_total
         )
         uncertainty = uncertainty_total / factor_weight_total
-        priority = predicted_utility + uncertainty_coefficient * uncertainty
+        (
+            routed_reward_utility,
+            dominant_reward_route,
+            reward_route_evidence_count,
+        ) = _routed_reward_priority(
+            str(arm["generator_case"]),
+            reward_component_stats,
+        )
+        priority = (
+            predicted_utility
+            + uncertainty_coefficient * uncertainty
+            + reward_routing_coefficient * routed_reward_utility
+        )
         logits.append(priority / float(config["temperature"]))
         scored_candidates.append(
             {
@@ -647,6 +898,20 @@ def plan_synthesis_batch(
                 "uncertainty": round(uncertainty, 8),
                 "priority": round(priority, 8),
                 "factor_evidence_count": evidence_total,
+                **(
+                    {
+                        "routed_reward_utility": round(
+                            routed_reward_utility,
+                            8,
+                        ),
+                        "dominant_reward_route": dominant_reward_route,
+                        "reward_route_evidence_count": (
+                            reward_route_evidence_count
+                        ),
+                    }
+                    if reward_routing_enabled
+                    else {}
+                ),
             }
         )
     max_logit = max(logits)
@@ -692,7 +957,9 @@ def plan_synthesis_batch(
     plan = {
         "schema_version": schema_version,
         "policy": (
-            "factor_shrinkage_learning_progress_curriculum"
+            "reward_routed_learning_progress_curriculum"
+            if reward_routing_enabled
+            else "factor_shrinkage_learning_progress_curriculum"
             if progress_enabled
             else "factor_shrinkage_failure_curriculum"
         ),
@@ -722,6 +989,18 @@ def plan_synthesis_batch(
         "temperature": float(config["temperature"]),
         "exploration_fraction": exploration,
         "generation": dict(config.get("generation") or {}),
+        **(
+            {
+                "reward_routing_coefficient": (
+                    reward_routing_coefficient
+                ),
+                "reward_component_statistics": (
+                    reward_component_stats
+                ),
+            }
+            if reward_routing_enabled
+            else {}
+        ),
         "candidate_count": len(candidates),
         "factor_statistics": factor_stats,
         "jobs": jobs,
@@ -752,8 +1031,10 @@ def validate_generation_plan(
     require_training_authorized: bool = False,
 ) -> None:
     schema_version = int(plan.get("schema_version", 0))
-    if schema_version not in {1, 2}:
-        raise ValueError("generation plan schema_version must be 1 or 2")
+    if schema_version not in {1, 2, 3}:
+        raise ValueError(
+            "generation plan schema_version must be 1, 2, or 3"
+        )
     if require_training_authorized and plan.get("training_authorized") is not True:
         raise ValueError("generation plan is not authorized for training")
     source = plan.get("source")
@@ -778,11 +1059,14 @@ def validate_generation_plan(
             raise ValueError(
                 "generation plan schema_version 2 requires a matched baseline"
             )
-        if plan.get("policy") != (
-            "factor_shrinkage_learning_progress_curriculum"
-        ):
+        expected_policy = (
+            "reward_routed_learning_progress_curriculum"
+            if schema_version >= 3
+            else "factor_shrinkage_learning_progress_curriculum"
+        )
+        if plan.get("policy") != expected_policy:
             raise ValueError(
-                "generation plan schema_version 2 has an invalid policy"
+                "matched-baseline generation plan has an invalid policy"
             )
         if not isinstance(baseline_source, dict):
             raise ValueError(
@@ -853,6 +1137,77 @@ def validate_generation_plan(
             raise ValueError(
                 "matched-baseline generation plan has invalid global signals"
             )
+    if schema_version >= 3:
+        routing_coefficient = _positive_number(
+            plan,
+            "reward_routing_coefficient",
+        )
+        if routing_coefficient <= 0:
+            raise ValueError(
+                "reward-routed generation plan requires a positive "
+                "coefficient"
+            )
+        component_statistics = plan.get(
+            "reward_component_statistics"
+        )
+        if (
+            not isinstance(component_statistics, dict)
+            or not component_statistics
+        ):
+            raise ValueError(
+                "reward-routed generation plan requires component statistics"
+            )
+        unknown_components = (
+            set(component_statistics) - ROUTABLE_REWARD_COMPONENTS
+        )
+        if unknown_components:
+            raise ValueError(
+                "reward-routed generation plan has unknown components: "
+                f"{sorted(unknown_components)}"
+            )
+        for component, statistics in component_statistics.items():
+            if not isinstance(statistics, dict):
+                raise ValueError(
+                    f"reward component {component} statistics are invalid"
+                )
+            if int(statistics.get("n", -1)) < 0:
+                raise ValueError(
+                    f"reward component {component} count is invalid"
+                )
+            weight = float(statistics.get("weight", math.nan))
+            cases = statistics.get("cases")
+            if (
+                not math.isfinite(weight)
+                or weight <= 0
+                or not isinstance(cases, list)
+                or not cases
+                or any(not str(case).strip() for case in cases)
+            ):
+                raise ValueError(
+                    f"reward component {component} route is invalid"
+                )
+            for field in (
+                "posterior_deficit",
+                "posterior_learning_progress",
+                "routed_utility",
+            ):
+                value = float(statistics.get(field, math.nan))
+                if not math.isfinite(value):
+                    raise ValueError(
+                        f"reward component {component} {field} is invalid"
+                    )
+            if not 0.0 <= float(
+                statistics["posterior_deficit"]
+            ) <= 1.0:
+                raise ValueError(
+                    f"reward component {component} deficit is invalid"
+                )
+            if not -1.0 <= float(
+                statistics["posterior_learning_progress"]
+            ) <= 1.0:
+                raise ValueError(
+                    f"reward component {component} progress is invalid"
+                )
     budget = int(plan.get("budget", 0))
     jobs = plan.get("jobs")
     if budget <= 0 or not isinstance(jobs, list) or not jobs:
@@ -881,6 +1236,63 @@ def validate_generation_plan(
                     raise ValueError(
                         f"generation job {signal} must be finite"
                     )
+        if schema_version >= 3:
+            routed_utility = float(
+                job.get("routed_reward_utility", math.nan)
+            )
+            if not math.isfinite(routed_utility) or routed_utility < 0:
+                raise ValueError(
+                    "reward-routed generation job utility is invalid"
+                )
+            dominant = job.get("dominant_reward_route")
+            if (
+                dominant is not None
+                and dominant not in ROUTABLE_REWARD_COMPONENTS
+            ):
+                raise ValueError(
+                    "reward-routed generation job has an invalid dominant "
+                    "component"
+                )
+            if int(job.get("reward_route_evidence_count", -1)) < 0:
+                raise ValueError(
+                    "reward-routed generation job evidence count is invalid"
+                )
+            (
+                expected_routed_utility,
+                expected_dominant,
+                expected_evidence,
+            ) = _routed_reward_priority(
+                str(job["generator_case"]),
+                component_statistics,
+            )
+            if (
+                not math.isclose(
+                    routed_utility,
+                    expected_routed_utility,
+                    abs_tol=1e-8,
+                )
+                or dominant != expected_dominant
+                or int(job["reward_route_evidence_count"])
+                != expected_evidence
+            ):
+                raise ValueError(
+                    "reward-routed generation job does not match component "
+                    "statistics"
+                )
+            expected_priority = (
+                float(job["predicted_utility"])
+                + float(plan["uncertainty_coefficient"])
+                * float(job["uncertainty"])
+                + routing_coefficient * routed_utility
+            )
+            if not math.isclose(
+                float(job["priority"]),
+                expected_priority,
+                abs_tol=2e-8,
+            ):
+                raise ValueError(
+                    "reward-routed generation job priority mismatch"
+                )
         if job["composition_tier"] not in COMPOSITION_TIERS:
             raise ValueError("generation job has invalid composition_tier")
         if int(job["difficulty_level"]) not in range(1, 6):

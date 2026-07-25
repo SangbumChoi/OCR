@@ -341,3 +341,8 @@ The actual split name is `heldout`, not `held`. Reward components use
 `eval_by_slice/degradation/scan/train` and
 `eval_by_slice/degradation/scan/heldout`. This makes one W&B panel per suffix possible without
 duplicating or manually aligning run steps.
+
+On the validation split, these decomposed reward fields feed the schema-v3 synthesis planner.
+Matched initial-versus-final component progress and residual deficits alter the next exact
+programmatic document-family allocation; heldout rewards remain analysis-only. This closes the
+RLVR-verifier-to-data loop without allowing policy text to become generator ground truth.

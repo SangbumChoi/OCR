@@ -131,3 +131,37 @@ This is a cross-run curriculum: run \(t\) produces the authorized allocation for
 without rebuilding the tokenizer, reinitializing the model, or repeating pretraining. It does not
 adapt against the final heldout set and does not allow student predictions to replace exact
 generator ground truth.
+
+## Reward-component routing
+
+Schema version 3 preserves the decomposed verifier signal instead of reducing every document to
+one reward before choosing a generator family. For each applicable reward component \(c\), the
+planner computes:
+
+```text
+component_deficit_c = 1 - final_component_score_c
+component_progress_c = final_component_score_c - baseline_component_score_c
+routed_utility_c =
+  max(0, posterior_deficit_c + learning_progress_coefficient * posterior_progress_c)
+```
+
+The posterior uses the configured empirical-Bayes prior. Applicability must match exactly between
+the final and baseline row for a sample; a changed verifier mask fails rather than creating a
+spurious gain. Components are routed only to generator families that can author their ground
+truth. Table-tree deficits target table-bearing families, chart tolerance targets chart-bearing
+families, and formula equivalence targets scientific pages. Answer, text, box, rationale, and
+abstention components can route across all families.
+
+The candidate priority becomes:
+
+```text
+priority_arm =
+  predicted_utility_arm
+  + uncertainty_coefficient * uncertainty_arm
+  + reward_routing_coefficient * routed_reward_utility_arm
+```
+
+Only routed utility, dominant component, and evidence count are repeated per generation job.
+Component statistics are stored once at plan level, avoiding large repeated tables. Routing
+changes document allocation, not labels: every selected generator still creates executable
+answers, boxes, programs, and provenance independently of the student prediction.

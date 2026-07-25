@@ -225,6 +225,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   attestation, exact model/tokenizer preservation, validation-authorized generation, deterministic
   origin-stratified cumulative replay, and post-training-only continuation with an explicit
   optimizer reset policy.
+- **Route verifier failures into data generation:**
+  [`report/student_failure_driven_synthesis.md`](report/student_failure_driven_synthesis.md) —
+  matched component-level reward deficits and progress drive only compatible exact generator
+  families, while validation authorization and heldout isolation remain fail-closed.
 - **Attest execution evidence:**
   [`report/student_experiment_evidence.md`](report/student_experiment_evidence.md) — deterministic
   source/stage/artifact/checkpoint hashes, semantic optimization and evaluation checks,
