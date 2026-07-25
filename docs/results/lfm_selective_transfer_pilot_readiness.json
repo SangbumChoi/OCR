@@ -91,6 +91,21 @@
     },
     {
       "evidence": {
+        "direct_copy_candidates": 2,
+        "matrix_validation_status": "pass",
+        "promotion_claim_authorized": false,
+        "quality_claim_authorized": false,
+        "real_payload_status": "verified",
+        "source": "LiquidAI/LFM2.5-VL-1.6B",
+        "source_revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+        "structured_transfer_candidates": 1,
+        "target": "docvlm-lfm-aligned-814m"
+      },
+      "id": "cross_model_source_selection",
+      "status": "pass"
+    },
+    {
+      "evidence": {
         "required_stages": [
           "acquire_language_checkpoint",
           "evaluate",
@@ -231,9 +246,9 @@
   "claim_scope": "lfm_selective_transfer_pilot_submission_only",
   "counts": {
     "fail": 0,
-    "pass": 14
+    "pass": 15
   },
-  "fingerprint": "sha256:1d0a305445842420c0539d168ec07194fe89638ac751248068381e8ad691dd03",
+  "fingerprint": "sha256:d943da58b4c1c3fd20caca5026a93fe90118a89031600156b683ed622fb41141",
   "limitations": [
     "This audit authorizes only submission of the one-seed screening pilot.",
     "The strict-transfer CUDA feasibility stage must execute and pass on the target GPU.",
@@ -248,6 +263,15 @@
     "source_fingerprint": "sha256:0dba17980a41f8b51f521372ee6a57bf5d9dd1b1fceeb24a23cc4a9879bbbe4e"
   },
   "schema_version": 1,
+  "source_selection": {
+    "architecture_report_fingerprint": "sha256:406ea9d266644d175ab995878f149c7583953e758863bc686db78896dbfabebf",
+    "catalog_fingerprint": "sha256:8b518c54f51c96bf95cc6e6603e6eaa5b4eb78a54cb03ad205134efecf3408b9",
+    "claim_scope": "selective_transfer_source_selection_only",
+    "report_fingerprint": "sha256:524c0e937f59f2fd1c0c70bcc3e7529216ccacf38e862dfd29389f18d921607e",
+    "source": "docs/results/selective_transfer_source_matrix.json",
+    "source_fingerprint": "sha256:41ff19091331c8dc243465edd41c4456c2abc40a7a9d35efed7e1027585cd5e9",
+    "weight_report_fingerprint": "sha256:789c74acdbe6c8f061b85dbb851f7b536f1a643fcf59b955a29450c881e56b61"
+  },
   "sweep": {
     "arms": [
       "lfm_random",

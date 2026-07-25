@@ -27,6 +27,12 @@ PREFLIGHT = (
     / "results"
     / "selective_transfer_lfm_real_source_preflight.json"
 )
+SOURCE_SELECTION = (
+    ROOT
+    / "docs"
+    / "results"
+    / "selective_transfer_source_matrix.json"
+)
 SWEEP_ROOT = ROOT / "outputs" / "sweeps" / "docvlm-lfm-language-transfer-pilot"
 
 
@@ -126,6 +132,7 @@ def _readiness() -> dict[str, Any]:
             repo_root=ROOT,
             sweep_path=SWEEP,
             preflight_path=PREFLIGHT,
+            source_selection_path=SOURCE_SELECTION,
         )
 
 

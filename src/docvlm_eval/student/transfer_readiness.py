@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .architecture_commonality import load_architecture_catalog
+from .source_selection import validate_source_selection_matrix
 from .sweep import SweepPlan
 
 
@@ -121,6 +123,7 @@ def audit_lfm_transfer_pilot(
     repo_root: str | Path,
     sweep_path: str | Path,
     preflight_path: str | Path,
+    source_selection_path: str | Path,
 ) -> dict[str, Any]:
     """Audit whether the LFM screening pilot is safe to submit.
 
@@ -131,9 +134,32 @@ def audit_lfm_transfer_pilot(
     repo = Path(repo_root).resolve()
     sweep_source = Path(sweep_path).resolve()
     preflight_source = Path(preflight_path).resolve()
+    source_selection_source = Path(source_selection_path).resolve()
     sweep_label = _source_label(sweep_source, repo)
     preflight_label = _source_label(preflight_source, repo)
+    source_selection_label = _source_label(source_selection_source, repo)
     preflight = json.loads(preflight_source.read_text(encoding="utf-8"))
+    source_selection = json.loads(
+        source_selection_source.read_text(encoding="utf-8")
+    )
+    architecture_report_source = (
+        repo / "docs" / "results" / "small_vlm_architecture_commonality.json"
+    )
+    weight_report_source = (
+        repo / "docs" / "results" / "small_vlm_weight_commonality.json"
+    )
+    architecture_catalog_source = (
+        repo / "configs" / "small_vlm_architectures.yaml"
+    )
+    architecture_report = json.loads(
+        architecture_report_source.read_text(encoding="utf-8")
+    )
+    weight_report = json.loads(
+        weight_report_source.read_text(encoding="utf-8")
+    )
+    architecture_profiles = load_architecture_catalog(
+        architecture_catalog_source
+    )
     variants = {variant.arm_id: variant for variant in plan.variants}
     required_arms = {
         "native_random",
@@ -307,6 +333,71 @@ def audit_lfm_transfer_pilot(
             "semantic_skips": transfer.get("semantic_skips"),
             "missing_source": transfer.get("missing_source"),
             "value_verified": transfer.get("value_verified"),
+        },
+    )
+
+    source_selection_audit = validate_source_selection_matrix(
+        source_selection,
+        architecture_report=architecture_report,
+        weight_report=weight_report,
+        profiles=architecture_profiles,
+        real_payload_preflight=preflight,
+    )
+    aligned_selection = next(
+        (
+            target
+            for target in source_selection.get("targets", [])
+            if isinstance(target, dict)
+            and target.get("target") == "docvlm-lfm-aligned-814m"
+        ),
+        {},
+    )
+    lfm_selection = next(
+        (
+            source
+            for source in aligned_selection.get("sources", [])
+            if isinstance(source, dict)
+            and source.get("model_id") == source_hub.get("repo_id")
+            and source.get("revision") == source_revision
+        ),
+        {},
+    )
+    action_counts = lfm_selection.get("action_counts") or {}
+    payload_evidence = lfm_selection.get("real_payload_evidence") or {}
+    _check(
+        checks,
+        "cross_model_source_selection",
+        source_selection_audit["status"] == "pass"
+        and source_selection.get("claim_scope")
+        == "selective_transfer_source_selection_only"
+        and source_selection.get("quality_claim_authorized") is False
+        and source_selection.get("promotion_claim_authorized") is False
+        and int(action_counts.get("direct_copy_candidate") or 0) >= 2
+        and int(
+            action_counts.get("structured_transfer_candidate") or 0
+        )
+        >= 1
+        and payload_evidence.get("status") == "verified"
+        and payload_evidence.get("source_content_fingerprint")
+        == preflight_source_identity.get("content_fingerprint"),
+        {
+            "target": aligned_selection.get("target"),
+            "source": lfm_selection.get("model_id"),
+            "source_revision": lfm_selection.get("revision"),
+            "direct_copy_candidates": action_counts.get(
+                "direct_copy_candidate"
+            ),
+            "structured_transfer_candidates": action_counts.get(
+                "structured_transfer_candidate"
+            ),
+            "real_payload_status": payload_evidence.get("status"),
+            "matrix_validation_status": source_selection_audit["status"],
+            "quality_claim_authorized": source_selection.get(
+                "quality_claim_authorized"
+            ),
+            "promotion_claim_authorized": source_selection.get(
+                "promotion_claim_authorized"
+            ),
         },
     )
 
@@ -579,6 +670,25 @@ def audit_lfm_transfer_pilot(
             "source": preflight_label,
             "source_fingerprint": _file_fingerprint(preflight_source),
             "claim_scope": preflight.get("claim_scope"),
+        },
+        "source_selection": {
+            "source": source_selection_label,
+            "source_fingerprint": _file_fingerprint(
+                source_selection_source
+            ),
+            "report_fingerprint": source_selection.get(
+                "report_fingerprint"
+            ),
+            "claim_scope": source_selection.get("claim_scope"),
+            "architecture_report_fingerprint": _file_fingerprint(
+                architecture_report_source
+            ),
+            "weight_report_fingerprint": _file_fingerprint(
+                weight_report_source
+            ),
+            "catalog_fingerprint": _file_fingerprint(
+                architecture_catalog_source
+            ),
         },
         "checks": checks,
         "counts": {

@@ -25,6 +25,17 @@ for recurrent vision attention and MLP roles, while language attention and SwiGL
 widely to serve as an architecture-agnostic prior. This absence of a population prior does not
 override a healthy pairwise transfer that passes the stricter semantic and geometry checks.
 
+Run
+[`scripts/build_selective_transfer_source_matrix.py`](../../scripts/build_selective_transfer_source_matrix.py)
+to compose those sampled values with the pinned topology analysis and available real-payload
+evidence. The resulting
+[`selective_transfer_source_matrix.md`](selective_transfer_source_matrix.md) finds no qualified
+language-copy source for the native 800M operator among the five audited models. For the
+LFM-aligned 814M operator, it selects LFM attention and short convolution as direct-copy candidates
+and the reduced SwiGLU as a structured-transfer candidate; the existing real-payload preflight
+verifies that path. SmolVLM2 vision blocks remain an unexecuted pairwise candidate rather than
+evidence for a tested dual-source initialization.
+
 Inspect compatibility from safetensors headers without downloading model weights:
 
 ```bash

@@ -16,6 +16,9 @@ PREFLIGHT = (
     / "results"
     / "selective_transfer_lfm_real_source_preflight.json"
 )
+SOURCE_SELECTION = (
+    ROOT / "docs" / "results" / "selective_transfer_source_matrix.json"
+)
 
 
 def _plan(tmp_path: Path):
@@ -33,13 +36,14 @@ def test_lfm_transfer_pilot_readiness_passes_current_contract(tmp_path):
         repo_root=ROOT,
         sweep_path=SWEEP,
         preflight_path=PREFLIGHT,
+        source_selection_path=SOURCE_SELECTION,
     )
 
     assert result["overall_status"] == "pass"
     assert result["pilot_submission_authorized"] is True
     assert result["quality_claim_authorized"] is False
     assert result["target_cuda_feasibility_claim_authorized"] is False
-    assert result["counts"] == {"pass": 14, "fail": 0}
+    assert result["counts"] == {"pass": 15, "fail": 0}
 
 
 def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(
@@ -55,6 +59,7 @@ def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(
         repo_root=ROOT,
         sweep_path=SWEEP,
         preflight_path=tampered,
+        source_selection_path=SOURCE_SELECTION,
     )
 
     assert result["overall_status"] == "fail"
@@ -65,3 +70,30 @@ def test_lfm_transfer_pilot_readiness_rejects_tampered_payload_evidence(
         if check["id"] == "executed_transfer_integrity"
     )
     assert transfer_check["status"] == "fail"
+
+
+def test_lfm_transfer_pilot_readiness_rejects_tampered_source_matrix(
+    tmp_path,
+):
+    source_selection = json.loads(
+        SOURCE_SELECTION.read_text(encoding="utf-8")
+    )
+    source_selection["quality_claim_authorized"] = True
+    tampered = tmp_path / "tampered-source-selection.json"
+    tampered.write_text(json.dumps(source_selection), encoding="utf-8")
+
+    result = audit_lfm_transfer_pilot(
+        _plan(tmp_path),
+        repo_root=ROOT,
+        sweep_path=SWEEP,
+        preflight_path=PREFLIGHT,
+        source_selection_path=tampered,
+    )
+
+    assert result["overall_status"] == "fail"
+    source_check = next(
+        check
+        for check in result["checks"]
+        if check["id"] == "cross_model_source_selection"
+    )
+    assert source_check["status"] == "fail"

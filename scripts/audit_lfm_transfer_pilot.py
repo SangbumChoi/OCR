@@ -34,6 +34,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--source-selection",
+        type=Path,
+        default=(
+            ROOT
+            / "docs"
+            / "results"
+            / "selective_transfer_source_matrix.json"
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=(
@@ -57,6 +67,7 @@ def main() -> None:
             repo_root=ROOT,
             sweep_path=args.sweep,
             preflight_path=args.preflight,
+            source_selection_path=args.source_selection,
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

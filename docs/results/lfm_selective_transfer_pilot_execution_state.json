@@ -17,9 +17,9 @@
   "submission_readiness": {
     "checks": {
       "fail": 0,
-      "pass": 14
+      "pass": 15
     },
-    "fingerprint": "sha256:1d0a305445842420c0539d168ec07194fe89638ac751248068381e8ad691dd03",
+    "fingerprint": "sha256:d943da58b4c1c3fd20caca5026a93fe90118a89031600156b683ed622fb41141",
     "status": "pass"
   },
   "training_execution_attested": false,

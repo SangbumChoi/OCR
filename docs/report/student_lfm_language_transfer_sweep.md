@@ -125,13 +125,15 @@ combined with the confirmatory replicates or used to select a deployment model.
 [`scripts/audit_lfm_transfer_pilot.py`](../../scripts/audit_lfm_transfer_pilot.py) compiles the
 current pilot and checks it against the executed real-payload preflight before GPU submission. The
 compact fail-closed artifact records decisions rather than full commands, patch lists, checkpoint
-tensors, HTML, or target text. Its 14 checks cover:
+tensors, HTML, or target text. Its 15 checks cover:
 
 - the one-seed, non-promotional three-cell design and matched LFM geometry;
 - the sub-1B parameter bound and exact random-versus-transfer initialization contrast;
 - the immutable Hub revision and its match to the executed safetensors identity;
 - the realized 80.49% language transfer, operator compatibility, zero skips, and copied-value
   verification;
+- the cross-model source matrix, its fail-closed claim boundary, and its binding to the same
+  executed LFM payload;
 - end-to-end pretraining, SFT, RLVR, baseline, and final evaluation stages;
 - strict-cell-only target-CUDA feasibility preflight;
 - the CUDA, native-BF16, FlexAttention, and non-reentrant full-component checkpointing contract;

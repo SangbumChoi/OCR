@@ -188,6 +188,11 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   [`report/small_vlm_weight_commonality.md`](report/small_vlm_weight_commonality.md) —
   bounded safetensors range sketches across five pinned models, recurrent operator statistics,
   and a no-basis-assumption transfer contract.
+- **Select transfer sources from combined evidence:**
+  [`report/selective_transfer_source_matrix.md`](report/selective_transfer_source_matrix.md) —
+  component-level copy, structured-transfer, identity-map, payload-preflight, and distillation
+  decisions composed from pinned topology, sampled real-weight health, and executed payload
+  evidence without treating population statistics as neuron-basis alignment.
 - **Test LFM operator alignment:**
   [`report/student_lfm_language_transfer_sweep.md`](report/student_lfm_language_transfer_sweep.md)
   — a sub-1B LFM-compatible language control, zero-allocation transfer proof, and paired

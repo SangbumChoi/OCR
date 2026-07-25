@@ -1,0 +1,843 @@
+{
+  "claim_scope": "selective_transfer_source_selection_only",
+  "decision_contract": {
+    "architecture_match_alone_authorizes_copy": false,
+    "copy_requires_pairwise_payload_preflight": true,
+    "empirical_quality_requires_matched_training": true,
+    "population_statistics_establish_basis_alignment": false,
+    "sampled_weight_health_alone_authorizes_copy": false,
+    "token_rows_require_identity_map": true
+  },
+  "inputs": {
+    "architecture_report_fingerprint": "sha256:7476278ef62b5685563ec0533f645997487937b966fe5a7fba522fffeb60579d",
+    "catalog_fingerprint": "sha256:1895233b3df7dee5e29fe255c9f3d905214f2d0e81fe839e7e8f7b6fa789799a",
+    "real_payload_fingerprint": "sha256:2ed151c5251d84cd9031441a4a0a73b5330ce13de49efb9db6f0b1d55a31cc02",
+    "weight_report_fingerprint": "sha256:f7adced9840e0bba8560e97dfdda8bd6fab54cd04d0b46696b409652497ba384"
+  },
+  "promotion_claim_authorized": false,
+  "quality_claim_authorized": false,
+  "report_fingerprint": "sha256:524c0e937f59f2fd1c0c70bcc3e7529216ccacf38e862dfd29389f18d921607e",
+  "schema_version": 1,
+  "targets": [
+    {
+      "sources": [
+        {
+          "action_counts": {
+            "direct_copy_candidate": 1,
+            "feature_or_relation_distillation": 7
+          },
+          "architecture_compatibility_fraction": 0.125,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "direct_copy_candidate",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "vision.transformer_blocks",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [],
+              "required_weight_roles": [
+                "vision.attention.q",
+                "vision.attention.k",
+                "vision.attention.v",
+                "vision.attention.o",
+                "vision.mlp.in",
+                "vision.mlp.out",
+                "vision.norm"
+              ],
+              "unhealthy_weight_roles": []
+            }
+          ],
+          "model_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+          "sampled_weight_roles": 18,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "smolvlm2-500m"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 8
+          },
+          "architecture_compatibility_fraction": 0.0,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "apple/FastVLM-0.5B",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+          "sampled_weight_roles": 14,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "fastvlm-0.5b"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 8
+          },
+          "architecture_compatibility_fraction": 0.0,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "microsoft/Florence-2-base",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac",
+          "sampled_weight_roles": 10,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "florence-2-base"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 7,
+            "pairwise_payload_preflight_required": 1
+          },
+          "architecture_compatibility_fraction": 0.125,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "pairwise_payload_preflight_required",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "vision.position",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [],
+              "required_weight_roles": [],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "OpenGVLab/InternVL3-1B-hf",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "014c0583a0d4bedf29fbe2dbff4f865eb998e171",
+          "sampled_weight_roles": 17,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "internvl3-1b"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 8
+          },
+          "architecture_compatibility_fraction": 0.0,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "LiquidAI/LFM2.5-VL-1.6B",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+          "sampled_weight_roles": 19,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "lfm2.5-vl-1.6b"
+        }
+      ],
+      "target": "docvlm-800m"
+    },
+    {
+      "sources": [
+        {
+          "action_counts": {
+            "direct_copy_candidate": 2,
+            "feature_or_relation_distillation": 4,
+            "structured_transfer_candidate": 1,
+            "token_identity_map_required": 1
+          },
+          "architecture_compatibility_fraction": 0.5,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "direct_copy_candidate",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "language.attention",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [
+                "language.attention.q",
+                "language.attention.k",
+                "language.attention.v",
+                "language.attention.o"
+              ],
+              "required_weight_roles": [
+                "language.attention.q",
+                "language.attention.k",
+                "language.attention.v",
+                "language.attention.o",
+                "language.norm"
+              ],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "structured_transfer_candidate",
+              "architecture_compatible": true,
+              "architecture_mode": "structured_mlp",
+              "component": "language.mlp",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [
+                "language.mlp.gate",
+                "language.mlp.up",
+                "language.mlp.down"
+              ],
+              "required_weight_roles": [
+                "language.mlp.gate",
+                "language.mlp.up",
+                "language.mlp.down",
+                "language.norm"
+              ],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "direct_copy_candidate",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "language.short_convolution",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [],
+              "required_weight_roles": [
+                "language.short_convolution",
+                "language.norm"
+              ],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "token_identity_map_required",
+              "architecture_compatible": true,
+              "architecture_mode": "token_rows",
+              "component": "language.token_embeddings",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [
+                "language.token_embedding"
+              ],
+              "required_weight_roles": [
+                "language.token_embedding"
+              ],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "LiquidAI/LFM2.5-VL-1.6B",
+          "real_payload_evidence": {
+            "component": "language",
+            "copied_parameters": 553748992,
+            "missing_source": 0,
+            "realized_component_parameter_fraction": 0.8049066559498692,
+            "semantic_skips": 0,
+            "shape_skips": 0,
+            "source_content_fingerprint": "sha256:66e41f3d4f2d31ecfbe7d15037e41371bf68d412d1e7d984d873a28ade612557",
+            "status": "verified",
+            "value_verified": true
+          },
+          "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+          "sampled_weight_roles": 19,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "lfm2.5-vl-1.6b"
+        },
+        {
+          "action_counts": {
+            "direct_copy_candidate": 1,
+            "feature_or_relation_distillation": 7
+          },
+          "architecture_compatibility_fraction": 0.125,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "direct_copy_candidate",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "vision.transformer_blocks",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [],
+              "required_weight_roles": [
+                "vision.attention.q",
+                "vision.attention.k",
+                "vision.attention.v",
+                "vision.attention.o",
+                "vision.mlp.in",
+                "vision.mlp.out",
+                "vision.norm"
+              ],
+              "unhealthy_weight_roles": []
+            }
+          ],
+          "model_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+          "sampled_weight_roles": 18,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "smolvlm2-500m"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 8
+          },
+          "architecture_compatibility_fraction": 0.0,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "apple/FastVLM-0.5B",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+          "sampled_weight_roles": 14,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "fastvlm-0.5b"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 8
+          },
+          "architecture_compatibility_fraction": 0.0,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.position",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "microsoft/Florence-2-base",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "5ca5edf5bd017b9919c05d08aebef5e4c7ac3bac",
+          "sampled_weight_roles": 10,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "florence-2-base"
+        },
+        {
+          "action_counts": {
+            "feature_or_relation_distillation": 7,
+            "pairwise_payload_preflight_required": 1
+          },
+          "architecture_compatibility_fraction": 0.125,
+          "decisions": [
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "connector",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.attention",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.mlp",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.short_convolution",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "language.token_embeddings",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.patch_embedding",
+              "population_prior_authorizes_copy": false
+            },
+            {
+              "action": "pairwise_payload_preflight_required",
+              "architecture_compatible": true,
+              "architecture_mode": "exact",
+              "component": "vision.position",
+              "missing_weight_roles": [],
+              "population_prior_authorizes_copy": false,
+              "population_unstable_roles": [],
+              "required_weight_roles": [],
+              "unhealthy_weight_roles": []
+            },
+            {
+              "action": "feature_or_relation_distillation",
+              "architecture_compatible": false,
+              "architecture_mode": "distill_only",
+              "component": "vision.transformer_blocks",
+              "population_prior_authorizes_copy": false
+            }
+          ],
+          "model_id": "OpenGVLab/InternVL3-1B-hf",
+          "real_payload_evidence": {
+            "status": "not_applicable"
+          },
+          "revision": "014c0583a0d4bedf29fbe2dbff4f865eb998e171",
+          "sampled_weight_roles": 17,
+          "sampled_weight_unhealthy_roles": [],
+          "source": "internvl3-1b"
+        }
+      ],
+      "target": "docvlm-lfm-aligned-814m"
+    }
+  ]
+}
