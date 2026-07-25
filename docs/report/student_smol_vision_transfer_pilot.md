@@ -134,3 +134,18 @@ python scripts/snapshot_wandb_run_inventory.py
 ```
 
 Both Smol Colab notebooks refresh this inventory before rebuilding execution evidence.
+
+## Cross-runtime evidence handoff
+
+A completed pilot can outlive its Colab runtime without uploading checkpoints or long metric
+histories. [`publish_smol_pilot_handoff.py`](../../scripts/publish_smol_pilot_handoff.py) validates
+the exact two-run topology, completed summary, schema-6 comparison, current sweep fingerprint, and
+matching sealed attestation hashes. It then publishes only the summary, comparison, and a
+content-addressed manifest as the W&B Artifact
+`smol-vision-transfer-pilot-handoff`.
+
+The confirmatory notebook restores that Artifact when the local pilot summary is absent.
+[`restore_smol_pilot_handoff.py`](../../scripts/restore_smol_pilot_handoff.py) rejects a changed
+config, invalid manifest fingerprint, modified file, unsealed run, mismatched attestation, or
+different existing local evidence. The restored evidence authorizes submission only; it does not
+authorize quality or promotion.

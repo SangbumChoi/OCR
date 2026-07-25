@@ -23,6 +23,8 @@ def test_smol_vision_transfer_notebook_is_compact_and_pinned():
     assert "run_transfer_pilot_colab.py" in source
     assert "snapshot_wandb_run_inventory.py" in source
     assert "audit_smol_vision_transfer_pilot_execution.py" in source
+    assert "publish_smol_pilot_handoff.py" in source
+    assert "pilot summary is not completed" in source
     assert "'smol-vision'" in source
     assert "docvlm-smol-vision-transfer-pilot" in source
     assert "WANDB_API_KEY" in source

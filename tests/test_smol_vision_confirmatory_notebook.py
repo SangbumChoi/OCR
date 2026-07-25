@@ -17,6 +17,7 @@ def test_smol_confirmatory_notebook_is_gated_and_compact():
 
     assert notebook["metadata"]["accelerator"] == "GPU"
     assert "snapshot_wandb_run_inventory.py" in source
+    assert "restore_smol_pilot_handoff.py" in source
     assert "audit_smol_vision_transfer_pilot_execution.py" in source
     assert "audit_smol_confirmatory_submission.py" in source
     assert "confirmatory_submission_authorized" in source

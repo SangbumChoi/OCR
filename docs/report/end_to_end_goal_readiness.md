@@ -68,3 +68,6 @@ gates pass, and the treatment has a positive heldout screening effect.
 W&B monitoring is represented by a separate compact run inventory. This keeps external activity
 fresh without copying run configs, histories, metric tables, or long structured outputs into the
 goal audit. W&B state remains observational; only local sealed attestations satisfy execution.
+For a fresh Colab runtime, the pilot summary and comparison can be restored from a
+content-addressed W&B Artifact whose manifest is rebound to the current sweep fingerprint before
+the confirmatory submission audit runs.

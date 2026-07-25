@@ -53,9 +53,11 @@ artifact is `pending` with 2 pass, 5 pending, and 0 fail:
 [`smol_vision_confirmatory_submission.json`](../results/smol_vision_confirmatory_submission.json).
 This is an execution dependency, not evidence against the method.
 
-After the pilot completes in the same runtime, the ready-to-run notebook is
+After the pilot completes, the ready-to-run notebook is
 [`smol_vision_transfer_confirmatory.ipynb`](../../notebooks/smol_vision_transfer_confirmatory.ipynb).
-Its launcher performs the submission audit again before any production-budget training begins:
+When opened in a fresh runtime, it restores the content-addressed pilot evidence from W&B before
+performing the submission audit. No pilot checkpoint is required for this independent confirmatory
+run. Its launcher performs the submission audit again before any production-budget training begins:
 
 ```bash
 python scripts/run_smol_confirmatory_colab.py
