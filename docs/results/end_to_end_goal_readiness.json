@@ -1,0 +1,278 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "benefit_and_limitation_required": true,
+        "categories": {
+          "connector_resolution": 10,
+          "data_construction": 15,
+          "document_model": 15,
+          "objective_reliability": 10,
+          "posttraining_rl": 15,
+          "small_llm": 10,
+          "transfer_distillation": 15,
+          "vision_encoder": 10
+        },
+        "expected_categories": {
+          "connector_resolution": 10,
+          "data_construction": 15,
+          "document_model": 15,
+          "objective_reliability": 10,
+          "posttraining_rl": 15,
+          "small_llm": 10,
+          "transfer_distillation": 15,
+          "vision_encoder": 10
+        },
+        "methods": 100
+      },
+      "id": "frontier_method_survey",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "adopted_methods": 29,
+        "certified_methods": 29,
+        "errors": 0,
+        "fingerprint": "sha256:669643c88173cea10484b18e3dbca4050c5b6f9e050d007012d311e3b0414894",
+        "status": "pass"
+      },
+      "id": "adopted_method_executable_evidence",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "has_connector": true,
+        "has_language": true,
+        "has_vision": true,
+        "initialization_arms": [
+          "I0_random",
+          "I1_vision",
+          "I2_language",
+          "I3_dual",
+          "I4_selective",
+          "I5_structured_mlp",
+          "I6_strict_structured",
+          "I8_lfm_aligned_language",
+          "I9_lfm_smol_dual"
+        ],
+        "parameters": {
+          "connector": 36853761,
+          "language": 687966720,
+          "task_heads": 732682,
+          "total": 814207243,
+          "vision": 88654080
+        }
+      },
+      "id": "sub1b_multimodal_architecture",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "counterfactual_pairs": true,
+        "hard_cases": [
+          "audit_packet",
+          "hard_chart",
+          "hard_diagram",
+          "hard_investment",
+          "hard_science",
+          "hard_table",
+          "investment_dossier"
+        ],
+        "languages": [
+          "en",
+          "es",
+          "ja",
+          "ko",
+          "zh"
+        ],
+        "required_hard_cases": [
+          "audit_packet",
+          "hard_chart",
+          "hard_diagram",
+          "hard_investment",
+          "hard_science",
+          "hard_table",
+          "investment_dossier"
+        ],
+        "sft_task_mixtures": [
+          "extraction_and_spotting",
+          "general_multimodal_replay",
+          "multilingual_and_reading_order",
+          "relational_document_qa",
+          "reliability_and_abstention",
+          "tables_charts_formulas"
+        ],
+        "spotting": true,
+        "understanding": true
+      },
+      "id": "hard_document_data_coverage",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "reward_components": [
+          "answer_correctness",
+          "box_iou",
+          "calibrated_abstention",
+          "chart_numeric_tolerance",
+          "formula_equivalence",
+          "grounded_rationale_consistency",
+          "normalized_text_similarity",
+          "table_tree_similarity"
+        ],
+        "rlvr_algorithm": "grpo",
+        "sft_objective": "Teach grounded instructions, structured output, abstention, and concise reasoning.",
+        "stages_by_arm": {
+          "lfm_language_only": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft"
+          ],
+          "lfm_smol_dual": [
+            "evaluate",
+            "evaluate_baseline",
+            "pretrain",
+            "rlvr",
+            "sft"
+          ]
+        }
+      },
+      "id": "two_stage_training_and_rlvr",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "language": {
+          "copied_parameters": 553748992,
+          "coverage": 0.8049066559498692,
+          "value_verified": true
+        },
+        "vision": {
+          "copied_parameters": 85054464,
+          "coverage": 0.9593970632823667,
+          "scope": "transformer_blocks",
+          "value_verified": true
+        }
+      },
+      "id": "executed_selective_weight_transfer",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "hard_cap": 512,
+        "long_output_patterns": [
+          "full",
+          "html",
+          "latex",
+          "long-context",
+          "omnidoc",
+          "pubtabnet",
+          "reading-order",
+          "table",
+          "transcription"
+        ],
+        "max_degenerate_repetition_rate": 0.0,
+        "repetition_guard": {
+          "max_period": 16,
+          "min_tokens": 24,
+          "repetitions": 3
+        }
+      },
+      "id": "structured_generation_safeguards",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "checks": {
+          "fail": 0,
+          "pass": 14
+        },
+        "fingerprint": "sha256:3bbf62c8c334bd48f3a09f684df26ce7c169cffa6e2ae73be88100e5045b900d",
+        "pilot_submission_authorized": true,
+        "quality_claim_authorized": false,
+        "status": "pass"
+      },
+      "id": "pilot_submission_contract",
+      "phase": "implementation",
+      "status": "pass"
+    },
+    {
+      "evidence": {
+        "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",
+        "state": "not_started_in_observed_state",
+        "training_execution_attested": false
+      },
+      "id": "target_gpu_execution",
+      "phase": "execution",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "claim_scope": null,
+        "evidence_present": false,
+        "execution_attested": false,
+        "gate_status": null,
+        "quality_claim_authorized": false
+      },
+      "id": "heldout_quality_evidence",
+      "phase": "quality",
+      "status": "pending"
+    },
+    {
+      "evidence": {
+        "evidence_present": false,
+        "execution_attested": false,
+        "multiplicity_controlled": null,
+        "promotion_claim_authorized": false,
+        "quality_evidence_passed": false,
+        "replicates": null
+      },
+      "id": "multi_seed_promotion_evidence",
+      "phase": "quality",
+      "status": "pending"
+    }
+  ],
+  "claim_scope": "end_to_end_document_vlm_goal_readiness_only",
+  "counts": {
+    "fail": 0,
+    "pass": 8,
+    "pending": 3
+  },
+  "execution_complete": false,
+  "fingerprint": "sha256:23e205e94ef12d7b65fb8227348dfd96647e89a860eddf31ff27fba58a7d49f4",
+  "goal_complete": false,
+  "implementation_ready": true,
+  "inputs": {
+    "execution_state": "sha256:4cd4c453abc6891833a79a37ee0c1dfc4c02ff1d4ef0c9dd944ad5cfd073ad23",
+    "language_preflight": "sha256:0dba17980a41f8b51f521372ee6a57bf5d9dd1b1fceeb24a23cc4a9879bbbe4e",
+    "method_catalog": "sha256:9ea744bb5dbc377803965c7e2360453a4ce0112cf96ff7946839541340c2ea4f",
+    "method_evidence": "sha256:18bf22fc003cc356befd44448b985da02b71d43a32b037199cc3b46a125dac4e",
+    "pilot_readiness": "sha256:259cec5235f69f744aebaae98eab8265728fac12ec41c4164ba76ac8482026a8",
+    "sweep_fingerprint": "sha256:c033973ccafaeff49c469cb03577d297ed2ec80200b03c6437ae1191140ef109",
+    "synth_config": "sha256:fde0fa184618b67404297ba2bfd9a2799b0ec64955c7dd79364efcdba8b6a5ef",
+    "vision_preflight": "sha256:d66f9707db46c4b870dd425095ddae006d51b06f7cd4d4381f787f4fdf1f5b87"
+  },
+  "limitations": [
+    "Implementation readiness is not training execution.",
+    "One-seed screening cannot authorize model promotion.",
+    "Quality requires sealed heldout results from target hardware."
+  ],
+  "next_required_evidence": [
+    "target_gpu_execution",
+    "heldout_quality_evidence",
+    "multi_seed_promotion_evidence"
+  ],
+  "overall_status": "implementation_ready_execution_pending",
+  "promotion_authorized": false,
+  "quality_proven": false,
+  "schema_version": 1
+}

@@ -251,6 +251,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
   at every native checkpoint, and a strict separation between pipeline execution and
   deployment-capability claims. Blueprint estimates alone cannot prove the sub-1B deployment
   contract.
+- **Audit the complete objective:**
+  [`report/end_to_end_goal_readiness.md`](report/end_to_end_goal_readiness.md) — requirement-level
+  separation of implemented capability, sealed target-GPU execution, heldout quality, and
+  multi-seed promotion evidence.
 - **Run matched ablations:** [`report/student_sweep_runner.md`](report/student_sweep_runner.md) —
   RFC 6902 experiment/blueprint variants, explicit fixed-control gates, paired seed blocks,
   deterministic bootstrap intervals, independent resumable runs, W&B grouping, and baseline-delta
