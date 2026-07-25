@@ -12,6 +12,11 @@ method_evidence:
   catalog: configs/frontier_method_catalog.jsonl
   evidence: configs/frontier_method_evidence.yaml
 
+weight_commonality:
+  enabled: true
+  catalog: configs/small_vlm_architectures.yaml
+  report: docs/results/small_vlm_weight_commonality.json
+
 runtime:
   device: auto
   visual_backend_benchmark:

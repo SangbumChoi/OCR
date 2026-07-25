@@ -61,6 +61,9 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     blueprint["initialization_arms"][4][
         "require_attention_geometry"
     ] = "yes"
+    blueprint["initialization_arms"][5][
+        "require_healthy_source_weights"
+    ] = "yes"
 
     _, errors = validate_blueprint(blueprint)
 
@@ -77,6 +80,10 @@ def test_blueprint_rejects_invalid_mixture_and_transfer_fraction():
     assert any("shape_policy must be" in error for error in errors)
     assert any(
         "require_attention_geometry must be a boolean" in error
+        for error in errors
+    )
+    assert any(
+        "require_healthy_source_weights must be a boolean" in error
         for error in errors
     )
 

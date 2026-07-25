@@ -242,8 +242,9 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         if variant.arm_id == "selective" and variant.replicate_id == "seed_0"
     )
     assert selective.plan.raw_spec["initialization"]["arm"] == "I4_selective"
-    assert selective.plan.stage_names[:5] == [
+    assert selective.plan.stage_names[:6] == [
         "audit_method_evidence",
+        "audit_weight_commonality",
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
         "acquire_vision_checkpoint",
@@ -261,6 +262,7 @@ def test_initialization_sweep_compiles_pinned_transfer_arms(tmp_path):
         "visual_backend_benchmark",
         "training_feasibility_benchmark",
         "audit_method_evidence",
+        "audit_weight_commonality",
         "audit_generation_budgets",
     )
 

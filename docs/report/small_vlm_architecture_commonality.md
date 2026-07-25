@@ -73,3 +73,9 @@ The executable control keeps the document vision tower fixed and aligns the lang
 - Transfer short-convolution blocks only through like-typed depth mapping with the same width, kernel, bias, and normalization contract.
 - Treat incompatible position embeddings, encoder-decoder text stacks, and non-identical connectors as distillation targets rather than weight-copy targets.
 - Run an initialization factorial against random, vision-only, language-only, dual, and selective controls; this report establishes compatibility, not downstream benefit.
+
+This configuration-level report is paired with
+[`small_vlm_weight_commonality.md`](small_vlm_weight_commonality.md), which samples actual
+checkpoint values under a bounded byte-range contract. Similar operator statistics never imply
+neuron-basis alignment; they are an additional source-health and population-prior signal, not a
+replacement for the semantic and geometry gates above.

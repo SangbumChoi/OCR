@@ -40,6 +40,10 @@ from .synthesis_policy import (
     load_synthesis_policy_config,
     validate_generation_plan,
 )
+from .weight_commonality import (
+    load_weight_commonality_report,
+    validate_weight_commonality_report,
+)
 
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -350,6 +354,33 @@ def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Pat
             if not path.is_file():
                 raise ValueError(
                     f"experiment.method_evidence.{key} does not exist: {path}"
+                )
+    weight_commonality = raw.get("weight_commonality") or {}
+    if not isinstance(weight_commonality, dict):
+        raise ValueError("experiment.weight_commonality must be a mapping")
+    if "enabled" in weight_commonality and not isinstance(
+        weight_commonality["enabled"],
+        bool,
+    ):
+        raise ValueError(
+            "experiment.weight_commonality.enabled must be a boolean"
+        )
+    if bool(weight_commonality.get("enabled", False)):
+        for key, default in (
+            ("catalog", "configs/small_vlm_architectures.yaml"),
+            (
+                "report",
+                "docs/results/small_vlm_weight_commonality.json",
+            ),
+        ):
+            path = _resolve_path(
+                repo_root,
+                weight_commonality.get(key) or default,
+            )
+            if not path.is_file():
+                raise ValueError(
+                    f"experiment.weight_commonality.{key} does not exist: "
+                    f"{path}"
                 )
     runtime = raw.get("runtime") or {}
     if not isinstance(runtime, dict):
@@ -1163,6 +1194,20 @@ def build_experiment_plan(
         method_evidence_spec.get("evidence")
         or "configs/frontier_method_evidence.yaml",
     )
+    weight_commonality_spec = raw.get("weight_commonality") or {}
+    weight_commonality_enabled = bool(
+        weight_commonality_spec.get("enabled", False)
+    )
+    weight_commonality_catalog_path = _resolve_path(
+        repo_root,
+        weight_commonality_spec.get("catalog")
+        or "configs/small_vlm_architectures.yaml",
+    )
+    weight_commonality_report_path = _resolve_path(
+        repo_root,
+        weight_commonality_spec.get("report")
+        or "docs/results/small_vlm_weight_commonality.json",
+    )
     continuation_spec = raw.get("continuation") or {"enabled": False}
     continuation_enabled = bool(continuation_spec.get("enabled", False))
     runtime = raw.get("runtime") or {}
@@ -1200,6 +1245,29 @@ def build_experiment_plan(
             )
         input_fingerprints["frontier_method_evidence_contract"] = (
             method_evidence_contract
+        )
+    if weight_commonality_enabled:
+        from .architecture_commonality import load_architecture_catalog
+
+        input_fingerprints["small_vlm_architecture_catalog"] = (
+            _file_fingerprint(weight_commonality_catalog_path)
+        )
+        input_fingerprints["small_vlm_weight_commonality"] = (
+            _file_fingerprint(weight_commonality_report_path)
+        )
+        weight_commonality_contract = validate_weight_commonality_report(
+            load_weight_commonality_report(
+                weight_commonality_report_path
+            ),
+            load_architecture_catalog(weight_commonality_catalog_path),
+        )
+        if weight_commonality_contract["status"] != "pass":
+            raise ValueError(
+                "small-VLM weight commonality failed:\n- "
+                + "\n- ".join(weight_commonality_contract["errors"])
+            )
+        input_fingerprints["small_vlm_weight_commonality_contract"] = (
+            weight_commonality_contract
         )
     training_policy_plan_path = (
         _resolve_path(repo_root, synthetic["training_policy_plan"])
@@ -1281,6 +1349,9 @@ def build_experiment_plan(
     )
     leakage_report = artifacts / "data" / "split_leakage.json"
     method_evidence_report = artifacts / "data" / "method_evidence.json"
+    weight_commonality_audit = (
+        artifacts / "data" / "weight_commonality_audit.json"
+    )
     generation_budget_report = (
         artifacts / "data" / "generation_budget_audit.json"
     )
@@ -1519,6 +1590,30 @@ def build_experiment_plan(
             )
         )
         method_evidence_stage_names.append("audit_method_evidence")
+
+    weight_commonality_stage_names: list[str] = []
+    if weight_commonality_enabled:
+        stages.append(
+            ExperimentStage(
+                "audit_weight_commonality",
+                (
+                    python,
+                    script("analyze_small_vlm_weights.py"),
+                    "--catalog",
+                    str(weight_commonality_catalog_path),
+                    "--json-output",
+                    str(weight_commonality_report_path),
+                    "--validate-only",
+                    "--audit-output",
+                    str(weight_commonality_audit),
+                ),
+                tuple(method_evidence_stage_names),
+                (Artifact(str(weight_commonality_audit)),),
+            )
+        )
+        weight_commonality_stage_names.append(
+            "audit_weight_commonality"
+        )
 
     if continuation_contract is not None:
         stages.append(
@@ -2372,6 +2467,7 @@ def build_experiment_plan(
                 *visual_benchmark_stage_names,
                 *training_benchmark_stage_names,
                 *method_evidence_stage_names,
+                *weight_commonality_stage_names,
                 *(
                     ("audit_generation_budgets",)
                     if generation_budget_audit_enabled

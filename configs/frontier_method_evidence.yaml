@@ -136,14 +136,16 @@ methods:
       - path: tests/test_student_distillation.py
         anchors: ["test_distillation_uses_logits_preceding_supervised_labels"]
   T03:
-    claim: Selective initialization maps source depth into exact-shape student blocks.
+    claim: Selective initialization depth-maps compatible blocks and rejects unhealthy sampled roles.
     implementation:
       - path: src/docvlm_eval/student/transfer.py
-        anchors: ["def _depth_map", "def selective_transfer"]
+        anchors: ["def _depth_map", "def selective_transfer", "unhealthy_source_weight_role"]
         knobs: [transferred_block_fraction, layer_mapping]
     verification:
       - path: tests/test_student_model.py
-        anchors: ["test_selective_transfer_depth_maps_exact_shape_blocks_only"]
+        anchors:
+          - "test_selective_transfer_depth_maps_exact_shape_blocks_only"
+          - "test_selective_transfer_skips_unhealthy_sampled_weight_roles"
   T04:
     claim: Two-stage distillation exposes hidden, relation, and logit objectives.
     implementation:

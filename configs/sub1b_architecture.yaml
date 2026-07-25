@@ -82,6 +82,7 @@ initialization_arms:
   - id: I0_random
     shape_policy: exact
     require_attention_geometry: false
+    require_healthy_source_weights: false
     vision_transfer: 0.0
     language_transfer: 0.0
     connector_transfer: 0.0
@@ -90,6 +91,7 @@ initialization_arms:
   - id: I1_vision
     shape_policy: exact
     require_attention_geometry: false
+    require_healthy_source_weights: true
     vision_transfer: 1.0
     language_transfer: 0.0
     connector_transfer: 0.0
@@ -99,6 +101,7 @@ initialization_arms:
   - id: I2_language
     shape_policy: exact
     require_attention_geometry: false
+    require_healthy_source_weights: true
     vision_transfer: 0.0
     language_transfer: 1.0
     connector_transfer: 0.0
@@ -108,6 +111,7 @@ initialization_arms:
   - id: I3_dual
     shape_policy: exact
     require_attention_geometry: false
+    require_healthy_source_weights: true
     vision_transfer: 1.0
     language_transfer: 1.0
     connector_transfer: 0.0
@@ -116,6 +120,7 @@ initialization_arms:
   - id: I4_selective
     shape_policy: exact
     require_attention_geometry: false
+    require_healthy_source_weights: true
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
@@ -125,6 +130,7 @@ initialization_arms:
   - id: I5_structured_mlp
     shape_policy: structured_mlp
     require_attention_geometry: false
+    require_healthy_source_weights: true
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
@@ -134,6 +140,7 @@ initialization_arms:
   - id: I6_strict_structured
     shape_policy: structured_mlp
     require_attention_geometry: true
+    require_healthy_source_weights: true
     vision_transfer: 0.5
     language_transfer: 0.5
     connector_transfer: 0.0
@@ -143,6 +150,7 @@ initialization_arms:
   - id: I8_lfm_aligned_language
     shape_policy: structured_mlp
     require_attention_geometry: true
+    require_healthy_source_weights: true
     vision_transfer: 0.0
     language_transfer: 1.0
     connector_transfer: 0.0

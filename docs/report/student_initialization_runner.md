@@ -17,6 +17,14 @@ The matched initialization sweep uses:
 The source model can exceed one billion parameters because it is an initialization teacher, not the
 deployed student. The default student remains 799,919,884 parameters.
 
+The cross-family value analysis is separate from this shape preflight. Run
+[`scripts/analyze_small_vlm_weights.py`](../../scripts/analyze_small_vlm_weights.py) to range-read
+bounded samples from five pinned public checkpoints. The resulting
+[`small_vlm_weight_commonality.md`](small_vlm_weight_commonality.md) finds stable normalized scales
+for recurrent vision attention and MLP roles, while language attention and SwiGLU scales vary too
+widely to serve as an architecture-agnostic prior. This absence of a population prior does not
+override a healthy pairwise transfer that passes the stricter semantic and geometry checks.
+
 Inspect compatibility from safetensors headers without downloading model weights:
 
 ```bash
@@ -95,6 +103,12 @@ from the target tensor. The source-file identity, per-mapping value hashes, and 
 hash are sealed into the transfer report. A non-random arm fails if any required component copies
 zero parameters. It also checks the realized
 copied parameters against a component-relative floor declared by the arm:
+
+Before copying, every shipped transfer arm also computes a bounded in-memory role sketch from the
+materialized source. The report stores aggregate finite, scale, sparsity, sign, and outlier
+statistics plus selection and sample fingerprints, never raw values. A sampled unhealthy role is
+left random and recorded as `unhealthy_source_weight_role`; the component-dose floor then prevents
+silent success after excessive rejection.
 
 | Arm | Minimum vision dose | Minimum language dose |
 | --- | ---: | ---: |

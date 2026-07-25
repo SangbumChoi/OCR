@@ -9,6 +9,9 @@ output_root: outputs/docvlm-tiny-smoke
 method_evidence:
   enabled: false
 
+weight_commonality:
+  enabled: false
+
 runtime:
   device: cpu
   visual_backend_benchmark:

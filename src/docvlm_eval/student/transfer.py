@@ -29,12 +29,16 @@ class TransferReport:
     fractions: dict[str, float]
     shape_policy: str
     require_attention_geometry: bool
+    require_healthy_source_weights: bool
     source_identity: dict[str, Any] | None = None
     source_attention_geometry: dict[str, Any] | None = None
     target_attention_geometry: dict[str, Any] | None = None
     attention_geometry_compatible: bool | None = None
     short_convolution_compatible: bool | None = None
     mlp_operator_compatible: bool | None = None
+    source_weight_profile: dict[str, Any] | None = None
+    source_weight_profile_fingerprint: str = ""
+    unhealthy_source_weight_roles: list[str] = field(default_factory=list)
     source_topology_fingerprint: str = ""
     target_topology_fingerprint: str = ""
     copied_tensors: int = 0
@@ -213,6 +217,53 @@ def validate_transfer_report_attestation(
             )
     if require_value_attestation and report.get("value_verified") is not True:
         raise ValueError("transfer report values were not verified")
+    weight_profile = report.get("source_weight_profile")
+    if weight_profile is not None:
+        if not isinstance(weight_profile, dict):
+            raise ValueError("transfer report source weight profile is invalid")
+        profile_body = dict(weight_profile)
+        profile_fingerprint = profile_body.pop(
+            "profile_fingerprint",
+            None,
+        )
+        if profile_fingerprint != _json_fingerprint(profile_body):
+            raise ValueError(
+                "transfer report source weight profile fingerprint mismatch"
+            )
+        if (
+            report.get("source_weight_profile_fingerprint")
+            != profile_fingerprint
+        ):
+            raise ValueError(
+                "transfer report source weight profile identity mismatch"
+            )
+    if report.get("require_healthy_source_weights"):
+        if weight_profile is None and report.get("value_verified") is True:
+            raise ValueError(
+                "materialized strict transfer lacks a source weight profile"
+            )
+        unhealthy = set(report.get("unhealthy_source_weight_roles") or [])
+        if unhealthy:
+            from .weight_commonality import semantic_weight_role
+
+            copied_unhealthy = sorted(
+                {
+                    role
+                    for mapping in mappings
+                    if (
+                        role := semantic_weight_role(
+                            str(mapping["target"]),
+                            mapping["target_shape"],
+                        )
+                    )
+                    in unhealthy
+                }
+            )
+            if copied_unhealthy:
+                raise ValueError(
+                    "transfer report copied unhealthy source weight roles: "
+                    f"{copied_unhealthy}"
+                )
     source_identity = report.get("source_identity")
     if require_source_identity and not isinstance(source_identity, dict):
         raise ValueError("transfer report source identity is missing")
@@ -652,6 +703,7 @@ def selective_transfer(
     source_identity: Mapping[str, Any] | None = None,
     source_attention_geometry: Mapping[str, Any] | None = None,
     require_attention_geometry: bool = False,
+    require_healthy_source_weights: bool = False,
 ) -> TransferReport:
     """Copy policy-compatible tensors under component and depth controls.
 
@@ -727,11 +779,34 @@ def selective_transfer(
         )
     source = canonicalize_source_state(source, family)
     target = student.state_dict()
+    materialized_source = any(
+        tensor.device.type != "meta" for tensor in source.values()
+    )
+    source_weight_profile = None
+    unhealthy_source_weight_roles: set[str] = set()
+    if materialized_source:
+        from .weight_commonality import sketch_state_dict
+
+        source_weight_profile = sketch_state_dict(
+            source,
+            model_id=(
+                str(source_identity.get("content_fingerprint"))
+                if isinstance(source_identity, Mapping)
+                and source_identity.get("content_fingerprint")
+                else f"in-memory/{family}"
+            ),
+        )
+        unhealthy_source_weight_roles = {
+            role
+            for role, summary in source_weight_profile["roles"].items()
+            if not summary["sample_healthy"]
+        }
     report = TransferReport(
         family=family,
         fractions=normalized_fractions,
         shape_policy=shape_policy,
         require_attention_geometry=require_attention_geometry,
+        require_healthy_source_weights=require_healthy_source_weights,
         source_identity=(
             json.loads(
                 json.dumps(
@@ -749,6 +824,15 @@ def selective_transfer(
         attention_geometry_compatible=geometry_compatible,
         short_convolution_compatible=short_convolution_compatible,
         mlp_operator_compatible=mlp_operator_compatible,
+        source_weight_profile=source_weight_profile,
+        source_weight_profile_fingerprint=(
+            str(source_weight_profile["profile_fingerprint"])
+            if source_weight_profile is not None
+            else ""
+        ),
+        unhealthy_source_weight_roles=sorted(
+            unhealthy_source_weight_roles
+        ),
         source_topology_fingerprint=_topology_fingerprint(source),
         target_topology_fingerprint=_topology_fingerprint(target),
     )
@@ -787,6 +871,24 @@ def selective_transfer(
         if target_key == "lm_head.weight" and "language.token_embedding.weight" in target:
             report.skipped_by_policy += 1
             continue
+        if require_healthy_source_weights:
+            from .weight_commonality import semantic_weight_role
+
+            source_role = semantic_weight_role(
+                target_key,
+                target_tensor.shape,
+            )
+            if source_role in unhealthy_source_weight_roles:
+                report.skipped_by_policy += 1
+                report.skipped_semantic.append(
+                    {
+                        "target": target_key,
+                        "source": None,
+                        "reason": "unhealthy_source_weight_role",
+                        "role": source_role,
+                    }
+                )
+                continue
         if target_key == "language.token_embedding.weight" and token_map is not None:
             source_tensor = source.get(target_key)
             if source_tensor is None:

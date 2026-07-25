@@ -14,6 +14,12 @@ The production DAG begins with `audit_method_evidence`. It verifies that all 29 
 test anchors. Target-device preflights and initialization depend on its fingerprinted report, so
 stale research claims fail before model allocation.
 
+The next preflight, `audit_weight_commonality`, validates bounded real-weight evidence from five
+pinned small VLMs. It binds immutable revisions, safetensors sample digests, sampling ceilings,
+and the cross-model report fingerprint. Initialization depends on this audit. Materialized
+transfer reports then resample the checkpoint in memory and skip any semantic role whose sampled
+weights are non-finite, degenerate, highly sparse, or extreme.
+
 After tokenizer training, the production DAG audits exact structured-target token lengths under
 the evaluation, preference, and RLVR budget policies. It derives recommendations from train and
 validation only, checks heldout without tuning on it, and blocks initialization on inadequate
@@ -101,7 +107,7 @@ dependencies without creating files:
 python scripts/run_student_experiment.py --dry-run
 ```
 
-The full plan has 26 stages, including adopted-method evidence, target-device visual-backend and
+The full plan has 27 stages, including adopted-method and real-weight evidence, target-device visual-backend and
 full-training preflights,
 the pre-initialization generation-budget audit,
 an initial-checkpoint matched baseline, validation conversion/evaluation, and next-batch

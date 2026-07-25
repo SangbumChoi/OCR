@@ -1130,6 +1130,38 @@ def test_siglip_transfer_maps_attention_output_projection():
     assert "vision.blocks.0.attn.o_proj.weight" in report.copied_keys
 
 
+def test_selective_transfer_skips_unhealthy_sampled_weight_roles():
+    import torch
+
+    from docvlm_eval.student.config import StudentConfig
+    from docvlm_eval.student.model import DocumentVLMStudent
+    from docvlm_eval.student.transfer import (
+        selective_transfer,
+        validate_transfer_report_attestation,
+    )
+
+    student = DocumentVLMStudent(StudentConfig.tiny())
+    key = "vision.blocks.0.attn.q_proj.weight"
+    original = student.state_dict()[key].clone()
+    source = {key: torch.zeros_like(original)}
+
+    report = selective_transfer(
+        student,
+        source,
+        {"vision": 1.0},
+        require_healthy_source_weights=True,
+    )
+
+    assert torch.equal(student.state_dict()[key], original)
+    assert report.unhealthy_source_weight_roles == ["vision.attention.q"]
+    assert report.source_weight_profile_fingerprint.startswith("sha256:")
+    assert any(
+        item["reason"] == "unhealthy_source_weight_role"
+        for item in report.skipped_semantic
+    )
+    validate_transfer_report_attestation(report.to_dict())
+
+
 def test_transfer_attestation_rejects_mapping_tampering():
     from docvlm_eval.student.config import StudentConfig
     from docvlm_eval.student.model import DocumentVLMStudent
@@ -1882,6 +1914,11 @@ def test_student_builder_routes_strict_structured_arm_and_records_groups(
     )
     assert language_report["shape_policy"] == "structured_mlp"
     assert language_report["require_attention_geometry"] is True
+    assert language_report["require_healthy_source_weights"] is True
+    assert language_report["source_weight_profile_fingerprint"].startswith(
+        "sha256:"
+    )
+    assert language_report["unhealthy_source_weight_roles"] == []
     assert language_report["attention_geometry_compatible"] is True
     assert language_report["structured_tensors"] == 3
     assert language_report["structured_parameters"] > 0

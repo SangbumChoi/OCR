@@ -118,6 +118,9 @@ def main() -> None:
                 require_attention_geometry=bool(
                     arm.get("require_attention_geometry", False)
                 ),
+                require_healthy_source_weights=bool(
+                    arm.get("require_healthy_source_weights", False)
+                ),
             ).to_dict()
         )
     if active_sources["language"]:
@@ -145,6 +148,9 @@ def main() -> None:
                 ),
                 require_attention_geometry=bool(
                     arm.get("require_attention_geometry", False)
+                ),
+                require_healthy_source_weights=bool(
+                    arm.get("require_healthy_source_weights", False)
                 ),
             ).to_dict()
         )

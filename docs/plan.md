@@ -184,6 +184,10 @@ the model** via targeted fine-tuning, rather than bolting on stages.
 - **Preflight transfer across architectures:**
   [`report/small_vlm_architecture_commonality.md`](report/small_vlm_architecture_commonality.md) —
   pinned small-VLM feature commonality and component-level copy-versus-distill decisions.
+- **Measure real-weight commonality:**
+  [`report/small_vlm_weight_commonality.md`](report/small_vlm_weight_commonality.md) —
+  bounded safetensors range sketches across five pinned models, recurrent operator statistics,
+  and a no-basis-assumption transfer contract.
 - **Test LFM operator alignment:**
   [`report/student_lfm_language_transfer_sweep.md`](report/student_lfm_language_transfer_sweep.md)
   — a sub-1B LFM-compatible language control, zero-allocation transfer proof, and paired
@@ -349,6 +353,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/sub1b_architecture_blueprint.md`](report/sub1b_architecture_blueprint.md) ·
    [`report/student_data_acquisition.md`](report/student_data_acquisition.md) ·
    [`report/student_initialization_runner.md`](report/student_initialization_runner.md) ·
+   [`report/small_vlm_weight_commonality.md`](report/small_vlm_weight_commonality.md) ·
    [`report/student_pretraining_runner.md`](report/student_pretraining_runner.md) ·
    [`report/student_gradient_conflict_audit.md`](report/student_gradient_conflict_audit.md) ·
    [`report/student_adaptive_mixture.md`](report/student_adaptive_mixture.md) ·
