@@ -428,10 +428,13 @@ def hard_investment_case(
         cross_region=True,
     )
     companies = ["Aurora Fund", "Birch Holdings", "Cobalt SPV", "Delta Labs"]
-    direct_ab = rng.choice([0.30, 0.35, 0.40])
-    direct_ac = rng.choice([0.15, 0.20, 0.25])
-    bd = rng.choice([0.40, 0.45, 0.50])
-    cd = rng.choice([0.20, 0.25, 0.30])
+    # Sample exact basis points from broad, realistic bands. The former three-value
+    # grids admitted only 81 semantic combinations, causing deterministic train /
+    # heldout collisions in modest 32-document splits.
+    direct_ab = rng.randint(2_800, 4_500) / 10_000
+    direct_ac = rng.randint(1_200, 2_800) / 10_000
+    bd = rng.randint(3_500, 5_500) / 10_000
+    cd = rng.randint(1_500, 3_500) / 10_000
     nodes = [
         GraphNode(company.lower().replace(" ", "_"), "entity", company, company)
         for company in companies
@@ -502,10 +505,10 @@ def hard_investment_case(
         language=language,
     )
     rows = [
-        [companies[0], companies[1], f"{direct_ab * 100:.0f}%"],
-        [companies[0], companies[2], f"{direct_ac * 100:.0f}%"],
-        [companies[1], companies[3], f"{bd * 100:.0f}%"],
-        [companies[2], companies[3], f"{cd * 100:.0f}%"],
+        [companies[0], companies[1], f"{direct_ab * 100:.2f}%"],
+        [companies[0], companies[2], f"{direct_ac * 100:.2f}%"],
+        [companies[1], companies[3], f"{bd * 100:.2f}%"],
+        [companies[2], companies[3], f"{cd * 100:.2f}%"],
     ]
     layout = hard_layout_spec("hard_investment", layout_family)
     b = DocBuilder(

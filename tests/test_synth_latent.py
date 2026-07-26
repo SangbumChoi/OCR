@@ -300,6 +300,19 @@ def test_hard_case_programs_validate_at_every_curriculum_level(level):
             assert len(trace["trace_fingerprint"]) == 64
 
 
+def test_hard_investment_semantics_are_unique_across_screening_scale_seeds():
+    fingerprints = {
+        HARD_CASE_FACTORIES["hard_investment"](
+            random.Random(seed),
+            5,
+            "ko",
+        ).builder.semantic_graph["content_fingerprint"]
+        for seed in range(128)
+    }
+
+    assert len(fingerprints) == 128
+
+
 def test_split_policy_is_deterministic_and_content_sensitive():
     policy = SplitPolicy(seed=11)
     first = {"doc_id": "a", "semantic_graph": _simple_graph(3).to_dict()}
