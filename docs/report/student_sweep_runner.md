@@ -114,7 +114,7 @@ matched_controls:
   - document: experiment
     path: /synthetic/train_seed
   - document: experiment
-    path: /data/components
+    path: /examples/components
   - document: experiment
     path: /pretraining/max_steps
   - document: blueprint

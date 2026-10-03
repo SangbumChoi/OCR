@@ -72,7 +72,7 @@ def prettify_tables(md: str) -> str:
             aligns += ["-"] * (ncol - len(aligns))
             body = [r + [""] * (ncol - len(r)) for r in body]
             # min width 3 so the separator (>=3 dashes, with optional align colons) fits and
-            # data/separator columns share the exact same width -> aligned plain text
+            # examples/separator columns share the exact same width -> aligned plain text
             widths = [max(3, len(header[c]), *(len(r[c]) for r in body)) if body
                       else max(3, len(header[c])) for c in range(ncol)]
             out.append(_fmt_row(header, widths))

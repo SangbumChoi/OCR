@@ -119,7 +119,7 @@ def _viewer() -> dict:
 def _files() -> list[dict]:
     return [
         {
-            "path": f"data/train-{index:05d}-of-00005.parquet",
+            "path": f"examples/train-{index:05d}-of-00005.parquet",
             "size": 100,
             "sha256": f"{index + 1:064x}",
         }

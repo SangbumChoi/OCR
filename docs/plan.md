@@ -24,7 +24,7 @@ deliberately define "document" *broadly*:
 So the premise is: **a "document" is any surface a person reads to extract meaning** — paper or
 pixels. The rest of the plan follows from that one decision.
 
-> The data-first conviction: **surveying the data/evaluations matters more than surveying models.**
+> The data-first conviction: **surveying the examples/evaluations matters more than surveying models.**
 > Models churn; the question of *what we must be able to read and how we'd know we succeeded* is the
 > durable part. Hence phases 1–3 are all about data before phase 4 touches a model.
 
@@ -36,7 +36,7 @@ pixels. The rest of the plan follows from that one decision.
 2 survey EVALUATIONS (data > models) ──────►  report/benchmark_taxonomy.md · benchmark_patterns.md
         │
 3 understand evals → hunt SPECIAL CASES ───►  report/capability_axes.md (all capability axes)
-        │                                      data/benchmarks/{custom_eval,oov_probe,realistic_cases}
+        │                                      examples/benchmarks/{custom_eval,oov_probe,realistic_cases}
 4 evaluate ALL models × ALL metrics ───────►  report/results_analysis.md · insights.md · results/*
    (+ study model properties)                 report/technical_report.md (Appendix profiles)
         │
@@ -72,7 +72,7 @@ grounding IoU, calibration), then group benchmarks by *nature* and draw a priori
 - **Read:** [`report/benchmark_patterns.md`](report/benchmark_patterns.md) — what each benchmark
   collects, visual-class diversity beyond text, VQA answer-natures (exact vs list/ANLS), grouping +
   priority graph.
-- **Browse:** [`../data/benchmarks/README.md`](../data/benchmarks/README.md) — one inspectable
+- **Browse:** [`../examples/benchmarks/README.md`](../examples/benchmarks/README.md) — one inspectable
   sample (image + GT + metric note) per benchmark.
 
 ## 3. Understand the evals → hunt for **special cases & gaps**
@@ -86,9 +86,9 @@ capability axes, and build controlled probes + our own evaluation format for the
   spatial & context understanding (falsifiable control-pair probes: counterfactual / distractor /
   position-bias).
 - **Build/browse the gap sets:**
-  [`../data/probes/custom_eval/`](../data/probes/custom_eval/README.md) (our proposed
+  [`../examples/probes/custom_eval/`](../examples/probes/custom_eval/README.md) (our proposed
   per-content-class format),
-  [`../data/probes/realistic_cases/`](../data/probes/realistic_cases/README.md) (realistic
+  [`../examples/probes/realistic_cases/`](../examples/probes/realistic_cases/README.md) (realistic
   *and* GT-exact special cases incl. the UX surfaces), and the OOV/web-UI probes.
 - **Read (forward pointer):** [`report/research_novelty.md`](report/research_novelty.md) — the
   literature-grounded gaps these probes can uniquely test at ≤1B.
@@ -311,7 +311,7 @@ added factor lifting the score a step, ending well above the baseline.
   configs/synth_data.yaml [--ablation <id>] --count N` → large, label-exact training set whose GT
   carries every ablation factor (see [`report/synthetic_data_dto.md`](report/synthetic_data_dto.md)
   for the DTO + config-driven factor control, and
-  [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md));
+  [`../examples/probes/realistic_cases/README.md`](../examples/probes/realistic_cases/README.md));
   diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
   and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
   (simulation-only; LLM generators kept as future-optional seams).
@@ -374,7 +374,7 @@ added factor lifting the score a step, ending well above the baseline.
 2. [`report/benchmark_taxonomy.md`](report/benchmark_taxonomy.md) ·
    [`report/benchmark_patterns.md`](report/benchmark_patterns.md)
 3. [`report/capability_axes.md`](report/capability_axes.md) ·
-   [`../data/probes/realistic_cases/README.md`](../data/probes/realistic_cases/README.md)
+   [`../examples/probes/realistic_cases/README.md`](../examples/probes/realistic_cases/README.md)
 4. [`report/results_analysis.md`](report/results_analysis.md) ·
    [`report/insights.md`](report/insights.md) · [`results/comparison_table.md`](results/comparison_table.md)
 5. [`report/research_novelty.md`](report/research_novelty.md) ·

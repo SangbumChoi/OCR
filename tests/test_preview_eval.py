@@ -1,4 +1,4 @@
-"""Offline samples.jsonl (raw HF GT) -> eval Sample conversion. Schema-only, no network/data dep."""
+"""Offline benchmark annotations (raw HF GT) -> eval Sample conversion."""
 
 from docvlm_eval.benchmarks.preview_eval import SPEC, case_samples
 

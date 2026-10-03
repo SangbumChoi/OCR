@@ -6,7 +6,7 @@ newkey``) leaves a montage with only the new cells. This script always renders *
 source from the full merged dataset** (KIE fields green, localization regions orange), writing the
 card asset used by the Hub README and docs.
 
-    python scripts/udd_montage.py                       # from data/udd/hf/_all
+    python scripts/udd_montage.py                       # from examples/udd/hf/_all
     python scripts/udd_montage.py --repo danelcsb/UDD   # from the Hub
 """
 from __future__ import annotations
@@ -29,14 +29,14 @@ from docvlm_eval.unified import (  # noqa: E402
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--repo", default=None, help="HF repo to pull instead of --src")
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" / "udd_examples.png"))
     p.add_argument(
         "--details-out",
         default=str(ROOT / "docs" / "report" / "figures" / "udd_details.html"),
     )
-    p.add_argument("--tmp", default=str(ROOT / "data" / "udd" / "viz_imgs"))
+    p.add_argument("--tmp", default=str(ROOT / "examples" / "udd" / "viz_imgs"))
     p.add_argument("--cols", type=int, default=4)
     args = p.parse_args()
 

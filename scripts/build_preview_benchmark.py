@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Turn the per-benchmark preview samples (data/benchmarks/<key>/sample.json) into ONE
+"""Turn the first answerable row from each benchmark annotation file into ONE
 normalised, answerable benchmark JSONL so every model can be run across every benchmark that
 has a (question, answer) — the cross-benchmark "preview matrix" set.
 
 Benchmarks whose ground truth is a *structure* (tables/KIE/parsing) rather than a Q/A pair
 are skipped here (they need task-specific scoring, not the generic VQA loop) and reported.
 
-    python scripts/build_preview_benchmark.py            # -> data/benchmarks/all_preview.jsonl
+    python scripts/build_preview_benchmark.py            # -> examples/benchmarks/all_preview.jsonl
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.schema import Sample  # noqa: E402
 
-BENCH = Path("data/benchmarks")
+BENCH = Path("examples/benchmarks")
 TRANSCRIBE_Q = "Read and transcribe all the text in the image."
 # Small VLMs are verbose; short-answer benchmarks are run (e.g. in VLMEvalKit) with an explicit
 # brevity instruction so the answer can be matched. Transcription tasks get no such suffix.
@@ -71,15 +71,23 @@ def _extract(key: str, gt: dict, metric: str):
 def main() -> None:
     samples: list[Sample] = []
     skipped: list[str] = []
-    for d in sorted(BENCH.glob("*/sample.json")):
-        meta = json.loads(d.read_text(encoding="utf-8"))
-        key = meta["benchmark"]
-        img = d.parent / "sample.png"
-        if not img.exists():
-            skipped.append(f"{key} (no image)")
+    from docvlm_eval.benchmarks.catalog import load_catalog
+
+    catalog = {entry["key"]: entry for entry in load_catalog()}
+    for annotation_file in sorted(BENCH.glob("*/annotations.jsonl")):
+        key = annotation_file.parent.name
+        rows = annotation_file.read_text(encoding="utf-8").splitlines()
+        if not rows:
+            skipped.append(f"{key} (no annotations)")
             continue
-        gt = meta.get("ground_truth", {})
-        metric = (meta.get("metric") or "anls").lower()
+        row = json.loads(rows[0])
+        img = annotation_file.parent / row["image"]
+        if not img.exists():
+            skipped.append(f"{key} (no downloaded image)")
+            continue
+        gt = row.get("ground_truth", {})
+        entry = catalog.get(key, {})
+        metric = str(entry.get("metric") or "anls").lower()
         metric = {"relaxed_acc": "relaxed_acc"}.get(metric, "anls" if "anls" in metric else
                   "relaxed_acc" if "relaxed" in metric else
                   "ocrbench" if "ocrbench" in metric else
@@ -91,7 +99,8 @@ def main() -> None:
         q, answers, m = got
         samples.append(Sample(
             sample_id=key, image_path=str(img), question=q, answers=answers,
-            answer_type=key, metric=m, meta={"benchmark": key, "category": meta.get("category")},
+            answer_type=key, metric=m,
+            meta={"benchmark": key, "category": entry.get("category")},
         ))
     out = BENCH / "all_preview.jsonl"
     save_jsonl(samples, out)

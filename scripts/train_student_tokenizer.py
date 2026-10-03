@@ -24,7 +24,7 @@ def main() -> None:
     source.add_argument(
         "--src",
         type=Path,
-        default=ROOT / "data" / "udd" / "hf" / "_all",
+        default=ROOT / "examples" / "udd" / "hf" / "_all",
         help="Local datasets.load_from_disk UDD path.",
     )
     source.add_argument("--repo", help="Hugging Face UDD repository ID.")

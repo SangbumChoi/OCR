@@ -53,7 +53,7 @@ Start from a native pretraining checkpoint:
 
 ```bash
 python scripts/posttrain_student.py sft \
-  --samples data/posttraining/train.jsonl \
+  --samples examples/posttraining/train.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_pretrain/I4_selective/checkpoints/step-00010000/student \
   --output outputs/student_sft/evidence_linked
@@ -63,7 +63,7 @@ The same runner accepts generated realistic cases:
 
 ```bash
 python scripts/posttrain_student.py sft \
-  --realistic-root data/probes/realistic_cases \
+  --realistic-root examples/probes/realistic_cases \
   --variant degraded \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_pretrain/I4_selective/checkpoints/step-00010000/student \
@@ -93,7 +93,7 @@ Run the configured DPO or IPO objective from an SFT checkpoint:
 
 ```bash
 python scripts/posttrain_student.py preference \
-  --samples data/posttraining/train.jsonl \
+  --samples examples/posttraining/train.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
   --output outputs/student_preference/verifier_ranked
@@ -125,7 +125,7 @@ Run RLVR from an SFT checkpoint:
 
 ```bash
 python scripts/posttrain_student.py rlvr \
-  --samples data/posttraining/rlvr.jsonl \
+  --samples examples/posttraining/rlvr.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
   --output outputs/student_rlvr/full_reward
@@ -136,7 +136,7 @@ trainable policy and the exact SFT checkpoint as the frozen reference:
 
 ```bash
 python scripts/posttrain_student.py rlvr \
-  --samples data/posttraining/rlvr.jsonl \
+  --samples examples/posttraining/rlvr.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_preference/dpo/checkpoints/step-00001000/student \
   --reference-checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
@@ -194,8 +194,8 @@ general-multimodal JSONL when broader capability retention is required:
 
 ```bash
 python scripts/posttrain_student.py rlvr \
-  --samples data/posttraining/rlvr.jsonl \
-  --replay-samples data/posttraining/general_multimodal_replay.jsonl \
+  --samples examples/posttraining/rlvr.jsonl \
+  --replay-samples examples/posttraining/general_multimodal_replay.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
   --output outputs/student_rlvr/replay_anchored
@@ -282,8 +282,8 @@ Evaluate train and leakage-safe heldout JSONL with one loaded checkpoint:
 
 ```bash
 python scripts/eval_student.py \
-  --split train=data/posttraining/train.jsonl \
-  --split heldout=data/posttraining/heldout.jsonl \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_rlvr/full_reward/checkpoints/step-00001000/student \
   --output outputs/student_eval/full_reward
@@ -318,8 +318,8 @@ Add W&B logging without changing the evaluation:
 
 ```bash
 python scripts/eval_student.py \
-  --split train=data/posttraining/train.jsonl \
-  --split heldout=data/posttraining/heldout.jsonl \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
   --output outputs/student_eval/sft \

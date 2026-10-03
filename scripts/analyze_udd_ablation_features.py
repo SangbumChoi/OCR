@@ -29,7 +29,7 @@ FIG = ROOT / "docs" / "report" / "figures" / "udd_ablation_features.png"
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     args = p.parse_args()
 
     from datasets import load_from_disk

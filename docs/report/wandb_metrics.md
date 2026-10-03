@@ -134,8 +134,8 @@ the native pretraining/SFT/RLVR checkpoints. Pass both splits and one W&B projec
 
 ```bash
 python scripts/eval_student.py \
-  --split train=data/posttraining/train.jsonl \
-  --split heldout=data/posttraining/heldout.jsonl \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint /path/to/checkpoint/student \
   --output outputs/student_eval/run \

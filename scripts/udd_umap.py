@@ -6,7 +6,7 @@ TF-IDF and projects to 2D with UMAP, then plots the standardized space two ways:
 and by **source dataset**. This visualises how the scattered public benchmarks land in one common
 representation once unified. Writes docs/report/figures/udd_umap.png.
 
-    python scripts/udd_umap.py --src data/udd/hf/_all
+    python scripts/udd_umap.py --src examples/udd/hf/_all
     python scripts/udd_umap.py --repo danelcsb/UDD          # pull from the Hub instead
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _image_features(ds, model_id: str):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"),
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"),
                    help="local load_from_disk path")
     p.add_argument("--repo", default=None, help="HF repo to pull instead of --src")
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" / "udd_umap.png"))

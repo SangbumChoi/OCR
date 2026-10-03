@@ -6,7 +6,7 @@
 # qwen3_5-0.8b remains selectable (run_ablation --models / notebook MODEL) but LFM is the default base.
 target_models: [lfm2_5-vl-1.6b]
 base_task: document-generation (image -> structured text); per-ablation augmentation from
-           data/probes/realistic_cases (configs/synth_data.yaml)
+           examples/probes/realistic_cases (configs/synth_data.yaml)
 
 # ---------------------------------------------------------------------------------------------
 # CONTROL FACTOR (held fixed across every arm so a delta is attributable to the factor alone):
@@ -77,7 +77,7 @@ ablations:
     factor: "{answer} | {+spot} | {+reason} | {+spot+reason}"
     data_arm: {answer: A3_answer_only, spot: A3_spot_only, reason: A3_reason_only,
                both: A3_spot_and_reason}
-    control: "same data/steps"
+    control: "same examples/steps"
     metrics: [composite, grounding_iou, cap_integ_rel]
     hypothesis: "spot & reason are complementary and beat plain combination"
 

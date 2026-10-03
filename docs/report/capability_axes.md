@@ -4,7 +4,7 @@ Benchmark *names* hide what a model can actually do. To compare sub-1B document 
 score them along a fixed set of **capability axes**, isolate each with a small controlled probe, and
 report a per-model **capability vector** (`T1 … H7`). This file is the single source for the axes,
 the probes, and the prompts. Probes live under
-[`data/probes/`](../../data/probes/README.md); prompts in
+[`examples/probes/`](../../examples/probes/README.md); prompts in
 [`configs/capability_prompts.yaml`](../../configs/capability_prompts.yaml).
 
 ## Axis catalogue (three families, sequential codes)
@@ -52,10 +52,10 @@ answer depends on*:
 
 Two controlled probes cover the catalogue, each single-purpose so a failure is unambiguous:
 
-- **[`capability_probe`](../../data/probes/capability_probe)**
+- **[`capability_probe`](../../examples/probes/capability_probe)**
   ([generator](../../scripts/make_capability_probe.py)) — the **measured-score** axes
   **`T1 T2 H1 H2 H3 L1`**, rendered with exact GT incl. pixel boxes.
-- **[`spatial_context_probe`](../../data/probes/spatial_context_probe)**
+- **[`spatial_context_probe`](../../examples/probes/spatial_context_probe)**
   ([generator](../../scripts/make_spatial_context_probe.py)) — the **signal** axes **`L2–L4`**
   (spatial) and **`H4–H7`** (context), each paired with a shortcut **control** (next section).
 
@@ -158,7 +158,7 @@ not new axes** — they re-use **L1** and **H5** rather than double-count:
 - **Correct-or-abstain** = **H5** (anti-hallucination), viewed as a per-type deployment gate: when a
   field is **absent / redacted / illegible**, the right answer is "not present" / "[redacted]";
   inventing a value is the worst failure. Scored by **abstain accuracy** (the `abstain` probes in
-  [`data/probes/realistic_cases`](../../data/probes/realistic_cases/README.md)) + **ECE calibration**
+  [`examples/probes/realistic_cases`](../../examples/probes/realistic_cases/README.md)) + **ECE calibration**
   ([`metrics/calibration.py`](../../src/docvlm_eval/metrics/calibration.py)).
 
 These are *why* a type's **anchor metric** in the taxonomy reads "… + spotting IoU" or "… + abstain".

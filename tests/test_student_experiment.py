@@ -65,7 +65,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     )
     assert method_audit.dependencies == ()
     assert method_audit.artifacts[0].path.endswith(
-        "artifacts/data/method_evidence.json"
+        "artifacts/examples/method_evidence.json"
     )
     assert plan.input_fingerprints["frontier_method_catalog"]["sha256"]
     assert plan.input_fingerprints["frontier_method_evidence"]["sha256"]
@@ -82,7 +82,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     )
     assert weight_audit.dependencies == ("audit_method_evidence",)
     assert weight_audit.artifacts[0].path.endswith(
-        "artifacts/data/weight_commonality_audit.json"
+        "artifacts/examples/weight_commonality_audit.json"
     )
     assert plan.input_fingerprints[
         "small_vlm_architecture_catalog"
@@ -192,7 +192,7 @@ def test_default_experiment_compiles_complete_stage_dag():
     assert audit.command.count("--evaluation-token-budget") == 12
     assert "--calibration-split" in audit.command
     assert audit.artifacts[0].path.endswith(
-        "artifacts/data/generation_budget_audit.json"
+        "artifacts/examples/generation_budget_audit.json"
     )
     visual_benchmark = next(
         stage for stage in plan.stages if stage.name == "visual_backend_benchmark"

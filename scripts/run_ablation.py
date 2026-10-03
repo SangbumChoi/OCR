@@ -31,9 +31,9 @@ HF_ID = {"qwen3_5-0.8b": "Qwen/Qwen3.5-0.8B",
          # tiny base for --smoke wiring proofs: small enough that a few LoRA steps + a 16-sample
          # eval complete on CPU (NOT a measurement base)
          "smolvlm-256m": "HuggingFaceTB/SmolVLM-256M-Instruct"}
-PROBES = {"capability": "data/probes/capability_probe/capability.jsonl",
-          "spatial": "data/probes/spatial_context_probe/probe.jsonl",
-          "realistic": "data/probes/realistic_cases/realistic_cases.jsonl"}
+PROBES = {"capability": "examples/probes/capability_probe/capability.jsonl",
+          "spatial": "examples/probes/spatial_context_probe/probe.jsonl",
+          "realistic": "examples/probes/realistic_cases/realistic_cases.jsonl"}
 # Score EVERY arm on the whole suite to see cross-capability transfer (does spotting help CER/KIE?
 # does multilingual hurt EN?), not just the arm's target axis.
 EVAL_SUITE = ["capability", "spatial", "realistic"]
@@ -86,7 +86,7 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     # In public-data mode (--train-jsonl) this means: TRAIN on public benchmark data, VALIDATE on
     # synthetic — the train-vs-synthetic gap then also reflects domain shift, not memorization alone.
     public = getattr(args, "train_jsonl", None)
-    test_jsonl = _gen_realistic(ROOT / "data" / "probes" / "_a0_heldout",
+    test_jsonl = _gen_realistic(ROOT / "examples" / "probes" / "_a0_heldout",
                                 seed=args.a0_test_seed, count=args.a0_test_count)
     n_test = _n_samples(test_jsonl)
     sizes = sorted(set(args.a0_sizes))
@@ -110,9 +110,9 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
                   f"epochs<={args.a0_epochs} micro_steps<={args.steps}")
             if public:
                 train_jsonl, n_train = _subsample_jsonl(
-                    public, n, ROOT / "data" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
+                    public, n, ROOT / "examples" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
             else:
-                train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases",
+                train_jsonl = _gen_realistic(ROOT / "examples" / "probes" / "realistic_cases",
                                              seed=args.data_seed, count=n)
                 n_train = _n_samples(train_jsonl)
             # per-epoch eval on BOTH train (memorization) and held-out (understanding) -> W&B curves
@@ -161,7 +161,7 @@ def main() -> None:
     # PUBLIC-DATA path: train on a prebuilt benchmark jsonl (scripts/build_benchmark_trainset.py) and
     # validate on the SYNTHETIC suite. Use --arm public for a single run, or --arm A0 for the scale sweep.
     p.add_argument("--train-jsonl", default=None,
-                   help="train on THIS jsonl (e.g. data/benchmark_trainset/train.jsonl) instead of "
+                   help="train on THIS jsonl (e.g. examples/benchmark_trainset/train.jsonl) instead of "
                         "generating synthetic data; validation stays synthetic. Supports --arm public/A0.")
     p.add_argument("--record-key", default=None,
                    help="key to store results under in ablation_results.json (default: <arm>:<placement>)")
@@ -178,7 +178,7 @@ def main() -> None:
                         "(different from training) -> unseen content; reports the train/held-out gap")
     p.add_argument("--heldout-jsonl", default=None,
                    help="use THIS prebuilt jsonl as the held-out eval set instead of generating a "
-                        "synthetic one (e.g. data/udd_tasks/heldout_all.jsonl — the UDD public "
+                        "synthetic one (e.g. examples/udd_tasks/heldout_all.jsonl — the UDD public "
                         "heldout fold from build_task_trainsets.py)")
     p.add_argument("--before-after", action="store_true",
                    help="public arms: ALSO evaluate the UN-tuned base on the full suite before "
@@ -282,7 +282,7 @@ def main() -> None:
 
     heldout_jsonl = args.heldout_jsonl   # prebuilt public heldout (UDD fold), if given
     if heldout_jsonl is None and args.heldout_seed is not None:    # else synth with a different seed
-        test_dir = ROOT / "data" / "probes" / "_realistic_heldout"
+        test_dir = ROOT / "examples" / "probes" / "_realistic_heldout"
         heldout_cmd = [sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
                        "--seed", str(args.heldout_seed), "--count", str(max(1, args.count // 5)),
                        "--out", str(test_dir)]
@@ -342,7 +342,7 @@ def main() -> None:
             n_avail = _n_samples(args.train_jsonl)
             if args.count and args.count < n_avail:
                 train_jsonl, n_train = _subsample_jsonl(
-                    args.train_jsonl, args.count, ROOT / "data" / "probes" / "_public_train.jsonl")
+                    args.train_jsonl, args.count, ROOT / "examples" / "probes" / "_public_train.jsonl")
             else:
                 train_jsonl, n_train = args.train_jsonl, n_avail
             print(f"    [public] train on {n_train} rows from {args.train_jsonl}; validate on synthetic")

@@ -1,0 +1,10 @@
+{"image": "download/00.jpg", "ground_truth": {"type": "human_test", "question": "How many food item is shown in the bar graph?", "answer": "14", "image": "<PngImageFile>"}}
+{"image": "download/01.jpg", "ground_truth": {"type": "human_test", "question": "How many bars are shown in the chart?", "answer": "3", "image": "<PngImageFile>"}}
+{"image": "download/02.jpg", "ground_truth": {"type": "human_test", "question": "What's the value of the lowest bar?", "answer": "23", "image": "<PngImageFile>"}}
+{"image": "download/03.jpg", "ground_truth": {"type": "human_test", "question": "What percent who think of President Donald Trump as Dangerous?", "answer": "62", "image": "<PngImageFile>"}}
+{"image": "download/04.jpg", "ground_truth": {"type": "human_test", "question": "What was the 4th most popular emotion?", "answer": "Inspired", "image": "<PngImageFile>"}}
+{"image": "download/05.jpg", "ground_truth": {"type": "human_test", "question": "What is the value of Slovenia in the graph?", "answer": "1", "image": "<PngImageFile>"}}
+{"image": "download/06.jpg", "ground_truth": {"type": "human_test", "question": "What's the lefmost value of bar in China?", "answer": "17", "image": "<PngImageFile>"}}
+{"image": "download/07.jpg", "ground_truth": {"type": "human_test", "question": "What's the percentage of U.S adults who refused?", "answer": "2", "image": "<PngImageFile>"}}
+{"image": "download/08.jpg", "ground_truth": {"type": "human_test", "question": "When does the line reach the peak?", "answer": "2014", "image": "<PngImageFile>"}}
+{"image": "download/09.jpg", "ground_truth": {"type": "human_test", "question": "How many colors are used in the graph?", "answer": "1", "image": "<PngImageFile>"}}

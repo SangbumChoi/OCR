@@ -2,7 +2,7 @@
 """Mock multi-model evaluation of UDD — test the WHOLE eval path without a GPU.
 
 Runs several deterministic MOCK models over the UDD public heldout sets
-(``data/udd_tasks/heldout_*.jsonl``) and scores them exactly like real models would be scored:
+(``examples/udd_tasks/heldout_*.jsonl``) and scores them exactly like real models would be scored:
 per-sample dispatch through ``score_sample(sample.metric, pred, golds)`` (anls / exact / ned /
 relaxed_acc / grounding / …) plus the bank's ``semantic_match`` as the comparison column, then
 aggregation per model × task. This validates end-to-end that every task's jsonl loads, every
@@ -53,7 +53,7 @@ def mock_models() -> dict:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--heldout-dir", default=str(ROOT / "data" / "udd_tasks"))
+    p.add_argument("--heldout-dir", default=str(ROOT / "examples" / "udd_tasks"))
     p.add_argument("--max-per-task", type=int, default=150)
     args = p.parse_args()
 

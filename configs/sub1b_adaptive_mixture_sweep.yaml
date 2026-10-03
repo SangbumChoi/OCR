@@ -34,7 +34,7 @@ matched_controls:
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/validation_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
-  - {document: experiment, path: /data/components}
+  - {document: experiment, path: /examples/components}
   - {document: experiment, path: /pretraining/eval_group_by}
   - {document: experiment, path: /pretraining/max_steps}
   - {document: experiment, path: /posttraining/sft/max_steps}
@@ -109,8 +109,8 @@ variants:
     hypothesis: "Controls for the task-balanced synthetic corpus without validation feedback."
     experiment_patches:
       - {op: replace, path: /synthetic/validation_count, value: 100}
-      - {op: replace, path: /data/components/0/weight, value: 1.0}
-      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /examples/components/0/weight, value: 1.0}
+      - {op: remove, path: /examples/components/1}
       - {op: replace, path: /pretraining/eval_group_by, value: task}
       - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
 
@@ -118,8 +118,8 @@ variants:
     hypothesis: "Tests conservative epoch-boundary task reweighting from validation loss."
     experiment_patches:
       - {op: replace, path: /synthetic/validation_count, value: 100}
-      - {op: replace, path: /data/components/0/weight, value: 1.0}
-      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /examples/components/0/weight, value: 1.0}
+      - {op: remove, path: /examples/components/1}
       - {op: replace, path: /pretraining/eval_group_by, value: task}
       - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
     blueprint_patches:
@@ -130,8 +130,8 @@ variants:
     hypothesis: "Tests stronger epoch-boundary task reweighting from validation loss."
     experiment_patches:
       - {op: replace, path: /synthetic/validation_count, value: 100}
-      - {op: replace, path: /data/components/0/weight, value: 1.0}
-      - {op: remove, path: /data/components/1}
+      - {op: replace, path: /examples/components/0/weight, value: 1.0}
+      - {op: remove, path: /examples/components/1}
       - {op: replace, path: /pretraining/eval_group_by, value: task}
       - {op: add, path: /evaluation/wandb_tags/-, value: adaptive-mixture}
     blueprint_patches:

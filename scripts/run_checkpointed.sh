@@ -12,7 +12,7 @@
 #
 # Usage (Colab needs git identity + push credentials configured for the repo):
 #   MODELS="smolvlm-256m smolvlm-500m internvl3-1b" \
-#   BENCH=data/benchmarks/preview_eval.jsonl NAME=preview_eval DEVICE=cuda \
+#   BENCH=examples/benchmarks/preview_eval.jsonl NAME=preview_eval DEVICE=cuda \
 #   bash scripts/run_checkpointed.sh
 #
 # Env: MODELS, BENCH, NAME, DEVICE (cuda|cpu), BRANCH (default = current), EXTRA (extra run_matrix args).
@@ -20,7 +20,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 BRANCH="${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
-BENCH="${BENCH:-data/benchmarks/preview_eval.jsonl}"
+BENCH="${BENCH:-examples/benchmarks/preview_eval.jsonl}"
 NAME="${NAME:-preview_eval}"
 DEVICE="${DEVICE:-cuda}"
 MODELS="${MODELS:-smolvlm-256m smolvlm-500m}"

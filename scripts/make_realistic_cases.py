@@ -8,7 +8,7 @@ boxes are read straight out of the rendered PDF. Photo-style cases may receive a
 perspective warp whose exact homography is applied to every box before a photometric Augraphy
 preset makes a realistic degraded copy. Faker (seeded) fills field content deterministically.
 
-Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
+Output per case: examples/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
 
     python scripts/make_realistic_cases.py                       # all cases
     python scripts/make_realistic_cases.py --only id_card cheque
@@ -61,7 +61,7 @@ from docvlm_eval.synth.quality import (  # noqa: E402
     redact_evidence_quality_report,
 )
 
-OUT = ROOT / "data" / "probes" / "realistic_cases"
+OUT = ROOT / "examples" / "probes" / "realistic_cases"
 
 # Faker locale per language code (A4). Latin locales localise name/company/address content;
 # CJK/Arabic locales need the matching Noto fonts (referenced in the case CSS) to render.
@@ -1787,7 +1787,7 @@ def main():
     ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
                     default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
-                    help="output dir (default data/probes/realistic_cases) — use a different dir + "
+                    help="output dir (default examples/probes/realistic_cases) — use a different dir + "
                          "--seed for a held-out TEST split (memorization-vs-understanding, A0)")
     args = ap.parse_args()
     if args.out:

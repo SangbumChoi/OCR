@@ -244,23 +244,23 @@ become a hidden reasoning target.
 python scripts/make_realistic_cases.py \
   --only hard_table hard_chart hard_investment hard_science hard_diagram \
   --difficulty-level 1 --split-name train --seed 7 --count 100 \
-  --out data/generated/hard_train_l1
+  --out examples/generated/hard_train_l1
 
 python scripts/make_realistic_cases.py \
   --only hard_table hard_chart hard_investment hard_science hard_diagram \
   --difficulty-level 5 --split-name heldout --seed 7007 --count 100 \
-  --out data/generated/hard_heldout_l5
+  --out examples/generated/hard_heldout_l5
 
 # Mandatory exact-content leakage check
 python scripts/validate_synth_splits.py \
-  --split train=data/generated/hard_train_l1 \
-  --split heldout=data/generated/hard_heldout_l5 \
+  --split train=examples/generated/hard_train_l1 \
+  --split heldout=examples/generated/hard_heldout_l5 \
   --output docs/results/hard_split_audit.json
 
 # Strict visual-layout holdout
 python scripts/validate_synth_splits.py \
-  --split train=data/generated/hard_train_layouts \
-  --split heldout=data/generated/hard_heldout_layout \
+  --split train=examples/generated/hard_train_layouts \
+  --split heldout=examples/generated/hard_heldout_layout \
   --require-layout-isolation
 ```
 

@@ -54,7 +54,7 @@ HARD_CAP = 1_000_000   # sanity backstop only — DISK is the real limit (a full
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=str(ROOT / "data" / "udd"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "udd"))
     p.add_argument("--per-bench", type=int, default=10,
                    help="examples/dataset (mockup=10). 0 = NO cap: ingest every available example "
                         "of every source — needs a big disk (full sources are terabytes)")

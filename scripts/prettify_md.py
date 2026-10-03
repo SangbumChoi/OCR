@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prettify (align) markdown tables in-place across the repo's generated docs.
 
-    python scripts/prettify_md.py            # docs/results/ + docs/report/ + data/benchmarks/README.md
+    python scripts/prettify_md.py            # docs/results/ + docs/report/ + examples/benchmarks/README.md
     python scripts/prettify_md.py path.md ...
 """
 
@@ -17,7 +17,7 @@ from docvlm_eval.report_md import prettify_tables  # noqa: E402
 
 def targets() -> list[Path]:
     out = list((ROOT / "docs" / "results").glob("*.md")) + list((ROOT / "docs" / "report").glob("*.md"))
-    out += list((ROOT / "data" / "benchmarks").glob("**/README.md"))
+    out += list((ROOT / "examples" / "benchmarks").glob("**/README.md"))
     return out
 
 

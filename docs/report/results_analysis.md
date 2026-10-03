@@ -183,11 +183,11 @@ python scripts/make_spatial_context_probe.py          # spatial/context probe (+
 
 # Re-score every model's CACHED predictions against the current taxonomy (no GPU, no model load):
 python scripts/run_matrix.py --rescore \
-    --benchmark data/probes/capability_probe/capability.jsonl \
+    --benchmark examples/probes/capability_probe/capability.jsonl \
     --models florence2-base florence2-large got-ocr2 h2ovl-0.8b internvl2-1b internvl2_5-1b \
              internvl3-1b llava-ov-0.5b smoldocling-256m smolvlm-256m smolvlm-500m
 python scripts/run_matrix.py --rescore \
-    --benchmark data/probes/spatial_context_probe/probe.jsonl --models smolvlm-256m smolvlm-500m
+    --benchmark examples/probes/spatial_context_probe/probe.jsonl --models smolvlm-256m smolvlm-500m
 python scripts/analyze_probe_signals.py --probe probe   # -> docs/results/probe_signals.md
 python scripts/build_insights.py                        # -> docs/report/insights.md
 

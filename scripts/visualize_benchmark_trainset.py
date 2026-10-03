@@ -31,7 +31,7 @@ def _wrap(s: str, width: int, max_lines: int) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--jsonl", default=str(ROOT / "data" / "benchmark_trainset" / "train.jsonl"))
+    p.add_argument("--jsonl", default=str(ROOT / "examples" / "benchmark_trainset" / "train.jsonl"))
     p.add_argument("--out", default=str(ROOT / "docs" / "report" / "figures" /
                                         "benchmark_trainset_preview.png"))
     p.add_argument("--per-bench", type=int, default=1, help="cells to show per benchmark")

@@ -27,7 +27,7 @@ from docvlm_eval.models import list_models  # noqa: E402
 from docvlm_eval.pipeline import run_evaluation  # noqa: E402
 from docvlm_eval.schema import Prediction  # noqa: E402
 
-PREVIEW = "data/benchmarks/all_preview.jsonl"
+PREVIEW = "examples/benchmarks/all_preview.jsonl"
 
 
 # --- carried over verbatim from a run's summary.json so a re-score keeps the run metadata ---

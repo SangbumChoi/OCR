@@ -36,8 +36,8 @@ matched_controls:
   - {document: experiment, path: /synthetic/heldout_count}
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
-  - {document: experiment, path: /data/components}
-  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /examples/components}
+  - {document: experiment, path: /examples/components/1/hub/seed}
   - {document: experiment, path: /sequence_teacher/device}
   - {document: experiment, path: /sequence_teacher/dtype}
   - {document: experiment, path: /sequence_teacher/max_new_tokens}
@@ -69,7 +69,7 @@ replicate_controls:
   - {document: experiment, path: /initialization/seed}
   - {document: experiment, path: /synthetic/train_seed}
   - {document: experiment, path: /synthetic/heldout_seed}
-  - {document: experiment, path: /data/components/1/hub/seed}
+  - {document: experiment, path: /examples/components/1/hub/seed}
   - {document: experiment, path: /sequence_teacher/selection_seed}
   - {document: experiment, path: /sequence_teacher/seed}
   - {document: experiment, path: /evaluation/seed}
@@ -84,7 +84,7 @@ replicates:
       - {op: replace, path: /initialization/seed, value: 5}
       - {op: replace, path: /synthetic/train_seed, value: 7}
       - {op: replace, path: /synthetic/heldout_seed, value: 7007}
-      - {op: replace, path: /data/components/1/hub/seed, value: 7}
+      - {op: replace, path: /examples/components/1/hub/seed, value: 7}
       - {op: replace, path: /sequence_teacher/selection_seed, value: 7}
       - {op: replace, path: /sequence_teacher/seed, value: 7}
       - {op: replace, path: /evaluation/seed, value: 31}
@@ -99,7 +99,7 @@ replicates:
       - {op: replace, path: /initialization/seed, value: 105}
       - {op: replace, path: /synthetic/train_seed, value: 107}
       - {op: replace, path: /synthetic/heldout_seed, value: 7107}
-      - {op: replace, path: /data/components/1/hub/seed, value: 107}
+      - {op: replace, path: /examples/components/1/hub/seed, value: 107}
       - {op: replace, path: /sequence_teacher/selection_seed, value: 107}
       - {op: replace, path: /sequence_teacher/seed, value: 107}
       - {op: replace, path: /evaluation/seed, value: 131}
@@ -114,7 +114,7 @@ replicates:
       - {op: replace, path: /initialization/seed, value: 205}
       - {op: replace, path: /synthetic/train_seed, value: 207}
       - {op: replace, path: /synthetic/heldout_seed, value: 7207}
-      - {op: replace, path: /data/components/1/hub/seed, value: 207}
+      - {op: replace, path: /examples/components/1/hub/seed, value: 207}
       - {op: replace, path: /sequence_teacher/selection_seed, value: 207}
       - {op: replace, path: /sequence_teacher/seed, value: 207}
       - {op: replace, path: /evaluation/seed, value: 231}

@@ -212,7 +212,7 @@ def compile_factorial_plan(
                 {
                     "op": "replace",
                     "path": (
-                        f"/data/components/{public_component_index}"
+                        f"/examples/components/{public_component_index}"
                         "/hub/max_rows"
                     ),
                     "value": public_max_rows,

@@ -42,7 +42,7 @@ Run one DPO job directly with `training.posttraining.preference.objective: dpo`:
 
 ```bash
 python scripts/posttrain_student.py preference \
-  --samples data/posttraining/train.jsonl \
+  --samples examples/posttraining/train.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/checkpoints/step-00002000/student \
   --output outputs/student_preference/verifier_ranked

@@ -29,7 +29,7 @@ def main() -> None:
         "--details-out",
         default=str(ROOT / "docs" / "report" / "figures" / "unified_details.html"),
     )
-    p.add_argument("--cache", default=str(ROOT / "data" / "unified_dataset" / "images"))
+    p.add_argument("--cache", default=str(ROOT / "examples" / "unified_dataset" / "images"))
     p.add_argument("--per-bench", type=int, default=1, help="examples (distinct images) per dataset")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys")
     p.add_argument("--skip", default=None, help="comma-separated benchmark keys to skip")

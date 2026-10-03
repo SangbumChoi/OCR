@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Turn the realistic synthetic cases into an eval-pipeline benchmark JSONL.
 
-Walks ``data/probes/realistic_cases/<key>/gt.json`` and emits Samples (qa / spotting /
+Walks ``examples/probes/realistic_cases/<key>/gt.json`` and emits Samples (qa / spotting /
 table / probes) via ``docvlm_eval.synth.load_realistic_samples`` so every model can be run on
 these cases with the normal harness:
 
     python scripts/build_realistic_benchmark.py            # clean -> realistic_cases.jsonl
     python scripts/build_realistic_benchmark.py --variant degraded
     docvlm-eval --model dummy-echo \
-      --benchmark data/probes/realistic_cases/realistic_cases.jsonl \
+      --benchmark examples/probes/realistic_cases/realistic_cases.jsonl \
       --benchmark-name realistic_cases --out /tmp/rc --device cpu
 """
 
@@ -24,13 +24,13 @@ sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks import save_jsonl  # noqa: E402
 from docvlm_eval.synth import load_realistic_samples  # noqa: E402
 
-CASES = ROOT / "data" / "probes" / "realistic_cases"
+CASES = ROOT / "examples" / "probes" / "realistic_cases"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", type=Path, default=CASES,
-                    help="synthetic case root (default data/probes/realistic_cases)")
+                    help="synthetic case root (default examples/probes/realistic_cases)")
     ap.add_argument("--variant", choices=["clean", "degraded"], default="clean",
                     help="which rendered image to point Samples at")
     ap.add_argument("--no-probes", action="store_true", help="exclude abstain/consistency probes")

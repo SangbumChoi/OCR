@@ -189,27 +189,27 @@ The offline path is executable and fail-closed:
 
 ```bash
 python scripts/build_teacher_targets.py export \
-  --src artifacts/data/mixture \
+  --src artifacts/examples/mixture \
   --max-requests 4096 \
   --selection-seed 7 \
-  --output artifacts/data/teacher_requests
+  --output artifacts/examples/teacher_requests
 python scripts/build_teacher_targets.py generate \
-  --requests artifacts/data/teacher_requests/requests.jsonl \
+  --requests artifacts/examples/teacher_requests/requests.jsonl \
   --model lfm2_5-vl-1.6b \
   --model-revision 919fde3d022e3f90a4716006f993938ee8c2eb97 \
   --device cuda \
-  --output artifacts/data/teacher_predictions.jsonl
+  --output artifacts/examples/teacher_predictions.jsonl
 python scripts/build_teacher_targets.py apply \
-  --src artifacts/data/mixture \
-  --requests artifacts/data/teacher_requests/requests.jsonl \
-  --predictions artifacts/data/teacher_predictions.jsonl \
+  --src artifacts/examples/mixture \
+  --requests artifacts/examples/teacher_requests/requests.jsonl \
+  --predictions artifacts/examples/teacher_predictions.jsonl \
   --min-score 0.8 \
   --min-acceptance-rate 0.1 \
   --accepted-target-count 400 \
   --selection-seed 7 \
   --expected-model lfm2_5-vl-1.6b \
   --expected-revision 919fde3d022e3f90a4716006f993938ee8c2eb97 \
-  --output artifacts/data/distilled_mixture
+  --output artifacts/examples/distilled_mixture
 ```
 
 Exported requests include immutable image, question, answer, metric, and source-dataset

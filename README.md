@@ -87,7 +87,7 @@ scripts/                # thin shims over docvlm_eval.cli + run_all.sh / build_r
 configs/                # models.yaml, benchmarks.yaml, benchmark_catalog.yaml
 tests/                  # pytest suite (metrics, schema, loaders, registry, robustness,
                         #   pipeline, catalog, comparison, cli, finetune)  -> 60+ tests
-docs/report/ docs/results/ data/  # report+figures, comparison table, benchmark/probe samples
+docs/report/ docs/results/ examples/  # report+figures, comparison table, benchmark/probe samples
 ```
 
 **Candidate models** (`scripts/evaluate.py --list-models`): `internvl2_5-1b`, `internvl3-1b`,
@@ -98,12 +98,13 @@ docs/report/ docs/results/ data/  # report+figures, comparison table, benchmark/
 robustness probe. The full landscape of OCR/document benchmark *types and metrics* is in
 [`docs/report/benchmark_taxonomy.md`](docs/report/benchmark_taxonomy.md).
 
-**Inspect the benchmarks at a glance.** One representative sample (image + ground-truth label
-+ metric note) per benchmark — across all taxonomy categories (VQA, KIE, tables, charts,
-formulas, end-to-end parsing) — lives under
-[`data/benchmarks/`](data/benchmarks/README.md), fetched with:
+**Inspect the benchmarks at a glance.** Downloaded benchmark images live under each
+`examples/benchmarks/<key>/download/` folder, with their source records consolidated into that
+benchmark's `annotations.jsonl`. These examples span the taxonomy categories (VQA, KIE, tables,
+charts, formulas, end-to-end parsing) and live under
+[`examples/benchmarks/`](examples/benchmarks/README.md), fetched with:
 ```bash
-python scripts/fetch_benchmark_samples.py        # real samples via HF streaming
+python scripts/fetch_benchmark_samples.py --n 10 # source examples via HF streaming
 python scripts/make_synthetic_samples.py         # attach samples for categories not on HF
                                                  # (full-page recognition, scene text, robustness)
 ```
@@ -112,7 +113,9 @@ python scripts/make_synthetic_samples.py         # attach samples for categories
 types (ID/passport, cheque, prescription, redacted, RTL, webtoon, ancient, LCD …) — realistic
 *and* GT-exact, usable as realistic eval **and** Part-2 fine-tuning data. Pipeline: HTML/CSS +
 Faker → WeasyPrint → PDF → PyMuPDF (rasterize + exact spotting boxes) → Augraphy degradation.
-See [`data/probes/realistic_cases/`](data/probes/realistic_cases/README.md):
+Probe image files are currently omitted while differential probe types are being planned; the
+annotation records and generators remain. See
+[`examples/probes/realistic_cases/`](examples/probes/realistic_cases/README.md):
 ```bash
 pip install -e ".[synth]"
 python scripts/make_realistic_cases.py           # 18 cases, each clean.png + degraded.png + gt.json
@@ -125,11 +128,11 @@ and multi-box evidence are recomputed from the same graph that supplies the rend
 ```bash
 python scripts/make_realistic_cases.py \
   --only hard_table hard_chart hard_investment hard_science \
-  --difficulty-level 5 --split-name train --count 100 --out data/generated/hard_train
+  --difficulty-level 5 --split-name train --count 100 --out examples/generated/hard_train
 
 python scripts/validate_synth_splits.py \
-  --split train=data/generated/hard_train \
-  --split heldout=data/generated/hard_heldout
+  --split train=examples/generated/hard_train \
+  --split heldout=examples/generated/hard_heldout
 ```
 
 See [`docs/report/hard_synthetic_pipeline.md`](docs/report/hard_synthetic_pipeline.md) for the
@@ -166,7 +169,7 @@ This installs console commands: `docvlm-eval`, `docvlm-build-bench`, `docvlm-fet
 Proves the whole pipeline works end-to-end before spending GPU time:
 ```bash
 docvlm-eval --model dummy-echo \
-  --benchmark data/probes/custom_eval/custom_eval.jsonl --benchmark-name custom_eval \
+  --benchmark examples/probes/custom_eval/custom_eval.jsonl --benchmark-name custom_eval \
   --out /tmp/custom_eval --device cpu
 pytest -q                            # 60+ tests: metrics, registry, pipeline, robustness, …
 ```
@@ -174,16 +177,16 @@ pytest -q                            # 60+ tests: metrics, registry, pipeline, r
 ### 2) Full evaluation (free Colab/Kaggle T4)
 ```bash
 # OFFLINE 10-sample slice of every benchmark (no network — uses the committed previews):
-python scripts/build_preview_eval.py        # -> data/benchmarks/preview_eval.jsonl (16 benchmarks)
+python scripts/build_preview_eval.py        # -> examples/benchmarks/preview_eval.jsonl (16 benchmarks)
 
 # ...or build full benchmarks from HF (use --limit for a fast subset)
 python scripts/build_benchmarks.py --benchmark all --limit 300
-python scripts/build_robustness_set.py --base data/benchmarks/docvqa.jsonl \
-  --out-dir data/robustness/docvqa --limit 100
+python scripts/build_robustness_set.py --base examples/benchmarks/docvqa.jsonl \
+  --out-dir examples/robustness/docvqa --limit 100
 
 # evaluate one model on one benchmark
 python scripts/evaluate.py --model internvl2_5-1b \
-  --benchmark data/benchmarks/docvqa.jsonl --benchmark-name docvqa \
+  --benchmark examples/benchmarks/docvqa.jsonl --benchmark-name docvqa \
   --out docs/results/internvl2_5-1b/docvqa --limit 300
 
 # ...or run everything and build the comparison table
@@ -197,7 +200,7 @@ interrupted run never recomputes finished work. To survive the **container being
 free-GPU limit hits**, checkpoint results to git and resume across sessions:
 ```bash
 MODELS="smolvlm-256m smolvlm-500m internvl3-1b" \
-BENCH=data/benchmarks/preview_eval.jsonl NAME=preview_eval DEVICE=cuda \
+BENCH=examples/benchmarks/preview_eval.jsonl NAME=preview_eval DEVICE=cuda \
 bash scripts/run_checkpointed.sh    # pull -> run each model -> commit+push its predictions/summary
 ```
 Re-running after a reset `git pull`s the partial results back and continues from where it stopped.
@@ -331,13 +334,13 @@ grounding, and abstention signals:
 
 ```bash
 python scripts/posttrain_student.py sft \
-  --samples data/posttraining/train.jsonl \
+  --samples examples/posttraining/train.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_pretrain/I0_random/checkpoints/step-00010000/student \
   --output outputs/student_sft/evidence_linked
 
 python scripts/posttrain_student.py rlvr \
-  --samples data/posttraining/rlvr.jsonl \
+  --samples examples/posttraining/rlvr.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_sft/evidence_linked/checkpoints/step-00002000/student \
   --output outputs/student_rlvr/full_reward
@@ -440,8 +443,8 @@ Compare train and heldout generation from any native checkpoint:
 
 ```bash
 python scripts/eval_student.py \
-  --split train=data/posttraining/train.jsonl \
-  --split heldout=data/posttraining/heldout.jsonl \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_rlvr/full_reward/checkpoints/step-00001000/student \
   --output outputs/student_eval/full_reward \
@@ -459,8 +462,8 @@ evaluation roots:
 
 ```bash
 python scripts/eval_student.py \
-  --split train=data/posttraining/train.jsonl \
-  --split heldout=data/posttraining/heldout.jsonl \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
   --tokenizer artifacts/student_tokenizer \
   --checkpoint outputs/student_rlvr/candidate/checkpoints/step-00001000/student \
   --output outputs/student_eval/candidate \

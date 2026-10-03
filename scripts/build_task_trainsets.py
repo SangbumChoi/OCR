@@ -4,7 +4,7 @@
 To decide whether adding a task (vqa / kie / recognition / table / reasoning / localization) is
 *worth it*, we fine-tune on **one task at a time with the SAME number of samples** and compare the
 effect on a fixed validation suite. This script produces those equal-N per-task training jsonls from
-the merged UDD (``data/udd/hf/_all`` on disk, or a Hub repo), fully offline:
+the merged UDD (``examples/udd/hf/_all`` on disk, or a Hub repo), fully offline:
 
   <out>/images/<task>/<sample_id>.jpg     decoded images (HF rows store bytes; training wants paths)
   <out>/task_<task>.jsonl                 flat training Samples for ONE task (== N samples)
@@ -55,10 +55,10 @@ def _load(src: str | None, repo: str | None):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"),
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"),
                    help="local load_from_disk path (the merged UDD)")
     p.add_argument("--repo", default=None, help="pull UDD from this Hub repo instead of --src")
-    p.add_argument("--out", default=str(ROOT / "data" / "udd_tasks"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "udd_tasks"))
     p.add_argument("--per-task", type=int, default=0,
                    help="samples per task (0 = the smallest task's size, i.e. equal budget for all; "
                         "-1 = NO cap: write each group's FULL pool — use when a downstream composer "

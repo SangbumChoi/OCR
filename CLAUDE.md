@@ -31,7 +31,7 @@ keep it that way): **one row per image**; `instructions: list[str]` index-paired
 questions); `len(instructions) == len(answers) >= 1`; fields' `key`/`value` are required strings;
 boxes are always `[x1,y1,x2,y2,normalized]|null`. The in-memory DTO keeps the flat-XOR-grouped
 rule: a `UnifiedSample` populates `instruction`+`answers` OR `qas`, never both. Regenerable build
-outputs stay git-ignored (`data/udd*`); the narrative doc is `docs/report/unified_loader.md`, and
+outputs stay git-ignored (`examples/udd*`); the narrative doc is `docs/report/unified_loader.md`, and
 the public-data ablation arms are composed by `scripts/run_udd_ablation.py`
 (see `docs/report/ablation_plan.md` §11b).
 

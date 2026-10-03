@@ -7,7 +7,7 @@ no model is loaded. The actual fill (``docvlm_eval.unified.pseudo_label.apply`` 
 paddleocr-vl labeler) is deliberately left as the GPU follow-up; provenance (`pseudo_json`) and
 never-overwrite-gold semantics are already enforced by the pipeline.
 
-    python scripts/pseudo_label_udd.py                 # plan on data/udd/hf/_all
+    python scripts/pseudo_label_udd.py                 # plan on examples/udd/hf/_all
     python scripts/pseudo_label_udd.py --apply full_text --model smolvlm-256m --limit 6
                                                        # REAL fill on a slice (CPU-capable model)
 """
@@ -30,7 +30,7 @@ MD = ROOT / "docs" / "results" / "udd_pseudo_label_plan.md"
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--apply", default=None, choices=list(FILLERS),
                    help="run a REAL fill with --model on rows needing this filler")
     p.add_argument("--model", default="smolvlm-256m",

@@ -9,10 +9,10 @@ boxes, grounding regions, rationale-as-reasoning-QA, table HTML), then runs the 
 saves to disk.
 
 **Never uploaded**: synthetic data is regenerable and not public benchmark data — this script has
-no push path on purpose; the output lands under ``data/udd_synthetic/`` (git-ignored) and can be
+no push path on purpose; the output lands under ``examples/udd_synthetic/`` (git-ignored) and can be
 merged into training mixes locally.
 
-    python scripts/build_udd_synthetic.py                          # from data/probes/realistic_cases
+    python scripts/build_udd_synthetic.py                          # from examples/probes/realistic_cases
     python scripts/build_udd_synthetic.py --root <cases> --variant degraded
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ from docvlm_eval.unified import docsample_to_unified, safety_check  # noqa: E402
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--root", default=str(ROOT / "data" / "probes" / "realistic_cases"))
-    p.add_argument("--out", default=str(ROOT / "data" / "udd_synthetic"))
+    p.add_argument("--root", default=str(ROOT / "examples" / "probes" / "realistic_cases"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "udd_synthetic"))
     p.add_argument("--variant", choices=["clean", "degraded"], default="clean")
     p.add_argument("--limit", type=int, default=0, help="max cases (0 = all)")
     args = p.parse_args()

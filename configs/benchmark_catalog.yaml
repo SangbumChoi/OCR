@@ -64,7 +64,7 @@ benchmarks:
      hf_id: howard-hou/OCR-VQA, config: null, split: test, source: "https://ocr-vqa.github.io/"}
   - {key: ai2d, name: AI2D, category: "B1. Diagram QA", metric: exact,
      purpose: "Multiple-choice QA over grade-school science diagrams; arrows/labels/structure reasoning.",
-     hf_id: lmms-lab/ai2d, config: null, split: test, source: "https://allenai.org/data/diagrams"}
+     hf_id: lmms-lab/ai2d, config: null, split: test, source: "https://allenai.org/examples/diagrams"}
   - {key: visualmrc, name: VisualMRC, category: "B1. Document VQA (abstractive)", metric: "BLEU/METEOR/CIDEr",
      purpose: "Long abstractive answers over webpage screenshots; reading comprehension + generation.",
      hf_id: HuggingFaceM4/the_cauldron, config: visualmrc, split: train, source: "https://arxiv.org/abs/2101.11272"}
@@ -87,7 +87,7 @@ benchmarks:
      hf_id: null, config: null, split: null, source: "https://github.com/doc-analysis/XFUND"}
   - {key: wildreceipt, name: WildReceipt, category: "B2. Key Information Extraction (receipts)", metric: "entity F1",
      purpose: "26-key receipt KIE in realistic photos; harder capture conditions than SROIE.",
-     hf_id: null, config: null, split: null, source: "https://download.openmmlab.com/mmocr/data/wildreceipt.tar"}
+     hf_id: null, config: null, split: null, source: "https://download.openmmlab.com/mmocr/examples/wildreceipt.tar"}
 
   # ---------- C1. Table recognition & structure ----------
   - {key: pubtabnet, name: PubTabNet, category: "C1. Table recognition", metric: "TEDS / TEDS-S",
@@ -98,7 +98,7 @@ benchmarks:
      hf_id: bsmock/pubtables-1m, config: null, split: train, source: "https://github.com/microsoft/table-transformer"}
   - {key: fintabnet, name: FinTabNet, category: "C1. Table recognition (financial)", metric: "TEDS",
      purpose: "Complex financial tables (merged cells, dense numerics); structure + content extraction.",
-     hf_id: null, config: null, split: null, source: "https://developer.ibm.com/data/fintabnet/"}
+     hf_id: null, config: null, split: null, source: "https://developer.ibm.com/examples/fintabnet/"}
   - {key: scitsr, name: SciTSR, category: "C1. Table structure recognition", metric: "cell-adjacency F1",
      purpose: "Table structure from scientific papers; neighbour-relationship correctness.",
      hf_id: null, config: null, split: null, source: "https://github.com/Academic-Hammer/SciTSR"}
@@ -196,7 +196,7 @@ benchmarks:
      purpose: "Our proposed real-world eval format: per content-class (text/table/formula/chart/
                qr/barcode/stamp/logo), per-language (en/ko/ja/zh), rotation robustness (0/15/90/180/
                270), reading-direction (vertical CJK), and spotting (basis-of-extraction), each scored
-               with a class-appropriate metric. See data/probes/custom_eval/README.md.",
+               with a class-appropriate metric. See examples/probes/custom_eval/README.md.",
      hf_id: null, config: null, split: null,
      source: "SYNTHETIC (scripts/make_custom_eval.py)"}
   - {key: oov_probe, kind: probe, name: "Out-of-vocabulary script probe", category: "F1. Custom capability axes",
@@ -219,5 +219,5 @@ benchmarks:
      metric: "ned / teds / exact / grounding / abstain",
      purpose: "Realistic-looking document types (ID/cheque/prescription/redacted/webtoon/ancient/LCD/
                website/mobile/PDF) rendered with built-in GT (HTML/CSS->WeasyPrint->PyMuPDF boxes->
-               Augraphy), paired clean/degraded. See data/probes/realistic_cases/README.md.",
+               Augraphy), paired clean/degraded. See examples/probes/realistic_cases/README.md.",
      hf_id: null, config: null, split: null, source: "SYNTHETIC (scripts/make_realistic_cases.py)"}

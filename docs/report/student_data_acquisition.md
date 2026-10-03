@@ -33,7 +33,7 @@ python scripts/acquire_student_data.py \
   --split train \
   --fold train \
   --decode-checks 32 \
-  --output artifacts/data/components/public_udd
+  --output artifacts/examples/components/public_udd
 ```
 
 Private datasets use `HF_TOKEN` from the environment. Tokens are never written to manifests.

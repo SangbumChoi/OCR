@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slice custom_eval results along the proposed axes: content-class, language, rotation
 (retention vs 0deg), reading-direction, and spotting. Joins each model's per_sample.json with
-the benchmark metadata (data/probes/custom_eval/custom_eval.jsonl) and writes
+the benchmark metadata (examples/probes/custom_eval/custom_eval.jsonl) and writes
 docs/results/custom_eval_breakdown.md + .json.
 
     python scripts/analyze_custom_eval.py
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks import load_jsonl  # noqa: E402
 
-JSONL = ROOT / "data" / "probes" / "custom_eval" / "custom_eval.jsonl"
+JSONL = ROOT / "examples" / "probes" / "custom_eval" / "custom_eval.jsonl"
 RESULTS = ROOT / "docs" / "results"
 
 

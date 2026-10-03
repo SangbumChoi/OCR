@@ -42,7 +42,8 @@ Documents are not just printed characters. The matrix below shows which **visual
 benchmark forces the model to handle. The per-benchmark class assignment is a **single source** —
 [`configs/benchmark_classes.yaml`](../../configs/benchmark_classes.yaml) (validated against the
 catalog) — so the figure can't drift; it is grounded by the **10-sample image+GT previews** under
-`data/benchmarks/<key>/samples/` (fetched with `docvlm-fetch --n 10`).
+`examples/benchmarks/<key>/download/` (fetched with `docvlm-fetch --n 10`); source records are
+stored in the benchmark's `annotations.jsonl`.
 
 ![Visual classes per benchmark](figures/benchmark_class_matrix.png)
 
@@ -119,4 +120,4 @@ into the pipeline) → Tier 2/3 structure & KIE as the model matures toward prod
 ---
 
 *Figures regenerated with `python scripts/plot_benchmark_map.py`; class/answer mappings are
-derived from the catalog and verified against the fetched `data/benchmarks/*/sample.json`.*
+derived from the catalog and verified against each fetched benchmark's `annotations.jsonl`.*

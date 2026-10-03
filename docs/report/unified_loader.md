@@ -10,7 +10,7 @@ flat question/answer.
 from docvlm_eval.unified import UnifiedLoader, Task
 L = UnifiedLoader()
 rows  = L.load("cord", limit=50)                     # one dataset
-allr  = L.load_all(limit_per=30, cache_dir="data/unified_dataset/images")
+allr  = L.load_all(limit_per=30, cache_dir="examples/unified_dataset/images")
 kie   = [r for r in allr["cord"] if r.task == Task.KIE]
 boxes = [f for r in rows for f in r.fields if f.bbox]   # merge localized fields across sources
 ```
@@ -84,7 +84,7 @@ python scripts/build_unified_dataset.py --only cord,funsd,ocrvqa  # focused
 python scripts/build_unified_dataset.py --task kie                # only KIE-yielding benchmarks
 ```
 
-Outputs under `data/unified_dataset/` (git-ignored — regenerable):
+Outputs under `examples/unified_dataset/` (git-ignored — regenerable):
 `unified.jsonl` (rich, task-typed), `by_task/<task>.jsonl` (grouped), `train.jsonl` (flat trainable
 Samples), `summary.json` (per-benchmark + per-task counts, incl. how many records carry boxes).
 
@@ -266,11 +266,11 @@ pipeline level:
 
 Adding one new dataset must not cost re-streaming all 21. `build_udd.py` keeps two caches:
 
-- **Per-source builds** (`data/udd/hf/<key>`) are reused: `--skip-existing` skips streaming for any
+- **Per-source builds** (`examples/udd/hf/<key>`) are reused: `--skip-existing` skips streaming for any
   source already on disk, and the merge concatenates **everything on disk**, not just the current
   run's keys — so `--only <newkey> --skip-existing` streams only the newcomer and re-merges the full
   corpus (measured: 21 cached sources merge+enrich in ~1 min vs ~2 h for a full rebuild).
-- **A persistent image-hash index** (`data/udd/hash_index.json`, md5-of-downscaled-image → owner
+- **A persistent image-hash index** (`examples/udd/hash_index.json`, md5-of-downscaled-image → owner
   source) dedups across *runs and sources*: an image already owned by a different source is skipped
   (COCO pages recur across scene-text sets), while a source's own hashes never block its rebuild.
 
@@ -353,7 +353,7 @@ and the A1/A4 hypothesis runs.
 
 ```bash
 python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization
-python scripts/build_task_trainsets.py --group-by language --out data/udd_langs   # A4 sets
+python scripts/build_task_trainsets.py --group-by language --out examples/udd_langs   # A4 sets
 ```
 
 ## Per-task value ablation — is each task worth adding?
@@ -374,7 +374,7 @@ python scripts/analyze_task_value.py
 
 `build_task_trainsets.py` reconstructs `UnifiedSample`s from the merged UDD (`unified_from_hf_row`),
 decodes each image to disk, balances every task to an equal budget (default = the smallest task's
-size), and writes `data/udd_tasks/task_<task>.jsonl` + a mixed `all.jsonl` control. `run_task_value.py`
+size), and writes `examples/udd_tasks/task_<task>.jsonl` + a mixed `all.jsonl` control. `run_task_value.py`
 LoRA-fine-tunes the base on each set and appends per-probe scores to
 `docs/results/task_value_results.json`; `analyze_task_value.py` turns that into
 [`docs/results/task_value.md`](../results/task_value.md) and the Δ chart below.

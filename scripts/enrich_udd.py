@@ -14,7 +14,7 @@ structured payload was only reachable through ``fields_json``/``regions_json`` d
 Saves next to the input (``<src>_enriched``) then atomically replaces ``<src>`` so downstream paths
 keep working. ``--push`` re-uploads to the Hub.
 
-    python scripts/enrich_udd.py                                  # enrich data/udd/hf/_all in place
+    python scripts/enrich_udd.py                                  # enrich examples/udd/hf/_all in place
     python scripts/enrich_udd.py --push --repo danelcsb/UDD --token $HF_TOKEN --public
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ from docvlm_eval.unified import enrich_dataset  # noqa: E402
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--push", action="store_true")
     p.add_argument("--repo", default=None, help="target HF dataset repo, e.g. <user>/UDD")
     p.add_argument("--token", default=os.environ.get("HF_TOKEN"))

@@ -17,7 +17,7 @@ docs/results/**
 !docs/results/*.json
 !docs/results/**/predictions.jsonl
 !docs/results/**/summary.json
-data/crawled/
+examples/crawled/
 wandb/
 
 
@@ -31,22 +31,22 @@ augraphy_cache/
 
 # Offline benchmark training set: cached images + Arrow dataset (regenerable; lives on HF).
 # Build with scripts/build_benchmark_trainset.py; publish via push_to_hub / huggingface-cli upload.
-data/benchmark_trainset/
+examples/benchmark_trainset/
 
 # Unified loader output: cached images + jsonl (regenerable; lives on HF)
-data/unified_dataset/
+examples/unified_dataset/
 
 # UDD (Unified Document Dataset) build output: images + per-dataset HF arrow (regenerable; lives on HF)
-data/udd/
+examples/udd/
 
 # Task-value ablation: equal-N per-task training sets (regenerable from UDD via build_task_trainsets.py)
-data/udd_tasks/
+examples/udd_tasks/
 
 # A4 language trainsets (regenerable from UDD via build_task_trainsets --group-by language)
-data/udd_langs/
+examples/udd_langs/
 
 # Synthetic UDD-format corpus (LOCAL ONLY, regenerable from make_realistic_cases)
-data/udd_synthetic/
+examples/udd_synthetic/
 
 # Reading-order probe renders (regenerable via make_reading_order_probe.py)
-data/probes/reading_order/
+examples/probes/reading_order/

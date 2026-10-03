@@ -49,7 +49,7 @@ def _pairwise_hamming(hashes: list[int], rng: random.Random, max_pairs: int = 20
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--seed", type=int, default=7)
     args = p.parse_args()
     rng = random.Random(args.seed)

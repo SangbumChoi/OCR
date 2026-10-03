@@ -1,4 +1,4 @@
-"""Turn the committed 10-sample previews (``data/benchmarks/<key>/samples.jsonl``, raw HF GT) into
+"""Turn committed annotations (``examples/benchmarks/<key>/annotations.jsonl``, raw HF GT) into
 eval-pipeline :class:`Sample` records — **offline, reproducible, no network**.
 
 ``fetch_many`` saved the raw HF record per image; here we map each benchmark's fields to a
@@ -109,11 +109,11 @@ def case_samples(key: str, gt: dict, image_path: str, spec: dict, idx: int) -> l
 
 
 def build_preview_eval(bench_root: str | Path) -> tuple[list[Sample], dict]:
-    """Convert every ``<key>/samples.jsonl`` with a known spec into Samples. Returns (samples, stats)."""
+    """Convert each ``<key>/annotations.jsonl`` with a known spec into Samples."""
     root = Path(bench_root)
     samples: list[Sample] = []
     stats = {"benchmarks": 0, "skipped": []}
-    for jsonl in sorted(root.glob("*/samples.jsonl")):
+    for jsonl in sorted(root.glob("*/annotations.jsonl")):
         key = jsonl.parent.name
         spec = SPEC.get(key)
         if not spec:
@@ -122,7 +122,7 @@ def build_preview_eval(bench_root: str | Path) -> tuple[list[Sample], dict]:
         n_before = len(samples)
         for i, line in enumerate(jsonl.read_text(encoding="utf-8").splitlines()):
             row = json.loads(line)
-            img = jsonl.parent / row["image"]  # "samples/NN.jpg"
+            img = jsonl.parent / row["image"]
             samples.extend(case_samples(key, row.get("ground_truth", {}), str(img), spec, i))
         if len(samples) > n_before:
             stats["benchmarks"] += 1

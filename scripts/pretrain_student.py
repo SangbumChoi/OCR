@@ -117,7 +117,7 @@ def main() -> None:
     source.add_argument(
         "--src",
         type=Path,
-        default=ROOT / "data" / "udd" / "hf" / "_all",
+        default=ROOT / "examples" / "udd" / "hf" / "_all",
     )
     source.add_argument("--repo")
     parser.add_argument(
