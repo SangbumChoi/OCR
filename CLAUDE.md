@@ -35,6 +35,14 @@ outputs stay git-ignored (`data/udd*`); the narrative doc is `docs/report/unifie
 the public-data ablation arms are composed by `scripts/run_udd_ablation.py`
 (see `docs/report/ablation_plan.md` §11b).
 
+## DAR (hand-annotated, layered)
+
+Hand-annotated documents use the layered record in `src/docvlm_eval/annotation/` (one JSON per
+image: page → layout → ocr → table → kie → understanding, linked by id; boxes in stored-image
+pixels; `split` per image). Keep `validate()` errors at zero before exporting. Example and test
+fixture: `data/annotations/example/`. Exported arm mixes (`data/dar_arms/`) are regenerable and
+git-ignored. Narrative and ablation design: `docs/report/annotation_format.md`.
+
 ## Attention backend
 
 Default is **eager** (`attn="auto"` → eager). flash_attention_2 is reference-only (needs Ampere+,

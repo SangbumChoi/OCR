@@ -49,3 +49,6 @@ data/udd_synthetic/
 
 # Reading-order probe renders (regenerable via make_reading_order_probe.py)
 data/probes/reading_order/
+
+# DAR layer-ablation exports (regenerable from data/annotations/ via scripts/annotate_dar.py export)
+data/dar_arms/

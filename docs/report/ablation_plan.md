@@ -253,6 +253,23 @@ filter) — bucket support and recipes are measured in
 (composition, leakage, A2 control, mock eval) lives in
 [`../../notebooks/udd_ablation.ipynb`](../../notebooks/udd_ablation.ipynb).
 
+## 11c. Hand-annotated realization: which annotation layer matters (DAR)
+
+The third data track is a small set of hard real documents, hand-annotated with **every layer in
+one record**: orientation, layout, OCR, table, KIE, and understanding (caption, reading guide,
+grounded reasoning chains). See [`annotation_format.md`](annotation_format.md). Its arms keep the
+images fixed and always train the end task (KIE + QA). They vary which auxiliary layers are emitted
+as targets: additive `L1_+<family>`, leave-one-out `L2_all-<family>`, and the interaction
+`L1_+reasoning+knowledge` vs `L1_+reasoning`, which tests whether written interpretation knowledge
+helps. The families map onto this plan: `spotting` ≈ A1, `reasoning` ≈ A2, both ≈ A3. Results are
+read as Δ per annotation-hour, using the time logged in provenance.
+
+```bash
+python scripts/annotate_dar.py export data/annotations/mine --arm L1_+reasoning+knowledge --out data/dar_arms/L1_rk
+python scripts/run_ablation.py --arm public --steps 300 --train-jsonl data/dar_arms/L1_rk/train.jsonl \
+  --heldout-jsonl data/dar_arms/L1_rk/heldout.jsonl --record-key dar:L1_+reasoning+knowledge
+```
+
 ## 12. Run one arm end-to-end (GPU)
 
 ```bash
