@@ -16,6 +16,7 @@ Workflow (see ``scripts/build_udd.py``):
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .core import (UnifiedSample, task_detail_for_source, visual_subtype_for_source,
@@ -243,6 +244,26 @@ def upgrade_udd_dataset(dataset):
             if len(task_details) != len(instructions):
                 raise ValueError("cannot migrate UDD row with misaligned task-detail list")
         source = str(row.get("source") or "")
+        if source == "hallusionbench":
+            kept = []
+            for index, question in enumerate(instructions):
+                suffix = " Explain your answer."
+                if (question.endswith(suffix) and index > 0
+                        and instructions[index - 1] == question[:-len(suffix)]):
+                    explanation = answers[index][0] if answers[index] else ""
+                    explanation = re.sub(
+                        r"\s*So the answer is (?:yes|no)\.?\s*$", "", explanation,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    if not reasoning[index - 1] and explanation.lower() not in {"", "yes", "no"}:
+                        reasoning[index - 1] = explanation
+                    continue
+                kept.append(index)
+            if len(kept) != len(instructions):
+                instructions = [instructions[i] for i in kept]
+                answers = [answers[i] for i in kept]
+                reasoning = [reasoning[i] for i in kept]
+                task_details = [task_details[i] for i in kept]
         visual_type = str(row.get("visual_type") or "")
         if visual_type not in VisualType.ALL:
             visual_type = visual_type_for_source(source)
@@ -250,6 +271,8 @@ def upgrade_udd_dataset(dataset):
         if not visual_subtype:
             visual_subtype = visual_subtype_for_source(source)
         return {
+            "instructions": instructions,
+            "answers": answers,
             "visual_type": visual_type,
             "visual_subtype": visual_subtype,
             "reasoning": reasoning,

@@ -117,6 +117,24 @@ def test_schema_upgrade_preserves_payload_and_adds_aligned_empty_rationale():
     assert migrated["table_html"] == row["table_html"]
 
 
+def test_schema_upgrade_pairs_legacy_hallusion_explanations_as_rationale():
+    from datasets import Dataset
+    from docvlm_eval.unified import upgrade_udd_dataset
+
+    row = {
+        "sample_id": "hallusion-1", "source": "hallusionbench", "task": "reasoning",
+        "instructions": ["Is the chart increasing?", "Is the chart increasing? Explain your answer."],
+        "answers": [["no"], ["The line peaks in May. So the answer is no."]],
+        "elements_json": "[]",
+    }
+    migrated = upgrade_udd_dataset(Dataset.from_list([row]))[0]
+
+    assert migrated["instructions"] == ["Is the chart increasing?"]
+    assert migrated["answers"] == [["no"]]
+    assert migrated["reasoning"] == ["The line peaks in May."]
+    assert len(migrated["task_detail"]) == len(migrated["instructions"])
+
+
 def _mini_udd(tmp_path, rows_spec):
     """Build a tiny enriched-shaped Dataset (native instructions/answers lists) from specs."""
     from datasets import Dataset

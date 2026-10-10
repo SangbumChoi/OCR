@@ -117,9 +117,12 @@ the raw HTML source.
 > (single default config) of **39,837 image-rows / 77,063 QAs** (one row per distinct image,
 > ≤1,500 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
-The hosted snapshot reflects the schema at its last upload. The local builder now adds the
-fine-grained columns below; they become part of the hosted dataset only after a deliberate rebuild
-and upload.
+The default Hub revision remains the immutable 39,837-row / 77,063-QA training baseline. The
+fine-grained schema is published separately on the `fine-grained-v2` branch so existing pinned
+experiments remain reproducible. This branch retains all 39,837 image rows and has 76,730 scored
+QAs: 333 legacy synthetic HallusionBench explanation prompts are paired with their original
+questions as rationale instead of remaining duplicate scored QAs. The versioned release currently
+resolves to `840fa06f226db6152be008de531d722c3b0756e2`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -151,10 +154,11 @@ invariants (`len(instructions) == len(answers) == len(reasoning) == len(task_det
 kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
 `page_count` and `document_count` default to one for public sources and preserve exact synthetic
 composition counts for curriculum and robustness slicing.
-To migrate an existing snapshot without rebuilding source datasets, run
+To migrate the pinned snapshot without rebuilding source datasets, run
 `python scripts/migrate_udd_schema.py --repo danelcsb/UDD --out examples/udd/hf/_all_v2`;
-publishing is a separate explicit `--push` action. Missing rationale is kept empty rather than
-fabricated.
+publishing creates a new branch with an explicit `--push` action. Load it with
+`load_dataset("danelcsb/UDD", revision="840fa06f226db6152be008de531d722c3b0756e2")`. Missing
+rationale is kept empty rather than fabricated.
 **POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
 no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
 A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is

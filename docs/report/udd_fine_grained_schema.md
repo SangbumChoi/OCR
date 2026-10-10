@@ -69,6 +69,11 @@ supports that pairing. Reasoning quality should be evaluated separately from ans
 `build_task_trainsets.py --include-reasoning` enables this target format for training pools;
 held-out evaluation answers remain answer-only.
 
+The `fine-grained-v2` migration folds legacy HallusionBench entries ending in "Explain your
+answer" into the preceding question's rationale. It preserves the original yes/no gold answer and
+removes the duplicate explanation QA so that rationale text is not scored as another answer. Other
+missing rationales remain empty.
+
 ## `full_text` versus `table_html`
 
 These columns represent different targets and are intentionally independent:

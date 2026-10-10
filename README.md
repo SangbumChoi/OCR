@@ -40,9 +40,10 @@ The Part-2 ablations now also run on **real public data** via
 `scripts/build_udd.py` from the task-typed loader in `docvlm_eval.unified`. What the pipeline
 guarantees (full story: [`docs/report/unified_loader.md`](docs/report/unified_loader.md)):
 
-The next UDD rebuild also includes orthogonal `visual_type` / `visual_subtype` labels, a fine-grained
+The fine-grained UDD release includes orthogonal `visual_type` / `visual_subtype` labels, a fine-grained
 `task_detail` aligned with each QA, and an optional rationale. The design and `full_text` versus `table_html` contract
 are documented in [`docs/report/udd_fine_grained_schema.md`](docs/report/udd_fine_grained_schema.md).
+The migrated snapshot is available on the versioned [`fine-grained-v2` Hub revision](https://huggingface.co/datasets/danelcsb/UDD?revision=fine-grained-v2); the default `main` revision remains unchanged for existing experiments.
 
 - **One row per image, native QA lists** — `instructions: list[str]` paired index-wise with
   `answers: list[list[str]]` (inner list = surface variants of one answer); same-phash duplicate
