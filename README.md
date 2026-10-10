@@ -40,6 +40,10 @@ The Part-2 ablations now also run on **real public data** via
 `scripts/build_udd.py` from the task-typed loader in `docvlm_eval.unified`. What the pipeline
 guarantees (full story: [`docs/report/unified_loader.md`](docs/report/unified_loader.md)):
 
+The next UDD rebuild also includes orthogonal `visual_type` / `visual_subtype` labels, a fine-grained
+`task_detail` aligned with each QA, and an optional rationale. The design and `full_text` versus `table_html` contract
+are documented in [`docs/report/udd_fine_grained_schema.md`](docs/report/udd_fine_grained_schema.md).
+
 - **One row per image, native QA lists** — `instructions: list[str]` paired index-wise with
   `answers: list[list[str]]` (inner list = surface variants of one answer); same-phash duplicate
   images are folded into the lists (77,063 QAs in 39,837 image-rows, zero QAs lost) and

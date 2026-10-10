@@ -60,16 +60,13 @@ def docsample_to_unified(gt: Any, image_path: str, image_size: tuple[int, int],
         question, answers = _s(q.get("question")), [_s(a) for a in (q.get("answers") or []) if _s(a)]
         if not (question and answers):
             continue
-        qas.append(QA(question, answers))
+        rat = _s(q.get("rationale"))
+        qas.append(QA(question, answers, reasoning=rat))
         metrics.append(norm_metric(q.get("metric")))
         bb = _norm_box(q.get("answer_bbox"), w, h)
         if bb is not None:                       # grounding target -> region (A1)
             regions.append(Region(label=_s(q.get("key")) or question[:40], bbox=bb,
                                   text=answers[0]))
-        rat = _s(q.get("rationale"))
-        if rat:                                  # rationale -> explicit reasoning QA (A2)
-            qas.append(QA(f"{question} Explain your reasoning.",
-                          [f"{rat} So the answer is {answers[0]}."]))
 
     table_html = _s(gt.get("table_html")) or None
     if not (qas or fields or table_html):
@@ -99,6 +96,7 @@ def docsample_to_unified(gt: Any, image_path: str, image_size: tuple[int, int],
         source="synthetic", task=task,
         instruction=single.question if single else "",
         answers=list(single.answers) if single else [],
+        reasoning=single.reasoning if single else "",
         qas=qas if len(qas) > 1 else [],
         fields=fields, regions=regions, table_html=table_html,
         language=langs[0] if len(langs) == 1 else None,

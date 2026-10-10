@@ -38,12 +38,17 @@ def _gt(**over):
 
 def test_bridge_carries_every_annotation():
     r = docsample_to_unified(_gt(), image_path="/tmp/cheque.png", image_size=(1000, 500))
-    # QAs: 2 real + 1 rationale-derived reasoning QA (A2 kept as data)
-    assert len(r.qas) == 3 and not r.instruction              # grouped (XOR invariant holds)
-    assert r.qas[1].question == "Who is the payee? Explain your reasoning."
-    assert r.qas[1].answers[0].startswith("The payee line is at the top-left")
-    assert r.qas[1].answers[0].endswith("So the answer is John Smith.")
-    assert r.qas[2].answers == ["1,200.00", "1200.00"]        # variants preserved
+    # Rationale stays aligned to the original question and separate from the gold answer.
+    assert len(r.qas) == 2 and not r.instruction
+    assert r.qas[0].reasoning == "The payee line is at the top-left; it reads 'John Smith'."
+    assert r.qas[0].answers == ["John Smith"]
+    assert r.qas[1].answers == ["1,200.00", "1200.00"]
+    train_targets = to_training_samples([r], include_reasoning=True)
+    assert train_targets[0].answers[0] == (
+        "Reasoning: The payee line is at the top-left; it reads 'John Smith'.\n"
+        "Answer: John Smith"
+    )
+    assert to_training_samples([r])[0].answers == ["John Smith"]
     # fields: pixel boxes normalized by (1000, 500)
     payee = next(f for f in r.fields if f.key == "payee")
     assert payee.bbox.normalized and abs(payee.bbox.x2 - 0.3) < 1e-6 \
@@ -123,4 +128,4 @@ def test_bridge_rejects_empty_and_passes_udd_safety_check(tmp_path):
     rep = safety_check([r], str(tmp_path / "ds"))
     assert rep["rows"] == 1 and rep["fields"] == 3 and rep["regions"] == 1
     # and expand to trainable samples: 3 QAs sharing one image
-    assert len(to_training_samples([r])) == 3
+    assert len(to_training_samples([r])) == 2

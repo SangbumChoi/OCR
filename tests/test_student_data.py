@@ -72,6 +72,14 @@ def test_udd_student_dataset_expands_qas_and_grounding_without_losing_groups():
 
     assert len(dataset) == 4
     assert dataset.tasks == ["vqa", "vqa", "localization", "recognition"]
+    assert dataset.task_details == [
+        "document_question_answering",
+        "document_question_answering",
+        "element_grounding",
+        "synthetic_page_transcription",
+    ]
+    assert dataset.groups("task_detail") == dataset.task_details
+    assert dataset[0].task_detail == "document_question_answering"
     assert dataset.sources == ["docvqa", "docvqa", "docvqa", "synthdog_ko"]
     assert dataset.languages == ["en", "en", "en", "ko"]
     assert dataset.aspect_ratios == [2.0, 2.0, 2.0, 0.5]
@@ -93,6 +101,19 @@ def test_udd_student_dataset_expands_qas_and_grounding_without_losing_groups():
     assert dataset[2].box == (0.1, 0.2, 0.5, 0.6)
     assert dataset[2].box_normalized is True
     assert dataset[0].image_key == dataset[2].image_key
+
+
+def test_udd_student_dataset_formats_aligned_reasoning_before_answer():
+    from docvlm_eval.student.data import UDDStudentDataset
+
+    row = _udd_rows()[0]
+    row["reasoning"] = ["Locate the total field, then read its value.", ""]
+    dataset = UDDStudentDataset([row], include_grounding=False)
+
+    assert dataset[0].answer == (
+        "Reasoning: Locate the total field, then read its value.\nAnswer: 42"
+    )
+    assert dataset[1].answer == "USD"
 
 
 def test_composition_tier_rejects_invalid_counts():

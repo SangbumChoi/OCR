@@ -23,9 +23,11 @@ boxes = [f for r in rows for f in r.fields if f.bbox]   # merge localized fields
 | ----- | ------- |
 | `task` | `recognition` / `kie` / `vqa` / `localization` / `table` / `reasoning` (what to filter/merge on) |
 | `instruction`, `answers` | the prompt + gold answer(s) |
+| `reasoning` | optional source-provided rationale, kept separate from the gold answer |
+| `visual_type`, `visual_subtype` | primary image-content family and finer source-supported category |
 | `fields: [Field(key, value, bbox?)]` | **key-value extraction** (forms/receipts), optionally localized |
 | `regions: [Region(label, bbox, text)]` | **localization / spotting** boxes |
-| `full_text`, `table_html` | **recognition** target / **table** structure |
+| `full_text`, `table_html` | linear reading-order transcript / structural table markup; a row may carry both |
 | `language`, `metric`, `image_path`, `source`, `hf_id`, `meta` | provenance + scoring |
 
 Boxes carry a `normalized` flag (`[0,1]` vs pixel) so cross-dataset geometry is unambiguous.
@@ -49,7 +51,8 @@ Verified against the real datasets (not assumed):
 | PubTabNet / FinTabNet | `html_table` | table | `table_html` |
 | IAM | `text` | recognition | `full_text` |
 | im2latex / LaTeX_OCR | `latex`/`text` | recognition | formula text |
-| OCRBench(+v2) / POPE / HallusionBench | `question` + `answer` | vqa | answers |
+| OCRBench(+v2) / POPE | `question` + `answer` | vqa | answers |
+| HallusionBench | `question` + yes/no + optional explanation | reasoning | rationale paired with original QA |
 | *unregistered* | (any) | per `TASK_BY_BENCHMARK`, else vqa | via `trainset.extract_qa` fallback |
 
 Records that yield no usable payload (e.g. detection-only streams with no text/QA) return `[]` and
@@ -114,14 +117,21 @@ the raw HTML source.
 > (single default config) of **39,837 image-rows / 77,063 QAs** (one row per distinct image,
 > ≤1,500 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
+The hosted snapshot reflects the schema at its last upload. The local builder now adds the
+fine-grained columns below; they become part of the hosted dataset only after a deliberate rebuild
+and upload.
+
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
 `scripts/build_udd.py` builds it (`docvlm_eval.unified.hf`):
 
 ```
 image, sample_id, source, task,
+visual_type, visual_subtype,
 instructions: list[str],            # ALL questions on this image (N >= 1)
 answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
+reasoning: list[str],                # optional rationale aligned by QA index
+task_detail: list[str],              # fine-grained source-supported job aligned by QA index
 elements_json,                      # ALL localized elements, ONE datatype:
                                     #   [{key, value, bbox, kind: field|region}]
 full_text, table_html, language, metric, page_count, document_count, hf_id, split, hf_config,
@@ -129,14 +139,22 @@ n_fields, n_regions, image_width, image_height, phash, license, fold   # derived
 ```
 
 The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
-question with its answer list; the inner list holds surface variants of ONE answer. Localized
+question, optional rationale, fine-grained job, and answer list; the inner list holds surface variants
+of ONE answer.
+`visual_type` and `visual_subtype` describe image content independently of `task`. The detailed
+taxonomy, rationale policy, and distinction between linear `full_text` and structural `table_html`
+are specified in [`udd_fine_grained_schema.md`](udd_fine_grained_schema.md). Localized
 payload is likewise ONE datatype: `elements_json` carries both KIE fields and layout regions as
 `{key, value, bbox, kind}` (fields and regions share the shape; `kind` is the role discriminator —
 the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
-invariants (`len(instructions) == len(answers) >= 1`, `key`/`value` required strings, box shape,
+invariants (`len(instructions) == len(answers) == len(reasoning) == len(task_detail) >= 1`, `key`/`value` required strings, box shape,
 kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
 `page_count` and `document_count` default to one for public sources and preserve exact synthetic
 composition counts for curriculum and robustness slicing.
+To migrate an existing snapshot without rebuilding source datasets, run
+`python scripts/migrate_udd_schema.py --repo danelcsb/UDD --out examples/udd/hf/_all_v2`;
+publishing is a separate explicit `--push` action. Missing rationale is kept empty rather than
+fabricated.
 **POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
 no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
 A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is
@@ -347,9 +365,9 @@ and the A1/A4 hypothesis runs.
   "78", last word, word count — deterministic, exact-match, one probe set per crop. Formula sources
   are excluded (LaTeX string characters are not the rendered glyphs), as are multi-line texts.
 - **HallusionBench as reasoning data** — the raw `gt_answer` is the string digit `'0'/'1'` whose
-  INTENT is false/true: the adapter now emits the literal `yes`/`no`, retasks the source as
-  `reasoning`, and turns the shipped `gt_answer_details` explanation into a second
-  "… Explain your answer." QA — rationale supervision straight from the source annotations.
+  INTENT is false/true: the adapter emits the literal `yes`/`no`, retasks the source as
+  `reasoning`, and pairs the shipped `gt_answer_details` with the original question as rationale,
+  leaving the gold answer intact for scoring.
 
 ```bash
 python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization

@@ -18,7 +18,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .core import UnifiedSample
+from .core import (UnifiedSample, task_detail_for_source, visual_subtype_for_source,
+                   visual_type_for_source)
 
 
 def udd_features():
@@ -35,8 +36,12 @@ def udd_features():
         "sample_id": Value("string"),
         "source": Value("string"),          # benchmark key
         "task": Value("string"),            # recognition/kie/vqa/localization/table/reasoning
+        "visual_type": Value("string"),     # primary visual content family
+        "visual_subtype": Value("string"),  # source- or annotation-supported subtype
+        "task_detail": Sequence(Value("string")),  # fine-grained operation aligned per QA
         "instructions": Sequence(Value("string")),           # N questions on this image
         "answers": Sequence(Sequence(Value("string"))),      # answers[i] = golds for instructions[i]
+        "reasoning": Sequence(Value("string")),              # optional rationale aligned with each QA
         "fields_json": Value("string"),     # json [{key,value,bbox:[x1,y1,x2,y2,normalized]|null}]
         "regions_json": Value("string"),    # json [{label,text,bbox:[...]|null}]
         "full_text": Value("string"),
@@ -64,16 +69,26 @@ def _row_to_record(r: UnifiedSample) -> dict[str, Any]:
     if r.qas:                               # grouped record -> the lists carry every QA
         instructions = [qa.question for qa in r.qas]
         answers = [[str(a) for a in qa.answers] for qa in r.qas]
+        reasoning = [qa.reasoning or "" for qa in r.qas]
+        task_details = [qa.task_detail or task_detail_for_source(r.source, r.task) for qa in r.qas]
     else:
         instructions = [r.prompt()]
         answers = [[str(a) for a in r.answers]]
+        reasoning = [r.reasoning or ""]
+        task_details = [r.task_detail or task_detail_for_source(r.source, r.task)]
     return {
         "image": r.image_path,              # path -> cast to Image() reads the bytes
         "sample_id": r.sample_id,
         "source": r.source,
         "task": r.task,
+        "visual_type": r.visual_type or visual_type_for_source(
+            r.source, str(r.meta.get("doc_type") or "")),
+        "visual_subtype": r.visual_subtype or visual_subtype_for_source(
+            r.source, str(r.meta.get("doc_type") or "")),
+        "task_detail": task_details,
         "instructions": instructions,
         "answers": answers,
+        "reasoning": reasoning,
         "fields_json": json.dumps(d["fields"], ensure_ascii=False),
         "regions_json": json.dumps(d["regions"], ensure_ascii=False),
         "full_text": r.full_text or "",
@@ -185,9 +200,76 @@ def validate_payload_shapes(ds) -> None:
                     assert el["kind"] in ("field", "region"), \
                         f"{col} kind off-DTO: {el['kind']!r} (want 'field'|'region')"
     if "instructions" in cols:
-        for qs, ans in zip(ds["instructions"], ds["answers"]):
+        for row_index, (qs, ans) in enumerate(zip(ds["instructions"], ds["answers"])):
             assert len(qs) == len(ans) >= 1, \
                 f"QA pairing broken: {len(qs)} instructions vs {len(ans)} answer lists (need ==, >=1)"
+            if "reasoning" in cols:
+                assert len(ds["reasoning"][row_index]) == len(qs), \
+                    f"QA reasoning pairing broken at row {row_index}"
+            if "task_detail" in cols:
+                assert len(ds["task_detail"][row_index]) == len(qs), \
+                    f"QA task-detail pairing broken at row {row_index}"
+
+
+def upgrade_udd_dataset(dataset):
+    """Add the fine-grained UDD columns without changing existing answers or payloads.
+
+    Missing rationale values become empty strings: the migration never manufactures explanations.
+    Existing non-empty labels and aligned rationale values are retained.
+    """
+    from .core import VisualType
+
+    def upgrade_row(row):
+        instructions = list(row.get("instructions") or [])
+        answers = list(row.get("answers") or [])
+        if len(instructions) != len(answers):
+            raise ValueError("cannot migrate UDD row with mismatched instruction/answer lists")
+        reasoning = row.get("reasoning")
+        if reasoning is None:
+            reasoning = [""] * len(instructions)
+        else:
+            reasoning = [str(value or "") for value in reasoning]
+            if len(reasoning) != len(instructions):
+                raise ValueError("cannot migrate UDD row with misaligned reasoning list")
+        task_details = row.get("task_detail")
+        if task_details is None:
+            task_details = [task_detail_for_source(str(row.get("source") or ""),
+                                                   str(row.get("task") or ""))
+                            for _ in instructions]
+        else:
+            fallback_detail = task_detail_for_source(str(row.get("source") or ""),
+                                                     str(row.get("task") or ""))
+            task_details = [str(value or fallback_detail) for value in task_details]
+            if len(task_details) != len(instructions):
+                raise ValueError("cannot migrate UDD row with misaligned task-detail list")
+        source = str(row.get("source") or "")
+        visual_type = str(row.get("visual_type") or "")
+        if visual_type not in VisualType.ALL:
+            visual_type = visual_type_for_source(source)
+        visual_subtype = str(row.get("visual_subtype") or "")
+        if not visual_subtype:
+            visual_subtype = visual_subtype_for_source(source)
+        return {
+            "visual_type": visual_type,
+            "visual_subtype": visual_subtype,
+            "reasoning": reasoning,
+            "task_detail": task_details,
+        }
+
+    if isinstance(dataset, dict):
+        from datasets import DatasetDict
+
+        upgraded = DatasetDict({
+            split: rows.map(upgrade_row, desc=f"upgrade UDD schema: {split}",
+                            load_from_cache_file=False)
+            for split, rows in dataset.items()
+        })
+        for rows in upgraded.values():
+            validate_payload_shapes(rows)
+        return upgraded
+    upgraded = dataset.map(upgrade_row, desc="upgrade UDD schema", load_from_cache_file=False)
+    validate_payload_shapes(upgraded)
+    return upgraded
 
 
 def dedupe_by_phash(ds):
@@ -212,10 +294,17 @@ def dedupe_by_phash(ds):
         groups[key].append(i)
 
     keep: list[int] = []
-    merged: dict[int, tuple[list, list]] = {}   # survivor index -> (instructions, answers)
+    merged: dict[int, tuple[list, list, list, list]] = {}   # survivor index -> paired QA fields
     n_dropped = 0
     instrs = ds["instructions"]
     answers = ds["answers"]
+    reasoning = ds["reasoning"] if "reasoning" in ds.column_names else [
+        [""] * len(q) for q in instrs
+    ]
+    task_details = ds["task_detail"] if "task_detail" in ds.column_names else [
+        [task_detail_for_source(ds["source"][i], ds["task"][i]) for _ in q]
+        for i, q in enumerate(instrs)
+    ]
     for key in order:
         idxs = groups[key]
         keep.append(idxs[0])
@@ -223,24 +312,34 @@ def dedupe_by_phash(ds):
             continue
         qs: list[str] = []
         ans: list[list[str]] = []
+        why: list[str] = []
+        detail: list[str] = []
         seen_q: set[str] = set()
         for i in idxs:
-            for q, a in zip(instrs[i] or [], answers[i] or []):
+            for q, a, rationale, job in zip(instrs[i] or [], answers[i] or [],
+                                             reasoning[i] or [], task_details[i] or []):
                 if q.strip() and q.strip() in seen_q:
                     continue
                 seen_q.add(q.strip())
                 qs.append(q)
                 ans.append(list(a))
-        merged[idxs[0]] = (qs, ans)
+                why.append(str(rationale or ""))
+                detail.append(str(job or "other"))
+        merged[idxs[0]] = (qs, ans, why, detail)
         n_dropped += len(idxs) - 1
 
     out = ds.select(keep)
     if merged:
         pos_of = {orig: pos for pos, orig in enumerate(keep)}
         upd = {pos_of[i]: qa for i, qa in merged.items()}
-        out = out.map(lambda r, idx: ({"instructions": upd[idx][0], "answers": upd[idx][1]}
+        out = out.map(lambda r, idx: ({"instructions": upd[idx][0], "answers": upd[idx][1],
+                                       "reasoning": upd[idx][2], "task_detail": upd[idx][3]}
                                       if idx in upd else
-                                      {"instructions": r["instructions"], "answers": r["answers"]}),
+                                      {"instructions": r["instructions"], "answers": r["answers"],
+                                       "reasoning": r.get("reasoning", [""] * len(r["instructions"])),
+                                       "task_detail": r.get("task_detail", [
+                                           task_detail_for_source(r["source"], r["task"])
+                                           for _ in r["instructions"]])}),
                       with_indices=True, desc="dedupe: gather QAs onto surviving image",
                       load_from_cache_file=False)
     print(f"[dedupe] {len(ds)} rows -> {len(out)} ({n_dropped} duplicate-image rows folded into "
@@ -275,17 +374,29 @@ def unified_from_hf_row(row: dict, image_path: str | None = None):
     # empty, per the flat-XOR-grouped invariant); exactly one QA -> the flat state
     instrs = list(row.get("instructions") or [])
     ans = [list(a) for a in (row.get("answers") or [])]
+    reasoning = list(row.get("reasoning") or [""] * len(instrs))
+    task_details = list(row.get("task_detail") or [
+        task_detail_for_source(row.get("source", ""), row.get("task", ""))
+        for _ in instrs
+    ])
     common = dict(
         sample_id=row.get("sample_id", ""), source=row.get("source", ""), task=row.get("task", ""),
         fields=fields, regions=regions, full_text=row.get("full_text") or None,
-        table_html=row.get("table_html") or None, language=row.get("language") or None,
+        table_html=row.get("table_html") or None,
+        reasoning=reasoning[0] if len(instrs) == 1 and reasoning else "",
+        visual_type=row.get("visual_type") or "",
+        visual_subtype=row.get("visual_subtype") or "",
+        task_detail=task_details[0] if len(instrs) == 1 and task_details else "",
+        language=row.get("language") or None,
         metric=row.get("metric") or "anls", image_path=image_path,
         hf_id=row.get("hf_id") or None, split=row.get("split") or None,
         hf_config=row.get("hf_config") or None)
     if len(instrs) > 1:
         from .core import QA
         return UnifiedSample(instruction="", answers=[],
-                             qas=[QA(q, a) for q, a in zip(instrs, ans)], **common)
+                             qas=[QA(q, a, reasoning[i] if i < len(reasoning) else "",
+                                     task_details[i] if i < len(task_details) else "other")
+                                  for i, (q, a) in enumerate(zip(instrs, ans))], **common)
     return UnifiedSample(instruction=instrs[0] if instrs else "",
                          answers=ans[0] if ans else [], **common)
 

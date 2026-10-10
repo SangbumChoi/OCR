@@ -43,6 +43,161 @@ class Task:
     ALL = (RECOGNITION, KIE, VQA, LOCALIZATION, TABLE, REASONING, CLASSIFICATION)
 
 
+class VisualType:
+    """Primary visual content family, independent of task and answer format."""
+    DOCUMENT = "document"
+    CHART = "chart"
+    TABLE = "table"
+    DIAGRAM = "diagram"
+    SCENE_TEXT = "scene_text"
+    INTERFACE = "interface"
+    WEBPAGE = "webpage"
+    FORMULA = "formula"
+    NATURAL_IMAGE = "natural_image"
+    MIXED = "mixed"
+    OTHER = "other"
+
+    ALL = (DOCUMENT, CHART, TABLE, DIAGRAM, SCENE_TEXT, INTERFACE, WEBPAGE, FORMULA,
+           NATURAL_IMAGE, MIXED, OTHER)
+
+
+VISUAL_TYPE_BY_SOURCE = {
+    "ai2d": VisualType.DIAGRAM, "chartqa": VisualType.CHART, "mathvista": VisualType.MIXED,
+    "plotqa": VisualType.CHART, "dvqa": VisualType.CHART, "charxiv": VisualType.CHART,
+    "tatqa": VisualType.TABLE, "pubtabnet": VisualType.TABLE, "pubtables1m": VisualType.TABLE,
+    "fintabnet": VisualType.TABLE, "scitsr": VisualType.TABLE,
+    "im2latex": VisualType.FORMULA, "latexocr": VisualType.FORMULA, "crohme": VisualType.FORMULA,
+    "textvqa": VisualType.SCENE_TEXT, "stvqa": VisualType.SCENE_TEXT,
+    "icdar2015": VisualType.SCENE_TEXT, "totaltext": VisualType.SCENE_TEXT,
+    "scenetext": VisualType.SCENE_TEXT, "screenqa": VisualType.INTERFACE,
+    "webui_probe": VisualType.INTERFACE, "rvl_cdip": VisualType.DOCUMENT,
+    "docvqa": VisualType.DOCUMENT, "infovqa": VisualType.MIXED, "ocrvqa": VisualType.DOCUMENT,
+    "visualmrc": VisualType.WEBPAGE, "docmatix": VisualType.DOCUMENT,
+    "funsd": VisualType.DOCUMENT, "cord": VisualType.DOCUMENT, "sroie": VisualType.DOCUMENT,
+    "docile": VisualType.DOCUMENT, "xfund": VisualType.DOCUMENT,
+    "wildreceipt": VisualType.DOCUMENT, "iam": VisualType.DOCUMENT,
+    "recognition_fullpage": VisualType.DOCUMENT, "omnidocbench": VisualType.DOCUMENT,
+    "synthdog_en": VisualType.DOCUMENT, "synthdog_ko": VisualType.DOCUMENT,
+    "iiit5k": VisualType.SCENE_TEXT, "ocrbench": VisualType.MIXED,
+    "ocrbench_v2": VisualType.MIXED, "pope": VisualType.NATURAL_IMAGE,
+    "hallusionbench": VisualType.NATURAL_IMAGE, "mtvqa": VisualType.DOCUMENT,
+    "publaynet": VisualType.DOCUMENT, "doclaynet": VisualType.DOCUMENT,
+    "fox": VisualType.DOCUMENT, "readoc": VisualType.DOCUMENT,
+    "kie_hvqa": VisualType.DOCUMENT, "robustness": VisualType.MIXED,
+    "seedbench2plus": VisualType.MIXED, "capability_probe": VisualType.MIXED,
+    "custom_eval": VisualType.MIXED, "oov_probe": VisualType.CHART,
+    "spatial_context_probe": VisualType.DOCUMENT, "realistic_cases": VisualType.MIXED,
+}
+
+VISUAL_SUBTYPE_BY_SOURCE = {
+    "cord": "receipt", "sroie": "receipt", "wildreceipt": "receipt",
+    "funsd": "form", "xfund": "multilingual_form", "docile": "invoice",
+    "docvqa": "business_document", "ocrvqa": "book_cover",
+    "infovqa": "infographic", "chartqa": "chart", "plotqa": "scientific_chart",
+    "dvqa": "bar_chart", "charxiv": "scientific_figure", "ai2d": "scientific_diagram",
+    "mathvista": "mixed_figure_math", "tatqa": "financial_table_and_text",
+    "pubtabnet": "scientific_table", "pubtables1m": "scientific_table",
+    "fintabnet": "financial_table", "scitsr": "scientific_table",
+    "screenqa": "mobile_ui_screenshot", "webui_probe": "web_ui_screenshot",
+    "visualmrc": "webpage_screenshot", "textvqa": "natural_scene_text",
+    "stvqa": "natural_scene_text", "iiit5k": "cropped_scene_word",
+    "iam": "handwriting_line", "im2latex": "printed_formula",
+    "latexocr": "printed_formula", "crohme": "handwritten_formula",
+    "rvl_cdip": "document_classification", "omnidocbench": "document_page",
+    "recognition_fullpage": "printed_document_page", "synthdog_en": "synthetic_document",
+    "synthdog_ko": "synthetic_document", "pope": "natural_image_qa",
+    "hallusionbench": "natural_image_reasoning", "ocrbench": "mixed_ocr_suite",
+    "ocrbench_v2": "mixed_ocr_suite", "mtvqa": "multilingual_document_qa",
+    "docmatix": "document_qa", "publaynet": "document_layout",
+    "doclaynet": "document_layout",
+    "icdar2015": "incidental_scene_text", "totaltext": "curved_scene_text",
+    "scenetext": "scene_text", "fox": "document_qa", "readoc": "document_qa",
+    "kie_hvqa": "document_key_value_qa", "robustness": "document_robustness_suite",
+    "seedbench2plus": "text_rich_image_suite", "capability_probe": "mixed_capability_probe",
+    "custom_eval": "mixed_ocr_capabilities", "oov_probe": "unseen_chart_labels",
+    "spatial_context_probe": "document_spatial_probe", "realistic_cases": "mixed_document_types",
+}
+
+TASK_DETAIL_BY_SOURCE = {
+    "iam": "handwritten_line_transcription", "recognition_fullpage": "full_page_transcription",
+    "iiit5k": "cropped_word_recognition", "synthdog_en": "synthetic_page_transcription",
+    "synthdog_ko": "synthetic_page_transcription", "scenetext": "scene_text_recognition",
+    "icdar2015": "incidental_text_spotting", "totaltext": "curved_text_spotting",
+    "docvqa": "document_question_answering", "infovqa": "infographic_question_answering",
+    "textvqa": "scene_text_question_answering", "stvqa": "scene_text_question_answering",
+    "mtvqa": "multilingual_document_question_answering", "screenqa": "screen_question_answering",
+    "docmatix": "document_qa_training", "ocrvqa": "book_cover_question_answering",
+    "ai2d": "diagram_question_answering", "visualmrc": "webpage_summarization",
+    "funsd": "form_entity_and_relation_extraction", "cord": "receipt_field_extraction",
+    "sroie": "receipt_key_field_extraction", "docile": "invoice_line_item_extraction",
+    "xfund": "multilingual_form_relation_extraction", "wildreceipt": "receipt_photo_extraction",
+    "pubtabnet": "table_structure_reconstruction", "pubtables1m": "table_detection_and_structure",
+    "fintabnet": "financial_table_reconstruction", "scitsr": "scientific_table_structure",
+    "chartqa": "chart_question_answering", "mathvista": "visual_math_reasoning",
+    "plotqa": "scientific_plot_question_answering", "dvqa": "bar_chart_question_answering",
+    "tatqa": "financial_table_text_reasoning", "im2latex": "printed_formula_transcription",
+    "latexocr": "printed_formula_transcription", "crohme": "handwritten_formula_recognition",
+    "ocrbench": "mixed_ocr_capability_evaluation", "ocrbench_v2": "mixed_ocr_capability_evaluation",
+    "charxiv": "scientific_figure_question_answering", "seedbench2plus": "text_rich_visual_question_answering",
+    "omnidocbench": "document_page_parsing", "doclaynet": "document_layout_detection",
+    "publaynet": "document_layout_detection", "rvl_cdip": "document_type_classification",
+    "fox": "region_text_parsing", "readoc": "pdf_to_markdown_conversion",
+    "robustness": "document_robustness_and_calibration", "pope": "object_hallucination_detection",
+    "hallusionbench": "visual_consistency_reasoning", "kie_hvqa": "grounded_kie_abstention",
+    "capability_probe": "controlled_capability_evaluation", "custom_eval": "multiaxis_ocr_evaluation",
+    "oov_probe": "unseen_symbol_recognition", "webui_probe": "interface_grounding_and_affordance",
+    "spatial_context_probe": "counterfactual_spatial_grounding",
+    "realistic_cases": "realistic_document_understanding",
+}
+
+
+def visual_type_for_source(source: str, doc_type: str = "") -> str:
+    if source in VISUAL_TYPE_BY_SOURCE:
+        return VISUAL_TYPE_BY_SOURCE[source]
+    label = doc_type.lower().replace("-", "_").replace(" ", "_")
+    for token, kind in (("table", VisualType.TABLE), ("chart", VisualType.CHART),
+                        ("diagram", VisualType.DIAGRAM), ("formula", VisualType.FORMULA),
+                        ("screen", VisualType.INTERFACE), ("ui", VisualType.INTERFACE),
+                        ("scene", VisualType.SCENE_TEXT), ("photo", VisualType.NATURAL_IMAGE),
+                        ("document", VisualType.DOCUMENT), ("form", VisualType.DOCUMENT),
+                        ("receipt", VisualType.DOCUMENT), ("page", VisualType.DOCUMENT)):
+        if token in label:
+            return kind
+    return VisualType.OTHER
+
+
+def visual_subtype_for_source(source: str, doc_type: str = "") -> str:
+    if source in VISUAL_SUBTYPE_BY_SOURCE:
+        return VISUAL_SUBTYPE_BY_SOURCE[source]
+    label = doc_type.lower().replace("-", "_").replace(" ", "_")
+    for value in ("receipt", "invoice", "form", "cheque", "check", "prescription",
+                  "statement", "webtoon", "website", "mobile_app", "academic_paper",
+                  "table_doc", "chart", "diagram", "formula", "id_card", "handwriting"):
+        if value in label:
+            return "financial_document" if value in {"cheque", "check", "statement"} else value
+    return "other"
+
+
+def task_detail_for_source(source: str, task: str) -> str:
+    if source in TASK_DETAIL_BY_SOURCE:
+        return TASK_DETAIL_BY_SOURCE[source]
+    return {
+        Task.RECOGNITION: "text_transcription",
+        Task.KIE: "key_value_extraction",
+        Task.VQA: "visual_question_answering",
+        Task.LOCALIZATION: "element_localization",
+        Task.TABLE: "table_structure_reconstruction",
+        Task.REASONING: "visual_reasoning",
+        Task.CLASSIFICATION: "visual_classification",
+    }.get(task, "other")
+
+
+def format_reasoning_target(answer: str, reasoning: str) -> str:
+    """Format optional concise rationale before the unchanged answer for supervised training."""
+    rationale = _s(reasoning)
+    return f"Reasoning: {rationale}\nAnswer: {answer}" if rationale else answer
+
+
 # default task per benchmark key (catalog) — extractors may emit a more specific one per record
 TASK_BY_BENCHMARK = {
     "iam": Task.RECOGNITION, "recognition_fullpage": Task.RECOGNITION, "iiit5k": Task.RECOGNITION,
@@ -98,6 +253,8 @@ class QA:
     """One question + its gold answer(s). Lets a single image carry MANY QAs (OCR-VQA-style)."""
     question: str
     answers: list[str] = field(default_factory=list)
+    reasoning: str = ""
+    task_detail: str = ""
 
 
 @dataclass
@@ -117,6 +274,10 @@ class UnifiedSample:
     regions: list[Region] = field(default_factory=list)      # localization
     full_text: str | None = None      # recognition / parsing target
     table_html: str | None = None     # table
+    reasoning: str = ""              # optional rationale aligned to the flat instruction/answers
+    visual_type: str = ""             # primary image-content family, independent of task
+    visual_subtype: str = ""          # source- or annotation-supported subtype
+    task_detail: str = ""              # fine-grained operation independent of visual content
     language: str | None = None
     metric: str = "anls"
     image_path: str | None = None
@@ -146,12 +307,16 @@ class UnifiedSample:
     def prompt(self) -> str:
         return self.instruction or self._DEFAULT_PROMPT.get(self.task, "Answer the question.")
 
-    def to_sample(self):
+    def to_sample(self, *, include_reasoning: bool = False):
         """Collapse to the flat training :class:`~docvlm_eval.schema.Sample` (or None if no target)."""
         from ..schema import Sample
         ans = list(self.answers)
         if not ans:                                   # derive a target from the structured payload
-            if self.full_text:
+            if self.task == Task.TABLE and self.table_html:
+                ans = [self.table_html]
+            elif self.task == Task.RECOGNITION and self.full_text:
+                ans = [self.full_text]
+            elif self.full_text:
                 ans = [self.full_text]
             elif self.table_html:
                 ans = [self.table_html]
@@ -159,14 +324,22 @@ class UnifiedSample:
                 ans = [json.dumps({f.key: f.value for f in self.fields}, ensure_ascii=False)]
         if not (self.image_path and ans and _s(ans[0])):
             return None
+        if include_reasoning and self.reasoning:
+            ans = [format_reasoning_target(_s(a), self.reasoning) for a in ans]
         return Sample(
             sample_id=self.sample_id, image_path=self.image_path, question=self.prompt(),
             answers=[_s(a) for a in ans if _s(a)], answer_type=self.task, metric=self.metric,
             meta={"source": self.source, "hf_id": self.hf_id, "task": self.task,
-                  "n_fields": len(self.fields), "n_regions": len(self.regions), **self.meta},
+                  "visual_type": self.visual_type or visual_type_for_source(
+                      self.source, str(self.meta.get("doc_type") or "")),
+                  "visual_subtype": self.visual_subtype or visual_subtype_for_source(
+                      self.source, str(self.meta.get("doc_type") or "")),
+                  "task_detail": self.task_detail or task_detail_for_source(self.source, self.task),
+                  "reasoning": self.reasoning, "n_fields": len(self.fields),
+                  "n_regions": len(self.regions), **self.meta},
         )
 
-    def to_samples(self) -> list:
+    def to_samples(self, *, include_reasoning: bool = False) -> list:
         """Expand to flat training :class:`~docvlm_eval.schema.Sample`(s).
 
         A record with a ``qas`` list (many questions on one image — see :func:`merge_by_image`) yields
@@ -174,17 +347,25 @@ class UnifiedSample:
         A record without ``qas`` yields at most one Sample (delegates to :meth:`to_sample`)."""
         from ..schema import Sample
         if not self.qas:
-            s = self.to_sample()
+            s = self.to_sample(include_reasoning=include_reasoning)
             return [s] if s is not None else []
         out = []
         for i, qa in enumerate(self.qas):
             ans = [_s(a) for a in qa.answers if _s(a)]
             if not (self.image_path and qa.question and ans):
                 continue
+            if include_reasoning and qa.reasoning:
+                ans = [format_reasoning_target(answer, qa.reasoning) for answer in ans]
             out.append(Sample(
                 sample_id=f"{self.sample_id}_q{i}", image_path=self.image_path,
                 question=qa.question, answers=ans, answer_type=self.task, metric=self.metric,
                 meta={"source": self.source, "hf_id": self.hf_id, "task": self.task,
+                      "visual_type": self.visual_type or visual_type_for_source(
+                          self.source, str(self.meta.get("doc_type") or "")),
+                      "visual_subtype": self.visual_subtype or visual_subtype_for_source(
+                          self.source, str(self.meta.get("doc_type") or "")),
+                      "task_detail": qa.task_detail or task_detail_for_source(self.source, self.task),
+                      "reasoning": qa.reasoning,
                       "n_qas": len(self.qas), **self.meta}))
         return out
 
@@ -536,21 +717,18 @@ def _u_rvl_cdip(ex, e) -> list[UnifiedSample]:
 def _u_hallusionbench(ex, e) -> list[UnifiedSample]:
     """HallusionBench: yes/no visual-reasoning pairs shipped as gt_answer '1'/'0' — the INTENT is
     true/false, so the training target becomes the literal 'yes'/'no'. The raw record also carries
-    ``gt_answer_details`` (a full explanation), so each row yields a grouped record: the yes/no QA
-    plus an 'explain' QA whose target is the rationale — reasoning supervision for free."""
+    ``gt_answer_details`` (a source-provided explanation), stored separately as rationale for the
+    original QA so the gold answer remains suitable for scoring."""
     q = _s(ex.get("question"))
     gt = _s(ex.get("gt_answer"))
     if not q or gt not in ("0", "1"):
         return []
     yn = "yes" if gt == "1" else "no"
-    qas = [QA(q, [yn])]
     details = _s(ex.get("gt_answer_details"))
-    if details:
-        qas.append(QA(f"{q} Explain your answer.", [f"{details} So the answer is {yn}."]))
     return [UnifiedSample(sample_id="", source=e["key"], task=Task.REASONING,
-                          qas=qas if len(qas) > 1 else [],
-                          instruction=q if len(qas) == 1 else "",
-                          answers=[yn] if len(qas) == 1 else [],
+                          qas=[QA(q, [yn], reasoning=details)] if details else [],
+                          instruction=q if not details else "",
+                          answers=[yn] if not details else [],
                           metric="exact",
                           meta={"subcategory": _s(ex.get("subcategory")) or None})]
 
@@ -870,11 +1048,11 @@ def derive_text_probes(r: UnifiedSample, max_probes: int = 3) -> list:
 
 
 # --------------------------------------------------------------------------- convenience
-def to_training_samples(rows: list[UnifiedSample]) -> list:
+def to_training_samples(rows: list[UnifiedSample], *, include_reasoning: bool = False) -> list:
     """Collapse unified rows to flat training Samples (dropping those with no usable target).
 
     Records that carry a ``qas`` list (from :func:`merge_by_image`) expand to one Sample per QA."""
-    return [s for r in rows for s in r.to_samples()]
+    return [s for r in rows for s in r.to_samples(include_reasoning=include_reasoning)]
 
 
 def merge_by_image(rows: list[UnifiedSample], *,
@@ -916,11 +1094,15 @@ def merge_by_image(rows: list[UnifiedSample], *,
             # collect this record's question(s): its own qas, then its instruction/answers pair
             pairs = list(r.qas)
             if r.instruction and r.answers:
-                pairs.append(QA(question=r.instruction, answers=list(r.answers)))
+                pairs.append(QA(question=r.instruction, answers=list(r.answers),
+                                reasoning=r.reasoning,
+                                task_detail=r.task_detail or task_detail_for_source(r.source, r.task)))
             for qa in pairs:
                 sig = qa.question.strip()
                 if r.task in qa_tasks and sig and sig not in seen_q:
-                    seen_q.add(sig); qas.append(qa)
+                    seen_q.add(sig)
+                    qas.append(QA(qa.question, list(qa.answers), qa.reasoning,
+                                  qa.task_detail or task_detail_for_source(r.source, r.task)))
             fields += r.fields
             regions += r.regions
             full_text = full_text or r.full_text
@@ -930,6 +1112,9 @@ def merge_by_image(rows: list[UnifiedSample], *,
             instruction="" if qas else base.instruction,
             answers=[] if qas else list(base.answers),
             qas=qas, fields=fields, regions=regions, full_text=full_text, table_html=table_html,
+            reasoning=base.reasoning, visual_type=base.visual_type,
+            visual_subtype=base.visual_subtype,
+            task_detail=base.task_detail,
             language=base.language, metric=base.metric, image_path=base.image_path,
             hf_id=base.hf_id, split=base.split, hf_config=base.hf_config, meta=dict(base.meta)))
     return merged

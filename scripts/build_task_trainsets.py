@@ -79,6 +79,9 @@ def main() -> None:
                    help="A2: augment the reasoning pool with rationales DERIVED from geometry — "
                         "for every localized element, a 'where is X? explain.' record whose answer "
                         "is the position + nearest-anchor relation chain (no model, no annotation)")
+    p.add_argument("--include-reasoning", action="store_true",
+                   help="prefix non-empty source-provided rationales to training answers as "
+                        "'Reasoning: ...\\nAnswer: ...'; heldout targets remain answer-only")
     p.add_argument("--seed", type=int, default=7, help="shuffle seed for the balanced subsample")
     args = p.parse_args()
 
@@ -146,24 +149,29 @@ def main() -> None:
     # 3) expand to flat training Samples. Localization rows convert via to_grounding_samples() —
     # the A1 grounding format ("x1,y1,x2,y2;W,H" golds, metric=grounding) the fine-tuning pipeline
     # already trains and scores — instead of being dropped as answer-less.
-    def _expand(rows):
+    def _expand(rows, *, include_reasoning=False):
         out_s = []
         for r in rows:
-            out_s += r.to_grounding_samples() if r.task == "localization" else r.to_samples()
+            out_s += r.to_grounding_samples() if r.task == "localization" else r.to_samples(
+                include_reasoning=include_reasoning)
         return out_s
 
     import random as _random
     rng = _random.Random(args.seed)
     samples_by_group: dict[str, list] = {}
     if args.group_by == "task":
-        samples_by_group = {t: _expand(rows) for t, rows in by_task.items()}
+        samples_by_group = {
+            t: _expand(rows, include_reasoning=args.include_reasoning)
+            for t, rows in by_task.items()
+        }
         if probe_extra:
             samples_by_group.setdefault("recognition", []).extend(probe_extra)
     else:
         # A4 language-diversity sets: regroup the SAME expanded samples by the row's language
         for t, rows in by_task.items():
             for r in rows:
-                for s in (r.to_grounding_samples() if r.task == "localization" else r.to_samples()):
+                for s in (r.to_grounding_samples() if r.task == "localization" else
+                          r.to_samples(include_reasoning=args.include_reasoning)):
                     samples_by_group.setdefault(r.language or "unknown", []).append(s)
     samples_by_group = {g: s for g, s in samples_by_group.items() if s}   # drop empty groups
     if not samples_by_group:
@@ -191,7 +199,7 @@ def main() -> None:
     # the identical set must score every arm)
     heldout_all = []
     for task in sorted(heldout_by_task):
-        hs = _expand(heldout_by_task[task])
+        hs = _expand(heldout_by_task[task], include_reasoning=False)
         if hs:
             save_jsonl(hs, out / f"heldout_{task}.jsonl")
             heldout_all += hs
@@ -203,6 +211,7 @@ def main() -> None:
     save_jsonl(all_samples, out / "all.jsonl")
     (out / "summary.json").write_text(
         json.dumps({"n_balanced": "full" if full_pools else n_balanced, "merge_qa": args.merge_qa,
+                    "include_reasoning": args.include_reasoning,
                     "group_by": args.group_by, "groups": summary},
                    indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\n=== built {len(summary)} per-{args.group_by} sets "

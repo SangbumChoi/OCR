@@ -45,3 +45,16 @@ def test_fetchable_entries_have_split():
     for e in load_catalog():
         if e.get("hf_id"):
             assert e.get("split"), f"{e['key']} has hf_id but no split"
+
+
+def test_visual_taxonomy_covers_catalog_sources():
+    from docvlm_eval.unified import (
+        TASK_DETAIL_BY_SOURCE,
+        VISUAL_SUBTYPE_BY_SOURCE,
+        VISUAL_TYPE_BY_SOURCE,
+    )
+
+    keys = {entry["key"] for entry in load_catalog()}
+    assert keys <= VISUAL_TYPE_BY_SOURCE.keys()
+    assert keys <= VISUAL_SUBTYPE_BY_SOURCE.keys()
+    assert keys <= TASK_DETAIL_BY_SOURCE.keys()

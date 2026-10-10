@@ -276,8 +276,8 @@ def test_hallusionbench_yes_no_and_rationale():
     r = _one("hallusionbench", ex)[0]
     assert r.task == Task.REASONING
     assert r.qas[0].answers == ["yes"]                       # '1' -> the INTENT, not the digit
-    assert r.qas[1].question.endswith("Explain your answer.")
-    assert r.qas[1].answers[0].endswith("So the answer is yes.")
+    assert r.qas[0].question == ex["question"]
+    assert r.qas[0].reasoning == ex["gt_answer_details"]
     r0 = _one("hallusionbench", {"question": "Is France the leader?", "gt_answer": "0"})[0]
     assert r0.answers == ["no"] and not r0.qas               # no details -> flat single QA
 

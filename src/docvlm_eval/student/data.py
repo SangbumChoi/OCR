@@ -18,6 +18,7 @@ from .curriculum import (
     CurriculumSchedule,
     planned_optimizer_steps,
 )
+from ..unified.core import format_reasoning_target, task_detail_for_source
 
 
 STUDENT_MODEL_INPUTS = frozenset(
@@ -91,6 +92,7 @@ class StudentExample:
     box: tuple[float, float, float, float] | None = None
     box_normalized: bool = True
     target_source: str = "gold"
+    task_detail: str = "other"
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,7 @@ class _ExampleRef:
     sample_id: str
     aspect_ratio: float | None
     composition: str
+    task_detail: str = "other"
 
 
 def composition_tier(
@@ -159,8 +162,10 @@ def _metadata_view(dataset: Any) -> Any:
         "sample_id",
         "source",
         "task",
+        "task_detail",
         "instructions",
         "answers",
+        "reasoning",
         "teacher_answers",
         "teacher_scores",
         "teacher_provenance_json",
@@ -274,12 +279,26 @@ class UDDStudentDataset:
             composition = composition_tier(page_count, document_count)
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
+            reasoning = list(row.get("reasoning") or [""] * len(instructions))
+            task_details = list(row.get("task_detail") or [
+                task_detail_for_source(source, task) for _ in instructions
+            ])
             teacher_answers = list(row.get("teacher_answers") or [])
             teacher_scores = list(row.get("teacher_scores") or [])
             if len(instructions) != len(answers):
                 raise ValueError(
                     f"UDD row {sample_id!r} has {len(instructions)} instructions "
                     f"but {len(answers)} answer lists"
+                )
+            if len(reasoning) != len(instructions):
+                raise ValueError(
+                    f"UDD row {sample_id!r} has {len(instructions)} instructions "
+                    f"but {len(reasoning)} reasoning entries"
+                )
+            if len(task_details) != len(instructions):
+                raise ValueError(
+                    f"UDD row {sample_id!r} has {len(instructions)} instructions "
+                    f"but {len(task_details)} task-detail entries"
                 )
             for qa_index, (question, golds) in enumerate(zip(instructions, answers)):
                 if str(question).strip() and _valid_answers(golds):
@@ -315,6 +334,8 @@ class UDDStudentDataset:
                             qa_sample_id,
                             aspect_ratio,
                             composition,
+                            task_detail=(task_details[qa_index]
+                                         or task_detail_for_source(source, task)),
                         )
                     )
             elements = _parse_elements(row)
@@ -337,6 +358,7 @@ class UDDStudentDataset:
                             f"{sample_id}:box{element_index}",
                             aspect_ratio,
                             composition,
+                            task_detail="element_grounding",
                         )
                     )
                     used += 1
@@ -351,6 +373,10 @@ class UDDStudentDataset:
     @property
     def tasks(self) -> list[str]:
         return [ref.task for ref in self._refs]
+
+    @property
+    def task_details(self) -> list[str]:
+        return [ref.task_detail for ref in self._refs]
 
     @property
     def sources(self) -> list[str]:
@@ -383,6 +409,8 @@ class UDDStudentDataset:
     def groups(self, key: str) -> list[str]:
         if key == "task":
             return self.tasks
+        if key == "task_detail":
+            return self.task_details
         if key == "source":
             return self.sources
         if key == "language":
@@ -393,7 +421,7 @@ class UDDStudentDataset:
             return self.compositions
         raise ValueError(
             "group key must be one of: task, source, language, component, "
-            "composition"
+            "composition, task_detail"
         )
 
     def __getitem__(self, index: int) -> StudentExample:
@@ -406,12 +434,18 @@ class UDDStudentDataset:
         if ref.kind == "qa":
             question = str(row["instructions"][ref.item_index])
             answer = _valid_answers(row["answers"][ref.item_index])[0]
+            rationale = str((row.get("reasoning") or [""] * len(row["instructions"]))[
+                ref.item_index] or "")
             if ref.target_source == "teacher":
                 answer = str(row["teacher_answers"][ref.item_index]).strip()
+                rationale = ""
+            if rationale:
+                answer = format_reasoning_target(answer, rationale)
             return StudentExample(
                 sample_id=ref.sample_id,
                 source=ref.source,
                 task=ref.task,
+                task_detail=ref.task_detail,
                 prompt=question,
                 answer=answer,
                 image=image,
@@ -428,6 +462,7 @@ class UDDStudentDataset:
             sample_id=ref.sample_id,
             source=ref.source,
             task=ref.task,
+            task_detail=ref.task_detail,
             prompt=_grounding_prompt(elements, ref.item_index),
             answer="",
             image=image,
