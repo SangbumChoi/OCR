@@ -67,12 +67,12 @@ def mixture_features():
             "source": Value("string"),
             "task": Value("string"),
             "instructions": Sequence(Value("string")),
-            "answers": Sequence(Sequence(Value("string"))),
+            "answers": Sequence(Value("string")),
+            "answer_variants": Sequence(Sequence(Value("string"))),
             "elements_json": Value("string"),
             "fields_json": Value("string"),
             "regions_json": Value("string"),
-            "full_text": Value("string"),
-            "table_html": Value("string"),
+            "full_annotation": Value("string"),
             "language": Value("string"),
             "metric": Value("string"),
             "page_count": Value("int32"),
@@ -93,8 +93,7 @@ _STRING_DEFAULTS = {
     "elements_json": "",
     "fields_json": "",
     "regions_json": "",
-    "full_text": "",
-    "table_html": "",
+    "full_annotation": "",
     "language": "",
     "metric": "anls",
     "fold": "",
@@ -122,6 +121,33 @@ def _normalize_dataset(dataset: Any, component: MixtureComponent):
         )
     if len(dataset) == 0:
         raise ValueError(f"component {component.name!r} has no selected rows")
+
+    from docvlm_eval.unified.core import encode_full_annotation
+
+    def normalize_schema(row):
+        raw_answers = row.get("answers") or []
+        raw_variants = row.get("answer_variants")
+        variants = raw_variants if raw_variants is not None else raw_answers
+        normalized = []
+        for item in variants:
+            values = [str(value) for value in item if value is not None] if isinstance(item, (list, tuple)) else ([str(item)] if item else [])
+            normalized.append(values)
+        if len(normalized) != len(raw_answers):
+            normalized = [[str(value) for value in (item if isinstance(item, (list, tuple)) else [item])
+                           if value is not None] for item in raw_answers]
+        primary = [str(item) if isinstance(item, str) else (values[0] if values else "")
+                   for item, values in zip(raw_answers, normalized)]
+        full_annotation = row.get("full_annotation") or encode_full_annotation(
+            row.get("full_text"), row.get("table_html"))
+        return {"answers": primary, "answer_variants": normalized,
+                "full_annotation": full_annotation}
+
+    old_columns = [name for name in ("answers", "answer_variants", "full_annotation",
+                                      "full_text", "table_html")
+                   if name in dataset.column_names]
+    dataset = dataset.map(normalize_schema, remove_columns=old_columns,
+                          desc=f"mixture:{component.name}:normalize-schema",
+                          load_from_cache_file=False)
 
     for name, default in _STRING_DEFAULTS.items():
         if name not in dataset.column_names:

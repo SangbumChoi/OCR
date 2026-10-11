@@ -35,7 +35,13 @@ def iter_udd_text(
             text = str(instruction).strip()
             if text:
                 yield text
-        for variants in row.get("answers") or []:
+        for answer in row.get("answers") or []:
+            values = answer if isinstance(answer, (list, tuple)) else [answer]
+            for value in values:
+                text = str(value).strip()
+                if text:
+                    yield text
+        for variants in row.get("answer_variants") or []:
             for answer in variants or []:
                 text = str(answer).strip()
                 if text:
@@ -45,8 +51,10 @@ def iter_udd_text(
                 text = str(answer).strip()
                 if text:
                     yield text
-        for key in ("full_text", "table_html"):
-            text = str(row.get(key) or "").strip()
+        from docvlm_eval.unified.core import decode_full_annotation
+        full_text, table_html = decode_full_annotation(row.get("full_annotation"))
+        for text in (full_text or row.get("full_text"), table_html or row.get("table_html")):
+            text = str(text or "").strip()
             if text:
                 yield text
         for element in _parse_elements(row):

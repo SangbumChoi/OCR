@@ -22,7 +22,9 @@ def _img(tmp: Path) -> str:
 def test_udd_schema_columns():
     cols = set(udd_features().keys())
     assert {"image", "task", "visual_type", "visual_subtype", "task_detail", "reasoning",
-            "fields_json", "regions_json", "answers", "source"} <= cols
+            "qa_tasks", "fields_json", "regions_json", "answers", "answer_variants", "full_annotation",
+            "source"} <= cols
+    assert not {"full_text", "table_html", "n_fields", "n_regions"} & cols
 
 
 def test_to_hf_dataset_uniform_across_tasks(tmp_path):
@@ -54,6 +56,7 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
     assert by["cord_0_0"]["visual_subtype"] == "receipt"
     assert by["cord_0_0"]["task_detail"] == ["receipt_field_extraction"]
     assert by["docvqa_0_0"]["reasoning"] == ["Read the total field."]
+    assert by["docvqa_0_0"]["qa_tasks"] == ["vqa"]
 
 
 def test_safety_check_roundtrip(tmp_path):
@@ -78,7 +81,7 @@ def test_to_hf_dataset_requires_image():
         to_hf_dataset([UnifiedSample(sample_id="x", source="y", task=Task.VQA, answers=["a"])])
 
 
-def test_table_html_and_full_text_remain_distinct_targets(tmp_path):
+def test_full_annotation_retains_text_and_html(tmp_path):
     from docvlm_eval.unified import Task
 
     img = _img(tmp_path)
@@ -90,6 +93,10 @@ def test_table_html_and_full_text_remain_distinct_targets(tmp_path):
 
     assert sample.answers == ["<table><tr><td>42</td></tr></table>"]
     assert table.full_text == "Header A Header B Total 42"
+    from docvlm_eval.unified.hf import _row_to_record
+    annotation = json.loads(_row_to_record(table)["full_annotation"])
+    assert annotation == {"version": 1, "text": "Header A Header B Total 42",
+                          "html": "<table><tr><td>42</td></tr></table>"}
 
 
 def test_schema_upgrade_preserves_payload_and_adds_aligned_empty_rationale():
@@ -112,9 +119,11 @@ def test_schema_upgrade_preserves_payload_and_adds_aligned_empty_rationale():
     assert migrated["visual_subtype"] == "scientific_table"
     assert migrated["task_detail"] == ["table_structure_reconstruction"]
     assert migrated["reasoning"] == [""]
-    assert migrated["answers"] == row["answers"]
-    assert migrated["full_text"] == row["full_text"]
-    assert migrated["table_html"] == row["table_html"]
+    assert migrated["answers"] == [row["answers"][0][0]]
+    assert migrated["answer_variants"] == row["answers"]
+    assert json.loads(migrated["full_annotation"]) == {
+        "version": 1, "text": row["full_text"], "html": row["table_html"]}
+    assert not {"full_text", "table_html", "n_fields", "n_regions"} & set(migrated.keys())
 
 
 def test_schema_upgrade_pairs_legacy_hallusion_explanations_as_rationale():
@@ -130,9 +139,56 @@ def test_schema_upgrade_pairs_legacy_hallusion_explanations_as_rationale():
     migrated = upgrade_udd_dataset(Dataset.from_list([row]))[0]
 
     assert migrated["instructions"] == ["Is the chart increasing?"]
-    assert migrated["answers"] == [["no"]]
+    assert migrated["answers"] == ["no"]
+    assert migrated["answer_variants"] == [["no"]]
+    assert migrated["qa_tasks"] == ["reasoning"]
     assert migrated["reasoning"] == ["The line peaks in May."]
     assert len(migrated["task_detail"]) == len(migrated["instructions"])
+
+
+def test_grouped_qas_keep_task_aligned_with_each_question(tmp_path):
+    from docvlm_eval.unified import QA
+    from docvlm_eval.unified.hf import _row_to_record
+
+    img = _img(tmp_path)
+    row = UnifiedSample(
+        sample_id="mixed-tasks", source="custom_eval", task="vqa", image_path=img,
+        qas=[QA("Read the title", ["Report"], task="recognition"),
+             QA("Where is the title?", ["top"], task="localization")],
+    )
+    record = _row_to_record(row)
+    assert record["task"] == "vqa"
+    assert record["qa_tasks"] == ["recognition", "localization"]
+    assert len(record["qa_tasks"]) == len(record["instructions"])
+
+
+def test_ai2d_food_grid_annotation_uses_linked_typed_elements():
+    from docvlm_eval.unified.enrich import enrich_record
+
+    row = {
+        "sample_id": "ai2d_0000_0", "source": "ai2d", "task": "vqa",
+        "full_annotation": "", "elements_json": "[]", "answers": ["D"],
+        "instructions": ["Which item is dairy?"], "image": None,
+    }
+    enriched = enrich_record(row)
+    annotation = json.loads(enriched["full_annotation"])
+    elements = json.loads(enriched["elements_json"])
+    by_id = {element["id"]: element for element in elements}
+
+    assert row["task"] == "vqa"
+    assert "<table" in annotation["html"] and "<figure" in annotation["html"]
+    assert by_id["label-A"]["information"] == "A"
+    assert by_id["label-A"]["class"] == "text"
+    assert by_id["label-A"]["kind"] == "text"
+    assert by_id["figure-A"]["information"] == "Pumpkin"
+    assert by_id["figure-A"]["class"] == "figure"
+    assert by_id["figure-A"]["kind"] == "figure"
+    assert by_id["label-A"]["ref"] == by_id["figure-A"]["id"]
+    assert by_id["label-D"]["ref"] == by_id["figure-D"]["id"]
+    assert by_id["page-title"]["class"] == "page_title"
+    for element in elements:
+        box = element["bbox"]
+        assert box is None or (len(box) == 5 and all(0 <= x <= 1 for x in box[:4]))
 
 
 def _mini_udd(tmp_path, rows_spec):
@@ -169,12 +225,13 @@ def test_unified_from_hf_row_expands_native_lists(tmp_path):
     from docvlm_eval.unified import to_training_samples, unified_from_hf_row
     row = {"sample_id": "src_0000_0", "source": "src", "task": "vqa",
            "instructions": ["Who wrote this?", "What is the title?"],
-           "answers": [["Smith"], ["Physics", "PHYSICS BOOK"]],
+           "answers": ["Smith", "Physics"],
+           "answer_variants": [["Smith"], ["Physics", "PHYSICS BOOK"]],
            "reasoning": ["Read the author line.", "Read the title line."],
            "fields_json": "[]", "regions_json": "[]", "metric": "exact"}
     r = unified_from_hf_row(row, image_path=_img(tmp_path))
     assert len(r.qas) == 2 and not r.instruction        # grouped state (flat-XOR-grouped holds)
-    assert r.qas[1].answers == ["Physics", "PHYSICS BOOK"]   # inner list = variants of ONE answer
+    assert r.qas[1].answers == ["Physics", "PHYSICS BOOK"]
     assert r.qas[0].reasoning == "Read the author line."
     assert r.qas[1].reasoning == "Read the title line."
     samples = to_training_samples([r])

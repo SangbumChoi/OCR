@@ -101,9 +101,12 @@ def main() -> None:
         try:
             from datasets import load_from_disk
             ds = load_from_disk(args.src)
-            n_omni = sum(1 for i in range(len(ds))
-                         if ds["source"][i] == "omnidocbench" and ds["fold"][i] == "heldout"
-                         and ds["n_regions"][i] > 1)
+            n_omni = sum(
+                1 for i in range(len(ds))
+                if ds["source"][i] == "omnidocbench" and ds["fold"][i] == "heldout"
+                and sum(element.get("kind") == "region"
+                        for element in json.loads(ds["elements_json"][i] or "[]")) > 1
+            )
             omni_note = (f"**{n_omni} OmniDocBench heldout pages** carry real reading-order GT "
                          "(`regions` are stored in reading order) — score real models on them with "
                          "`metric=content_bag/order_tau` using the region texts as the gold "

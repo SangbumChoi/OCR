@@ -165,6 +165,7 @@ def _metadata_view(dataset: Any) -> Any:
         "task_detail",
         "instructions",
         "answers",
+        "answer_variants",
         "reasoning",
         "teacher_answers",
         "teacher_scores",
@@ -174,6 +175,7 @@ def _metadata_view(dataset: Any) -> Any:
         "regions_json",
         "full_text",
         "table_html",
+        "full_annotation",
         "language",
         "metric",
         "mixture_component",
@@ -187,6 +189,8 @@ def _metadata_view(dataset: Any) -> Any:
 
 
 def _valid_answers(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        raw = [raw]
     return [str(value) for value in (raw or []) if str(value).strip()]
 
 
@@ -279,6 +283,7 @@ class UDDStudentDataset:
             composition = composition_tier(page_count, document_count)
             instructions = list(row.get("instructions") or [])
             answers = list(row.get("answers") or [])
+            answer_variants = row.get("answer_variants")
             reasoning = list(row.get("reasoning") or [""] * len(instructions))
             task_details = list(row.get("task_detail") or [
                 task_detail_for_source(source, task) for _ in instructions
@@ -300,7 +305,10 @@ class UDDStudentDataset:
                     f"UDD row {sample_id!r} has {len(instructions)} instructions "
                     f"but {len(task_details)} task-detail entries"
                 )
-            for qa_index, (question, golds) in enumerate(zip(instructions, answers)):
+            for qa_index, (question, primary) in enumerate(zip(instructions, answers)):
+                golds = (answer_variants[qa_index]
+                         if answer_variants is not None and qa_index < len(answer_variants)
+                         else primary)
                 if str(question).strip() and _valid_answers(golds):
                     qa_sample_id = f"{sample_id}:qa{qa_index}"
                     teacher_available = bool(

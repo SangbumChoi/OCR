@@ -331,7 +331,7 @@ def test_extract_unified_fills_language():
     assert r2.language == "en"
 
 
-def test_enrich_record_counts_and_dims():
+def test_enrich_record_omits_derived_counts_and_keeps_dims():
     from docvlm_eval.unified import enrich_record
     row = {"language": "", "source": "funsd", "instruction": "Transcribe.",
            "answers": ["Name Bob"], "full_text": "Name Bob",
@@ -339,7 +339,8 @@ def test_enrich_record_counts_and_dims():
            "regions_json": json.dumps([{"label": "word", "text": ""}]), "image": None,
            "hf_id": "naver-clova-ix/cord-v2"}
     out = enrich_record(row)
-    assert out["language"] == "en" and out["n_fields"] == 1 and out["n_regions"] == 1
+    assert out["language"] == "en"
+    assert "n_fields" not in out and "n_regions" not in out
     assert out["image_width"] == 0                  # no image object -> dims default to 0
     assert out["phash"] == "" and out["license"] == "cc-by-4.0"
 

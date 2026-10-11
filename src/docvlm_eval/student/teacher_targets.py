@@ -62,6 +62,8 @@ def _iter_jsonl(path: str | Path) -> Iterable[dict[str, Any]]:
 
 
 def _valid_answers(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        raw = [raw]
     return [str(value).strip() for value in (raw or []) if str(value).strip()]
 
 
@@ -145,6 +147,7 @@ def export_teacher_requests(
         row = metadata[row_index]
         instructions = list(row.get("instructions") or [])
         answers = list(row.get("answers") or [])
+        answer_variants = row.get("answer_variants") or answers
         if len(instructions) != len(answers):
             raise ValueError(
                 f"row {row_index} has {len(instructions)} instructions and "
@@ -152,9 +155,8 @@ def export_teacher_requests(
             )
         sample_id = str(row.get("sample_id") or f"row-{row_index}")
         metric = str(row.get("metric") or "anls")
-        for qa_index, (question, golds) in enumerate(
-            zip(instructions, answers)
-        ):
+        for qa_index, (question, _primary) in enumerate(zip(instructions, answers)):
+            golds = answer_variants[qa_index]
             question = str(question).strip()
             valid_answers = _valid_answers(golds)
             if not question or not valid_answers:
@@ -436,12 +438,13 @@ def apply_teacher_predictions(
         source_row = dataset[row_index]
         instructions = list(source_row.get("instructions") or [])
         answers = list(source_row.get("answers") or [])
+        answer_variants = source_row.get("answer_variants") or answers
         if not 0 <= qa_index < len(instructions):
             raise ValueError(f"teacher request qa_index is out of range: {qa_index}")
         if (
             str(source_row.get("sample_id") or f"row-{row_index}") != request["sample_id"]
             or str(instructions[qa_index]).strip() != request["question"]
-            or _valid_answers(answers[qa_index]) != list(request["gold_answers"])
+            or _valid_answers(answer_variants[qa_index]) != list(request["gold_answers"])
         ):
             raise ValueError("teacher request payload does not match the source UDD row")
         request_id = str(request["request_id"])

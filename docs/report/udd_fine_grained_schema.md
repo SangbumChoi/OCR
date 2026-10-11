@@ -18,9 +18,11 @@ must not be treated as visual predictions inferred from the pixels.
 | `visual_type` | `document`, `chart`, `table`, `diagram`, `scene_text`, `interface`, `webpage`, `formula`, `natural_image`, `mixed`, `other` | Primary visual structure needed to interpret the example. |
 | `visual_subtype` | Source-specific values such as `receipt`, `form`, `scientific_chart`, `infographic`, `mobile_ui_screenshot`, `printed_formula`, `book_cover`, `document_layout`, `mixed_ocr_suite` | More precise source-supported content category; `other` means unavailable or not safely inferable. |
 | `task` | Existing seven values | Supervised operation; do not derive it solely from `visual_type`. |
+| `qa_tasks[i]` | Top-level task aligned to QA index `i` | `recognition`, `kie`, `vqa`, `localization`, `table`, `reasoning`, or `classification`. |
 | `task_detail[i]` | Source-supported job label aligned to QA index `i` | Fine-grained operation such as `chart_question_answering`, `visual_math_reasoning`, or `table_structure_reconstruction`. |
 
-Examples: AI2D is `diagram / scientific_diagram` with task `vqa`; ChartQA is `chart / chart`
+Examples: AI2D is `diagram / scientific_diagram` with task `vqa`; a row-level grid diagram can be
+annotated as `table / labeled_grid_diagram` without changing its VQA task. ChartQA is `chart / chart`
 with `task_detail=chart_question_answering`; CORD is `document / receipt` with task `kie` and
 `task_detail=receipt_field_extraction`; PubTabNet is `table / scientific_table` with task `table`
 and `task_detail=table_structure_reconstruction`. An infographic can be `mixed / infographic` because
@@ -74,26 +76,59 @@ answer" into the preceding question's rationale. It preserves the original yes/n
 removes the duplicate explanation QA so that rationale text is not scored as another answer. Other
 missing rationales remain empty.
 
-## `full_text` versus `table_html`
+## Full Annotation
 
-These columns represent different targets and are intentionally independent:
+The public schema stores full-page annotation in one `full_annotation` string containing a
+versioned JSON object. Its `text` member is the linear transcription; its `html` member can preserve
+structured tables, including diagrams arranged as labeled grids. Use ordinary HTML `<table>`,
+`<figure>`, and `<figcaption>` elements with stable IDs and `data-bbox` attributes when applicable;
+the IDs connect visible labels to their figures without inventing a special `<figure>` token.
+Either member may be empty when unavailable, and neither is derived from the other.
 
-- `full_text`: linear transcription in reading order. It is suitable for OCR metrics such as CER,
+- `text`: linear transcription in reading order. It is suitable for OCR metrics such as CER,
   WER, or normalized edit distance. For a table, it can contain the visible cell text in row order,
   but it does not encode reliable cell boundaries, spans, or header relationships.
-- `table_html`: a structured table reconstruction. Rows, cells, nesting, and spans are represented
-  with HTML table markup. It is evaluated with structure-aware metrics such as TEDS or GriTS, not
-  ordinary OCR edit distance.
+- `html`: a structured table reconstruction. Rows, cells, nesting, and spans are represented
+  with HTML table markup. Grid diagrams may place a label and a figure in each cell; figures are
+  linked to labels by IDs, while their descriptions remain in figure captions. It is evaluated with
+  structure-aware metrics such as TEDS or GriTS, not ordinary OCR edit distance.
 
-A table sample may have both columns: one for text fidelity and one for structural fidelity. Never
-convert `table_html` into `full_text` by stripping tags and then claim structure was preserved; never
-place raw HTML in `full_text`. Empty means unavailable, not a negative label. Keep provenance for
-pseudo-labels and do not overwrite source ground truth.
+`elements_json` stores localized elements as `{bbox, information, class, kind}` with optional `id`
+and `ref`. `class` describes the element (`text`, `figure`, `page_title`); `information` is its
+recognized text or concise figure description; `bbox` is `[x1,y1,x2,y2,normalized]` or `null` when
+coordinates are unavailable. For example, a label `A` can reference a pumpkin figure through paired
+IDs. Hand-curated example annotations must not be presented as original benchmark ground truth.
+
+A table sample may contain both members: one for text fidelity and one for structural fidelity.
+Never convert HTML into text by stripping tags and claim structure was preserved. Empty means
+unavailable, not a negative label. Keep provenance for pseudo-labels and do not overwrite source
+ground truth.
+
+## Compact v3 Schema
+
+The public `fine-grained-v3` revision changes the QA columns to aligned, one-dimensional primary
+answers plus explicit alternatives:
+
+```text
+instructions: list[string]
+answers: list[string]
+answer_variants: list[list[string]]
+reasoning: list[string]
+task_detail: list[string]
+qa_tasks: list[string]
+```
+
+The nested answers in v2 represented multiple equivalent gold phrasings for the same question,
+not multiple reasoning steps or instructions. v3 keeps the first canonical gold in `answers[i]` and
+all accepted scoring alternatives in `answer_variants[i]`. Thus each question has one clear primary
+target while evaluation retains every accepted reference. The `n_fields` and `n_regions` columns
+are removed because they duplicate counts derivable from `elements_json`.
 
 ## Compatibility and validation
 
-The HF schema keeps the existing task and answer columns. `reasoning` and `task_detail` are lists
-aligned with the native QA lists; `visual_type` / `visual_subtype` are strings so all source
-configurations share one schema. Validation checks QA alignment, including rationale and task detail.
+The scalar `task` remains as the row-level compatibility/filter label. `qa_tasks` is the authoritative
+per-question task list, aligned with `instructions`, `answers`, `answer_variants`, `reasoning`, and
+`task_detail`. `visual_type` / `visual_subtype` remain row-level because they describe the shared
+image. Validation checks every per-question list for matching lengths.
 Older rows without these columns remain readable and are treated as empty reasoning with source-derived
 visual and task labels.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enrich the built UDD: fill the empty ``language`` column + add queryable derived columns.
+"""Enrich the built UDD: fill ``language`` and add image-dimension metadata.
 
 The converters only carry what each source ships, so ``language`` came out 0% filled and the
 structured payload was only reachable through ``fields_json``/``regions_json`` decodes. This applies
@@ -7,8 +7,6 @@ structured payload was only reachable through ``fields_json``/``regions_json`` d
 
 * ``language``   — Unicode-script heuristic over the row's own text, per-source prior for Latin
                    (CORD→id, formula sets→und, rest→en). Deterministic, offline.
-* ``n_fields``   — #KIE fields (int column: filter KIE-with-payload without JSON decode)
-* ``n_regions``  — #localization regions (int column: "rows with boxes" = ``n_regions > 0``)
 * ``image_width``/``image_height`` — stored image dims (resolution slicing / curriculum)
 
 Saves next to the input (``<src>_enriched``) then atomically replaces ``<src>`` so downstream paths
@@ -52,10 +50,10 @@ def main() -> None:
     ds = enrich_dataset(ds)
 
     langs = Counter(ds["language"])
-    boxed = sum(1 for n in ds["n_regions"] if n) + sum(1 for n in ds["n_fields"] if n)
+    boxed = sum(bool(json.loads(payload or "[]")) for payload in ds["elements_json"])
     print(f"[enrich] {len(ds)} rows  language filled: {sum(c for l, c in langs.items() if l)}"
           f"/{len(ds)}  distribution={dict(langs.most_common())}")
-    print(f"[enrich] rows with structured payload (n_fields|n_regions > 0): {boxed}")
+    print(f"[enrich] rows with structured payload (elements_json): {boxed}")
 
     tmp = src.with_name(src.name + "_enriched")
     ds.save_to_disk(str(tmp))

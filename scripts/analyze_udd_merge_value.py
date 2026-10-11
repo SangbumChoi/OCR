@@ -22,6 +22,7 @@ Writes ``docs/results/udd_merge_value.md`` (with a verdict section) and
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -58,8 +59,10 @@ def main() -> None:
     ds = load_from_disk(args.src)
     n = len(ds)
     sources = ds["source"]; tasks = ds["task"]; langs = ds["language"]
-    n_fields = ds["n_fields"]; n_regions = ds["n_regions"]
-    phashes = ds["phash"]; tables = ds["table_html"]; fulls = ds["full_text"]
+    phashes = ds["phash"]
+    from docvlm_eval.unified.core import decode_full_annotation
+    annotations = [decode_full_annotation(value) for value in ds["full_annotation"]]
+    elements = [json.loads(value or "[]") for value in ds["elements_json"]]
 
     # ---------- 1. coverage per source vs merged
     cov: dict[str, dict] = defaultdict(lambda: {"tasks": set(), "langs": set(), "payload": set()})
@@ -68,13 +71,13 @@ def main() -> None:
         c["tasks"].add(tasks[i])
         if langs[i]:
             c["langs"].add(langs[i])
-        if n_fields[i]:
+        if any(item.get("kind") == "field" for item in elements[i]):
             c["payload"].add("kie-fields")
-        if n_regions[i]:
+        if any(item.get("kind") == "region" for item in elements[i]):
             c["payload"].add("boxes")
-        if tables[i]:
+        if annotations[i][1]:
             c["payload"].add("table-html")
-        if fulls[i]:
+        if annotations[i][0]:
             c["payload"].add("full-text")
     merged_tasks = set(tasks); merged_langs = {l for l in langs if l}
     merged_payload = set().union(*(c["payload"] for c in cov.values()))
@@ -101,9 +104,13 @@ def main() -> None:
     vocab_by_src: dict[str, set] = defaultdict(set)
     answers = ds["answers"]; instrs = ds["instructions"]
     for i in range(n):
-        flat_ans = " ".join(a for inner in (answers[i] or []) for a in inner)
+        flat_ans = " ".join(
+            str(answer) for answer in (answers[i] or [])
+            for answer in (answer if isinstance(answer, (list, tuple)) else [answer])
+        )
+        annotation_text = " ".join(value for value in annotations[i] if value)
         toks = (" ".join([" ".join(instrs[i] or []), flat_ans,
-                          (fulls[i] or "")[:400]])).lower().split()
+                          annotation_text[:400]])).lower().split()
         vocab_by_src[sources[i]].update(toks)
     orders = []
     src_list = list(vocab_by_src)

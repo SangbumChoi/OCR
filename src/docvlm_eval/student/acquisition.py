@@ -491,6 +491,7 @@ def _validate_selected(dataset: Any, spec: HubComponentSpec) -> dict[str, Any]:
             "task",
             "instructions",
             "answers",
+            "answer_variants",
             "language",
             "metric",
             "fold",
@@ -513,7 +514,10 @@ def _validate_selected(dataset: Any, spec: HubComponentSpec) -> dict[str, Any]:
         if spec.fold is not None and str(row.get("fold") or "") != spec.fold:
             raise ValueError(f"public UDD selection contains a non-{spec.fold} fold row")
         answers = list(row.get("answers") or [])
-        if any(not [str(value).strip() for value in variants if str(value).strip()] for variants in answers):
+        variants = row.get("answer_variants") or answers
+        if any(not [str(value).strip() for value in
+                    (answer if isinstance(answer, (list, tuple)) else [answer])
+                    if str(value).strip()] for answer in variants):
             raise ValueError(f"public UDD row {sample_id!r} contains an empty answer set")
         qa_count += len(answers)
         sources[str(row.get("source") or "unknown")] += 1

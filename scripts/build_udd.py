@@ -16,7 +16,7 @@ is maintained across runs. ``--skip-existing`` skips re-streaming already-built 
 skips images that already exist under a *different* source (COCO pages recur across scene-text sets),
 and the merge always concatenates **everything on disk** — so adding one new dataset costs one
 dataset: ``--only <newkey> --skip-existing`` streams just the newcomer and re-merges the full corpus.
-The merge also runs the **enrichment pass** (language fill + n_fields/n_regions + image dims).
+The merge also runs the **enrichment pass** (language fill + image dims and provenance metadata).
 
 MOCKUP (default): ``--per-bench 10`` — ten examples per dataset, saved locally + safety-checked +
 visualized. Add ``--push --repo <user>/UDD --token <hf_token> --public`` to upload.
@@ -139,7 +139,7 @@ def main() -> None:
         from datasets import concatenate_datasets, load_from_disk
         parts = [load_from_disk(str(out / "hf" / k)) for k in on_disk]
         combined = concatenate_datasets(parts)
-        combined = enrich_dataset(combined)               # language + n_fields/n_regions + image dims
+        combined = enrich_dataset(combined)               # language + image dims and provenance
         from docvlm_eval.unified import dedupe_by_phash
         combined = dedupe_by_phash(combined)              # same phash+dims = same image: store once,
                                                           # QAs gathered into instructions/answers

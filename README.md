@@ -41,17 +41,19 @@ The Part-2 ablations now also run on **real public data** via
 guarantees (full story: [`docs/report/unified_loader.md`](docs/report/unified_loader.md)):
 
 The fine-grained UDD release includes orthogonal `visual_type` / `visual_subtype` labels, a fine-grained
-`task_detail` aligned with each QA, and an optional rationale. The design and `full_text` versus `table_html` contract
-are documented in [`docs/report/udd_fine_grained_schema.md`](docs/report/udd_fine_grained_schema.md).
-The migrated snapshot is available on the versioned [`fine-grained-v2` Hub revision](https://huggingface.co/datasets/danelcsb/UDD?revision=fine-grained-v2); the default `main` revision remains unchanged for existing experiments.
+`task_detail` aligned with each QA, and an optional rationale. The current compact schema is published
+on [`fine-grained-v3`](https://huggingface.co/datasets/danelcsb/UDD?revision=fine-grained-v3); it uses
+one primary answer per QA, keeps all accepted answers in `answer_variants`, and stores full text plus
+table HTML in `full_annotation`. The default `main` and `fine-grained-v2` revisions remain unchanged.
+See [`docs/report/udd_fine_grained_schema.md`](docs/report/udd_fine_grained_schema.md).
 
-- **One row per image, native QA lists** — `instructions: list[str]` paired index-wise with
-  `answers: list[list[str]]` (inner list = surface variants of one answer); same-phash duplicate
-  images are folded into the lists (77,063 QAs in 39,837 image-rows, zero QAs lost) and
+- **One row per image, aligned QA lists** — `instructions: list[str]`, `answers: list[str]`,
+  `answer_variants: list[list[str]]`, `reasoning`, and `task_detail` pair by index; same-phash duplicate
+  images are folded into the lists (76,730 scored QAs in 39,837 image-rows on v3) and
   the pairing/DTO shape is **enforced** at build time (`validate_payload_shapes`).
 - **Derived columns** for slicing and hygiene: heuristic `language`, `phash`, hosting-repo
-  `license`, leakage-safe `fold` (train/heldout keyed by image identity), payload counts and
-  image dims.
+  `license`, leakage-safe `fold` (train/heldout keyed by image identity), and image dims. Structured
+  payload counts are derived from `elements_json` rather than duplicated as columns.
 - **Data quality fixed structurally**: CORD answers keep every line item (nested `gt_parse`),
   case/punctuation duplicate golds are canonicalized, insertion-time hash-index dedup
   (it caught MathVista re-using a ChartQA image), duplicate/near-duplicate audit committed

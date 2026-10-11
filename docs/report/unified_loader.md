@@ -118,11 +118,12 @@ the raw HTML source.
 > ≤1,500 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
 
 The default Hub revision remains the immutable 39,837-row / 77,063-QA training baseline. The
-fine-grained schema is published separately on the `fine-grained-v2` branch so existing pinned
-experiments remain reproducible. This branch retains all 39,837 image rows and has 76,730 scored
-QAs: 333 legacy synthetic HallusionBench explanation prompts are paired with their original
-questions as rationale instead of remaining duplicate scored QAs. The versioned release currently
-resolves to `840fa06f226db6152be008de531d722c3b0756e2`.
+fine-grained v2 and compact v3 schemas are separate immutable branches, preserving pinned
+experiments. Both retain 39,837 image rows and 76,730 scored QAs: 333 legacy synthetic
+HallusionBench explanation prompts are paired with their original questions as rationale instead
+of remaining duplicate scored QAs. v3 keeps one primary answer per QA, moves alternate accepted
+answers to `answer_variants`, consolidates transcript and table HTML in `full_annotation`, and
+removes derived count columns. Load it with `load_dataset("danelcsb/UDD", revision="fine-grained-v3")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -132,26 +133,28 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 image, sample_id, source, task,
 visual_type, visual_subtype,
 instructions: list[str],            # ALL questions on this image (N >= 1)
-answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
+answers: list[str],                  # one primary answer aligned with each instruction
+answer_variants: list[list[str]],   # all accepted gold variants aligned with each instruction
 reasoning: list[str],                # optional rationale aligned by QA index
 task_detail: list[str],              # fine-grained source-supported job aligned by QA index
+qa_tasks: list[str],                 # top-level task aligned by QA index
 elements_json,                      # ALL localized elements, ONE datatype:
-                                    #   [{key, value, bbox, kind: field|region}]
-full_text, table_html, language, metric, page_count, document_count, hf_id, split, hf_config,
-n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
+                                    #   [{bbox, information, class, kind, id?, ref?}]
+full_annotation,                    # versioned JSON object: text and/or table HTML
+language, metric, page_count, document_count, hf_id, split, hf_config,
+image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
 
-The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
-question, optional rationale, fine-grained job, and answer list; the inner list holds surface variants
-of ONE answer.
+The QA pairing is **native list columns** (no JSON side-channel): each index pairs one question,
+top-level task, primary answer, accepted-answer list, optional rationale, and fine-grained job. The explicit
+`answer_variants` column preserves scoring behavior while avoiding nested values in `answers`.
 `visual_type` and `visual_subtype` describe image content independently of `task`. The detailed
-taxonomy, rationale policy, and distinction between linear `full_text` and structural `table_html`
-are specified in [`udd_fine_grained_schema.md`](udd_fine_grained_schema.md). Localized
-payload is likewise ONE datatype: `elements_json` carries both KIE fields and layout regions as
-`{key, value, bbox, kind}` (fields and regions share the shape; `kind` is the role discriminator —
+taxonomy, rationale policy, and the `full_annotation` format are specified in
+[`udd_fine_grained_schema.md`](udd_fine_grained_schema.md). Localized
+payload is likewise ONE datatype: `elements_json` carries both KIE fields and localized elements as
+`{bbox, information, class, kind}` with optional stable IDs and references —
 the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
-invariants (`len(instructions) == len(answers) == len(reasoning) == len(task_detail) >= 1`, `key`/`value` required strings, box shape,
-kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
+invariants (`len(instructions) == len(qa_tasks) == len(answers) == len(reasoning) == len(task_detail) >= 1`, box shape) are enforced by `validate_payload_shapes` inside every `safety_check`.
 `page_count` and `document_count` default to one for public sources and preserve exact synthetic
 composition counts for curriculum and robustness slicing.
 To migrate the pinned snapshot without rebuilding source datasets, run
@@ -262,8 +265,8 @@ enrich` derives the missing values deterministically (no network, no model):
   formula sets→`und`, rest→`en`), and rows whose text is too short to call ("$5") fall back to the
   instruction. Result on the live corpus: **100% filled** — en 2,093 · und 200 · id 100 · zh 33
   (OmniDocBench correctly splits 76 en / 24 zh per page).
-- **`n_fields` / `n_regions`** — payload counts as int columns, so "every row with boxes" is
-  `n_regions > 0` instead of 2.4k `json.loads` calls.
+- **Structured payload counts** — derive counts from `elements_json` when needed; duplicate count
+  columns are intentionally omitted from the public schema.
 - **`image_width` / `image_height`** — stored dims, for resolution slicing / curriculum.
 
 Detection also runs at **extraction time** (`extract_unified`), so future builds come out filled

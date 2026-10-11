@@ -29,6 +29,31 @@ from typing import Any, Iterator
 from ..benchmarks.trainset import _as_answer_list, _first, _s, extract_qa, norm_metric
 
 
+def encode_full_annotation(full_text: str | None = None, table_html: str | None = None) -> str:
+    """Pack all full-page annotation modalities into the public, versioned column value."""
+    payload = {"version": 1, "text": _s(full_text), "html": _s(table_html)}
+    if not payload["text"] and not payload["html"]:
+        return ""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def decode_full_annotation(value: Any) -> tuple[str | None, str | None]:
+    """Read v1 full annotations and legacy plain-text values."""
+    if not value:
+        return None, None
+    if isinstance(value, dict):
+        payload = value
+    else:
+        try:
+            payload = json.loads(str(value))
+        except (TypeError, ValueError):
+            return str(value), None
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return str(value), None
+    text, html = _s(payload.get("text")), _s(payload.get("html"))
+    return text or None, html or None
+
+
 # --------------------------------------------------------------------------- task taxonomy
 class Task:
     """The document-understanding task a record represents (what you'd filter / merge on)."""
@@ -62,7 +87,7 @@ class VisualType:
 
 
 VISUAL_TYPE_BY_SOURCE = {
-    "ai2d": VisualType.DIAGRAM, "chartqa": VisualType.CHART, "mathvista": VisualType.MIXED,
+    "ai2d": VisualType.TABLE, "chartqa": VisualType.CHART, "mathvista": VisualType.MIXED,
     "plotqa": VisualType.CHART, "dvqa": VisualType.CHART, "charxiv": VisualType.CHART,
     "tatqa": VisualType.TABLE, "pubtabnet": VisualType.TABLE, "pubtables1m": VisualType.TABLE,
     "fintabnet": VisualType.TABLE, "scitsr": VisualType.TABLE,
@@ -94,7 +119,7 @@ VISUAL_SUBTYPE_BY_SOURCE = {
     "funsd": "form", "xfund": "multilingual_form", "docile": "invoice",
     "docvqa": "business_document", "ocrvqa": "book_cover",
     "infovqa": "infographic", "chartqa": "chart", "plotqa": "scientific_chart",
-    "dvqa": "bar_chart", "charxiv": "scientific_figure", "ai2d": "scientific_diagram",
+    "dvqa": "bar_chart", "charxiv": "scientific_figure", "ai2d": "labeled_grid_diagram",
     "mathvista": "mixed_figure_math", "tatqa": "financial_table_and_text",
     "pubtabnet": "scientific_table", "pubtables1m": "scientific_table",
     "fintabnet": "financial_table", "scitsr": "scientific_table",
@@ -255,6 +280,7 @@ class QA:
     answers: list[str] = field(default_factory=list)
     reasoning: str = ""
     task_detail: str = ""
+    task: str = ""
 
 
 @dataclass
@@ -335,8 +361,7 @@ class UnifiedSample:
                   "visual_subtype": self.visual_subtype or visual_subtype_for_source(
                       self.source, str(self.meta.get("doc_type") or "")),
                   "task_detail": self.task_detail or task_detail_for_source(self.source, self.task),
-                  "reasoning": self.reasoning, "n_fields": len(self.fields),
-                  "n_regions": len(self.regions), **self.meta},
+                  "reasoning": self.reasoning, **self.meta},
         )
 
     def to_samples(self, *, include_reasoning: bool = False) -> list:
@@ -358,13 +383,13 @@ class UnifiedSample:
                 ans = [format_reasoning_target(answer, qa.reasoning) for answer in ans]
             out.append(Sample(
                 sample_id=f"{self.sample_id}_q{i}", image_path=self.image_path,
-                question=qa.question, answers=ans, answer_type=self.task, metric=self.metric,
-                meta={"source": self.source, "hf_id": self.hf_id, "task": self.task,
+                question=qa.question, answers=ans, answer_type=qa.task or self.task, metric=self.metric,
+                meta={"source": self.source, "hf_id": self.hf_id, "task": qa.task or self.task,
                       "visual_type": self.visual_type or visual_type_for_source(
                           self.source, str(self.meta.get("doc_type") or "")),
                       "visual_subtype": self.visual_subtype or visual_subtype_for_source(
                           self.source, str(self.meta.get("doc_type") or "")),
-                      "task_detail": qa.task_detail or task_detail_for_source(self.source, self.task),
+                      "task_detail": qa.task_detail or task_detail_for_source(self.source, qa.task or self.task),
                       "reasoning": qa.reasoning,
                       "n_qas": len(self.qas), **self.meta}))
         return out
@@ -1096,13 +1121,15 @@ def merge_by_image(rows: list[UnifiedSample], *,
             if r.instruction and r.answers:
                 pairs.append(QA(question=r.instruction, answers=list(r.answers),
                                 reasoning=r.reasoning,
-                                task_detail=r.task_detail or task_detail_for_source(r.source, r.task)))
+                                task_detail=r.task_detail or task_detail_for_source(r.source, r.task),
+                                task=r.task))
             for qa in pairs:
                 sig = qa.question.strip()
-                if r.task in qa_tasks and sig and sig not in seen_q:
+                if (qa.task or r.task) in qa_tasks and sig and sig not in seen_q:
                     seen_q.add(sig)
                     qas.append(QA(qa.question, list(qa.answers), qa.reasoning,
-                                  qa.task_detail or task_detail_for_source(r.source, r.task)))
+                                  qa.task_detail or task_detail_for_source(r.source, r.task),
+                                  qa.task or r.task))
             fields += r.fields
             regions += r.regions
             full_text = full_text or r.full_text
