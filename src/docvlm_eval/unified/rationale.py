@@ -289,13 +289,29 @@ def _docmatix(row: dict) -> list[Rationale]:
     return out
 
 
+_VERDICT = re.compile(r"^\s*(yes|no)\b[\s.,;:!-]*", re.IGNORECASE)
+
+
 @deriver("hallusionbench")
 def _hallusion(row: dict) -> list[Rationale]:
+    """HallusionBench details. Some open with the verdict of the PAIRED question ("Yes. In 2013,
+    Hong Kong was the largest ..." under a question about the United States, gold "no"): the
+    verdict contradicts this QA's gold while the statement after it is still the evidence. Drop
+    only that leading verdict; the gate then judges what is left."""
     out = []
+    answers = row.get("answers") or []
     for i, r in enumerate(row.get("reasoning") or []):
-        if (r or "").strip():
-            out.append(Rationale(r.strip(), "source", "consistency", [r.strip()], i,
-                                 deriver="hallusionbench_details"))
+        text = (r or "").strip()
+        if not text:
+            continue
+        gold = (answers[i] if i < len(answers) else "").strip().lower().rstrip(".")
+        m = _VERDICT.match(text)
+        if m and gold in ("yes", "no") and m.group(1).lower() != gold and text[m.end():].strip():
+            rest = text[m.end():].strip()
+            out.append(Rationale(rest[0].upper() + rest[1:], "source", "consistency", [rest], i,
+                                 deriver="hallusionbench_details_verdict_stripped"))
+            continue
+        out.append(Rationale(text, "source", "consistency", [text], i, deriver="hallusionbench_details"))
     return out
 
 
@@ -446,6 +462,22 @@ def _ocrvqa(row: dict) -> list[Rationale]:
         ans_toks = [t for t in _tokens(a) if t not in _STOP and len(t) > 2]
         hits = [(w, b) for w, b in words if w in ans_toks]
         if len(ans_toks) >= 1 and len({w for w, _ in hits}) >= max(1, math.ceil(0.6 * len(set(ans_toks)))):
+            # a word can recur ("Killer Su Doku" in the title AND in a tagline): anchor on the
+            # largest printed hit (titles are big) and take each other word's NEAREST occurrence
+            def _area(b):
+                return (b[2] - b[0]) * (b[3] - b[1])
+
+            def _dist(a, b):
+                return ((a[0] + a[2]) - (b[0] + b[2])) ** 2 + ((a[1] + a[3]) - (b[1] + b[3])) ** 2
+            anchor_w, anchor_b = max(hits, key=lambda t: _area(t[1]))
+            chosen = {anchor_w: anchor_b}
+            for w in {w for w, _ in hits} - {anchor_w}:
+                b = min((b for x, b in hits if x == w), key=lambda b: _dist(b, anchor_b))
+                if _dist(b, anchor_b) <= (2 * 0.4) ** 2:      # centers within 40% of the page
+                    chosen[w] = b                            # (else: only found far away -> unmatched)
+            hits = list(chosen.items())
+            if len(hits) < max(1, math.ceil(0.6 * len(set(ans_toks)))):
+                continue
             boxes = [b for _, b in hits]
             ub = [min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)]
             seen = list(dict.fromkeys(w for w, _ in sorted(hits, key=lambda t: (round(t[1][1], 2), t[1][0]))))
@@ -512,8 +544,12 @@ def _layout_counts(row: dict, deriver_name: str, classes: dict[str, str]) -> lis
 
 @deriver("doclaynet", "publaynet")
 def _layout(row: dict) -> list[Rationale]:
-    return _layout_counts(row, f"{row.get('source')}_count",
-                          {k: v for k, v in _LAYOUT_NAMES.items() if k[0].isupper()})
+    classes = {k: v for k, v in _LAYOUT_NAMES.items() if k[0].isupper()}
+    if row.get("source") == "publaynet":
+        # PubLayNet's "Title" also labels figure tags ("Figure 1") and run-in headings, so "how
+        # many titles?" would not match what a reader counts; keep the unambiguous classes
+        classes.pop("Title", None)
+    return _layout_counts(row, f"{row.get('source')}_count", classes)
 
 
 @deriver("omnidocbench")
@@ -528,9 +564,9 @@ def _omnidoc(row: dict) -> list[Rationale]:
         out.append(Rationale(f"The element marked as the page number, at the {grid_pos(b)} of the page, reads '{t}'.",
                              "derived_exact", "lookup", [t], question="What is the page number?",
                              answers=[t], box=b, deriver="omnidoc_page_number"))
-    titles = [(t, b) for c, t, b in els if c == "title" and t and b]
-    if len(titles) == 1 and len(titles[0][0]) <= 120 and "$" not in titles[0][0]:
-        t, b = titles[0]
+    titles = [(re.sub(r"^#+\s*", "", t).strip(), b) for c, t, b in els if c == "title" and t and b]
+    if len(titles) == 1 and titles[0][0] and len(titles[0][0]) <= 120 and "$" not in titles[0][0]:
+        t, b = titles[0]                          # markdown heading marks are not on the page
         out.append(Rationale(f"The block laid out as the title, in the {grid_pos(b)} of the page, reads '{t}'.",
                              "derived_exact", "lookup", [t], question="What is the title on this page?",
                              answers=[t], box=b, deriver="omnidoc_title"))
@@ -686,9 +722,10 @@ def attach(row: dict, *, tiers: tuple[str, ...] = TIERS, max_new: int = 4) -> tu
         if not ok or (r.tier not in tiers and r.op != "repair"):
             report["rejected"].append((r.deriver, why if not ok else "tier_filtered"))
             # a SOURCE rationale that fails the gate is moved aside (kept, but not trained on)
-            if (not r.is_new and r.reasoning and
-                    (out["reasoning"][r.qa_index] or "").strip() == r.reasoning.strip()):
-                out.setdefault("reasoning_rejected", [""] * n)[r.qa_index] = r.reasoning
+            # (also when the deriver had rewritten it, e.g. a stripped verdict)
+            existing = (out["reasoning"][r.qa_index] or "").strip() if not r.is_new else ""
+            if existing and r.tier.startswith("source") and r.op != "repair":
+                out.setdefault("reasoning_rejected", [""] * n)[r.qa_index] = existing
                 out["reasoning"][r.qa_index] = ""
                 prov[r.qa_index] = f"rejected:{why}"
             # a contaminated gold is repaired even when its rationale is not kept

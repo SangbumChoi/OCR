@@ -138,8 +138,44 @@ def test_rejected_source_rationale_is_moved_aside():
     r = _row("hallusionbench", ["Is the bar for 2010 the highest in the chart?"], ["no"],
              reasoning=["Yes, the bar for 2010 is the highest in the chart."])
     out, _ = attach(r)
-    assert out["reasoning"] == [""] and out["reasoning_provenance"] == ["rejected:contradicts_answer"]
+    # the paired-question verdict is stripped, and what is left only restates the question
+    assert out["reasoning"] == [""] and out["reasoning_provenance"] == ["rejected:tautological"]
     assert out["reasoning_rejected"] == ["Yes, the bar for 2010 is the highest in the chart."]
+
+
+def test_hallusion_verdict_of_the_paired_question_is_stripped():
+    r = _row("hallusionbench", ["In 2013, was the United States the largest recipient?"], ["no"],
+             reasoning=["Yes. In 2013, Hong Kong was the largest recipient, followed by Germany."])
+    out, _ = attach(r)
+    assert out["reasoning"] == ["In 2013, Hong Kong was the largest recipient, followed by Germany."]
+    assert out["reasoning_provenance"] == ["source:hallusionbench_details_verdict_stripped"]
+
+
+def test_ocrvqa_words_anchor_on_the_title_not_a_repeated_tagline():
+    els = [{"bbox": [0.1, 0.10, 0.9, 0.30, True], "information": "killer", "class": "word"},
+           {"bbox": [0.1, 0.30, 0.9, 0.45, True], "information": "doku", "class": "word"},
+           {"bbox": [0.3, 0.92, 0.4, 0.95, True], "information": "killer", "class": "word"},
+           {"bbox": [0.5, 0.92, 0.6, 0.95, True], "information": "doku", "class": "word"}]
+    r = _row("ocrvqa", ["What is the title of this book?"], ["Killer Doku"], elements_json=json.dumps(els))
+    (x,) = derive(r)
+    assert x.box == [0.1, 0.1, 0.9, 0.45] and "top-center" in x.reasoning
+    # a key word found ONLY far away (tagline) is unmatched, not pulled into the evidence box
+    els[0]["information"] = "noise"
+    (x,) = derive(_row("ocrvqa", ["What is the title of this book?"], ["Killer Doku Grid"],
+                       elements_json=json.dumps(els + [{"bbox": [0.2, 0.46, 0.8, 0.5, True],
+                                                        "information": "grid", "class": "word"}])))
+    assert x.box[3] <= 0.5 and "2 of the 3" in x.reasoning
+
+
+def test_publaynet_does_not_count_titles_and_omnidoc_title_drops_markdown():
+    els = [{"bbox": [0.1, 0.1, 0.4, 0.12, True], "information": "", "class": "Title"},
+           {"bbox": [0.1, 0.2, 0.4, 0.5, True], "information": "", "class": "Figure"}]
+    qs = [x.question for x in derive(_row("publaynet", ["Localize."], [""], elements_json=json.dumps(els)))]
+    assert qs == ["How many figures are on this page?"]
+    els = [{"bbox": [0.1, 0.1, 0.5, 0.15, True], "information": "# Cubic Splines", "class": "title"}]
+    (t,) = [x for x in derive(_row("omnidocbench", ["Parse."], ["x"], elements_json=json.dumps(els)))
+            if x.deriver == "omnidoc_title"]
+    assert t.answers == ["Cubic Splines"]
 
 
 def test_attach_keeps_columns_aligned():

@@ -21,14 +21,14 @@ examples per source in [`../results/udd_reasoning_preview.md`](../results/udd_re
 
 | | before | after |
 | --- | --- | --- |
-| QAs | 76,730 | 87,464 (+10,734 derived QAs, each with a rationale) |
-| QAs with a rationale | 325 | **17,632** |
+| QAs | 76,730 | 86,391 (+9,661 derived QAs, each with a rationale) |
+| QAs with a rationale | 325 | **16,235** |
 | corrupted golds repaired | — | 3,057 (TAT-QA 3,051, Docmatix 6) |
 | short golds with a stray trailing period ("Mean.") | 23,076 | 0 |
-| (instruction, answer) training variants | 76,730 | 197,036 |
-| distinct instruction templates (digits / quoted spans masked) | 40,876 | 103,084 |
+| (instruction, answer) training variants | 76,730 | 193,609 |
+| distinct instruction templates (digits / quoted spans masked) | 40,876 | 103,083 |
 | distinct trailing format clauses | 28,447 | 52,976 |
-| answer-format entropy | 0 bits (1 format) | 2.31 bits (9 formats) |
+| answer-format entropy | 0 bits (1 format) | 2.30 bits (9 formats) |
 | accepted answer variants per QA | 1.00 | 1.66 |
 
 ## 2. Principle: a rationale is evidence plus an operation, and it is checked
@@ -74,14 +74,14 @@ them are in the config.
 | source | material in UDD | rationale recipe | tier | QAs with rationale (derived) |
 | --- | --- | --- | --- | --- |
 | **tatqa** | the answer string *contains* the original derivation: `"74.5-26.0\nAnswer: 48.5."` | split it out, **repair the gold** to `48.5`, and evaluate the expression with a safe evaluator (accounting negatives `(6,919)`, both percent readings, `scale: percent` ×100). Count derivations (`2019\nAnswer: 1.`) are checked by counting. Plan-only text ("Find the year with …") is dropped. | `source_verified` (2,513) / `source` (479) | 2,992 |
-| **hallusionbench** | `gt_answer_details` (already in `reasoning`) | gate only: 123 restate the question, 3 contradict the gold | `source` | 199 (126 moved aside) |
+| **hallusionbench** | `gt_answer_details` (already in `reasoning`) | gate. Some details open with the verdict of the *paired* question ("Yes. In 2013, Hong Kong was the largest …" under a question about the United States, gold "no"): only that leading verdict is stripped, and the rest is re-gated. 125 restate the question and are moved aside. | `source` | 200 |
 | **cord** | the full receipt parse as the KIE gold | subtotal = Σ line prices; total = subtotal + tax + service − discount; change = cash − total; most expensive item. **Emitted only when the printed numbers satisfy the relation.** Handles `60.000`-style thousands. | `derived_exact` | 164 (164) |
 | **funsd** | the KIE gold is the source key→value linking, plus word boxes with BIO tags | merge BIO words into entities, ground both the key and the value, and state the relation ("to the right of the label") | `derived_exact` | 24 (24) |
-| **ocrvqa** | OCR words with normalized boxes; 5 QAs per cover | title/author: answer words matched on the cover (≥60% of key words) with their position. "Is this book related to X?": answered from the **same row's genre answer** (cross-QA consistency). | `evidence_match` / `derived_exact` | 2,369 |
+| **ocrvqa** | OCR words with normalized boxes; 5 QAs per cover | title/author: answer words matched on the cover (≥60% of key words) with their position. A repeated word takes its occurrence nearest the largest hit, and a word found only >40% of the page away (a tagline) counts as unmatched. "Is this book related to X?": answered from the **same row's genre answer** (cross-QA consistency). | `evidence_match` (1,309) / `derived_exact` (735) | 2,044 |
 | **screenqa** | UI elements (text) whose content forms the sentence answer | cite the elements whose text is in the answer | `evidence_match` | 1,338 |
 | **pubtabnet** | full HTML table | span-free tables only: body-row count, and cell lookup by unique (row label, column header) | `derived_exact` | 2,471 (2,471) |
-| **omnidocbench** | layout blocks with class, text and box | page number, title (unique blocks), and per-class counts with positions | `derived_exact` | 3,920 (3,920) |
-| **doclaynet**, **publaynet** | layout boxes with class | per-class counts with positions (≤6 instances, so the count is checkable) | `derived_exact` | 2,157 / 1,998 (all derived) |
+| **omnidocbench** | layout blocks with class, text and box | page number, title (unique blocks; markdown `#` marks stripped, since they are not on the page), and per-class counts with positions | `derived_exact` | 3,920 (3,920) |
+| **doclaynet**, **publaynet** | layout boxes with class | per-class counts with positions (≤6 instances, so the count is checkable). PubLayNet's `Title` also labels figure tags and run-in headings, so "how many titles?" is not asked there. | `derived_exact` | 2,157 / 925 (all derived) |
 | **docmatix** | 6 answers restate the question before `\nAnswer:` | gold repair only | — | 0 |
 | chartqa, plotqa, dvqa | question + short answer only (UDD keeps no chart data) | none. A "the tallest bar is X" rationale would be tautological. **Unlock:** ChartQA ships the underlying CSV tables, and DVQA/PlotQA ship bar/point metadata. With that data, read/compare/arithmetic chains become `derived_exact`. | — | 0 |
 | infovqa | question + answer | none in UDD. **Unlock:** the source has `operation/reasoning` labels (arithmetic / comparison / counting) and Textract OCR with boxes. Keep both in the extractor, then ground the answer span in the OCR. | — | 0 |
@@ -92,7 +92,7 @@ them are in the config.
 
 **Takeaway:** checkable rationales come from **structure**, not from QA pairs. The six sources
 with structure in UDD (receipt parse, form links, OCR words, UI elements, tables, layout) produce
-almost all of the 17.6k. The biggest remaining wins are upstream: keep ChartQA tables, InfoVQA
+almost all of the 16.2k. The biggest remaining wins are upstream: keep ChartQA tables, InfoVQA
 operation labels and OCR, TextVQA OCR tokens and CharXiv descriptive QAs in the extractors. That
 would make up to 19,510 more QAs (ChartQA, DVQA, PlotQA, InfoVQA, TextVQA, CharXiv) eligible for
 verified rationales.
@@ -111,6 +111,23 @@ pubtabnet Q: In the table, what is the 'MAF' value for '-1022 C>G'?   gold 0.043
           R: Find the row '-1022 C>G' and the column 'MAF'; the cell where they meet reads '0.043'.
 ```
 
+### Visual examples
+
+`scripts/visualize_udd_reasoning.py` renders real UDD images with each rationale's evidence drawn
+on them (evidence box, matched words, counted regions), next to the QA, gold, rationale (with
+tier) and the drawn variants. It fetches only the parquet row groups that hold the chosen samples.
+Rendering these panels exposed three of the issues in §4.
+
+| | |
+| --- | --- |
+| ![TAT-QA](figures/udd_reasoning/tatqa.jpg) | ![CORD](figures/udd_reasoning/cord.jpg) |
+| ![FUNSD](figures/udd_reasoning/funsd.jpg) | ![OCR-VQA](figures/udd_reasoning/ocrvqa.jpg) |
+| ![PubTabNet](figures/udd_reasoning/pubtabnet.jpg) | ![OmniDocBench](figures/udd_reasoning/omnidocbench.jpg) |
+| ![DocLayNet](figures/udd_reasoning/doclaynet.jpg) | ![PubLayNet](figures/udd_reasoning/publaynet.jpg) |
+| ![ScreenQA](figures/udd_reasoning/screenqa.jpg) | ![HallusionBench, verdict stripped](figures/udd_reasoning/hallusionbench_verdict_stripped.jpg) |
+| ![HallusionBench, rejected](figures/udd_reasoning/hallusionbench_rejected.jpg) | ![HallusionBench, kept](figures/udd_reasoning/hallusionbench_kept.jpg) |
+| ![DVQA (answer-only)](figures/udd_reasoning/dvqa.jpg) | ![AI2D (answer-only)](figures/udd_reasoning/ai2d.jpg) |
+
 ## 4. Data-quality issues found along the way
 
 | issue | scale | fix |
@@ -119,7 +136,9 @@ pubtabnet Q: In the table, what is the 'MAF' value for '-1022 C>G'?   gold 0.043
 | the_cauldron golds end in a stray period (`"Mean."`): 100% of DVQA/PlotQA, 96% of ST-VQA | 23,076 short golds | canonical form strips it; the original form is kept as an accepted variant |
 | **pixel boxes were not rescaled when images were resized to ≤1000 px** (`UnifiedLoader.iter`) | CORD 39% / ScreenQA 60% of boxes fall outside the stored image (the rest are mis-scaled too) | `normalize_pixel_boxes()` now converts them to [0,1] **before** resizing. The rationale code ignores pixel boxes until UDD is rebuilt. |
 | TextVQA primary gold is the *first* annotator's answer, not the consensus (`"nous les gosses"` vs 6× `"dakota"`) | TextVQA-style multi-annotator QAs | `canon_answers` now orders by annotator count (ties keep source order); takes effect on rebuild |
-| HallusionBench details that restate the question or contradict the gold | 126 of 325 | moved to `reasoning_rejected` |
+| HallusionBench details that restate the question, or that open with the paired question's verdict | 125 of 325 restate; a few carry a contradicting "Yes."/"No." | restated ones moved to `reasoning_rejected`; contradicting verdicts stripped |
+| OCR-VQA word boxes: a title word that also appears in a tagline pulled the evidence box over the whole cover | found while visualizing | nearest-occurrence + 40% distance rule |
+| OmniDocBench titles carry markdown heading marks (`# Suitability of Cubic Splines`) | titles | stripped from the derived gold |
 
 ## 5. Instruction / answer diversification: the conditions
 
@@ -161,8 +180,8 @@ config plus the corpus fully determines the output. Per-source overrides cover r
 (1 variant) and long free-text sources (no sentence/json), and give TAT-QA more weight on
 `reasoned`.
 
-Resulting format mix over the corpus: original 84,507 · short 40,195 · json 24,057 · sentence
-21,801 · reasoned 13,514 · number 9,310 · yes_no 2,640 · grounded 527 · mcq_index 485.
+Resulting format mix over the corpus: original 83,434 · short 39,697 · json 23,863 · sentence
+21,596 · reasoned 12,430 · number 8,963 · yes_no 2,640 · grounded 501 · mcq_index 485.
 
 ## 6. Usage
 
@@ -198,7 +217,7 @@ UDD held-out fold, answer-only:
 
 1. **Repair only vs original golds** (TAT-QA, DVQA/PlotQA periods). This measures how much the
    corrupted golds were costing.
-2. **`reasoned` vs answer-only** on the 17.6k rationale QAs, split by tier. Does `derived_exact`
+2. **`reasoned` vs answer-only** on the 16.2k rationale QAs, split by tier. Does `derived_exact`
    help as much as `source_verified`? Does `evidence_match` help at all?
 3. **Format diversity on vs off** (`variants_per_qa` 0 / 2 / 4). Check instruction-following on
    unseen clause wordings, and whether diversity costs accuracy on the original prompts.

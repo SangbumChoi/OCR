@@ -97,7 +97,7 @@
    "qas_before": 333,
    "qas_after": 333,
    "reasoning_before": 325,
-   "reasoning_after": 199,
+   "reasoning_after": 200,
    "answers_repaired": 0,
    "derived_qas": 0,
    "variants": 999
@@ -187,10 +187,10 @@
    "qas_before": 7115,
    "qas_after": 7115,
    "reasoning_before": 0,
-   "reasoning_after": 2369,
+   "reasoning_after": 2044,
    "answers_repaired": 0,
    "derived_qas": 0,
-   "variants": 19980
+   "variants": 19771
   },
   "omnidocbench": {
    "rows": 1495,
@@ -200,7 +200,7 @@
    "reasoning_after": 3920,
    "answers_repaired": 0,
    "derived_qas": 3920,
-   "variants": 13218
+   "variants": 13219
   },
   "plotqa": {
    "rows": 1500,
@@ -215,12 +215,12 @@
   "publaynet": {
    "rows": 1470,
    "qas_before": 1470,
-   "qas_after": 3468,
+   "qas_after": 2395,
    "reasoning_before": 0,
-   "reasoning_after": 1998,
+   "reasoning_after": 925,
    "answers_repaired": 0,
-   "derived_qas": 1998,
-   "variants": 5994
+   "derived_qas": 925,
+   "variants": 2775
   },
   "pubtabnet": {
    "rows": 1500,
@@ -337,17 +337,17 @@
    "derived_exact": 24
   },
   "hallusionbench": {
-   "source": 199
+   "source": 200
   },
   "ocrvqa": {
-   "evidence_match": 1634,
+   "evidence_match": 1309,
    "derived_exact": 735
   },
   "omnidocbench": {
    "derived_exact": 3920
   },
   "publaynet": {
-   "derived_exact": 1998
+   "derived_exact": 925
   },
   "pubtabnet": {
    "derived_exact": 2471
@@ -363,7 +363,7 @@
  "rejected": {
   "hallusionbench": {
    "hallusionbench_details:tautological": 123,
-   "hallusionbench_details:contradicts_answer": 3
+   "hallusionbench_details_verdict_stripped:tautological": 2
   },
   "pubtabnet": {
    "pubtabnet_rows:evidence_not_in_row": 39,
@@ -389,25 +389,25 @@
   "short_answer_with_trailing_period": 23076
  },
  "diversity_after": {
-  "n": 197036,
-  "distinct_instruction_templates": 103084,
+  "n": 193609,
+  "distinct_instruction_templates": 103083,
   "distinct_first3": 13949,
-  "first3_entropy_bits": 7.609,
+  "first3_entropy_bits": 7.64,
   "distinct_tail_clauses": 52976,
-  "tail_clause_entropy_bits": 10.47,
+  "tail_clause_entropy_bits": 10.528,
   "format_distribution": {
-   "original": 84507,
-   "short": 40195,
-   "json": 24057,
-   "sentence": 21801,
-   "reasoned": 13514,
-   "number": 9310,
+   "original": 83434,
+   "short": 39697,
+   "json": 23863,
+   "sentence": 21596,
+   "reasoned": 12430,
+   "number": 8963,
    "yes_no": 2640,
-   "grounded": 527,
+   "grounded": 501,
    "mcq_index": 485
   },
-  "format_entropy_bits": 2.314,
-  "mean_answer_variants": 1.658,
+  "format_entropy_bits": 2.305,
+  "mean_answer_variants": 1.66,
   "short_answer_with_trailing_period": 0
  },
  "diversity_by_source": {
@@ -540,14 +540,14 @@
    "templates_before": 167,
    "templates_after": 814,
    "tail_clause_entropy_before": 7.286,
-   "tail_clause_entropy_after": 7.407,
+   "tail_clause_entropy_after": 7.405,
    "formats_after": {
     "original": 333,
     "short": 168,
-    "reasoned": 138,
+    "reasoned": 139,
     "json": 123,
     "yes_no": 121,
-    "sentence": 116
+    "sentence": 115
    }
   },
   "iam": {
@@ -648,28 +648,28 @@
   },
   "ocrvqa": {
    "templates_before": 67,
-   "templates_after": 2282,
+   "templates_after": 2283,
    "tail_clause_entropy_before": 4.588,
-   "tail_clause_entropy_after": 6.896,
+   "tail_clause_entropy_after": 6.914,
    "formats_after": {
     "original": 7115,
-    "short": 4634,
-    "sentence": 2427,
-    "json": 2292,
-    "reasoned": 1771,
+    "short": 4673,
+    "sentence": 2460,
+    "json": 2327,
     "yes_no": 1506,
-    "grounded": 235
+    "reasoned": 1481,
+    "grounded": 209
    }
   },
   "omnidocbench": {
    "templates_before": 1,
    "templates_after": 484,
    "tail_clause_entropy_before": -0.0,
-   "tail_clause_entropy_after": 5.234,
+   "tail_clause_entropy_after": 5.235,
    "formats_after": {
     "original": 5410,
     "reasoned": 2798,
-    "short": 1888,
+    "short": 1889,
     "number": 1059,
     "sentence": 936,
     "json": 840,
@@ -692,16 +692,16 @@
   },
   "publaynet": {
    "templates_before": 1,
-   "templates_after": 171,
+   "templates_after": 113,
    "tail_clause_entropy_before": -0.0,
-   "tail_clause_entropy_after": 4.51,
+   "tail_clause_entropy_after": 4.268,
    "formats_after": {
-    "original": 1998,
-    "reasoned": 1500,
-    "short": 1006,
-    "number": 638,
-    "sentence": 438,
-    "json": 414
+    "original": 925,
+    "reasoned": 705,
+    "short": 468,
+    "number": 291,
+    "sentence": 201,
+    "json": 185
    }
   },
   "pubtabnet": {

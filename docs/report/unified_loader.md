@@ -416,7 +416,7 @@ LoRA-fine-tunes the base on each set and appends per-probe scores to
 Only HallusionBench ships a rationale, but six sources ship the *structure* a checkable one is
 built from: CORD receipt arithmetic, FUNSD key-value links, OCR-VQA cover words, ScreenQA
 elements, PubTabNet cells, and layout counts. TAT-QA hides its derivation inside the gold answer.
-`scripts/derive_udd_reasoning.py` turns these into tiered, gated rationales: 325 → 17,632 QAs.
+`scripts/derive_udd_reasoning.py` turns these into tiered, gated rationales: 325 → 16,235 QAs.
 It repairs 3,057 corrupted golds and produces format-bound instruction/answer variants
 (`configs/instruction_diversity.yaml`). The per-benchmark strategy, the conditions and the
 measured results are in [`benchmark_reasoning_extraction.md`](benchmark_reasoning_extraction.md).

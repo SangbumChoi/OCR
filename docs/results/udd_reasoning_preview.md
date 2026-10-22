@@ -105,12 +105,12 @@ Each block shows one QA that received a rationale: the instruction, the gold, th
 
 **Gold:** `The Times Killer Su Doku 6`
 
-**Rationale** — `evidence_match:ocrvqa_words`: The cover text in the center area includes the words 'times', 'doku', 'killer', matching 3 of the 3 key words of the answer.
+**Rationale** — `evidence_match:ocrvqa_words`: The cover text in the top-center area includes the words 'times', 'doku', matching 2 of the 3 key words of the answer.
 
 | format | instruction | target |
 | --- | --- | --- |
 | sentence | Respond with a full sentence. What is the title of this book? | The answer is The Times Killer Su Doku 6. |
-| reasoned | Explain briefly, then give the final answer after 'Answer:'. What is the title of this book? | Reasoning: The cover text in the center area includes the words 'times', 'doku', 'killer', matching 3 of the 3 key words of the answer. ⏎ Answer: The Times Killer Su Doku 6 |
+| reasoned | Explain briefly, then give the final answer after 'Answer:'. What is the title of this book? | Reasoning: The cover text in the top-center area includes the words 'times', 'doku', matching 2 of the 3 key words of the answer. ⏎ Answer: The Times Killer Su Doku 6 |
 
 **Q** (ocrvqa_0000_0, QA 3): Is this book related to Humor & Entertainment?
 
@@ -149,27 +149,27 @@ Each block shows one QA that received a rationale: the instruction, the gold, th
 
 ## publaynet
 
-**Q** (publaynet_0000_0, QA 1, derived): How many titles are on this page?
+**Q** (publaynet_0002_0, QA 1, derived): How many figures are on this page?
 
 **Gold:** `3`
 
-**Rationale** — `derived_exact:publaynet_count`: Scanning the page for title regions finds 3: one in the top-center, one in the middle-left, one in the bottom-left.
+**Rationale** — `derived_exact:publaynet_count`: Scanning the page for figure regions finds 3: one in the top-left, one in the top-right, one in the middle-left.
 
 | format | instruction | target |
 | --- | --- | --- |
-| reasoned | How many titles are on this page? ⏎ First say where the answer comes from, then answer on a new line starting with 'Answer:'. | Reasoning: Scanning the page for title regions finds 3: one in the top-center, one in the middle-left, one in the bottom-left. ⏎ Answer: 3 |
-| number | Give the number. ⏎ How many titles are on this page? | 3 |
+| reasoned | First say where the answer comes from, then answer on a new line starting with 'Answer:'. ⏎ How many figures are on this page? | Reasoning: Scanning the page for figure regions finds 3: one in the top-left, one in the top-right, one in the middle-left. ⏎ Answer: 3 |
+| json | How many figures are on this page? ⏎ Respond only with a JSON object that has the key "answer". | {"answer": "3"} |
 
-**Q** (publaynet_0001_0, QA 1, derived): How many titles are on this page?
+**Q** (publaynet_0003_0, QA 1, derived): How many figures are on this page?
 
-**Gold:** `3`
+**Gold:** `1`
 
-**Rationale** — `derived_exact:publaynet_count`: Scanning the page for title regions finds 3: one in the top-center, one in the middle-left, one in the bottom-left.
+**Rationale** — `derived_exact:publaynet_count`: Scanning the page for figure regions finds 1: one in the top-center.
 
 | format | instruction | target |
 | --- | --- | --- |
-| json | How many titles are on this page? ⏎ Respond only with a JSON object that has the key "answer". | {"answer": "3"} |
-| short | How many titles are on this page? ⏎ Give just the answer, without explanation. | 3 |
+| sentence | How many figures are on this page? Respond with a full sentence. | The answer is 1. |
+| short | Answer concisely. How many figures are on this page? | 1 |
 
 ## pubtabnet
 
