@@ -33,7 +33,11 @@ boxes are always `[x1,y1,x2,y2,normalized]|null`. The in-memory DTO keeps the fl
 rule: a `UnifiedSample` populates `instruction`+`answers` OR `qas`, never both. Regenerable build
 outputs stay git-ignored (`examples/udd*`); the narrative doc is `docs/report/unified_loader.md`, and
 the public-data ablation arms are composed by `scripts/run_udd_ablation.py`
-(see `docs/report/ablation_plan.md` §11b).
+(see `docs/report/ablation_plan.md` §11b). Rationales are derived per benchmark only from material in the row
+(tiered `reasoning_provenance`, quality-gated, never invented), and instruction/answer variants
+are format-bound and config-driven: `unified/rationale.py`, `unified/diversify.py`,
+`configs/instruction_diversity.yaml`, `scripts/derive_udd_reasoning.py`; see
+`docs/report/benchmark_reasoning_extraction.md`.
 
 ## Attention backend
 

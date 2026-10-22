@@ -1,0 +1,137 @@
+# Instruction / answer diversification for UDD QAs (src/docvlm_eval/unified/diversify.py).
+# One config = one dataset variant: everything is deterministic in (seed, sample_id, QA index).
+#
+# Rule: an instruction clause and an answer renderer always change TOGETHER (a "format"), and a
+# format applies only when ALL of its `when` conditions hold for the QA:
+#   always        every QA
+#   numeric       the gold is a number (after stripping a trailing period / currency / %)
+#   yes_no        the gold is yes / no
+#   short_answer  <= 6 words, single line
+#   long_answer   > 12 words
+#   has_options   the question lists options and the gold is one of them
+#   has_reasoning a gate-passed rationale exists (rationale.py) — never for answer-only QAs
+#   has_box       an evidence box exists
+#   lang_en       the question is (>90%) ASCII letters — English answer templates only apply here
+# Never re-rendered (only `reasoned` may apply): transcription targets (recognition / table /
+# layout tasks, "transcribe ...", "convert ... to LaTeX") and abstain golds ("<no answer>").
+# JSON / HTML targets ("structured") are never re-rendered; they only get `short` or `reasoned`.
+
+seed: 13
+variants_per_qa: 2            # new (instruction, answer) variants per QA, on top of the original
+keep_original: true           # keep the source wording + gold as variant v0
+strip_source_format_clauses: true   # drop "| Offer a very short reply." etc. before adding a new clause
+clause_position: {suffix: 0.8, prefix: 0.2}
+clause_separator: [" ", "\n"]
+canonicalize:
+  strip_trailing_period: true   # "Mean." -> "Mean" (the_cauldron golds: 100% of DVQA/PlotQA)
+  numeric_variants: true        # "2,305.00" also accepts "2305", "2305.00"
+  case_variants: true           # "Yes" also accepts "yes"
+
+formats:
+  short:
+    when: [short_answer]
+    weight: 3
+    render: answer
+    clauses:
+      - "Answer with a single word or phrase."
+      - "Reply with the answer only."
+      - "Give just the answer, without explanation."
+      - "Be brief."
+      - "Answer concisely."
+      - "Respond with only the requested value."
+  number:
+    when: [numeric]
+    weight: 2
+    render: number
+    metric: relaxed_acc
+    clauses:
+      - "Answer with a number only."
+      - "Respond with the numeric value only, without units or currency symbols."
+      - "Give the number."
+  yes_no:
+    when: [yes_no]
+    weight: 2
+    render: yes_no
+    metric: exact
+    clauses:
+      - "Answer yes or no."
+      - "Reply with 'yes' or 'no' only."
+  sentence:
+    when: [short_answer, lang_en]
+    weight: 1
+    render: sentence
+    metric: anls
+    clauses:
+      - "Answer in one complete sentence."
+      - "Respond with a full sentence."
+  json:
+    when: [short_answer]
+    weight: 1
+    render: json
+    metric: anls
+    clauses:
+      - 'Return JSON of the form {"answer": <value>}.'
+      - 'Respond only with a JSON object that has the key "answer".'
+  mcq_index:
+    when: [has_options]
+    weight: 2
+    render: mcq_index
+    metric: exact
+    clauses:
+      - "Answer with the number of the correct option."
+      - "Reply with the option number only."
+  reasoned:
+    when: [has_reasoning]
+    weight: 4
+    render: reasoned
+    clauses:
+      - "Explain briefly, then give the final answer after 'Answer:'."
+      - "State the evidence you used, then write 'Answer:' followed by the answer."
+      - "First say where the answer comes from, then answer on a new line starting with 'Answer:'."
+  grounded:
+    when: [has_box, short_answer]
+    weight: 1
+    render: grounded
+    metric: anls
+    clauses:
+      - "Give the answer and where it is, as: answer | x1,y1,x2,y2 (0-1000 scale)."
+
+# Per-source overrides. Long free-text golds (Docmatix, VisualMRC, TAT-QA spans) are not
+# re-rendered as sentence/json — they stay as written; recognition sources keep 1 variant.
+sources:
+  docmatix:     {variants_per_qa: 1, disable_formats: [sentence, json]}
+  visualmrc:    {variants_per_qa: 1, disable_formats: [sentence, json]}
+  iam:          {variants_per_qa: 1}
+  sroie:        {variants_per_qa: 1}
+  im2latex:     {variants_per_qa: 1}
+  latexocr:     {variants_per_qa: 1}
+  synthdog_en:  {variants_per_qa: 1}
+  synthdog_ko:  {variants_per_qa: 1}
+  tatqa:        {format_weights: {reasoned: 6}}
+
+# Paraphrase pools for DERIVED questions only (source questions keep their human wording).
+# Each pool must keep the question's meaning exactly — the gold is computed, not re-annotated.
+derived_question_templates:
+  cord_subtotal:
+    - "What is the subtotal on this receipt?"
+    - "What subtotal does the receipt show?"
+    - "What do the listed items add up to, as printed in the subtotal?"
+  cord_total:
+    - "What is the total amount to pay?"
+    - "What is the final total on this receipt?"
+    - "How much is the grand total?"
+  cord_change:
+    - "How much change was given back?"
+    - "What is the change amount on this receipt?"
+  cord_max_item:
+    - "Which item on the receipt is the most expensive?"
+    - "Which line item has the highest price?"
+  omnidoc_page_number:
+    - "What is the page number?"
+    - "Which page number is printed on this page?"
+  omnidoc_title:
+    - "What is the title on this page?"
+    - "What does the page title say?"
+  pubtabnet_rows:
+    - "How many rows does the table body have (excluding the header)?"
+    - "Not counting the header, how many rows are in the table?"

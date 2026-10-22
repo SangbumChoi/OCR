@@ -48,5 +48,9 @@ examples/udd_langs/
 # Synthetic UDD-format corpus (LOCAL ONLY, regenerable from make_realistic_cases)
 examples/udd_synthetic/
 
+# Derived rationales + instruction/answer variants over UDD (regenerable:
+# scripts/derive_udd_reasoning.py); the stats + preview live in docs/results/
+examples/udd_reasoning/
+
 # Reading-order probe renders (regenerable via make_reading_order_probe.py)
 examples/probes/reading_order/

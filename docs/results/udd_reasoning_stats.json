@@ -1,0 +1,829 @@
+{
+ "config": "configs/instruction_diversity.yaml",
+ "n_rows": 39837,
+ "per_source": {
+  "ai2d": {
+   "rows": 809,
+   "qas_before": 809,
+   "qas_after": 809,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 2409
+  },
+  "chartqa": {
+   "rows": 1465,
+   "qas_before": 1511,
+   "qas_after": 1511,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 4529
+  },
+  "charxiv": {
+   "rows": 1000,
+   "qas_before": 1000,
+   "qas_after": 1000,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 2986
+  },
+  "cord": {
+   "rows": 100,
+   "qas_before": 100,
+   "qas_after": 264,
+   "reasoning_before": 0,
+   "reasoning_after": 164,
+   "answers_repaired": 0,
+   "derived_qas": 164,
+   "variants": 590
+  },
+  "doclaynet": {
+   "rows": 1482,
+   "qas_before": 1482,
+   "qas_after": 3639,
+   "reasoning_before": 0,
+   "reasoning_after": 2157,
+   "answers_repaired": 0,
+   "derived_qas": 2157,
+   "variants": 6471
+  },
+  "docmatix": {
+   "rows": 1413,
+   "qas_before": 7153,
+   "qas_after": 7153,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 6,
+   "derived_qas": 0,
+   "variants": 7204
+  },
+  "docvqa": {
+   "rows": 1276,
+   "qas_before": 1303,
+   "qas_after": 1303,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 3761
+  },
+  "dvqa": {
+   "rows": 1500,
+   "qas_before": 7497,
+   "qas_after": 7497,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 22479
+  },
+  "funsd": {
+   "rows": 50,
+   "qas_before": 62,
+   "qas_after": 86,
+   "reasoning_before": 0,
+   "reasoning_after": 24,
+   "answers_repaired": 0,
+   "derived_qas": 24,
+   "variants": 139
+  },
+  "hallusionbench": {
+   "rows": 332,
+   "qas_before": 333,
+   "qas_after": 333,
+   "reasoning_before": 325,
+   "reasoning_after": 199,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 999
+  },
+  "iam": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 1500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1500
+  },
+  "im2latex": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 1500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1500
+  },
+  "infovqa": {
+   "rows": 500,
+   "qas_before": 525,
+   "qas_after": 525,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1565
+  },
+  "latexocr": {
+   "rows": 1499,
+   "qas_before": 1499,
+   "qas_after": 1499,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1499
+  },
+  "mathvista": {
+   "rows": 900,
+   "qas_before": 901,
+   "qas_after": 901,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 2685
+  },
+  "mtvqa": {
+   "rows": 1496,
+   "qas_before": 4829,
+   "qas_after": 4829,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 12629
+  },
+  "ocrbench": {
+   "rows": 838,
+   "qas_before": 954,
+   "qas_after": 954,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1998
+  },
+  "ocrbench_v2": {
+   "rows": 1444,
+   "qas_before": 1449,
+   "qas_after": 1449,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 2718
+  },
+  "ocrvqa": {
+   "rows": 1499,
+   "qas_before": 7115,
+   "qas_after": 7115,
+   "reasoning_before": 0,
+   "reasoning_after": 2369,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 19980
+  },
+  "omnidocbench": {
+   "rows": 1495,
+   "qas_before": 1495,
+   "qas_after": 5415,
+   "reasoning_before": 0,
+   "reasoning_after": 3920,
+   "answers_repaired": 0,
+   "derived_qas": 3920,
+   "variants": 13218
+  },
+  "plotqa": {
+   "rows": 1500,
+   "qas_before": 7500,
+   "qas_after": 7500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 22500
+  },
+  "publaynet": {
+   "rows": 1470,
+   "qas_before": 1470,
+   "qas_after": 3468,
+   "reasoning_before": 0,
+   "reasoning_after": 1998,
+   "answers_repaired": 0,
+   "derived_qas": 1998,
+   "variants": 5994
+  },
+  "pubtabnet": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 3971,
+   "reasoning_before": 0,
+   "reasoning_after": 2471,
+   "answers_repaired": 0,
+   "derived_qas": 2471,
+   "variants": 8896
+  },
+  "rvl_cdip": {
+   "rows": 1460,
+   "qas_before": 1460,
+   "qas_after": 1460,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 4380
+  },
+  "screenqa": {
+   "rows": 1471,
+   "qas_before": 1491,
+   "qas_after": 1491,
+   "reasoning_before": 0,
+   "reasoning_after": 1338,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 3592
+  },
+  "sroie": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 1500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1500
+  },
+  "stvqa": {
+   "rows": 1464,
+   "qas_before": 1950,
+   "qas_after": 1950,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 5616
+  },
+  "synthdog_en": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 1500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1500
+  },
+  "synthdog_ko": {
+   "rows": 1500,
+   "qas_before": 1500,
+   "qas_after": 1500,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 1500
+  },
+  "tatqa": {
+   "rows": 1451,
+   "qas_before": 7495,
+   "qas_after": 7495,
+   "reasoning_before": 0,
+   "reasoning_after": 2992,
+   "answers_repaired": 3051,
+   "derived_qas": 0,
+   "variants": 19800
+  },
+  "textvqa": {
+   "rows": 1477,
+   "qas_before": 1477,
+   "qas_after": 1477,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 4273
+  },
+  "visualmrc": {
+   "rows": 1446,
+   "qas_before": 4870,
+   "qas_after": 4870,
+   "reasoning_before": 0,
+   "reasoning_after": 0,
+   "answers_repaired": 0,
+   "derived_qas": 0,
+   "variants": 6626
+  }
+ },
+ "tiers": {
+  "cord": {
+   "derived_exact": 164
+  },
+  "doclaynet": {
+   "derived_exact": 2157
+  },
+  "docmatix": {
+   "source": 6
+  },
+  "funsd": {
+   "derived_exact": 24
+  },
+  "hallusionbench": {
+   "source": 199
+  },
+  "ocrvqa": {
+   "evidence_match": 1634,
+   "derived_exact": 735
+  },
+  "omnidocbench": {
+   "derived_exact": 3920
+  },
+  "publaynet": {
+   "derived_exact": 1998
+  },
+  "pubtabnet": {
+   "derived_exact": 2471
+  },
+  "screenqa": {
+   "evidence_match": 1338
+  },
+  "tatqa": {
+   "source_verified": 2513,
+   "source": 479
+  }
+ },
+ "rejected": {
+  "hallusionbench": {
+   "hallusionbench_details:tautological": 123,
+   "hallusionbench_details:contradicts_answer": 3
+  },
+  "pubtabnet": {
+   "pubtabnet_rows:evidence_not_in_row": 39,
+   "pubtabnet_cell:evidence_not_in_row": 1,
+   "pubtabnet_rows:too_long": 2
+  },
+  "tatqa": {
+   "tatqa_span:derivation_without_values": 59
+  }
+ },
+ "diversity_before": {
+  "n": 76730,
+  "distinct_instruction_templates": 40876,
+  "distinct_first3": 12174,
+  "first3_entropy_bits": 7.615,
+  "distinct_tail_clauses": 28447,
+  "tail_clause_entropy_bits": 9.969,
+  "format_distribution": {
+   "original": 76730
+  },
+  "format_entropy_bits": -0.0,
+  "mean_answer_variants": 1.0,
+  "short_answer_with_trailing_period": 23076
+ },
+ "diversity_after": {
+  "n": 197036,
+  "distinct_instruction_templates": 103084,
+  "distinct_first3": 13949,
+  "first3_entropy_bits": 7.609,
+  "distinct_tail_clauses": 52976,
+  "tail_clause_entropy_bits": 10.47,
+  "format_distribution": {
+   "original": 84507,
+   "short": 40195,
+   "json": 24057,
+   "sentence": 21801,
+   "reasoned": 13514,
+   "number": 9310,
+   "yes_no": 2640,
+   "grounded": 527,
+   "mcq_index": 485
+  },
+  "format_entropy_bits": 2.314,
+  "mean_answer_variants": 1.658,
+  "short_answer_with_trailing_period": 0
+ },
+ "diversity_by_source": {
+  "ai2d": {
+   "templates_before": 802,
+   "templates_after": 2398,
+   "tail_clause_entropy_before": 9.573,
+   "tail_clause_entropy_after": 8.971,
+   "formats_after": {
+    "original": 809,
+    "short": 591,
+    "mcq_index": 485,
+    "sentence": 256,
+    "json": 249,
+    "number": 18,
+    "yes_no": 1
+   }
+  },
+  "chartqa": {
+   "templates_before": 1486,
+   "templates_after": 4498,
+   "tail_clause_entropy_before": 10.526,
+   "tail_clause_entropy_after": 9.678,
+   "formats_after": {
+    "original": 1511,
+    "short": 1023,
+    "json": 818,
+    "sentence": 754,
+    "number": 407,
+    "yes_no": 16
+   }
+  },
+  "charxiv": {
+   "templates_before": 1000,
+   "templates_after": 2986,
+   "tail_clause_entropy_before": 9.966,
+   "tail_clause_entropy_after": 9.161,
+   "formats_after": {
+    "original": 1000,
+    "short": 731,
+    "json": 533,
+    "sentence": 515,
+    "number": 196,
+    "yes_no": 11
+   }
+  },
+  "cord": {
+   "templates_before": 1,
+   "templates_after": 196,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 4.89,
+   "formats_after": {
+    "original": 264,
+    "reasoned": 111,
+    "short": 105,
+    "number": 47,
+    "sentence": 35,
+    "json": 28
+   }
+  },
+  "doclaynet": {
+   "templates_before": 1,
+   "templates_after": 241,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 4.666,
+   "formats_after": {
+    "original": 2157,
+    "reasoned": 1629,
+    "short": 1024,
+    "number": 712,
+    "sentence": 481,
+    "json": 468
+   }
+  },
+  "docmatix": {
+   "templates_before": 6765,
+   "templates_after": 6816,
+   "tail_clause_entropy_before": 12.581,
+   "tail_clause_entropy_after": 12.585,
+   "formats_after": {
+    "original": 7153,
+    "short": 47,
+    "number": 2,
+    "yes_no": 2
+   }
+  },
+  "docvqa": {
+   "templates_before": 1114,
+   "templates_after": 3457,
+   "tail_clause_entropy_before": 9.82,
+   "tail_clause_entropy_after": 9.459,
+   "formats_after": {
+    "original": 1303,
+    "short": 1038,
+    "json": 656,
+    "sentence": 641,
+    "number": 120,
+    "yes_no": 3
+   }
+  },
+  "dvqa": {
+   "templates_before": 1770,
+   "templates_after": 6291,
+   "tail_clause_entropy_before": 3.459,
+   "tail_clause_entropy_after": 7.24,
+   "formats_after": {
+    "original": 7497,
+    "short": 5759,
+    "sentence": 3936,
+    "json": 3897,
+    "number": 1043,
+    "yes_no": 347
+   }
+  },
+  "funsd": {
+   "templates_before": 8,
+   "templates_after": 40,
+   "tail_clause_entropy_before": 0.887,
+   "tail_clause_entropy_after": 4.055,
+   "formats_after": {
+    "original": 86,
+    "short": 19,
+    "reasoned": 18,
+    "json": 6,
+    "grounded": 5,
+    "sentence": 5
+   }
+  },
+  "hallusionbench": {
+   "templates_before": 167,
+   "templates_after": 814,
+   "tail_clause_entropy_before": 7.286,
+   "tail_clause_entropy_after": 7.407,
+   "formats_after": {
+    "original": 333,
+    "short": 168,
+    "reasoned": 138,
+    "json": 123,
+    "yes_no": 121,
+    "sentence": 116
+   }
+  },
+  "iam": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1500
+   }
+  },
+  "im2latex": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1500
+   }
+  },
+  "infovqa": {
+   "templates_before": 521,
+   "templates_after": 1560,
+   "tail_clause_entropy_before": 9.025,
+   "tail_clause_entropy_after": 8.818,
+   "formats_after": {
+    "original": 525,
+    "short": 399,
+    "sentence": 268,
+    "json": 241,
+    "number": 132
+   }
+  },
+  "latexocr": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1499
+   }
+  },
+  "mathvista": {
+   "templates_before": 768,
+   "templates_after": 2458,
+   "tail_clause_entropy_before": 9.296,
+   "tail_clause_entropy_after": 9.044,
+   "formats_after": {
+    "original": 901,
+    "short": 615,
+    "json": 458,
+    "sentence": 431,
+    "number": 196,
+    "yes_no": 84
+   }
+  },
+  "mtvqa": {
+   "templates_before": 4085,
+   "templates_after": 11513,
+   "tail_clause_entropy_before": 11.773,
+   "tail_clause_entropy_after": 10.656,
+   "formats_after": {
+    "original": 4829,
+    "short": 3709,
+    "json": 3192,
+    "sentence": 823,
+    "number": 75,
+    "yes_no": 1
+   }
+  },
+  "ocrbench": {
+   "templates_before": 357,
+   "templates_after": 1222,
+   "tail_clause_entropy_before": 5.167,
+   "tail_clause_entropy_after": 6.81,
+   "formats_after": {
+    "original": 954,
+    "short": 419,
+    "sentence": 282,
+    "json": 278,
+    "number": 61,
+    "yes_no": 4
+   }
+  },
+  "ocrbench_v2": {
+   "templates_before": 778,
+   "templates_after": 1996,
+   "tail_clause_entropy_before": 5.593,
+   "tail_clause_entropy_after": 7.022,
+   "formats_after": {
+    "original": 1449,
+    "short": 711,
+    "json": 282,
+    "sentence": 260,
+    "number": 15,
+    "yes_no": 1
+   }
+  },
+  "ocrvqa": {
+   "templates_before": 67,
+   "templates_after": 2282,
+   "tail_clause_entropy_before": 4.588,
+   "tail_clause_entropy_after": 6.896,
+   "formats_after": {
+    "original": 7115,
+    "short": 4634,
+    "sentence": 2427,
+    "json": 2292,
+    "reasoned": 1771,
+    "yes_no": 1506,
+    "grounded": 235
+   }
+  },
+  "omnidocbench": {
+   "templates_before": 1,
+   "templates_after": 484,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 5.234,
+   "formats_after": {
+    "original": 5410,
+    "reasoned": 2798,
+    "short": 1888,
+    "number": 1059,
+    "sentence": 936,
+    "json": 840,
+    "grounded": 287
+   }
+  },
+  "plotqa": {
+   "templates_before": 5207,
+   "templates_after": 15892,
+   "tail_clause_entropy_before": 3.458,
+   "tail_clause_entropy_after": 7.728,
+   "formats_after": {
+    "original": 7500,
+    "short": 4744,
+    "json": 3848,
+    "sentence": 3765,
+    "number": 2182,
+    "yes_no": 461
+   }
+  },
+  "publaynet": {
+   "templates_before": 1,
+   "templates_after": 171,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 4.51,
+   "formats_after": {
+    "original": 1998,
+    "reasoned": 1500,
+    "short": 1006,
+    "number": 638,
+    "sentence": 438,
+    "json": 414
+   }
+  },
+  "pubtabnet": {
+   "templates_before": 1,
+   "templates_after": 230,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 6.985,
+   "formats_after": {
+    "original": 3971,
+    "reasoned": 1865,
+    "short": 1415,
+    "json": 588,
+    "sentence": 567,
+    "number": 488,
+    "yes_no": 2
+   }
+  },
+  "rvl_cdip": {
+   "templates_before": 1,
+   "templates_after": 41,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": 3.219,
+   "formats_after": {
+    "original": 1460,
+    "short": 1332,
+    "sentence": 804,
+    "json": 784
+   }
+  },
+  "screenqa": {
+   "templates_before": 913,
+   "templates_after": 2585,
+   "tail_clause_entropy_before": 8.939,
+   "tail_clause_entropy_after": 7.953,
+   "formats_after": {
+    "original": 1491,
+    "reasoned": 1211,
+    "short": 467,
+    "sentence": 219,
+    "json": 204
+   }
+  },
+  "sroie": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1500
+   }
+  },
+  "stvqa": {
+   "templates_before": 1909,
+   "templates_after": 5530,
+   "tail_clause_entropy_before": 2.999,
+   "tail_clause_entropy_after": 7.337,
+   "formats_after": {
+    "original": 1950,
+    "short": 1526,
+    "sentence": 1011,
+    "json": 1005,
+    "number": 124
+   }
+  },
+  "synthdog_en": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1500
+   }
+  },
+  "synthdog_ko": {
+   "templates_before": 1,
+   "templates_after": 1,
+   "tail_clause_entropy_before": -0.0,
+   "tail_clause_entropy_after": -0.0,
+   "formats_after": {
+    "original": 1500
+   }
+  },
+  "tatqa": {
+   "templates_before": 7225,
+   "templates_after": 19445,
+   "tail_clause_entropy_before": 8.122,
+   "tail_clause_entropy_after": 8.002,
+   "formats_after": {
+    "original": 7495,
+    "short": 3972,
+    "reasoned": 2473,
+    "json": 2121,
+    "sentence": 2048,
+    "number": 1690,
+    "yes_no": 1
+   }
+  },
+  "textvqa": {
+   "templates_before": 1400,
+   "templates_after": 4181,
+   "tail_clause_entropy_before": 10.407,
+   "tail_clause_entropy_after": 9.669,
+   "formats_after": {
+    "original": 1477,
+    "short": 1181,
+    "sentence": 783,
+    "json": 732,
+    "number": 75,
+    "yes_no": 25
+   }
+  },
+  "visualmrc": {
+   "templates_before": 4698,
+   "templates_after": 6449,
+   "tail_clause_entropy_before": 12.164,
+   "tail_clause_entropy_after": 11.862,
+   "formats_after": {
+    "original": 4870,
+    "short": 1672,
+    "yes_no": 54,
+    "number": 30
+   }
+  }
+ }
+}
