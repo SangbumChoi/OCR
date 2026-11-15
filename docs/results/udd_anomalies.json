@@ -1,0 +1,600 @@
+{
+ "n_rows": 39837,
+ "anomalies": [
+  {
+   "id": "G1",
+   "family": "gold",
+   "title": "Derivation embedded in the gold answer",
+   "impact": "The scored gold is '74.5-26.0\\nAnswer: 48.5.', so a correct '48.5' scores as wrong.",
+   "handling": "Split at 'Answer:'; the derivation becomes the rationale, the gold is repaired.",
+   "status": "fixed_in_derived",
+   "hits": 3057,
+   "rows": 1453,
+   "by_source": {
+    "tatqa": 3051,
+    "docmatix": 6
+   },
+   "examples": [
+    {
+     "sample_id": "docmatix_0405_0",
+     "detail": "The team at One80 Intermediaries has provided comprehensive "
+    },
+    {
+     "sample_id": "docmatix_0667_0",
+     "detail": "What is the topic of the first section of the document?"
+    },
+    {
+     "sample_id": "tatqa_0000_0",
+     "detail": "(2.9+2.9)/2"
+    }
+   ]
+  },
+  {
+   "id": "G2",
+   "family": "gold",
+   "title": "Stray trailing period on a short gold",
+   "impact": "Exact-match scoring fails on 'Mean' vs 'Mean.'; models learn to emit the period.",
+   "handling": "Canonical gold strips it; the original form stays an accepted variant.",
+   "status": "fixed_in_derived",
+   "hits": 23076,
+   "rows": 6719,
+   "by_source": {
+    "plotqa": 7500,
+    "dvqa": 7497,
+    "tatqa": 4813,
+    "stvqa": 1809,
+    "visualmrc": 873,
+    "mtvqa": 281,
+    "screenqa": 142,
+    "ocrbench": 57,
+    "iam": 46,
+    "sroie": 23,
+    "docvqa": 13,
+    "ai2d": 7,
+    "docmatix": 4,
+    "ocrvqa": 4,
+    "charxiv": 3,
+    "textvqa": 2,
+    "mathvista": 1,
+    "omnidocbench": 1
+   },
+   "examples": [
+    {
+     "sample_id": "ai2d_0001_0",
+     "detail": "Fish population would decrease."
+    },
+    {
+     "sample_id": "ai2d_0035_0",
+     "detail": "The process of growing."
+    },
+    {
+     "sample_id": "ai2d_0311_0",
+     "detail": "Grasshoppers will decrease."
+    }
+   ]
+  },
+  {
+   "id": "G3",
+   "family": "gold",
+   "title": "Markdown heading marks in title text",
+   "impact": "A derived title gold '# Suitability of Cubic Splines' asks for a '#' that is not on the page.",
+   "handling": "Leading '#' marks are stripped from derived title golds.",
+   "status": "fixed_in_derived",
+   "hits": 351,
+   "rows": 160,
+   "by_source": {
+    "omnidocbench": 351
+   },
+   "examples": [
+    {
+     "sample_id": "omnidocbench_0005_0",
+     "detail": "## 3.3.2.3【轴心加单调类型】"
+    },
+    {
+     "sample_id": "omnidocbench_0006_0",
+     "detail": "## （二）$ { n }$母线系统"
+    },
+    {
+     "sample_id": "omnidocbench_0009_0",
+     "detail": "# 7.1 模型建立"
+    }
+   ]
+  },
+  {
+   "id": "G4",
+   "family": "gold",
+   "title": "Abstain token as the gold",
+   "impact": "'<no answer>' re-rendered as a sentence or JSON would teach the model to invent a value.",
+   "handling": "Abstain golds keep only the original form (no format variants).",
+   "status": "gated",
+   "hits": 86,
+   "rows": 86,
+   "by_source": {
+    "screenqa": 60,
+    "ocrbench_v2": 26
+   },
+   "examples": [
+    {
+     "sample_id": "ocrbench_v2_0032_0",
+     "detail": "<no answer>"
+    },
+    {
+     "sample_id": "ocrbench_v2_0034_0",
+     "detail": "<no answer>"
+    },
+    {
+     "sample_id": "ocrbench_v2_0041_0",
+     "detail": "<no answer>"
+    }
+   ]
+  },
+  {
+   "id": "B1",
+   "family": "geometry",
+   "title": "Pixel box outside the stored image (pre-resize frame)",
+   "impact": "Boxes point off-image or at the wrong place; 'top-right' and grounded targets are wrong.",
+   "handling": "Loader normalizes pixel boxes before resizing; rationales ignore pixel boxes until rebuild.",
+   "status": "fixed_in_loader",
+   "hits": 2078,
+   "rows": 894,
+   "by_source": {
+    "screenqa": 1163,
+    "cord": 915
+   },
+   "examples": [
+    {
+     "sample_id": "cord_0001_0",
+     "detail": "[685, 675, 824, 712] on 750x1000"
+    },
+    {
+     "sample_id": "cord_0002_0",
+     "detail": "[672, 652, 746, 678] on 667x1000"
+    },
+    {
+     "sample_id": "cord_0003_0",
+     "detail": "[579, 755, 687, 803] on 667x1000"
+    }
+   ]
+  },
+  {
+   "id": "B2",
+   "family": "geometry",
+   "title": "Answer word recurs far from the title (tagline, spine)",
+   "impact": "The evidence box unions both places and covers the whole cover; position text is wrong.",
+   "handling": "Take each word's occurrence nearest the largest hit; drop matches more than 40% away.",
+   "status": "fixed_in_derived",
+   "hits": 151,
+   "rows": 120,
+   "by_source": {
+    "ocrvqa": 151
+   },
+   "examples": [
+    {
+     "sample_id": "ocrvqa_0000_0",
+     "detail": "'doku' at y=0.31 and y=0.90"
+    },
+    {
+     "sample_id": "ocrvqa_0031_0",
+     "detail": "'crossan' at y=0.02 and y=0.88"
+    },
+    {
+     "sample_id": "ocrvqa_0063_0",
+     "detail": "'general' at y=0.29 and y=0.86"
+    }
+   ]
+  },
+  {
+   "id": "B3",
+   "family": "geometry",
+   "title": "Title/author not found in the cover OCR",
+   "impact": "The answer cannot be grounded; any 'evidence' would be invented.",
+   "handling": "No rationale when fewer than 60% of the answer's key words are in the OCR.",
+   "status": "gated",
+   "hits": 1229,
+   "rows": 941,
+   "by_source": {
+    "ocrvqa": 1229
+   },
+   "examples": [
+    {
+     "sample_id": "ocrvqa_0000_0",
+     "detail": "The Times Mind Games"
+    },
+    {
+     "sample_id": "ocrvqa_0001_0",
+     "detail": "Collins UK"
+    },
+    {
+     "sample_id": "ocrvqa_0005_0",
+     "detail": "Building Strong Brands"
+    }
+   ]
+  },
+  {
+   "id": "C1",
+   "family": "convention",
+   "title": "PubLayNet 'Title' also labels figure tags",
+   "impact": "'How many titles?' gets a count no reader would give (figure labels counted as titles).",
+   "handling": "Title counts are not asked for PubLayNet; unambiguous classes only.",
+   "status": "skipped_by_design",
+   "hits": 43,
+   "rows": 31,
+   "by_source": {
+    "publaynet": 43
+   },
+   "examples": [
+    {
+     "sample_id": "publaynet_0002_0",
+     "detail": "Title at y=0.10 on a figure"
+    },
+    {
+     "sample_id": "publaynet_0003_0",
+     "detail": "Title at y=0.10 on a figure"
+    },
+    {
+     "sample_id": "publaynet_0004_0",
+     "detail": "Title at y=0.10 on a figure"
+    }
+   ]
+  },
+  {
+   "id": "C2",
+   "family": "convention",
+   "title": "Table with merged cells (row/col spans)",
+   "impact": "A naive (row, column) lookup reads the wrong cell under a spanning header.",
+   "handling": "Cell-lookup questions are only derived from span-free tables.",
+   "status": "skipped_by_design",
+   "hits": 575,
+   "rows": 575,
+   "by_source": {
+    "pubtabnet": 575
+   },
+   "examples": [
+    {
+     "sample_id": "pubtabnet_0000_0",
+     "detail": "spans"
+    },
+    {
+     "sample_id": "pubtabnet_0002_0",
+     "detail": "spans"
+    },
+    {
+     "sample_id": "pubtabnet_0004_0",
+     "detail": "spans"
+    }
+   ]
+  },
+  {
+   "id": "C3",
+   "family": "convention",
+   "title": "Receipt amounts that do not add up",
+   "impact": "A subtotal/total rationale would assert arithmetic the receipt does not satisfy.",
+   "handling": "Arithmetic QAs are emitted only when the printed values satisfy the relation.",
+   "status": "skipped_by_design",
+   "hits": 4,
+   "rows": 4,
+   "by_source": {
+    "cord": 4
+   },
+   "examples": [
+    {
+     "sample_id": "cord_0026_0",
+     "detail": "sum 130000 != subtotal 138000"
+    },
+    {
+     "sample_id": "cord_0031_0",
+     "detail": "sum 171000 != subtotal 85500"
+    },
+    {
+     "sample_id": "cord_0033_0",
+     "detail": "sum 184500 != subtotal 117500"
+    }
+   ]
+  },
+  {
+   "id": "R1",
+   "family": "rationale",
+   "title": "Source rationale only restates the question",
+   "impact": "A 'Reasoning:' target that adds no evidence teaches the model to paraphrase, not to look.",
+   "handling": "Gate rejects it (fewer than 1 new content word); moved to reasoning_rejected.",
+   "status": "gated",
+   "hits": 125,
+   "rows": 125,
+   "by_source": {
+    "hallusionbench": 125
+   },
+   "examples": [
+    {
+     "sample_id": "hallusionbench_0007_0",
+     "detail": "According to the image, in 2019,Asian families have the high"
+    },
+    {
+     "sample_id": "hallusionbench_0011_0",
+     "detail": "the main policy interest rates of the U.S. Central Bank were"
+    },
+    {
+     "sample_id": "hallusionbench_0013_0",
+     "detail": "Harry Kane was the top goalscorer of the 2018 FIFA World Cup"
+    }
+   ]
+  },
+  {
+   "id": "R2",
+   "family": "rationale",
+   "title": "Rationale opens with the PAIRED question's verdict",
+   "impact": "'Yes. Hong Kong was the largest…' under gold 'no' would train a self-contradicting chain.",
+   "handling": "The leading verdict is stripped and the remaining evidence is re-gated.",
+   "status": "fixed_in_derived",
+   "hits": 3,
+   "rows": 3,
+   "by_source": {
+    "hallusionbench": 3
+   },
+   "examples": [
+    {
+     "sample_id": "hallusionbench_0021_0",
+     "detail": "Yes. According to the image, in 2013, Hong Kong was the larg"
+    },
+    {
+     "sample_id": "hallusionbench_0037_0",
+     "detail": "Yes. In 2020, China have a larger population aged between 90"
+    },
+    {
+     "sample_id": "hallusionbench_0290_0",
+     "detail": "No, all the characters in this figure are from The Story of "
+    }
+   ]
+  },
+  {
+   "id": "R3",
+   "family": "rationale",
+   "title": "Derivation text without values (a plan, not evidence)",
+   "impact": "'Obtained from the table' / 'Find the year with the higher …' cites nothing on the page.",
+   "handling": "Dropped as a rationale; the gold is still repaired.",
+   "status": "gated",
+   "hits": 15,
+   "rows": 11,
+   "by_source": {
+    "tatqa": 15
+   },
+   "examples": [
+    {
+     "sample_id": "tatqa_0107_0",
+     "detail": "Obtained from the table"
+    },
+    {
+     "sample_id": "tatqa_0133_0",
+     "detail": "Find the year with the higher total deferred tax assets"
+    },
+    {
+     "sample_id": "tatqa_0545_0",
+     "detail": "Find the year with the higiher share-based payment reserve"
+    }
+   ]
+  },
+  {
+   "id": "R4",
+   "family": "rationale",
+   "title": "Count derivation listed with '##' separators",
+   "impact": "'Kefir ## Cheese ## Cream … → 6' looks like free text; split on ',' or 'and' it miscounts.",
+   "handling": "Items are split on '##' (else ';' / ','), never on 'and'; the count is then verified.",
+   "status": "fixed_in_derived",
+   "hits": 109,
+   "rows": 107,
+   "by_source": {
+    "tatqa": 109
+   },
+   "examples": [
+    {
+     "sample_id": "tatqa_0002_0",
+     "detail": "Drinkable Kefir other than ProBugs ## Cheese ## Cream and ot"
+    },
+    {
+     "sample_id": "tatqa_0041_0",
+     "detail": "The netherlands##united states##australia##philippines##indi"
+    },
+    {
+     "sample_id": "tatqa_0042_0",
+     "detail": "2020##2019"
+    }
+   ]
+  },
+  {
+   "id": "I1",
+   "family": "instruction",
+   "title": "Brevity suffix that conflicts with a new format clause",
+   "impact": "'Offer a terse response. Respond with a full sentence.' is an impossible instruction.",
+   "handling": "The 18 measured the_cauldron suffixes (and near-variants) are stripped first.",
+   "status": "fixed_in_derived",
+   "hits": 17003,
+   "rows": 4500,
+   "by_source": {
+    "plotqa": 7500,
+    "dvqa": 7497,
+    "stvqa": 1950,
+    "ocrbench": 56
+   },
+   "examples": [
+    {
+     "sample_id": "dvqa_0000_0",
+     "detail": "Offer a terse response."
+    },
+    {
+     "sample_id": "dvqa_0001_0",
+     "detail": "Keep it short and to the point."
+    },
+    {
+     "sample_id": "dvqa_0002_0",
+     "detail": "Ensure brevity in your answer."
+    }
+   ]
+  },
+  {
+   "id": "I2",
+   "family": "instruction",
+   "title": "Non-English question",
+   "impact": "An English answer template ('The answer is 午前9時…') produces mixed-language targets.",
+   "handling": "Sentence-format variants require an English question.",
+   "status": "gated",
+   "hits": 3424,
+   "rows": 1469,
+   "by_source": {
+    "mtvqa": 2959,
+    "ocrbench_v2": 399,
+    "mathvista": 64,
+    "visualmrc": 2
+   },
+   "examples": [
+    {
+     "sample_id": "mathvista_0002_0",
+     "detail": "△ABC的两内角平分线OB、OC相交于点O，若∠A＝110°"
+    },
+    {
+     "sample_id": "mathvista_0008_0",
+     "detail": "如图是一株美丽的勾股树，其中所有四边形都是正方形，所有的三角"
+    },
+    {
+     "sample_id": "mathvista_0016_0",
+     "detail": "如图，在Rt△ABC中，∠ACB＝90°，D是AB的中点，A"
+    }
+   ]
+  },
+  {
+   "id": "I3",
+   "family": "instruction",
+   "title": "Unnumbered inline option list inside a sentence",
+   "impact": "Parsed as an 'Options:' list, the whole sentence tail becomes one fake option.",
+   "handling": "Only a line-initial 'Options:' list counts; inline lists get no option-number variant.",
+   "status": "fixed_in_derived",
+   "hits": 201,
+   "rows": 201,
+   "by_source": {
+    "ocrbench_v2": 200,
+    "tatqa": 1
+   },
+   "examples": [
+    {
+     "sample_id": "ocrbench_v2_0300_0",
+     "detail": "ectly output the results without any additional explanation."
+    },
+    {
+     "sample_id": "ocrbench_v2_0301_0",
+     "detail": "ectly output the results without any additional explanation."
+    },
+    {
+     "sample_id": "ocrbench_v2_0302_0",
+     "detail": "ectly output the results without any additional explanation."
+    }
+   ]
+  },
+  {
+   "id": "N1",
+   "family": "number",
+   "title": "Dot as thousands separator ('60.000')",
+   "impact": "Read as 60.0, receipt arithmetic and 'most expensive item' come out wrong.",
+   "handling": "parse_number reads 3-digit dot groups as thousands for receipts (not for TAT-QA).",
+   "status": "fixed_in_derived",
+   "hits": 171,
+   "rows": 33,
+   "by_source": {
+    "cord": 171
+   },
+   "examples": [
+    {
+     "sample_id": "cord_0000_0",
+     "detail": "60.000"
+    },
+    {
+     "sample_id": "cord_0005_0",
+     "detail": "28.182"
+    },
+    {
+     "sample_id": "cord_0013_0",
+     "detail": "43.636"
+    }
+   ]
+  },
+  {
+   "id": "N2",
+   "family": "number",
+   "title": "Accounting negative in a derivation ('(6,919)')",
+   "impact": "Evaluated as +6919, '7,572 - (6,919)' gives 653 instead of the gold 14,491.",
+   "handling": "safe_eval reads a parenthesized bare number as negative.",
+   "status": "fixed_in_derived",
+   "hits": 5,
+   "rows": 4,
+   "by_source": {
+    "tatqa": 5
+   },
+   "examples": [
+    {
+     "sample_id": "tatqa_0021_0",
+     "detail": "7,572 - (6,919) "
+    },
+    {
+     "sample_id": "tatqa_0239_0",
+     "detail": "(2,253) - (2,835) "
+    },
+    {
+     "sample_id": "tatqa_0489_0",
+     "detail": "4,798,201-(3,308,826)"
+    }
+   ]
+  },
+  {
+   "id": "N3",
+   "family": "number",
+   "title": "Percent used as a fraction ('65% * 3,433')",
+   "impact": "Dropping '%' gives 223,145 instead of 2,231.45; the derivation looks wrong when it is right.",
+   "handling": "Both readings (percentage points, fraction) are tried; the one matching the gold is kept.",
+   "status": "fixed_in_derived",
+   "hits": 10,
+   "rows": 9,
+   "by_source": {
+    "tatqa": 10
+   },
+   "examples": [
+    {
+     "sample_id": "tatqa_0270_0",
+     "detail": "65% * 3,433 "
+    },
+    {
+     "sample_id": "tatqa_0488_0",
+     "detail": "988,000 * 50% "
+    },
+    {
+     "sample_id": "tatqa_0537_0",
+     "detail": "75,384,947/3.9% "
+    }
+   ]
+  },
+  {
+   "id": "N4",
+   "family": "number",
+   "title": "Decimal with a leading zero and 3 decimals ('0.039')",
+   "impact": "A thousands-separator rule reads it as 39.",
+   "handling": "Thousands groups must start with a non-zero digit.",
+   "status": "fixed_in_derived",
+   "hits": 10,
+   "rows": 10,
+   "by_source": {
+    "charxiv": 8,
+    "docvqa": 2
+   },
+   "examples": [
+    {
+     "sample_id": "charxiv_0262_0",
+     "detail": "0.025"
+    },
+    {
+     "sample_id": "charxiv_0314_0",
+     "detail": "0.000"
+    },
+    {
+     "sample_id": "charxiv_0424_0",
+     "detail": "0.421"
+    }
+   ]
+  }
+ ]
+}

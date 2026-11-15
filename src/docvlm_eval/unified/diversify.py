@@ -136,7 +136,9 @@ _FORMAT_CLAUSE = re.compile(
     r"|answer concisely[^.\n]*\.?"
     r"|answer with (?:the|a) (?:single )?(?:word|phrase|text|value)[^.\n]*\.?"
     r")\s*$", re.IGNORECASE)
-_OPTIONS = re.compile(r"Options:\s*(.+)$", re.IGNORECASE | re.DOTALL)
+# only an "Options:" list that starts a line / follows a "|" — not "Here's some options: a, b"
+# inside a sentence (OCRBench v2), whose unnumbered inline list is not an option list
+_OPTIONS = re.compile(r"(?:^|\n|\|)\s*Options:\s*(.+)$", re.IGNORECASE | re.DOTALL)
 
 
 # The 18 brevity suffixes the_cauldron appends (measured over all UDD rows: DVQA, PlotQA, ST-VQA,

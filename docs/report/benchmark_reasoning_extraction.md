@@ -22,7 +22,7 @@ examples per source in [`../results/udd_reasoning_preview.md`](../results/udd_re
 | | before | after |
 | --- | --- | --- |
 | QAs | 76,730 | 86,391 (+9,661 derived QAs, each with a rationale) |
-| QAs with a rationale | 325 | **16,235** |
+| QAs with a rationale | 325 | **16,279** |
 | corrupted golds repaired | — | 3,057 (TAT-QA 3,051, Docmatix 6) |
 | short golds with a stray trailing period ("Mean.") | 23,076 | 0 |
 | (instruction, answer) training variants | 76,730 | 193,609 |
@@ -73,7 +73,7 @@ them are in the config.
 
 | source | material in UDD | rationale recipe | tier | QAs with rationale (derived) |
 | --- | --- | --- | --- | --- |
-| **tatqa** | the answer string *contains* the original derivation: `"74.5-26.0\nAnswer: 48.5."` | split it out, **repair the gold** to `48.5`, and evaluate the expression with a safe evaluator (accounting negatives `(6,919)`, both percent readings, `scale: percent` ×100). Count derivations (`2019\nAnswer: 1.`) are checked by counting. Plan-only text ("Find the year with …") is dropped. | `source_verified` (2,513) / `source` (479) | 2,992 |
+| **tatqa** | the answer string *contains* the original derivation: `"74.5-26.0\nAnswer: 48.5."` | split it out, **repair the gold** to `48.5`, and evaluate the expression with a safe evaluator (accounting negatives `(6,919)`, both percent readings, `scale: percent` ×100). Count derivations (`2019\nAnswer: 1.`, `A ## B ## C\nAnswer: 3.`) are checked by counting the items (split on `##`, else `;`/`,`, never on "and"). Plan-only text ("Find the year with …") is dropped. | `source_verified` (2,620) / `source` (416) | 3,036 |
 | **hallusionbench** | `gt_answer_details` (already in `reasoning`) | gate. Some details open with the verdict of the *paired* question ("Yes. In 2013, Hong Kong was the largest …" under a question about the United States, gold "no"): only that leading verdict is stripped, and the rest is re-gated. 125 restate the question and are moved aside. | `source` | 200 |
 | **cord** | the full receipt parse as the KIE gold | subtotal = Σ line prices; total = subtotal + tax + service − discount; change = cash − total; most expensive item. **Emitted only when the printed numbers satisfy the relation.** Handles `60.000`-style thousands. | `derived_exact` | 164 (164) |
 | **funsd** | the KIE gold is the source key→value linking, plus word boxes with BIO tags | merge BIO words into entities, ground both the key and the value, and state the relation ("to the right of the label") | `derived_exact` | 24 (24) |
@@ -92,7 +92,7 @@ them are in the config.
 
 **Takeaway:** checkable rationales come from **structure**, not from QA pairs. The six sources
 with structure in UDD (receipt parse, form links, OCR words, UI elements, tables, layout) produce
-almost all of the 16.2k. The biggest remaining wins are upstream: keep ChartQA tables, InfoVQA
+almost all of the 16.3k. The biggest remaining wins are upstream: keep ChartQA tables, InfoVQA
 operation labels and OCR, TextVQA OCR tokens and CharXiv descriptive QAs in the extractors. That
 would make up to 19,510 more QAs (ChartQA, DVQA, PlotQA, InfoVQA, TextVQA, CharXiv) eligible for
 verified rationales.
@@ -129,6 +129,9 @@ Rendering these panels exposed three of the issues in §4.
 | ![DVQA (answer-only)](figures/udd_reasoning/dvqa.jpg) | ![AI2D (answer-only)](figures/udd_reasoning/ai2d.jpg) |
 
 ## 4. Data-quality issues found along the way
+
+The complete, measured list (21 cases in 6 families, each with a detector) is in
+[`udd_anomaly_catalogue.md`](udd_anomaly_catalogue.md). The main ones:
 
 | issue | scale | fix |
 | --- | --- | --- |
@@ -180,8 +183,8 @@ config plus the corpus fully determines the output. Per-source overrides cover r
 (1 variant) and long free-text sources (no sentence/json), and give TAT-QA more weight on
 `reasoned`.
 
-Resulting format mix over the corpus: original 83,434 · short 39,697 · json 23,863 · sentence
-21,596 · reasoned 12,430 · number 8,963 · yes_no 2,640 · grounded 501 · mcq_index 485.
+Resulting format mix over the corpus: original 83,434 · short 39,691 · json 23,851 · sentence
+21,582 · reasoned 12,468 · number 8,957 · yes_no 2,640 · grounded 501 · mcq_index 485.
 
 ## 6. Usage
 
@@ -201,6 +204,10 @@ Outputs:
   has `question`, `answers`, `metric`, and `meta.{format, final_answers, reasoning_provenance, fold}`.
   It is keyed to its image by `udd_sample_id`.
 - `docs/results/udd_reasoning_stats.json` and `docs/results/udd_reasoning_preview.md`.
+- `scripts/audit_udd_anomalies.py` counts the 21 catalogued row anomalies
+  ([`udd_anomaly_catalogue.md`](udd_anomaly_catalogue.md)), and
+  `scripts/make_udd_intro_video.py` renders a ~2-minute silent intro video (1920×1080 MP4) from the
+  panels and both stats files into the git-ignored `examples/udd_reasoning/`.
 
 **Caveats.**
 
@@ -217,7 +224,7 @@ UDD held-out fold, answer-only:
 
 1. **Repair only vs original golds** (TAT-QA, DVQA/PlotQA periods). This measures how much the
    corrupted golds were costing.
-2. **`reasoned` vs answer-only** on the 16.2k rationale QAs, split by tier. Does `derived_exact`
+2. **`reasoned` vs answer-only** on the 16.3k rationale QAs, split by tier. Does `derived_exact`
    help as much as `source_verified`? Does `evidence_match` help at all?
 3. **Format diversity on vs off** (`variants_per_qa` 0 / 2 / 4). Check instruction-following on
    unseen clause wordings, and whether diversity costs accuracy on the original prompts.

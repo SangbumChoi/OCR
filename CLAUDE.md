@@ -37,7 +37,9 @@ the public-data ablation arms are composed by `scripts/run_udd_ablation.py`
 (tiered `reasoning_provenance`, quality-gated, never invented), and instruction/answer variants
 are format-bound and config-driven: `unified/rationale.py`, `unified/diversify.py`,
 `configs/instruction_diversity.yaml`, `scripts/derive_udd_reasoning.py`; see
-`docs/report/benchmark_reasoning_extraction.md`.
+`docs/report/benchmark_reasoning_extraction.md`. The measured catalogue of row anomalies (21 cases, each with a
+detector in `unified/anomalies.py`, counted by `scripts/audit_udd_anomalies.py`) is
+`docs/report/udd_anomaly_catalogue.md`.
 
 ## Attention backend
 

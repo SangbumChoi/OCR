@@ -227,6 +227,18 @@ def deriver(*sources: str):
 _ANSWER_SPLIT = re.compile(r"\n\s*Answer:\s*", re.IGNORECASE)
 
 
+def tatqa_items(deriv: str) -> list[str]:
+    """Items of a TAT-QA count derivation: '##'-separated multi-span lists ('A ## B ## C'), else
+    ';' or ',' lists ('2019, 2018'). Never split on 'and' — items contain it ('Cost of hardware
+    and other revenue' is ONE item)."""
+    sep = r"##" if "##" in deriv else (r";" if ";" in deriv else r",")
+    return [x.strip() for x in re.split(sep, deriv) if x.strip()]
+
+
+def tatqa_has_op(deriv: str) -> bool:
+    return bool(re.search(r"[\d)%]\s*[-+*/×÷]\s*[\d($]", deriv))
+
+
 @deriver("tatqa")
 def _tatqa(row: dict) -> list[Rationale]:
     """TAT-QA (via the_cauldron) ships its derivation INSIDE the answer: '74.5-26.0\\nAnswer: 48.5.'.
@@ -241,8 +253,8 @@ def _tatqa(row: dict) -> list[Rationale]:
         if not (deriv and final):
             continue
         gold = parse_number(final, dot_thousands=False)
-        items = [x.strip() for x in re.split(r",|;|\band\b", deriv) if x.strip()]
-        has_op = bool(re.search(r"[\d)%]\s*[-+*/×÷]\s*[\d($]", deriv))
+        items = tatqa_items(deriv)
+        has_op = tatqa_has_op(deriv)
         if not has_op and gold is not None and float(len(items)) == gold and gold >= 1:
             out.append(Rationale(f"The qualifying entries are {', '.join(items)}; counting them gives {final}.",
                                  "source_verified", "count", items, i, repaired_answer=final,

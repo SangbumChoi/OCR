@@ -297,7 +297,7 @@
    "qas_before": 7495,
    "qas_after": 7495,
    "reasoning_before": 0,
-   "reasoning_after": 2992,
+   "reasoning_after": 3036,
    "answers_repaired": 3051,
    "derived_qas": 0,
    "variants": 19800
@@ -356,8 +356,8 @@
    "evidence_match": 1338
   },
   "tatqa": {
-   "source_verified": 2513,
-   "source": 479
+   "source_verified": 2620,
+   "source": 416
   }
  },
  "rejected": {
@@ -371,7 +371,7 @@
    "pubtabnet_rows:too_long": 2
   },
   "tatqa": {
-   "tatqa_span:derivation_without_values": 59
+   "tatqa_span:derivation_without_values": 15
   }
  },
  "diversity_before": {
@@ -393,15 +393,15 @@
   "distinct_instruction_templates": 103083,
   "distinct_first3": 13949,
   "first3_entropy_bits": 7.64,
-  "distinct_tail_clauses": 52976,
-  "tail_clause_entropy_bits": 10.528,
+  "distinct_tail_clauses": 52961,
+  "tail_clause_entropy_bits": 10.527,
   "format_distribution": {
    "original": 83434,
-   "short": 39697,
-   "json": 23863,
-   "sentence": 21596,
-   "reasoned": 12430,
-   "number": 8963,
+   "short": 39691,
+   "json": 23851,
+   "sentence": 21582,
+   "reasoned": 12468,
+   "number": 8957,
    "yes_no": 2640,
    "grounded": 501,
    "mcq_index": 485
@@ -636,7 +636,7 @@
    "templates_before": 778,
    "templates_after": 1996,
    "tail_clause_entropy_before": 5.593,
-   "tail_clause_entropy_after": 7.022,
+   "tail_clause_entropy_after": 6.948,
    "formats_after": {
     "original": 1449,
     "short": 711,
@@ -788,14 +788,14 @@
    "templates_before": 7225,
    "templates_after": 19445,
    "tail_clause_entropy_before": 8.122,
-   "tail_clause_entropy_after": 8.002,
+   "tail_clause_entropy_after": 7.991,
    "formats_after": {
     "original": 7495,
-    "short": 3972,
-    "reasoned": 2473,
-    "json": 2121,
-    "sentence": 2048,
-    "number": 1690,
+    "short": 3966,
+    "reasoned": 2511,
+    "json": 2109,
+    "sentence": 2034,
+    "number": 1684,
     "yes_no": 1
    }
   },

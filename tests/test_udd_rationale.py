@@ -275,3 +275,45 @@ def test_script_end_to_end(tmp_path):
     vs = [json.loads(x) for x in (tmp_path / "o" / "variants.jsonl").read_text().splitlines()]
     assert all("terse" not in v["question"] for v in vs if v["meta"]["format"] != "original")
     assert "## tatqa" in (tmp_path / "p.md").read_text()
+
+
+# --------------------------------------------------------------------------- anomaly catalogue
+def test_tatqa_count_lists_split_on_hashes_never_on_and():
+    r = _row("tatqa", ["How many products?", "How many items exceeded 100?"],
+             ["Kefir ## Cheese ## Cream and other\nAnswer: 3.", "Cost of hardware and other revenue\nAnswer: 1."])
+    out, _ = attach(r)
+    assert out["answers"] == ["3", "1"]
+    assert [p.split(":")[-1] for p in out["reasoning_provenance"]] == ["tatqa_count", "tatqa_count"]
+
+
+def test_inline_option_sentence_is_not_an_option_list():
+    q = "Which matches the image?  Here's some options: christmas, wedding. Directly output the results."
+    assert parse_options(q) == []
+    assert parse_options("Which?\nOptions: 1) a; 2) b") == ["a", "b"]
+
+
+@pytest.mark.parametrize("aid,row", [
+    ("G1", _row("tatqa", ["Change?"], ["74.5-26.0\nAnswer: 48.5."])),
+    ("G2", _row("dvqa", ["Which bar?"], ["Mean."])),
+    ("B1", _row("cord", ["Extract."], ["{}"], image_width=667, image_height=1000,
+                elements_json=json.dumps([{"bbox": [672, 652, 746, 1100, False], "information": "x"}]))),
+    ("B2", _row("ocrvqa", ["What is the title of this book?"], ["Killer Doku"], elements_json=json.dumps(
+        [{"bbox": [0.1, 0.1, 0.9, 0.3, True], "information": "killer"},
+         {"bbox": [0.3, 0.9, 0.4, 0.95, True], "information": "killer"}]))),
+    ("C3", _row("cord", ["Extract."], [json.dumps({"menu": [{"nm": "a", "price": "10"}, {"nm": "b", "price": "5"}],
+                                                    "sub_total": {"subtotal_price": "20"}})])),
+    ("R2", _row("hallusionbench", ["Was the US the largest?"], ["no"], reasoning=["Yes. Hong Kong was the largest."])),
+    ("R4", _row("tatqa", ["How many?"], ["A ## B\nAnswer: 2."])),
+    ("I1", _row("dvqa", ["Which bar?\nOffer a terse response."], ["Mean"])),
+    ("I3", _row("ocrbench_v2", ["Which? Here's some options: a, b. Directly output the results."], ["a"])),
+    ("N1", _row("cord", ["Extract."], ['{"total": {"total_price": "60.000"}}'])),
+    ("N3", _row("tatqa", ["What is 65% of it?"], ["65% * 3,433\nAnswer: 2231.45."])),
+])
+def test_anomaly_detectors_fire(aid, row):
+    from docvlm_eval.unified.anomalies import audit_row
+    assert aid in audit_row(row)
+
+
+def test_anomaly_detectors_stay_quiet_on_clean_rows():
+    from docvlm_eval.unified.anomalies import audit_row
+    assert audit_row(_row("docvqa", ["What is the total?"], ["1,298.00"])) == {}
