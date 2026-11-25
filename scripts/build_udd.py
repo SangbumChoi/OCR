@@ -16,7 +16,7 @@ is maintained across runs. ``--skip-existing`` skips re-streaming already-built 
 skips images that already exist under a *different* source (COCO pages recur across scene-text sets),
 and the merge always concatenates **everything on disk** — so adding one new dataset costs one
 dataset: ``--only <newkey> --skip-existing`` streams just the newcomer and re-merges the full corpus.
-The merge also runs the **enrichment pass** (language fill + n_fields/n_regions + image dims).
+The merge also runs the **enrichment pass** (language fill + image dims and provenance metadata).
 
 MOCKUP (default): ``--per-bench 10`` — ten examples per dataset, saved locally + safety-checked +
 visualized. Add ``--push --repo <user>/UDD --token <hf_token> --public`` to upload.
@@ -39,17 +39,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from docvlm_eval.unified import (UnifiedLoader, enrich_dataset, push,  # noqa: E402
-                                 render_grid, safety_check, to_hf_dataset)
+from docvlm_eval.unified import (  # noqa: E402
+    UnifiedLoader,
+    enrich_dataset,
+    render_detail_report,
+    render_grid,
+    safety_check,
+)
 
-HARD_CAP = 1500     # was 500 (300/source era), 200 before that; raised for the 1000/source release
+HARD_CAP = 1_000_000   # sanity backstop only — DISK is the real limit (a full no-cap
+                       # ingest of every source is terabytes; run those on a big-disk box)
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=str(ROOT / "data" / "udd"))
-    p.add_argument("--per-bench", type=int, default=10, help=f"examples/dataset (mockup=10; < {HARD_CAP})")
+    p.add_argument("--out", default=str(ROOT / "examples" / "udd"))
+    p.add_argument("--per-bench", type=int, default=10,
+                   help="examples/dataset (mockup=10). 0 = NO cap: ingest every available example "
+                        "of every source — needs a big disk (full sources are terabytes)")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys")
     p.add_argument("--skip", default=None, help="comma-separated benchmark keys to skip")
     p.add_argument("--max-scan", type=int, default=400)
@@ -65,13 +73,17 @@ def main() -> None:
                         "(out/hf/<key>) — only new sources are converted; the merge still includes "
                         "everything on disk. Adding one dataset costs one dataset, not 21.")
     p.add_argument("--viz", default=str(ROOT / "docs" / "report" / "figures" / "udd_examples.png"))
+    p.add_argument(
+        "--details-viz",
+        default=str(ROOT / "docs" / "report" / "figures" / "udd_details.html"),
+    )
     args = p.parse_args()
 
     if args.push and not (args.repo and args.token):
         sys.exit("[udd] --push needs --repo <user>/UDD and a token (--token or $HF_TOKEN). "
                  "Run `hf auth login` or pass --token.")
 
-    per = max(1, min(args.per_bench, HARD_CAP - 1))
+    per = HARD_CAP if args.per_bench == 0 else max(1, min(args.per_bench, HARD_CAP - 1))
     out = Path(args.out)
     loader = UnifiedLoader()
     only = [k.strip() for k in args.only.split(",")] if args.only else None
@@ -79,7 +91,8 @@ def main() -> None:
     keys = [k for k in loader.streamable_keys()
             if (only is None or k in only) and k not in skip]
     if not keys:
-        print("No benchmarks matched the filter."); return
+        print("No benchmarks matched the filter.")
+        return
 
     mode = "PUSH" if args.push else "LOCAL MOCKUP"
     print(f"[udd] {mode}: {per} examples/dataset from {len(keys)} datasets -> {out}"
@@ -99,12 +112,14 @@ def main() -> None:
         rows = loader.load(k, limit=per, max_scan=args.max_scan, max_px=args.max_px,
                            cache_dir=str(out / "images"), global_index=hash_index)
         if not rows:
-            print(f"[skip] {k}: no records"); continue
+            print(f"[skip] {k}: no records")
+            continue
         # 1) safety-check the converter BEFORE trusting/uploading it
         try:
             rep = safety_check(rows, str(out / "hf" / k))
         except Exception as exc:
-            print(f"[FAIL] {k}: safety check failed -> {type(exc).__name__}: {exc}"); continue
+            print(f"[FAIL] {k}: safety check failed -> {type(exc).__name__}: {exc}")
+            continue
         report[k] = {"records": len(rows), **rep}
         print(f"[ok]   {k:14} {rep['rows']:4} rows  fields={rep['fields']} regions={rep['regions']} "
               f"image_ok={rep['image_ok']}  (split={rows[0].split})")
@@ -124,7 +139,7 @@ def main() -> None:
         from datasets import concatenate_datasets, load_from_disk
         parts = [load_from_disk(str(out / "hf" / k)) for k in on_disk]
         combined = concatenate_datasets(parts)
-        combined = enrich_dataset(combined)               # language + n_fields/n_regions + image dims
+        combined = enrich_dataset(combined)               # language + image dims and provenance
         from docvlm_eval.unified import dedupe_by_phash
         combined = dedupe_by_phash(combined)              # same phash+dims = same image: store once,
                                                           # QAs gathered into instructions/answers
@@ -144,6 +159,7 @@ def main() -> None:
     # 3) visualize the unified mockup
     if viz_rows:
         render_grid(viz_rows, args.viz, title=f"UDD mockup — {len(viz_rows)} datasets")
+        render_detail_report(viz_rows, args.details_viz)
 
     print(f"\n=== UDD {'uploaded' if args.push else 'mockup built'} for {len(report)} datasets ===")
     if not args.push:

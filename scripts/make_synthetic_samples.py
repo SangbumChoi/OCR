@@ -18,8 +18,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "probes"            # synthetic illustrations are our own, not public benchmarks
-BENCH = ROOT / "data" / "benchmarks"      # read the real docvqa sample to derive the robustness copy
+OUT = ROOT / "examples" / "probes"            # synthetic illustrations are our own, not public benchmarks
+BENCH = ROOT / "examples" / "benchmarks"      # read the real docvqa sample to derive the robustness copy
 sys.path.insert(0, str(ROOT / "src"))
 from docvlm_eval.benchmarks.fonts import load_font  # noqa: E402
 
@@ -97,11 +97,19 @@ def make_scenetext() -> None:
 
 
 def make_robustness() -> None:
-    """E1: reliability/robustness. Derive a degraded copy of the DocVQA sample."""
-    base_path = BENCH / "docvqa" / "sample.png"
-    base_label = BENCH / "docvqa" / "sample.json"
+    """E1: reliability/robustness. Derive a degraded copy of a downloaded DocVQA example."""
+    annotation_path = BENCH / "docvqa" / "annotations.jsonl"
+    if not annotation_path.exists():
+        print("[skip] robustness: run fetch_benchmark_samples.py --only docvqa first")
+        return
+    rows = annotation_path.read_text(encoding="utf-8").splitlines()
+    if not rows:
+        print("[skip] robustness: DocVQA annotations are empty")
+        return
+    annotation = json.loads(rows[0])
+    base_path = BENCH / "docvqa" / annotation["image"]
     if not base_path.exists():
-        print("[skip] robustness: run fetch_benchmark_samples.py for docvqa first")
+        print(f"[skip] robustness: downloaded DocVQA image is missing: {base_path}")
         return
     img = Image.open(base_path).convert("RGB")
     w, h = img.size
@@ -111,7 +119,7 @@ def make_robustness() -> None:
     folder.mkdir(parents=True, exist_ok=True)
     deg.save(folder / "sample.png", format="PNG")
     deg.save(folder / "sample_degraded.jpg", format="JPEG", quality=18)
-    gt = json.loads(base_label.read_text())["ground_truth"] if base_label.exists() else {}
+    gt = annotation.get("ground_truth", {})
     _save(
         "robustness",
         deg,
@@ -120,7 +128,7 @@ def make_robustness() -> None:
             "category": "E1. Reliability / robustness / calibration",
             "metric": "ANLS retention + ECE",
             "metric_note": "score(degraded)/score(clean) per perturbation; ECE for confidence calibration.",
-            "source": "DERIVED from data/benchmarks/docvqa (downscale+blur+JPEG q18); see scripts/build_robustness_set.py",
+            "source": "DERIVED from examples/benchmarks/docvqa (downscale+blur+JPEG q18); see scripts/build_robustness_set.py",
             "ground_truth": {
                 "question": gt.get("question"),
                 "answers": gt.get("answers"),
@@ -134,7 +142,7 @@ def main() -> None:
     make_fullpage_recognition()
     make_scenetext()
     make_robustness()
-    print("\n[done] synthetic/derived samples written under data/benchmarks/")
+    print("\n[done] synthetic/derived probe examples written under examples/probes/")
 
 
 if __name__ == "__main__":

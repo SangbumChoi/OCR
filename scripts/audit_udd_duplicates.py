@@ -13,7 +13,7 @@ metric transfer between sources. Two detectors:
 Writes ``docs/results/udd_duplicates.md`` (cross-source pair counts + within-source counts + sample
 collisions). Uses the ``phash`` column when present (enriched corpus) and computes it otherwise.
 
-    python scripts/audit_udd_duplicates.py                 # audit data/udd/hf/_all
+    python scripts/audit_udd_duplicates.py                 # audit examples/udd/hf/_all
     python scripts/audit_udd_duplicates.py --near 4        # stricter near-dup threshold
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ MD = ROOT / "docs" / "results" / "udd_duplicates.md"
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--near", type=int, default=2,
                    help="max Hamming distance for a near-duplicate. Documents are mostly-white "
                         "low-entropy images, so dhash saturates fast: at 6 (the usual photo "

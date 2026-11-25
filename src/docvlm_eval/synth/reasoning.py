@@ -110,7 +110,8 @@ def _q_sum(t, rng):
     cols = _num_cols(t)
     if not cols:
         return None
-    c = rng.choice(cols); s = sum(c.num)
+    c = rng.choice(cols)
+    s = sum(c.num)
     return {"question": f"What is the total of the {c.name} column in {t.label}?",
             "answers": _numans(s), "metric": "relaxed_acc", "answer_type": "H1-aggregate",
             "rationale": f"Sum the {c.name} column: {' + '.join(_fmt(v) for v in c.num)} = {_fmt(s)}."}
@@ -120,7 +121,8 @@ def _q_mean(t, rng):
     cols = _num_cols(t)
     if not cols:
         return None
-    c = rng.choice(cols); m = sum(c.num) / len(c.num)
+    c = rng.choice(cols)
+    m = sum(c.num) / len(c.num)
     return {"question": f"What is the average (mean) {c.name} in {t.label}?",
             "answers": _numans(round(m, 2)), "metric": "relaxed_acc", "answer_type": "H1-aggregate",
             "rationale": f"Mean {c.name} = {_fmt(sum(c.num))} / {len(c.num)} = {m:.2f}."}
@@ -130,7 +132,8 @@ def _q_extreme(t, rng):
     cols = _num_cols(t)
     if not cols:
         return None
-    c = rng.choice(cols); hi = rng.random() < 0.5
+    c = rng.choice(cols)
+    hi = rng.random() < 0.5
     val = max(c.num) if hi else min(c.num)
     return {"question": f"What is the {'largest' if hi else 'smallest'} value in the {c.name} column?",
             "answers": _numans(val), "metric": "relaxed_acc", "answer_type": "H1-aggregate",
@@ -142,7 +145,8 @@ def _q_argmax_lookup(t, rng):
     cols = _num_cols(t)
     if not cols or len(t.cols) < 2:
         return None
-    c = rng.choice(cols); other = _other_col(t, c)
+    c = rng.choice(cols)
+    other = _other_col(t, c)
     if other is None:
         return None
     hi = rng.random() < 0.5
@@ -160,7 +164,8 @@ def _q_threshold_count(t, rng):
     if not cols or len(t.rows) < 3:
         return None
     c = rng.choice(cols)
-    srt = sorted(c.num); thr = srt[len(srt) // 2]                 # ~median -> non-trivial split
+    srt = sorted(c.num)
+    thr = srt[len(srt) // 2]                 # ~median -> non-trivial split
     cnt = sum(1 for v in c.num if v > thr)
     return {"question": f"How many rows have {c.name} greater than {_fmt(thr)}?",
             "answers": [str(cnt)], "metric": "exact", "answer_type": "H-count",
@@ -171,7 +176,8 @@ def _q_ordinal(t, rng):
     cols = _num_cols(t)
     if not cols or len(t.rows) < 3:
         return None
-    c = rng.choice(cols); k = 2
+    c = rng.choice(cols)
+    k = 2
     val = sorted(c.num, reverse=True)[k - 1]
     return {"question": f"What is the {k}nd-largest value in the {c.name} column?",
             "answers": _numans(val), "metric": "relaxed_acc", "answer_type": "H1-aggregate",
@@ -182,7 +188,8 @@ def _q_compare_rows(t, rng):
     cols = _num_cols(t)
     if not cols or len(t.rows) < 2:
         return None
-    c = rng.choice(cols); i, j = rng.sample(range(len(t.rows)), 2)
+    c = rng.choice(cols)
+    i, j = rng.sample(range(len(t.rows)), 2)
     bigger = i if c.num[i] > c.num[j] else j
     return {"question": f"Which has a larger {c.name}, row {i+1} or row {j+1}?",
             "answers": [f"row {bigger+1}", str(bigger + 1)], "metric": "anls",
@@ -195,7 +202,8 @@ def _q_date_extreme(t, rng):
     dcols = _date_cols(t)
     if not dcols or len(t.cols) < 2:
         return None
-    c = rng.choice(dcols); other = _other_col(t, c)
+    c = rng.choice(dcols)
+    other = _other_col(t, c)
     if other is None:
         return None
     early = rng.random() < 0.5
@@ -224,7 +232,8 @@ def table_questions(header, rows, *, label="the table", n=3, seed=None) -> list[
             break
         qa = kind(t, rng)
         if qa and qa["question"] not in used:
-            out.append(qa); used.add(qa["question"])
+            out.append(qa)
+            used.add(qa["question"])
     return out
 
 
@@ -250,11 +259,14 @@ def sequence_questions(items, *, attr, label="items", value_names=None, n=3, see
                     "metric": "exact", "answer_type": "H-count",
                     "rationale": f"{counts[v]} of the {len(vals)} {label} are {nm}."})
     if len(distinct) >= 2:
-        top = max(counts, key=counts.get); lo = min(counts, key=counts.get)
+        top = max(counts, key=counts.get)
+        lo = min(counts, key=counts.get)
         if counts[top] == counts[lo]:
-            ans = ["equal", "the same", "neither", "tie"]; why = "both groups are equal"
+            ans = ["equal", "the same", "neither", "tie"]
+            why = "both groups are equal"
         else:
-            ans = [names.get(top, str(top))]; why = f"{names.get(top, top)} has {counts[top]} vs {counts[lo]}"
+            ans = [names.get(top, str(top))]
+            why = f"{names.get(top, top)} has {counts[top]} vs {counts[lo]}"
         out.append({"question": f"Which group has more {label}, {' or '.join(names.get(v, str(v)) for v in distinct)}?",
                     "answers": ans, "metric": "anls", "answer_type": "H-comprehension",
                     "rationale": f"{why}."})

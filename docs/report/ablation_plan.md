@@ -48,7 +48,7 @@ simulation-only space — and must guard against the model simply **memorising**
 
 Because the space is finite, a model with enough capacity can **fit the templates** instead of
 learning the task. A0 detects this directly: train at increasing data **scale** (`count` = #images,
-seed 7) for a fixed #epochs and, at every scale, score **two splits**:
+seed 7) under a fixed micro-step cap and, at every scale, score **two splits**:
 
 - **train split** — the exact images/QA the model just fit (the *memorization* signal). If this
   climbs toward **~100%** it only proves the model *can* fit the finite data, **not** that it
@@ -73,6 +73,13 @@ adds `3200`); the prerequisite section of `notebooks/finetune_ablation.ipynb` pl
 held-out** learning curves + the gap and reads off the size. **A0's result fixes the data scale used
 by A1–A7.** (Per-epoch `train`/`heldout` curves stream to W&B — see
 [`wandb_metrics.md`](wandb_metrics.md) for what each logged key means and how to read it.)
+
+`--steps` is a hard cap shared by every size, while `--a0-epochs` is only the maximum number of
+passes. This is both the compute-matching control and the Colab safety boundary: one generated
+document expands into many QA rows, so fixed epochs alone can silently schedule thousands of
+micro-steps. The observed LFM A0 run scheduled 7,728 micro-steps, reached only step 630 after 62.5
+minutes at 0.17 iterations/s, and ended without a traceback or OOM. The runner now applies the
+default 300-step cap to A0 instead of discarding it.
 
 ### 4.3 Two synthetic-quality axes A0 trades off
 
@@ -121,13 +128,13 @@ For each ablation A_i we train two (or more) variants differing **only** in A_i,
 suite, and record Δ vs the control. Winners are composed in dependency order; the cumulative run
 should step the headline metric up at each addition (`scripts/plot_ablation.py` draws it).
 
-| ID                                                | Research question                                                                                                                 | Factor varied (data/training)                                             | Control (what stays fixed)  | Primary metric(s)                          | Hypothesis                                                                                 |
+| ID                                                | Research question                                                                                                                 | Factor varied (examples/training)                                             | Control (what stays fixed)  | Primary metric(s)                          | Hypothesis                                                                                 |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | **A1 Spotting supervision**                       | Does adding *where* (bbox) targets to training improve extraction & spatial understanding, vs. answer-only?                       | grounding rows repeated; target = normalized `[x1,y1,x2,y2]` vs answer-only | same images/QA, same steps  | grounding IoU; KIE F1; InfoVQA ANLS        | spotting injects spatial grounding → IoU↑ and KIE↑ (localised attention)                   |
 | **A2 Reasoning supervision**                      | Does CoT/rationale in the target help integrative reasoning, or is answer-only as good?                                           | target = `rationale → answer` vs `answer`                                 | same data                   | content-reasoning (sum/cmp); InfoVQA               | rationale teaches multi-region procedure → reasoning↑                                      |
-| **A3 Spotting+Reasoning vs combined-direct**      | Is it the *act of adding* these signals that helps, or does the plain task combination already capture it?                        | {answer} vs {+spot} vs {+reason} vs {+spot+reason}                        | same data/steps             | composite + per-axis                       | the structured signals beat plain combination; spot & reason are complementary             |
+| **A3 Spotting+Reasoning vs combined-direct**      | Is it the *act of adding* these signals that helps, or does the plain task combination already capture it?                        | {answer} vs {+spot} vs {+reason} vs {+spot+reason}                        | same examples/steps             | composite + per-axis                       | the structured signals beat plain combination; spot & reason are complementary             |
 | **A4 Multilingual mixing & language correlation** | Does training several languages in one mix beat single-language? Which language *pairs* transfer?                                 | train sets: {en}, {en+es}, {en+ja}, {ko+en}, {en+zh}, {all}               | equal total samples         | per-language NED (custom_eval)             | related scripts transfer (en↔es, ko↔en); distant scripts (en↔ja) help less or interfere    |
-| **A5 LoRA placement**                             | Which modules to adapt to inject which capability — **vision encoder** vs **connector/projector** vs **LLM-attn** vs **LLM-MLP**? | LoRA target_modules set                                                   | rank/alpha/lr fixed         | per-axis (spatial→vision?, reasoning→LLM?) | spatial/recognition gains come from vision+connector; reasoning/language from LLM attn+mlp |
+| **A5 LoRA placement**                             | Which modules to adapt to inject which capability — **vision encoder** vs **connector/projector** vs their **union** vs **LLM-attn** vs **LLM-MLP**? | LoRA target_modules set                                                   | rank/alpha/lr fixed for discovery; trainable parameters matched for the confirmatory union test | per-axis (spatial→vision?, reasoning→LLM?) | spatial/recognition gains come from vision+connector; reasoning/language from LLM attn+mlp |
 | **A6 Hyperparameter optimization**                | Best rank `r`, `alpha`, lr, epochs for the chosen placement?                                                                      | r∈{8,16,32,64}, α, lr, epochs                                             | placement fixed (A5 winner) | composite + overfit gap                    | moderate r (16–32) best; too-high r overfits the small data                                |
 | **A7 Preprocessing / resize logic**               | How does the image-resizing/tiling logic affect small-text & layout?                                                              | dynamic tiling (n_max) vs fixed resize; max-resolution; aspect-ratio keep | model/data fixed            | InfoVQA, OCRBench, small-text NED          | higher-res dynamic tiling → InfoVQA/OCRBench↑ (small text legible)                         |
 
@@ -224,7 +231,7 @@ BOTH the synthetic probe suite and the **UDD public heldout fold** (the `fold` c
 
 | Arm | UDD realization (equal totals) | Status / gaps |
 | --- | --- | --- |
-| A0 scale | `--arm A0 --train-jsonl data/udd_tasks/all.jsonl` (existing public A0 path) | ✅ |
+| A0 scale | `--arm A0 --train-jsonl examples/udd_tasks/all.jsonl` (existing public A0 path) | ✅ |
 | A1 spotting | `A1_spotting_on` = vqa+kie+grounding thirds vs `A1_spotting_off` = vqa+kie halves; grounding rows from DocLayNet/PubLayNet/OmniDocBench via `to_grounding_samples()` | ✅ |
 | A2 reasoning | `A2_reason_chain` vs `A2_reason_answer`: the SAME geometry-derived records with rationale-target vs position-only target (`derive_spatial_reasoning(style=…)`) | ✅ (derived rationales — spatial subset of A2) |
 | A3 combination | `A3_base` / `A3_spot` / `A3_reason` / `A3_spot_reason`, equal totals | ✅ |
@@ -236,7 +243,7 @@ BOTH the synthetic probe suite and the **UDD public heldout fold** (the `fold` c
 ```bash
 # 1) equal-N sets + heldout fold + derived A2 pair (offline)
 python scripts/build_task_trainsets.py --per-task 300 --merge-qa --derive-spatial-reasoning
-python scripts/build_task_trainsets.py --out data/udd_langs --group-by language --per-task 300
+python scripts/build_task_trainsets.py --out examples/udd_langs --group-by language --per-task 300
 # 2) compose + inspect the 13 arm mixes without a GPU
 python scripts/run_udd_ablation.py --arm A1 A2 A3 A4 --count 300 --dry-run
 # 3) train + eval (GPU); results -> docs/results/udd_ablation_results.json under U-<arm>
@@ -276,6 +283,7 @@ python scripts/run_ablation.py --arm public --steps 300 --train-jsonl data/dar_a
 # baseline (eval only), then the A1 spotting curriculum on the default LFM base:
 python scripts/run_ablation.py --arm baseline
 python scripts/run_ablation.py --arm A1_spotting_on --placement connector --heldout-seed 999
+python scripts/run_lora_placement_sweep.py --dry-run
 ```
 `run_ablation.py` generates the arm's data → LoRA-fine-tunes (`docvlm_eval.finetune.lora_vlm`,
 placement resolved by introspection) → evaluates on the probe suite → appends to
@@ -288,6 +296,10 @@ placement resolved by introspection) → evaluates on the probe suite → append
   (binds to `docvlm_eval.synth.dto.GenConfig`); one file = one dataset variant.
 - `configs/ablations.yaml` — declarative ablation registry (two bases, factor, control, metric, gap).
 - `scripts/run_ablation.py` — gen → LoRA train → eval → record (per model, per arm).
+- `scripts/run_lora_placement_sweep.py` — six-job paired vision versus vision+connector
+  confirmatory sweep with a fail-closed adapter-parameter budget.
+- `scripts/analyze_lora_placement_sweep.py` — paired bootstrap aggregation and promotion gates for
+  the completed confirmatory sweep.
 - `docvlm_eval.finetune.lora_vlm` — model-agnostic LoRA (chat-template) + the A5 placement resolver.
 - `scripts/plot_ablation.py` — staircase + Δ bars + transfer heatmap from the results JSON.
 - Every variant is scored by the **same** eval pipeline, so the staircase is apples-to-apples.

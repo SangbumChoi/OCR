@@ -21,7 +21,10 @@ def _img(tmp: Path) -> str:
 
 def test_udd_schema_columns():
     cols = set(udd_features().keys())
-    assert {"image", "task", "fields_json", "regions_json", "answers", "source"} <= cols
+    assert {"image", "task", "visual_type", "visual_subtype", "task_detail", "reasoning",
+            "qa_tasks", "fields_json", "regions_json", "answers", "answer_variants", "full_annotation",
+            "source"} <= cols
+    assert not {"full_text", "table_html", "n_fields", "n_regions"} & cols
 
 
 def test_to_hf_dataset_uniform_across_tasks(tmp_path):
@@ -31,7 +34,8 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
                       fields=[Field("menu.nm", "Coffee", Box(10, 20, 60, 40, False))],
                       answers=['{"menu.nm": "Coffee"}']),
         UnifiedSample(sample_id="docvqa_0_0", source="docvqa", task=Task.VQA, image_path=img,
-                      instruction="Total?", answers=["$5"]),
+                      instruction="Total?", answers=["$5"], reasoning="Read the total field.",
+                      meta={"page_count": 3, "document_count": 1}),
         UnifiedSample(sample_id="ocrvqa_0_0", source="ocrvqa", task=Task.VQA, image_path=img,
                       instruction="Author?", answers=["X"],
                       regions=[Region("word", Box(0.1, 0.2, 0.4, 0.25, True), "X")]),
@@ -45,22 +49,146 @@ def test_to_hf_dataset_uniform_across_tasks(tmp_path):
     assert f[0]["key"] == "menu.nm" and f[0]["bbox"][:4] == [10.0, 20.0, 60.0, 40.0]
     rg = json.loads(by["ocrvqa_0_0"]["regions_json"])
     assert rg[0]["bbox"][4] is True                      # normalized flag preserved
+    assert by["cord_0_0"]["page_count"] == 1
+    assert by["cord_0_0"]["document_count"] == 1
+    assert by["docvqa_0_0"]["page_count"] == 3
+    assert by["cord_0_0"]["visual_type"] == "document"
+    assert by["cord_0_0"]["visual_subtype"] == "receipt"
+    assert by["cord_0_0"]["task_detail"] == ["receipt_field_extraction"]
+    assert by["docvqa_0_0"]["reasoning"] == ["Read the total field."]
+    assert by["docvqa_0_0"]["qa_tasks"] == ["vqa"]
 
 
 def test_safety_check_roundtrip(tmp_path):
+    from datasets import load_from_disk
+
     img = _img(tmp_path)
     rows = [UnifiedSample(sample_id="cord_0_0", source="cord", task=Task.KIE, image_path=img,
                           fields=[Field("k", "v", Box(1, 2, 3, 4, False)),
                                   Field("k2", "v2", None)],
                           answers=['{"k": "v"}'])]
-    rep = safety_check(rows, str(tmp_path / "ds"))
+    output = tmp_path / "ds"
+    rep = safety_check(rows, str(output), enrich=True)
+    saved = load_from_disk(str(output))
     assert rep["rows"] == 1 and rep["fields"] == 2 and rep["image_ok"] is True
+    assert saved[0]["image_width"] == 40
+    assert saved[0]["image_height"] == 30
 
 
 def test_to_hf_dataset_requires_image():
     import pytest
     with pytest.raises(ValueError):
         to_hf_dataset([UnifiedSample(sample_id="x", source="y", task=Task.VQA, answers=["a"])])
+
+
+def test_full_annotation_retains_text_and_html(tmp_path):
+    from docvlm_eval.unified import Task
+
+    img = _img(tmp_path)
+    table = UnifiedSample(
+        sample_id="table-1", source="pubtabnet", task=Task.TABLE, image_path=img,
+        full_text="Header A Header B Total 42", table_html="<table><tr><td>42</td></tr></table>",
+    )
+    sample = table.to_sample()
+
+    assert sample.answers == ["<table><tr><td>42</td></tr></table>"]
+    assert table.full_text == "Header A Header B Total 42"
+    from docvlm_eval.unified.hf import _row_to_record
+    annotation = json.loads(_row_to_record(table)["full_annotation"])
+    assert annotation == {"version": 1, "text": "Header A Header B Total 42",
+                          "html": "<table><tr><td>42</td></tr></table>"}
+
+
+def test_schema_upgrade_preserves_payload_and_adds_aligned_empty_rationale():
+    from datasets import Dataset, DatasetDict
+    from docvlm_eval.unified import upgrade_udd_dataset
+
+    row = {
+        "sample_id": "table-1", "source": "pubtabnet", "task": "table",
+        "instructions": ["Convert this table to HTML."],
+        "answers": [["<table><tr><td>42</td></tr></table>"]],
+        "full_text": "Header A Header B Total 42",
+        "table_html": "<table><tr><td>42</td></tr></table>",
+        "elements_json": "[]",
+    }
+    source = Dataset.from_list([row])
+    migrated = upgrade_udd_dataset(DatasetDict({"train": source, "validation": source}))
+    migrated = migrated["train"][0]
+
+    assert migrated["visual_type"] == "table"
+    assert migrated["visual_subtype"] == "scientific_table"
+    assert migrated["task_detail"] == ["table_structure_reconstruction"]
+    assert migrated["reasoning"] == [""]
+    assert migrated["answers"] == [row["answers"][0][0]]
+    assert migrated["answer_variants"] == row["answers"]
+    assert json.loads(migrated["full_annotation"]) == {
+        "version": 1, "text": row["full_text"], "html": row["table_html"]}
+    assert not {"full_text", "table_html", "n_fields", "n_regions"} & set(migrated.keys())
+
+
+def test_schema_upgrade_pairs_legacy_hallusion_explanations_as_rationale():
+    from datasets import Dataset
+    from docvlm_eval.unified import upgrade_udd_dataset
+
+    row = {
+        "sample_id": "hallusion-1", "source": "hallusionbench", "task": "reasoning",
+        "instructions": ["Is the chart increasing?", "Is the chart increasing? Explain your answer."],
+        "answers": [["no"], ["The line peaks in May. So the answer is no."]],
+        "elements_json": "[]",
+    }
+    migrated = upgrade_udd_dataset(Dataset.from_list([row]))[0]
+
+    assert migrated["instructions"] == ["Is the chart increasing?"]
+    assert migrated["answers"] == ["no"]
+    assert migrated["answer_variants"] == [["no"]]
+    assert migrated["qa_tasks"] == ["reasoning"]
+    assert migrated["reasoning"] == ["The line peaks in May."]
+    assert len(migrated["task_detail"]) == len(migrated["instructions"])
+
+
+def test_grouped_qas_keep_task_aligned_with_each_question(tmp_path):
+    from docvlm_eval.unified import QA
+    from docvlm_eval.unified.hf import _row_to_record
+
+    img = _img(tmp_path)
+    row = UnifiedSample(
+        sample_id="mixed-tasks", source="custom_eval", task="vqa", image_path=img,
+        qas=[QA("Read the title", ["Report"], task="recognition"),
+             QA("Where is the title?", ["top"], task="localization")],
+    )
+    record = _row_to_record(row)
+    assert record["task"] == "vqa"
+    assert record["qa_tasks"] == ["recognition", "localization"]
+    assert len(record["qa_tasks"]) == len(record["instructions"])
+
+
+def test_ai2d_food_grid_annotation_uses_linked_typed_elements():
+    from docvlm_eval.unified.enrich import enrich_record
+
+    row = {
+        "sample_id": "ai2d_0000_0", "source": "ai2d", "task": "vqa",
+        "full_annotation": "", "elements_json": "[]", "answers": ["D"],
+        "instructions": ["Which item is dairy?"], "image": None,
+    }
+    enriched = enrich_record(row)
+    annotation = json.loads(enriched["full_annotation"])
+    elements = json.loads(enriched["elements_json"])
+    by_id = {element["id"]: element for element in elements}
+
+    assert row["task"] == "vqa"
+    assert "<table" in annotation["html"] and "<figure" in annotation["html"]
+    assert by_id["label-A"]["information"] == "A"
+    assert by_id["label-A"]["class"] == "text"
+    assert by_id["label-A"]["kind"] == "text"
+    assert by_id["figure-A"]["information"] == "Pumpkin"
+    assert by_id["figure-A"]["class"] == "figure"
+    assert by_id["figure-A"]["kind"] == "figure"
+    assert by_id["label-A"]["ref"] == by_id["figure-A"]["id"]
+    assert by_id["label-D"]["ref"] == by_id["figure-D"]["id"]
+    assert by_id["page-title"]["class"] == "page_title"
+    for element in elements:
+        box = element["bbox"]
+        assert box is None or (len(box) == 5 and all(0 <= x <= 1 for x in box[:4]))
 
 
 def _mini_udd(tmp_path, rows_spec):
@@ -89,6 +217,7 @@ def test_dedupe_by_phash_gathers_qas(tmp_path):
     assert len(out) == 2                                # one row per distinct image
     assert out[0]["instructions"] == ["Who wrote this?", "What is the title?"]
     assert out[0]["answers"] == [["Smith"], ["Physics"]]   # index pairing preserved
+    assert out[0]["task_detail"] == ["visual_question_answering"] * 2
     assert out[1]["instructions"] == ["What genre?"]
 
 
@@ -96,11 +225,15 @@ def test_unified_from_hf_row_expands_native_lists(tmp_path):
     from docvlm_eval.unified import to_training_samples, unified_from_hf_row
     row = {"sample_id": "src_0000_0", "source": "src", "task": "vqa",
            "instructions": ["Who wrote this?", "What is the title?"],
-           "answers": [["Smith"], ["Physics", "PHYSICS BOOK"]],
+           "answers": ["Smith", "Physics"],
+           "answer_variants": [["Smith"], ["Physics", "PHYSICS BOOK"]],
+           "reasoning": ["Read the author line.", "Read the title line."],
            "fields_json": "[]", "regions_json": "[]", "metric": "exact"}
     r = unified_from_hf_row(row, image_path=_img(tmp_path))
     assert len(r.qas) == 2 and not r.instruction        # grouped state (flat-XOR-grouped holds)
-    assert r.qas[1].answers == ["Physics", "PHYSICS BOOK"]   # inner list = variants of ONE answer
+    assert r.qas[1].answers == ["Physics", "PHYSICS BOOK"]
+    assert r.qas[0].reasoning == "Read the author line."
+    assert r.qas[1].reasoning == "Read the title line."
     samples = to_training_samples([r])
     assert len(samples) == 2                            # both QAs train, one image decode
     assert {s.question for s in samples} == {"Who wrote this?", "What is the title?"}

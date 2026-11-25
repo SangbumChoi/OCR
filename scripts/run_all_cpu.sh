@@ -5,10 +5,10 @@
 # have results). Models that time out / fail are recorded in the run status, not fatal.
 #
 #   bash scripts/run_all_cpu.sh                       # default: capability probe
-#   BENCH=data/benchmarks/all_preview.jsonl TIMEOUT=1800 bash scripts/run_all_cpu.sh
+#   BENCH=examples/benchmarks/all_preview.jsonl TIMEOUT=1800 bash scripts/run_all_cpu.sh
 set -uo pipefail
 
-BENCH="${BENCH:-data/probes/capability_probe/capability.jsonl}"
+BENCH="${BENCH:-examples/probes/capability_probe/capability.jsonl}"
 TIMEOUT="${TIMEOUT:-1500}"     # seconds per model
 MNT="${MNT:-64}"              # max new tokens
 

@@ -1,0 +1,122 @@
+# Generation and rendering safeguards
+
+Long structured answers have two distinct failure surfaces: the language model can enter an exact
+token cycle near its completion limit, and the synthetic renderer can silently rasterize only the
+first page of a long HTML document. Treating both as a generic length problem hides data loss.
+
+## Exact suffix-cycle guard
+
+Student inference, preference rollout, RLVR rollout, and held-out evaluation share three controls:
+
+| Control | Default | Meaning |
+| --- | ---: | --- |
+| `repetition_guard_min_tokens` | 24 | Do not intervene before this many completion tokens |
+| `repetition_guard_max_period` | 16 | Inspect exact trailing cycles up to this period |
+| `repetition_guard_repetitions` | 3 | Require this many consecutive copies of the cycle |
+
+When appending a candidate would satisfy all three conditions, generation emits EOS instead. The
+guard is intentionally narrower than no-repeat n-gram decoding. Repeated HTML tags, table columns,
+punctuation, and labels remain legal when they do not form one consecutive trailing cycle.
+The production experiment pins these values explicitly and the experiment compiler forwards them
+to both baseline and final evaluation, so a library default change cannot create an unmatched
+comparison.
+
+Evaluation records `generated_tokens`, `reached_max_new_tokens`,
+`repetition_guard_triggered`, and `degenerate_repetition` per sample. A guard-triggered cycle is
+classified as degenerate even though replacing its final candidate with EOS removes the cycle from
+the stored token suffix. Split summaries and W&B expose `max_token_rate`,
+`repetition_guard_trigger_rate`, and `degenerate_repetition_rate`. Accuracy should not be accepted
+as improved when these diagnostics regress materially, especially on table, full-page OCR, and
+long-context slices.
+
+## Bounded task-aware token budgets
+
+A single 128-token horizon is adequate for concise KIE but can truncate a valid table, full-page
+transcription, reading-order sequence, or evidence-linked reasoning response. Evaluation,
+preference sampling, and RLVR therefore share a task-label policy with three parts:
+
+- `max_new_tokens` is the default budget;
+- `max_new_tokens_by_answer_type` maps exact public task labels or trailing-wildcard prefixes to
+  larger budgets;
+- `max_new_tokens_hard_cap` bounds every override.
+
+The production policy uses a 128-token default and a 512-token hard cap. Exact labels win over
+prefix matches, and the longest matching prefix wins among wildcard rules. Resolution uses only
+the public `answer_type`; it never examines gold text, target length, correctness, or hidden
+annotations. The same resolved budget applies to every candidate in one preference or RLVR group.
+Known long public labels such as `pubtabnet`, `omnidocbench`, `recognition_fullpage`, `im2latex`,
+and `latexocr` receive explicit bounded budgets because they do not share the authored
+`table*`, `formula*`, or `ocr-full` prefixes.
+
+Per-sample evaluation writes `generation_token_budget` and
+`generation_token_budget_source`. Summaries report `mean_generation_token_budget` and
+`budget_escalation_rate`; rollouts log the corresponding budget and escalation metrics. Actual
+completion width continues to drive preference and RLVR FLOP accounting. The complete policy is
+checkpointed as part of each rollout contract, so changing it invalidates resume.
+
+Bounded smoke evaluations can set `evaluation.sample_selection: answer_type_round_robin`. The
+selector takes one sample from each public `answer_type` before taking a second from any type,
+with deterministic within-type shuffling. It never reads answers, target length, reward, or
+correctness. Baseline and final evaluation therefore retain identical task coverage under a small
+sample budget instead of accidentally omitting tables, grounding, or reasoning slices.
+The production experiment uses this selector as well; it is a no-op when every sample is evaluated
+and preserves task coverage when a pilot applies `max_samples`.
+
+## Tokenized target-fit audit
+
+The production experiment runs `audit_generation_budgets` after the tokenizer and structured
+samples exist but before student initialization. It serializes each target through the same SFT
+dataset contract, counts tokenizer pieces plus EOS, and evaluates the exact evaluation,
+preference, and RLVR policies. The gate requires policy identity and the configured coverage on
+train, validation, and heldout. A continuation run audits its active replay mixture with the
+attested parent tokenizer before SFT.
+
+Budget recommendations use train and validation only. Heldout targets test coverage but never
+alter a recommendation. The JSON artifact contains aggregate length quantiles, coverage,
+near-budget counts, and a bounded list of overflow sample IDs. It deliberately excludes target
+text, repeated completion tokens, and rendered HTML bodies. Complex tables and full pages remain
+inspectable through the rendering audit, while the budget audit stays compact enough to compare
+without duplicating a long context.
+
+## HTML and full-page integrity
+
+The renderer records total PDF pages separately from rasterized pages. Table and full-text targets
+cannot use a first-page image when the HTML overflows:
+
+1. Render the requested mode and inspect the PDF page count.
+2. Automatically replace an overflowing first-page render with one vertical all-page canvas.
+3. Audit rendered-page coverage, blank pages, and the survival of every non-empty table cell in the
+   PDF text layer.
+4. Fail before allocating a canvas above `max_canvas_pixels`.
+
+The resulting sample metadata includes `render.auto_expanded_from_first` and
+`render.layout_audit`. The audit reports page counts, omitted pages, blank pages, table/row/cell
+counts, missing cells, canvas pixels, and failures. Complex layouts should be visualized as an
+all-page canvas only while they fit the explicit pixel budget; beyond that budget they must be
+split into page-level or tiled samples with shared document identity rather than downscaled into
+unreadable pixels.
+
+Dataset visualization follows the same separation. The PNG montage remains a bounded source/task
+overview. `render_detail_report` and the visualization scripts additionally write a responsive HTML
+report for table and tall full-page rows. Each document image is embedded once at a bounded preview
+resolution and links to the original full-resolution file. Table markup is rendered through a
+strict table-element and span-attribute allowlist inside an independently scrollable pane; the
+report does not duplicate the long raw HTML source.
+
+## Release gates
+
+- The production `generation_stability` gate requires matched heldout sample IDs, answer types,
+  task-aware token budgets, and budget sources between the candidate and reference checkpoint.
+  Missing legacy diagnostics produce `insufficient_evidence`, not a pass.
+- On table, HTML, full-page, transcription, reading-order, and long-context slices, enforce absolute
+  and baseline-relative limits for degenerate repetition and max-token termination while also
+  preventing score or structural-validity regressions.
+- Compare `max_token_rate` and `degenerate_repetition_rate` by answer type and context length.
+- Compare score at a fixed policy and report mean budget and escalation rate; do not call a larger
+  horizon a free quality gain.
+- Require zero omitted pages and zero missing cells for table and full-text synthetic examples.
+- Inspect representative all-page canvases at both native and model-input resolution.
+- Keep token-cycle controls identical across training rollout and evaluation checkpoints.
+- Require the tokenized target-fit audit to pass before allocating the student model.
+- Treat a lower token count as a correction only when task score and structural validity do not
+  regress.

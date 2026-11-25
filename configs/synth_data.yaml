@@ -26,6 +26,31 @@ base:
   emit_spotting: true       # A1: include bbox targets (Field.bbox / QAItem.answer_bbox)
   emit_rationale: true      # A2: include chain-of-thought rationales
   emit_understanding: true  # model-free understanding GT (where / how-many / totals) from derive.py
+  emit_counterfactual_pairs: true  # adjacent hard docs share locale/style but edit latent values
+  # Fall back to a layout-neutral color-probe render when the PDF text layer cannot resolve
+  # a required spotting/grounding span (notably CJK, RTL, letter-spaced, or wrapped text).
+  color_probe_fallback: true
+  # Reject requested-but-unresolved, clipped, or visually blank evidence boxes after the final
+  # resize and supervision projection. Metrics compare each crop with its local background.
+  validate_evidence_pixels: true
+  evidence_min_contrast: 8.0
+  evidence_min_foreground_fraction: 0.002
+  evidence_min_foreground_pixels: 4
+  # Degraded copies must preserve both local visibility and clean-crop structure. Runtime or
+  # quality failures retry a deterministic seed sequence before generation fails closed.
+  validate_degraded_evidence: true
+  degraded_min_structure_correlation: 0.25
+  degrade_max_attempts: 3
+  # Same-frame perspective geometry for photo-style clean/degraded pairs. Boxes are transformed
+  # by the exact homography and stored as axis-aligned envelopes in the warped pixel frame.
+  perspective_prob: 0.35
+  perspective_max_inset_fraction: 0.08
+  perspective_min_area_ratio: 0.70
+  overlay_prob: 0.35
+  overlay_types: [handwriting, stamp, seal]
+  overlay_max_count: 2
+  multipage_mode: grid
+  multidocument_mode: grid
 
   # --- visual diversity: per-doc paper/accent/font/margin jitter (geometry-safe; boxes stay exact) ---
   jitter: true
@@ -35,8 +60,8 @@ base:
   text_source: offline
 
   # --- A4 multilingual mix (real-world script distribution) ---
-  languages: [en]
-  language_weights: null    # e.g. {en: 0.5, es: 0.2, ko: 0.15, ja: 0.1, zh: 0.05}
+  languages: [en, es, ko, ja, zh]
+  language_weights: {en: 0.35, es: 0.15, ko: 0.20, ja: 0.15, zh: 0.15}
 
   # --- realism / distribution matching (real-world acquisition mix) ---
   degrade_prob: 1.0         # fraction of docs that also get a degraded copy
@@ -44,6 +69,13 @@ base:
   degrade_presets: null     # null = each case's default preset; or per-type override, e.g.
                             #   invoice: [scan, photo]   prescription: [fax]
   doc_type_weights: null    # null = uniform over the requested cases
+
+  # --- executable hard-document curriculum and leakage-safe split provenance ---
+  difficulty_level: 4       # 1=direct reading, 5=multi-hop/cross-region with distractors
+  hard_layout_families: [classic-v1, compact-v1, report-v1]
+  split_name: synthetic     # set train/validation/heldout when materializing a named split
+  split_seed: 7             # deterministic suggested split assignment for semantic fingerprints
+  split_group_by: content   # content | template | layout | document
 
 # ----------------------------------------------------------------------------------------------
 # Ablation overrides — applied on top of `base` (deep-merged) when --ablation <id> is passed.
@@ -76,12 +108,12 @@ ablation_overrides:
   A3_spot_and_reason: {emit_spotting: true,  emit_rationale: true}
 
   # A4 — multilingual mixing & language correlation. Equal total samples across arms (count fixed).
-  A4_en:        {languages: [en]}
-  A4_en_es:     {languages: [en, es]}
-  A4_en_ja:     {languages: [en, ja]}
-  A4_ko_en:     {languages: [ko, en]}
-  A4_en_zh:     {languages: [en, zh]}
-  A4_all:       {languages: [en, es, ko, ja, zh]}
+  A4_en:        {languages: [en], language_weights: null}
+  A4_en_es:     {languages: [en, es], language_weights: null}
+  A4_en_ja:     {languages: [en, ja], language_weights: null}
+  A4_ko_en:     {languages: [ko, en], language_weights: null}
+  A4_en_zh:     {languages: [en, zh], language_weights: null}
+  A4_all:       {languages: [en, es, ko, ja, zh], language_weights: null}
 
   # Understanding layer (model-free where/how-many/totals) on vs off — isolates its contribution.
   U_understanding_off: {emit_understanding: false}
@@ -109,6 +141,21 @@ ablation_overrides:
   #     next-action) is always emitted with the understanding layer; toggle it as a whole here.
   D_difficulty_on:  {emit_understanding: true,  emit_rationale: true}
   D_difficulty_off: {emit_understanding: false, emit_rationale: false}
+  D_hard_level_1:   {difficulty_level: 1}
+  D_hard_level_3:   {difficulty_level: 3}
+  D_hard_level_5:   {difficulty_level: 5}
+  D_hard_layout_classic: {hard_layout_families: [classic-v1]}
+  D_hard_layout_diverse: {hard_layout_families: [classic-v1, compact-v1, report-v1]}
+  D_color_probe_off: {color_probe_fallback: false}
+  D_color_probe_on:  {color_probe_fallback: true}
+  D_perspective_off: {perspective_prob: 0.0}
+  D_perspective_on:  {perspective_prob: 1.0}
+  D_overlays_off: {overlay_prob: 0.0}
+  D_overlays_on:  {overlay_prob: 1.0}
+  D_multipage_vertical: {multipage_mode: vertical}
+  D_multipage_grid: {multipage_mode: grid}
+  D_multidocument_vertical: {multidocument_mode: vertical}
+  D_multidocument_grid: {multidocument_mode: grid}
 
   # A7 — preprocessing / resize logic. Control = fixed low-res; arms raise resolution / add tiling.
   A7_fixed_lowres:    {target_long_side: 768,  keep_aspect: true,  tiling_n_max: null, dpi: 110}

@@ -1,0 +1,44 @@
+{
+  "claim_scope": "smol_vision_pilot_execution_state_only",
+  "fingerprint": "sha256:9255c9cedf13aa79b81a4d57b31b959e0a55c84b641e11b0bc1b7bd9e9830251",
+  "local": {
+    "attestation_sha256_by_arm": {},
+    "attested_arms": [],
+    "completed_arms": [],
+    "duplicate_arms": [],
+    "execution_attestation_fingerprint": null,
+    "observed_arms": [],
+    "status": "absent",
+    "summary_present": false,
+    "unexpected_arms": []
+  },
+  "next_action": "Run notebooks/smol_vision_transfer_pilot.ipynb on native-BF16 hardware.",
+  "observation_scope": "The captured local summary and W&B inventory only; absence does not prove that no run exists outside those observations.",
+  "pilot": "docvlm-smol-vision-transfer-pilot",
+  "pilot_submission_authorized": true,
+  "promotion_claim_authorized": false,
+  "quality_claim_authorized": false,
+  "schema_version": 1,
+  "state": "not_started_in_observed_state",
+  "submission_readiness": {
+    "checks": {
+      "fail": 0,
+      "pass": 14
+    },
+    "fingerprint": "sha256:6d70d8abed676fdf67f999e6244fcc14d4db607ee0d4642b0a89e9b77b184dc0",
+    "status": "pass"
+  },
+  "training_execution_attested": false,
+  "wandb": {
+    "entity": "sbdc",
+    "legacy_or_other_runs": 10,
+    "native_pilot_runs": 0,
+    "observed_at": "2026-07-25",
+    "observed_runs": 10,
+    "project": "docvlm-ablation",
+    "states": {
+      "crashed": 1,
+      "finished": 9
+    }
+  }
+}

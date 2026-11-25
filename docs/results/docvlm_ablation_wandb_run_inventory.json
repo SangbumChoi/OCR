@@ -1,0 +1,93 @@
+{
+  "claim_scope": "wandb_run_inventory_only",
+  "fingerprint": "sha256:003f3c4426d47c84cde39fc39f2a47bbd44d9b5d2a76fed9ec3be5fc85e0f516",
+  "limitations": [
+    "Run state and name are external activity signals, not sealed training or quality evidence.",
+    "Configs, histories, summaries, artifacts, and metric tables are intentionally excluded."
+  ],
+  "observed_at": "2026-07-25",
+  "run_count": 10,
+  "runs": [
+    {
+      "created_at": null,
+      "id": "zudk1ddi",
+      "name": "A7_dynamic_tiling-lfm2_5-vl-1.6b-all",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "zivt0ner",
+      "name": "A1_spotting_on-lfm2_5-vl-1.6b-connector",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "ydacntgh",
+      "name": "A2_reasoning_on-lfm2_5-vl-1.6b-llm_attn",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "r0t65g1h",
+      "name": "A0-lfm2_5-vl-1.6b-n50",
+      "state": "crashed",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "prh5gy29",
+      "name": "A1_spotting_on-lfm2_5-vl-1.6b-vision",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "lpexwbxe",
+      "name": "A2_reasoning_on-lfm2_5-vl-1.6b-llm_attn",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "fo0ze471",
+      "name": "A1_spotting_on-lfm2_5-vl-1.6b-vision",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "6lyqgkvb",
+      "name": "A4_ko_en-lfm2_5-vl-1.6b-llm_mlp",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "6d7vq5wo",
+      "name": "A1_spotting_on-lfm2_5-vl-1.6b-connector",
+      "state": "finished",
+      "updated_at": null
+    },
+    {
+      "created_at": null,
+      "id": "5s1asdma",
+      "name": "A7_dynamic_tiling-lfm2_5-vl-1.6b-all",
+      "state": "finished",
+      "updated_at": null
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "entity": "sbdc",
+    "extraction_surface": "authenticated W&B workspace run list",
+    "project": "docvlm-ablation",
+    "provider": "Weights & Biases"
+  },
+  "states": {
+    "crashed": 1,
+    "finished": 9
+  }
+}

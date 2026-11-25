@@ -22,11 +22,19 @@ from __future__ import annotations
 
 import html as _html
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 from PIL import Image
 
-from .render import render_html, resolve_boxes
+from .hard_layout import layout_fingerprint
+from .hard_locale import HARD_DOCUMENT_LANGUAGES, hard_text
+from .render import (
+    audit_html_render,
+    prepare_color_probe_fallback,
+    render_html,
+    resolve_boxes,
+)
 
 
 def esc(s: object) -> str:
@@ -41,6 +49,9 @@ class DocBuilder:
     css: str = ""
     page: str = "A5"            # CSS @page size token, e.g. "A5", "A4", "90mm 58mm", "1280px 900px"
     margin: str = "12mm"
+    language: str = "en"
+    layout_family: str | None = None
+    page_mode: str = "first"
 
     def __post_init__(self):
         self._html: list[str] = []
@@ -59,6 +70,8 @@ class DocBuilder:
         self.field_lang: dict[str, str] = {}
         self.field_role: dict[str, str] = {}
         self.field_font_px: dict[str, float] = {}
+        self.semantic_graph: dict | None = None
+        self.difficulty: dict | None = None
 
     # -- low level ---------------------------------------------------------
     def raw(self, html: str) -> None:
@@ -82,11 +95,12 @@ class DocBuilder:
         self.raw(f"<p class='{cls}'>{html}</p>")
 
     def field(self, label: str | None, value: str, *, key: str, spot: bool = False,
-              cls: str = "", lang: str = "en", role: str = "kie-value",
+              cls: str = "", lang: str | None = None, role: str = "kie-value",
               font_px: float | None = None) -> None:
         """A labelled value. Registers fields[key]=value; optionally a spotting box on the value.
 
         ``lang`` (A4) and ``font_px`` (A7 small-text slice) are recorded as per-field metadata."""
+        lang = lang or self.language
         self.fields[key] = value
         self.field_lang[key] = lang
         self.field_role[key] = role
@@ -97,10 +111,12 @@ class DocBuilder:
         if spot:
             self._spot(key, value)
 
-    def transcript(self, text: str, *, key: str = "transcript", cls: str = "", lang: str = "en",
+    def transcript(self, text: str, *, key: str = "transcript", cls: str = "",
+                   lang: str | None = None,
                    spot: bool = False, role: str = "transcript",
                    font_px: float | None = None) -> None:
         """A block of text whose exact string is the GT (for NED/CER)."""
+        lang = lang or self.language
         self.fields[key] = text
         self.field_lang[key] = lang
         self.field_role[key] = role
@@ -128,6 +144,7 @@ class DocBuilder:
         gold = f"<table>{row(header, 'td')}{body}{foot}</table>"
         self.table_html = gold
         self.fields[key + "_rows"] = len(rows)
+        self.field_lang[key + "_rows"] = self.language
         self.raw(f"<table class='{cls}'>{row(header,'th')}{body}{foot}</table>")
         for (r, c) in (spot_cells or []):
             if 0 <= r < len(rows) and 0 <= c < len(rows[r]):
@@ -195,7 +212,10 @@ class DocBuilder:
 
     def qa(self, question: str, answer, *, metric: str = "anls", answer_type: str = "kie",
            key: str | None = None, concise: bool = True, rationale: str | None = None,
-           languages: list[str] | None = None) -> None:
+           languages: list[str] | None = None,
+           evidence_keys: list[str] | None = None, derived: bool = False,
+           graph_query_id: str | None = None,
+           reasoning_trace: dict[str, Any] | None = None) -> None:
         """Register an answerable (question, answer) pair over content already rendered, so the case
         can be turned into eval Samples. `answer` may be a string or a list of acceptable strings.
 
@@ -204,11 +224,23 @@ class DocBuilder:
         ans = answer if isinstance(answer, list) else [answer]
         q = question
         if concise and metric not in ("grounding", "teds"):
-            q += " Answer concisely, no explanation."
+            question_language = (languages or [self.language])[0]
+            locale = (
+                question_language
+                if question_language in HARD_DOCUMENT_LANGUAGES
+                else "en"
+            )
+            q += f" {hard_text(locale, 'concise')}"
+        qa_languages = languages or [self.language]
         self.qas.append({"key": key, "question": q, "answers": ans,
                          "metric": metric, "answer_type": answer_type,
                          **({"rationale": rationale} if rationale else {}),
-                         **({"languages": languages} if languages else {})})
+                         **({"evidence_keys": evidence_keys} if evidence_keys else {}),
+                         **({"derived": True} if derived else {}),
+                         **({"graph_query_id": graph_query_id} if graph_query_id else {}),
+                         **({"reasoning_trace": reasoning_trace}
+                            if reasoning_trace else {}),
+                         "languages": qa_languages})
 
     def table_reason(self, header: list, rows: list, *, label: str = "the table", n: int = 3) -> None:
         """Auto-generate ``n`` varied, model-free REASONING QAs over a typed table (count / sum / mean
@@ -282,9 +314,65 @@ class DocBuilder:
         """
         return base + self.css
 
-    def build(self, dpi: int = 150) -> tuple[Image.Image, dict]:
-        rr = render_html("".join(self._html), self._full_css(), dpi=dpi)
+    def build(
+        self,
+        dpi: int = 150,
+        *,
+        color_probe_fallback: bool = True,
+    ) -> tuple[Image.Image, dict]:
+        html = "".join(self._html)
+        css = self._full_css()
+        rr = render_html(html, css, dpi=dpi, page_mode=self.page_mode)
+        auto_expanded_from_first = False
+        if (
+            self.page_mode == "first"
+            and rr.page_count > len(rr.page_origins_px)
+            and (self.table_html is not None or self._fulltext_q is not None)
+        ):
+            rr.close()
+            rr = render_html(
+                html,
+                css,
+                dpi=dpi,
+                page_mode="vertical",
+            )
+            auto_expanded_from_first = True
         try:
+            layout_audit = audit_html_render(
+                rr,
+                html,
+                require_all_pages=(
+                    self.table_html is not None
+                    or self._fulltext_q is not None
+                ),
+                require_table_cells=self.table_html is not None,
+                strict=True,
+            )
+            if color_probe_fallback:
+                required_occurrences: dict[str, int] = {}
+                for _key, text, occurrence in self._spots:
+                    required_occurrences[text] = max(
+                        required_occurrences.get(text, 0),
+                        occurrence + 1,
+                    )
+                for derivation in self._derivations:
+                    if derivation.kind in {"locate", "count"}:
+                        required_occurrences[derivation.text] = max(
+                            required_occurrences.get(derivation.text, 0),
+                            derivation.occurrence + 1,
+                        )
+                    elif derivation.kind == "region":
+                        for text in derivation.texts or []:
+                            required_occurrences[text] = max(
+                                required_occurrences.get(text, 0),
+                                1,
+                            )
+                prepare_color_probe_fallback(
+                    rr,
+                    html,
+                    css,
+                    required_occurrences,
+                )
             spotting = resolve_boxes(rr, self._spots)
             # resolve model-free understanding GT (where/how-many/totals) against the open render
             if self._derivations:
@@ -300,17 +388,49 @@ class DocBuilder:
                 txt = rr.full_text()
                 if txt:
                     self.fields["full_text"] = txt
+                    self.field_lang["full_text"] = self.language
                     self.qas.append({"key": "full_text", "question": self._fulltext_q,
-                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full"})
+                                     "answers": [txt], "metric": "ned", "answer_type": "ocr-full",
+                                     "languages": [self.language]})
                 else:
                     print(f"  [warn] full_text empty for {self.doc_type} — skipped")
+            render = {
+                "dpi": dpi,
+                "size_px": list(rr.image.size),
+                "page_count": rr.page_count,
+                "rendered_page_count": len(rr.page_origins_px),
+                "page_mode": rr.page_mode,
+                "page_gap_px": rr.page_gap_px,
+                "page_origins_px": [
+                    list(origin) for origin in rr.page_origins_px
+                ],
+                "page_sizes_px": [
+                    list(size) for size in rr.page_sizes_px
+                ],
+                "box_resolver": (
+                    "pdf_text_then_color_probe"
+                    if color_probe_fallback
+                    else "pdf_text"
+                ),
+                "color_probe_fallback_count": len(
+                    rr.color_probe_fallbacks
+                ),
+                "auto_expanded_from_first": auto_expanded_from_first,
+                "layout_audit": layout_audit,
+            }
+            if self.layout_family is not None:
+                render["layout_family"] = self.layout_family
+                render["layout_fingerprint"] = layout_fingerprint(
+                    self.doc_type,
+                    self.layout_family,
+                )
             gt = {
                 "type": self.doc_type,
                 "stressors": list(self.stressors),
                 "anchor_metric": self.anchor_metric,
                 "fields": dict(self.fields),
                 "source": "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data",
-                "render": {"dpi": dpi, "size_px": list(rr.image.size), "page_count": rr.page_count},
+                "render": render,
             }
             if spotting:
                 gt["spotting"] = spotting
@@ -326,6 +446,10 @@ class DocBuilder:
                 gt["reading_order"] = self.reading_order
             if self.probes:
                 gt["probes"] = self.probes
+            if self.semantic_graph is not None:
+                gt["semantic_graph"] = self.semantic_graph
+            if self.difficulty is not None:
+                gt["difficulty"] = self.difficulty
             return rr.image.copy(), gt
         finally:
             rr.close()

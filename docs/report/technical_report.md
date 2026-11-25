@@ -206,7 +206,7 @@ GT (§Part 2.3).
 | **Relaxed accuracy**     | Numeric within 5% rel. error, else exact match                              | Official ChartQA metric; the right notion of "correct" for read-off numbers                                                                                                 | **used** (H1 / H3) |
 | **Exact / TEDS / grounding-IoU** | exact string / table tree-edit sim / box IoU                        | strict answers, table structure, and spotting localisation respectively                                                                                                     | **used** (counts, tables, L1) |
 | **OCRBench score**       | Gold string ⊆ prediction, summed /1000                                      | Standard OCRBench scoring; isolates *recognition* from *reasoning*                                                                                                          | **not exercised** — applies only to the OCRBench dataset, which we **cite (published) but did not reproduce**; no probe uses this scorer |
-| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     | **partially used** — computed per-model in Part-1 `summary.json` for logit-exposing backends (n/a for OCR specialists); **not surfaced in the headline tables, not logged in fine-tuning** |
+| **Calibration — ECE**    | weighted mean over 10 confidence bins of abs(accuracy − confidence)          | A deployable reader must *know when it is unsure* so low-confidence fields route to human review; equal-accuracy models can differ sharply in ECE (Guo et al., ICML'17)     | **used in native-student evaluation** — raw and temperature-scaled ECE are logged from a disjoint calibration split; generic Part-1 adapters retain local raw-ECE summaries |
 | **Robustness retention** | score(perturbed) / score(clean), per perturbation family                    | Production inputs are degraded; retention predicts real-world accuracy better than clean ANLS                                                                               | **partially used** — the rotation-retention slice runs on the custom-eval; the full degraded-input robustness sweep is wired but not in the headline run |
 | **Operational**          | answer-rate, load time, avg latency/sample                                  | Edge viability: a model that's accurate but 10× slower may be unusable                                                                                                      | **used** (efficiency table) |
 
@@ -216,7 +216,8 @@ GT (§Part 2.3).
 > **OCRBench score** is only meaningful on the OCRBench dataset (we report its *published* figures in
 > the comparison table and did not re-run that sweep), and **ECE** is genuinely computed in the
 > Part-1 capability/probe runs (`docs/results/<model>/<probe>/summary.json` — e.g. SmolVLM-256M ≈ 0.43)
-> but is **not pulled into the headline matrices and is not part of the fine-tuning W&B stream**.
+> but is **not pulled into the Part-1 headline matrices**. The separate native-student final
+> evaluator now logs raw and temperature-scaled ECE to its W&B run.
 
 Confidence for ECE is the **mean token probability** of the generated answer, read from HF
 `generate(output_scores=True)`. Genuinely autoregressive backends (InternVL, SmolVLM,
@@ -392,7 +393,10 @@ spotting*.
 - *H2 (tentative).* The grounding pathway *appears* to run through the **vision encoder** more than the
   connector (vision > connector on every grounding row, starkly on `L1-locate`). This is consistent
   with the A5 prior "spatial/grounding ← vision (+connector)", but two arms at small scale can't yet
-  rule out the connector contributing when combined.
+  rule out the connector contributing when combined. The parameter-matched confirmatory protocol is
+  now executable as
+  [`student_lora_placement_interaction.md`](student_lora_placement_interaction.md): it compares
+  vision-only with the exact vision+connector target union over three paired seeds.
 - *H3 (tentative).* The lift *appears* **cheap to recognition**: `kie` is identical (0.986) across
   placements, so adding box targets did not visibly erode "what". A real cost may only show at scale.
   Note `kie` is *already high to begin with* — KIE-style "read this field's value" is close to what
@@ -405,7 +409,8 @@ spotting*.
   an easier target; scale + a region-heavy run would disambiguate.
 - *Caveat on magnitude.* Absolute spot-IoU is still low (≤ ~0.14 held-out) and the train/held-out
   ordering is noisy, so treat these as *direction*, not achieved performance. The next step is more
-  images/epochs and a vision **+** connector arm to test H2 directly.
+  images/steps in the six-run, adapter-budget-matched vision **+** connector sweep. Its existence is
+  an experiment contract, not evidence that the connector interaction is positive.
 
 These are framed as conjectures on purpose: with the current brief runs we can observe *direction*,
 not magnitude. We flag this so the report does not overclaim.

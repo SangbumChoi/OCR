@@ -7,9 +7,7 @@ import textwrap
 
 import pytest
 
-from docvlm_eval.synth.dto import (
-    BBox, Degradation, DocSample, Field, GenConfig, QAItem, RenderSpec, script_for,
-)
+from docvlm_eval.synth.dto import BBox, DocSample, Field, GenConfig, QAItem, RenderSpec, script_for
 from docvlm_eval.synth.to_samples import case_to_samples
 
 
@@ -118,3 +116,218 @@ def test_genconfig_from_yaml_base_and_overrides(tmp_path):
 
     with pytest.raises(KeyError):
         GenConfig.from_yaml(str(p), ablation="nope")
+
+
+def test_color_probe_config_and_render_provenance():
+    assert GenConfig().color_probe_fallback is True
+    with pytest.raises(
+        ValueError,
+        match="color_probe_fallback must be boolean",
+    ):
+        GenConfig(color_probe_fallback="yes")
+
+    flat = {
+        "type": "document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "page_count": 1,
+            "box_resolver": "pdf_text_then_color_probe",
+            "color_probe_fallback_count": 2,
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.box_resolver == "pdf_text_then_color_probe"
+    assert render.color_probe_fallback_count == 2
+
+
+def test_perspective_config_and_render_provenance():
+    config = GenConfig()
+    assert config.perspective_prob == 0.35
+    assert config.perspective_max_inset_fraction == 0.08
+    assert config.perspective_min_area_ratio == 0.70
+
+    with pytest.raises(ValueError, match="perspective_prob"):
+        GenConfig(perspective_prob=1.1)
+    with pytest.raises(ValueError, match="perspective_max_inset_fraction"):
+        GenConfig(perspective_max_inset_fraction=0.5)
+    with pytest.raises(ValueError, match="perspective_min_area_ratio"):
+        GenConfig(perspective_min_area_ratio=0)
+
+    geometry = {
+        "schema_version": 1,
+        "kind": "perspective",
+        "seed": 17,
+        "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    }
+    flat = {
+        "type": "document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "geometry": geometry,
+        },
+    }
+
+    assert DocSample.from_builder_gt(flat).render.geometry == geometry
+
+
+def test_hard_layout_config_and_render_provenance():
+    config = GenConfig()
+    assert config.hard_layout_families == [
+        "classic-v1",
+        "compact-v1",
+        "report-v1",
+    ]
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        GenConfig(hard_layout_families=[])
+    with pytest.raises(ValueError, match="unknown hard layout"):
+        GenConfig(hard_layout_families=["unknown"])
+    GenConfig(split_group_by="layout")
+
+    flat = {
+        "type": "hard chart",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "layout_family": "compact-v1",
+            "layout_fingerprint": "abc123",
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.layout_family == "compact-v1"
+    assert render.layout_fingerprint == "abc123"
+
+
+def test_document_overlay_config_and_render_provenance():
+    config = GenConfig()
+    assert config.overlay_prob == 0.35
+    assert config.overlay_types == ["handwriting", "stamp", "seal"]
+    assert config.overlay_max_count == 2
+
+    with pytest.raises(ValueError, match="overlay_prob"):
+        GenConfig(overlay_prob=1.1)
+    with pytest.raises(ValueError, match="cannot be empty"):
+        GenConfig(overlay_types=[])
+    with pytest.raises(ValueError, match="unknown document overlay"):
+        GenConfig(overlay_types=["watermark"])
+    with pytest.raises(ValueError, match="overlay_max_count"):
+        GenConfig(overlay_max_count=0)
+
+    flat = {
+        "type": "marked document",
+        "render": {
+            "dpi": 150,
+            "size_px": [800, 600],
+            "overlay_seed": 17,
+            "overlay_fingerprint": "abc123",
+            "overlays": [
+                {
+                    "kind": "stamp",
+                    "text": "APPROVED",
+                    "bbox": [10, 20, 90, 50],
+                    "angle_degrees": 2.5,
+                    "opacity": 150,
+                }
+            ],
+        },
+    }
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.overlay_seed == 17
+    assert render.overlay_fingerprint == "abc123"
+    assert render.overlays[0]["kind"] == "stamp"
+
+
+def test_multipage_render_provenance_round_trips():
+    assert GenConfig().multipage_mode == "grid"
+    GenConfig(multipage_mode="vertical")
+    with pytest.raises(ValueError, match="multipage_mode"):
+        GenConfig(multipage_mode="pages")
+
+    flat = {
+        "type": "packet",
+        "render": {
+            "dpi": 96,
+            "size_px": [400, 1220],
+            "page_count": 3,
+            "rendered_page_count": 3,
+            "page_mode": "vertical",
+            "page_gap_px": 12,
+            "page_origins_px": [[0, 0], [0, 412], [0, 824]],
+            "page_sizes_px": [[400, 400], [400, 400], [400, 396]],
+        },
+    }
+
+    render = DocSample.from_builder_gt(flat).render
+
+    assert render.page_count == 3
+    assert render.rendered_page_count == 3
+    assert render.page_mode == "vertical"
+    assert render.page_gap_px == 12
+    assert render.page_origins_px[2] == [0, 824]
+    assert render.page_sizes_px[0] == [400, 400]
+
+
+def test_config_validates_multidocument_mode():
+    assert GenConfig(multidocument_mode="grid").multidocument_mode == "grid"
+    assert GenConfig(multidocument_mode="vertical").multidocument_mode == "vertical"
+    with pytest.raises(ValueError, match="multidocument_mode"):
+        GenConfig(multidocument_mode="horizontal")
+
+
+def test_evidence_pixel_gate_config_validation():
+    config = GenConfig()
+    assert config.validate_evidence_pixels is True
+    assert config.evidence_min_contrast == 8.0
+    assert config.evidence_min_foreground_fraction == 0.002
+    assert config.evidence_min_foreground_pixels == 4
+    assert config.validate_degraded_evidence is True
+    assert config.degraded_min_structure_correlation == 0.25
+    assert config.degrade_max_attempts == 3
+
+    with pytest.raises(ValueError, match="validate_evidence_pixels must be boolean"):
+        GenConfig(validate_evidence_pixels="yes")
+    with pytest.raises(ValueError, match="evidence_min_contrast must be positive"):
+        GenConfig(evidence_min_contrast=0)
+    with pytest.raises(ValueError, match="evidence_min_foreground_fraction"):
+        GenConfig(evidence_min_foreground_fraction=1.1)
+    with pytest.raises(ValueError, match="evidence_min_foreground_pixels must be positive"):
+        GenConfig(evidence_min_foreground_pixels=0)
+    with pytest.raises(ValueError, match="validate_degraded_evidence must be boolean"):
+        GenConfig(validate_degraded_evidence="yes")
+    with pytest.raises(ValueError, match="degraded_min_structure_correlation"):
+        GenConfig(degraded_min_structure_correlation=1.1)
+    with pytest.raises(ValueError, match="degrade_max_attempts must be positive"):
+        GenConfig(degrade_max_attempts=0)
+
+
+def test_graph_evidence_keys_resolve_to_multiple_boxes():
+    gt = {
+        "type": "hard table",
+        "stressors": ["multi-cell"],
+        "anchor_metric": "relaxed_acc",
+        "fields": {"left": "10", "right": "20"},
+        "spotting": {"left": [1, 2, 3, 4], "right": [5, 6, 7, 8]},
+        "qa": [
+            {
+                "question": "What is the total?",
+                "answers": ["30"],
+                "metric": "relaxed_acc",
+                "answer_type": "H-table",
+                "evidence_keys": ["left", "right"],
+            }
+        ],
+        "render": {"dpi": 150, "size_px": [100, 100], "page_count": 1},
+    }
+    doc = DocSample.from_builder_gt(gt)
+    assert doc.qa[0].evidence_keys == ["left", "right"]
+    assert [box.to_list() for box in doc.qa[0].evidence_bboxes] == [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+    ]
+    detailed = doc.to_dict()["qa_detailed"][0]
+    assert detailed["evidence_bboxes"] == [[1, 2, 3, 4], [5, 6, 7, 8]]

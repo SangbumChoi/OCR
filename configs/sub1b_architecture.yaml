@@ -1,0 +1,570 @@
+# Adjustable architecture and training blueprint for a document VLM below one billion parameters.
+# Validate after editing:
+#   python scripts/validate_sub1b_blueprint.py
+
+schema_version: 1
+name: docvlm-800m
+
+budget:
+  max_parameters: 1000000000
+  target_parameters: 800000000
+  tolerance_fraction: 0.08
+
+tokenizer:
+  family: byte_level_bpe
+  vocab_size: 64000
+  normalization: NFC
+  min_frequency: 2
+  source_fields:
+    - instructions
+    - answers
+    - full_text
+    - table_html
+    - element_keys_and_values
+
+student:
+  vision:
+    family: vit
+    image_size: 896
+    patch_size: 14
+    width: 768
+    layers: 12
+    attention_heads: 12
+    mlp_ratio: 4.0
+    max_position_tokens: 4096
+    dropout: 0.0
+    norm_eps: 0.00001
+    gelu_approximate: none
+
+  language:
+    family: decoder_only
+    vocab_size: 64000
+    width: 1536
+    layers: 23
+    attention_heads: 24
+    kv_heads: 8
+    mlp_width: 4096
+    tied_embeddings: true
+    rope_base: 10000.0
+    dropout: 0.0
+    # null preserves the all-attention control. Hybrid sweeps provide explicit
+    # zero-based full-attention layer indices; every other layer uses short conv.
+    full_attention_layers: null
+    conv_kernel_size: 3
+    conv_bias: false
+    norm_eps: 0.000001
+    qk_norm: false
+    attention_bias: true
+    mlp_bias: true
+    rope_layout: interleaved
+
+  connector:
+    family: gated_resampler
+    input_width: 768
+    output_width: 1536
+    latent_tokens: 64
+    layers: 2
+    attention_heads: 12
+    mlp_width: 2048
+    gate_init: 0.01
+
+  task_heads:
+    # Temporary pretraining heads can be removed for deployment.
+    region_text_contrastive: true
+    orientation: true
+    box_regression: true
+    contrastive_width: 256
+    contrastive_objective: siglip
+    contrastive_temperature: 0.07
+    contrastive_bias_init: -10.0
+
+initialization_arms:
+  - id: I0_random
+    shape_policy: exact
+    require_attention_geometry: false
+    require_healthy_source_weights: false
+    vision_transfer: 0.0
+    language_transfer: 0.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {}
+    purpose: "Measures what the data and objectives learn without inherited representations."
+  - id: I1_vision
+    shape_policy: exact
+    require_attention_geometry: false
+    require_healthy_source_weights: true
+    vision_transfer: 1.0
+    language_transfer: 0.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.80}
+    source: "SigLIP2-compatible vision checkpoint"
+    purpose: "Tests whether visual transfer supplies the sample efficiency needed for OCR."
+  - id: I2_language
+    shape_policy: exact
+    require_attention_geometry: false
+    require_healthy_source_weights: true
+    vision_transfer: 0.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {language: 0.15}
+    source: "Width-compatible multilingual language checkpoint"
+    purpose: "Tests inherited language and reasoning without inherited document perception."
+  - id: I3_dual
+    shape_policy: exact
+    require_attention_geometry: false
+    require_healthy_source_weights: true
+    vision_transfer: 1.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.80, language: 0.15}
+    purpose: "Transfers both towers while learning multimodal alignment from a random connector."
+  - id: I4_selective
+    shape_policy: exact
+    require_attention_geometry: false
+    require_healthy_source_weights: true
+    vision_transfer: 0.5
+    language_transfer: 0.5
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.40, language: 0.075}
+    policy: "Copy alternating depth-matched blocks; optionally distill selected depth anchors and logits with a native teacher."
+    purpose: "Separates useful inherited features from wholesale checkpoint dependence."
+  - id: I5_structured_mlp
+    shape_policy: structured_mlp
+    require_attention_geometry: false
+    require_healthy_source_weights: true
+    vision_transfer: 0.5
+    language_transfer: 0.5
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.40, language: 0.25}
+    policy: "Copy alternating exact-shape tensors and jointly salience-select wider source SwiGLU channels."
+    purpose: "Tests whether structured FFN reduction preserves useful teacher capacity that exact-shape transfer discards."
+  - id: I6_strict_structured
+    shape_policy: structured_mlp
+    require_attention_geometry: true
+    require_healthy_source_weights: true
+    vision_transfer: 0.5
+    language_transfer: 0.5
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.40, language: 0.25}
+    policy: "Apply structured MLP transfer and copy attention only when hidden, head, KV-head, head-dimension, and RoPE geometry all match."
+    purpose: "Separates semantically compatible attention inheritance from same-shape projection copying."
+  - id: I8_lfm_aligned_language
+    shape_policy: structured_mlp
+    require_attention_geometry: true
+    require_healthy_source_weights: true
+    vision_transfer: 0.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {language: 0.50}
+    policy: "Use the strict type-aware language policy and fail unless at least half of deployed language parameters are initialized from an operator-compatible source."
+    purpose: "Fail-closed LFM initialization for the source-aligned sub-1B language profile."
+  - id: I9_lfm_smol_dual
+    shape_policy: structured_mlp
+    vision_scope: transformer_blocks
+    require_attention_geometry: true
+    require_healthy_source_weights: true
+    vision_transfer: 1.0
+    language_transfer: 1.0
+    connector_transfer: 0.0
+    minimum_component_parameter_fraction: {vision: 0.95, language: 0.50}
+    policy: "Copy only exact SmolVLM2 transformer blocks, excluding patch, position, final-norm, and connector tensors, while applying strict LFM language transfer."
+    purpose: "Tests whether the cross-model vision-block candidate adds document perception without conflating incompatible visual interfaces."
+
+training:
+  activation_checkpointing:
+    enabled: true
+    components: [vision, connector, language]
+    # Non-reentrant checkpointing supports packed-attention closures and is the
+    # recommended PyTorch path for nested autograd and selective feature capture.
+    use_reentrant: false
+
+  pretraining:
+    objective: "Learn document perception, reading order, alignment, and multilingual emission."
+    input_pipeline:
+      max_text_tokens: 2048
+      max_image_long_side: 896
+      visual_canvas_mode: batch_adaptive
+      visual_sequence_mode: packed
+      packed_attention_backend: auto
+      aspect_ratio_bucketing: false
+      aspect_ratio_bucket_log2_step: 0.5
+      rotation_probability: 1.0
+      augmentation_seed: 7
+      allow_upscale: false
+      contrastive: true
+      balance_by: task
+      group_weights: {}
+      # Secondary sampling axis. Absolute optimizer-step boundaries make the
+      # ordering exact under DataLoader prefetch and checkpoint resume.
+      composition_curriculum:
+        stages:
+          - id: single_page_bootstrap
+            until_step: 100000
+            weights:
+              single_page: 1.00
+              multi_page: 0.10
+              cross_document: 0.00
+          - id: multi_page_bridge
+            until_step: 600000
+            weights:
+              single_page: 0.65
+              multi_page: 0.70
+              cross_document: 0.25
+          - id: cross_document_refinement
+            until_step: null
+            weights:
+              single_page: 0.45
+              multi_page: 0.80
+              cross_document: 1.00
+      # Heldout group losses can reweight the next sampler epoch. Disabled in
+      # the control recipe; the dedicated sweep enables it with task-group eval.
+      adaptive_mixture:
+        enabled: false
+        step_size: 0.5
+        ema_decay: 0.8
+        min_probability: 0.02
+        warmup_evaluations: 1
+    distillation:
+      temperature: 2.0
+      logit_top_k: 128
+      target_alignment: causal_next_token
+      sequence_targets:
+        probability: 0.0
+        min_score: 0.8
+        seed: 7
+      vision_layer_pairs:
+        - [3, 3]
+        - [7, 7]
+        - [11, 11]
+      language_layer_pairs:
+        - [5, 5]
+        - [11, 11]
+        - [17, 17]
+        - [22, 22]
+      # Zero keeps relation distillation inactive in the default recipe.
+      # The dedicated sweep compares it against pointwise hidden anchors.
+      relation_max_tokens: 0
+      relation_temperature: 1.0
+      cross_tokenizer_policy: sequence_targets_only
+    optimizer:
+      name: adamw_8bit
+      eps: 0.00000001
+      min_8bit_size: 4096
+      block_wise: true
+      # The full run cycles deterministic sampler epochs until the effective-token budget is met.
+      # --max-steps remains an explicit smoke/debug override.
+      epochs: null
+      max_steps: null
+      micro_batch_size: 1
+      grad_accum_steps: 8
+      learning_rate: 0.0003
+      min_lr_ratio: 0.1
+      weight_decay: 0.1
+      betas: [0.9, 0.95]
+      max_grad_norm: 1.0
+      warmup_tokens: 100000000
+      total_tokens: 20000000000
+      stop_at_total_tokens: true
+      warmup_student_flops: 0
+      total_student_flops: null
+      stop_at_student_flops: false
+      schedule_unit: tokens
+      # Effective tokens = non-padding text tokens + 64 resampled visual-prefix tokens per image.
+      token_unit: effective
+      precision: bfloat16
+      checkpoint_every_steps: 1000
+      eval_every_steps: 1000
+      log_every_steps: 10
+      num_workers: 4
+      seed: 7
+    data_mix:
+      synthetic_documents: 0.45
+      public_document_data: 0.25
+      rendered_text_and_formulas: 0.15
+      natural_image_text: 0.10
+      text_only_replay: 0.05
+    losses:
+      autoregressive: 1.00
+      # Native online distillation is opt-in and requires pretraining.teacher_checkpoint.
+      # Cross-tokenizer LFM supervision enters through offline sequence targets.
+      teacher_kl: 0.00
+      hidden_feature_distillation: 0.00
+      token_relation_distillation: 0.00
+      region_text_contrastive: 0.15
+      box_regression: 0.20
+      orientation: 0.05
+    box_iou_loss: giou
+    curriculum:
+      unit: training_token_fraction
+      stages:
+        - id: perception_bootstrap
+          until_fraction: 0.15
+          group_weights: {}
+          loss_weights:
+            teacher_kl: 0.00
+            hidden_feature_distillation: 0.00
+            region_text_contrastive: 0.25
+            box_regression: 0.30
+            orientation: 0.10
+        - id: dense_multilingual_alignment
+          until_fraction: 0.65
+          group_weights: {}
+          loss_weights: {}
+        - id: hard_reasoning_refinement
+          until_fraction: 1.0
+          group_weights: {}
+          loss_weights:
+            teacher_kl: 0.00
+            hidden_feature_distillation: 0.00
+            region_text_contrastive: 0.10
+            box_regression: 0.25
+            orientation: 0.03
+    # Production uses one image per microbatch. A detached per-rank FIFO makes
+    # SigLIP/InfoNCE see real negatives without increasing activation memory.
+    contrastive_memory:
+      enabled: true
+      size: 1024
+      min_negatives: 16
+      scope: local_fifo
+    # Diagnostic-only. It restores RNG state and never writes optimizer
+    # gradients; enable it in the replicated conflict audit.
+    gradient_conflict_probe:
+      enabled: false
+      every_steps: 1000
+      components: [vision, connector, language]
+
+  posttraining:
+    sft:
+      objective: "Teach grounded instructions, structured output, abstention, and concise reasoning."
+      response_format: structured_json_v1
+      target_mode: evidence_linked
+      optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
+        epochs: 2
+        max_steps: null
+        micro_batch_size: 1
+        grad_accum_steps: 8
+        learning_rate: 0.00002
+        min_lr_ratio: 0.1
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        warmup_tokens: 10000000
+        total_tokens: 1000000000
+        stop_at_total_tokens: false
+        warmup_student_flops: 0
+        total_student_flops: null
+        stop_at_student_flops: false
+        schedule_unit: tokens
+        precision: bfloat16
+        checkpoint_every_steps: 500
+        eval_every_steps: 0
+        log_every_steps: 10
+        num_workers: 4
+        seed: 17
+      data_mix:
+        extraction_and_spotting: 0.30
+        tables_charts_formulas: 0.20
+        relational_document_qa: 0.20
+        multilingual_and_reading_order: 0.15
+        reliability_and_abstention: 0.10
+        general_multimodal_replay: 0.05
+    preference:
+      objective: dpo
+      preference_source: gold_anchored_verifier_ranked
+      reference_policy: sft_checkpoint
+      group_size: 8
+      minimum_reward_margin: 0.05
+      dpo_beta: 0.10
+      ipo_tau: 0.10
+      sequence_reduction: sum
+      rollout:
+        max_new_tokens: 128
+        max_new_tokens_hard_cap: 512
+        max_new_tokens_by_answer_type:
+          ocr-full: 512
+          reading-order: 384
+          table*: 512
+          chart*: 256
+          pubtabnet: 512
+          omnidocbench: 512
+          recognition_fullpage: 512
+          im2latex: 384
+          latexocr: 384
+          formula*: 384
+          H-comprehension: 256
+          H-accounting: 256
+        temperature: 0.8
+        top_p: 0.95
+        use_kv_cache: true
+        repetition_guard_min_tokens: 24
+        repetition_guard_max_period: 16
+        repetition_guard_repetitions: 3
+      optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
+        max_steps: 1000
+        total_student_flops: null
+        stop_at_student_flops: false
+        learning_rate: 0.000005
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        precision: bfloat16
+        checkpoint_every_steps: 100
+        log_every_steps: 1
+        seed: 29
+    rlvr:
+      algorithm: grpo
+      update_policy: one_on_policy_update_per_group
+      reference_policy: sft_checkpoint
+      group_size: 8
+      advantage_estimator: group_standardized
+      kl_coefficient: 0.04
+      advantage_epsilon: 0.0001
+      supervised_replay:
+        every_steps: 20
+        loss_coefficient: 0.10
+      malformed_reward: 0.0
+      malformed_recovery_max: 0.10
+      rationale_verifier: evidence_program_trace
+      rollout:
+        max_new_tokens: 128
+        max_new_tokens_hard_cap: 512
+        max_new_tokens_by_answer_type:
+          ocr-full: 512
+          reading-order: 384
+          table*: 512
+          chart*: 256
+          pubtabnet: 512
+          omnidocbench: 512
+          recognition_fullpage: 512
+          im2latex: 384
+          latexocr: 384
+          formula*: 384
+          H-comprehension: 256
+          H-accounting: 256
+        temperature: 0.8
+        top_p: 0.95
+        use_kv_cache: true
+        repetition_guard_min_tokens: 24
+        repetition_guard_max_period: 16
+        repetition_guard_repetitions: 3
+      optimizer:
+        name: adamw_8bit
+        eps: 0.00000001
+        min_8bit_size: 4096
+        block_wise: true
+        max_steps: 1000
+        total_student_flops: null
+        stop_at_student_flops: false
+        learning_rate: 0.000005
+        weight_decay: 0.1
+        betas: [0.9, 0.95]
+        max_grad_norm: 1.0
+        precision: bfloat16
+        checkpoint_every_steps: 100
+        log_every_steps: 1
+        seed: 23
+      reward_mix:
+        answer_correctness: 0.25
+        normalized_text_similarity: 0.15
+        box_iou: 0.15
+        table_tree_similarity: 0.10
+        chart_numeric_tolerance: 0.10
+        formula_equivalence: 0.10
+        grounded_rationale_consistency: 0.10
+        calibrated_abstention: 0.05
+      safeguards:
+        - "Score final answers separately from rationales."
+        - "Require cited regions to overlap authored evidence boxes."
+        - "Evaluate reward components and task families independently on held-out templates."
+        - "Reject malformed structure before applying task-specific rewards."
+
+evaluation_gates:
+  - id: parameter_budget
+    requirement: "deployment parameters < 1,000,000,000"
+    max_parameters: 1000000000
+  - id: generalization
+    requirement: "held-out score rises without a widening train-minus-heldout gap"
+    min_heldout_score_delta: 0.001
+    max_gap_increase: 0.0
+  - id: grounding
+    requirement: "spot IoU improves without reducing extraction NED"
+    min_box_iou_delta: 0.001
+    max_extraction_similarity_drop: 0.0
+    extraction_answer_type_patterns: [ocr, extract, kie, transcription]
+  - id: reasoning
+    requirement: "relational and numeric gains persist under counterfactual value edits"
+    min_score_delta: 0.001
+    min_counterfactual_pairs: 2
+  - id: multilingual
+    requirement: "no language loses more than two points versus its monolingual control"
+    max_language_drop: 0.02
+    min_languages: 2
+  - id: reliability
+    requirement: "selective risk and calibrated ECE improve while hallucination does not increase"
+    coverage: 0.8
+    min_selective_risk_reduction: 0.001
+    max_hallucination_increase: 0.0
+    max_calibrated_ece: 0.15
+    max_ece_increase_vs_raw: 0.0
+    min_calibrated_ece_reduction: 0.0
+  - id: generation_stability
+    requirement: "long structured outputs do not regress into repetition, truncation, or malformed structure"
+    answer_type_patterns:
+      - table
+      - html
+      - full
+      - transcription
+      - reading-order
+      - long-context
+      - pubtabnet
+      - omnidoc
+      - latex
+    min_target_samples: 2
+    max_degenerate_repetition_rate: 0.0
+    max_degenerate_repetition_increase: 0.0
+    max_token_rate: 0.05
+    max_token_rate_increase: 0.0
+    max_target_score_drop: 0.0
+    max_structure_validity_drop: 0.0
+  - id: visual_efficiency
+    requirement: "the target-GPU fused visual path preserves parity and improves over loop and dense adaptive execution"
+    candidate_requested_backend: auto
+    dense_control_requested_backend: dense_adaptive
+    required_resolved_backend: flex
+    required_device_type: cuda
+    required_mode: training
+    min_benchmark_schema_version: 2
+    min_visual_tokens: 4096
+    min_batch_size: 2
+    min_warmup_iterations: 3
+    min_measured_iterations: 10
+    min_rounds: 3
+    min_median_speedup_vs_loop: 1.05
+    min_round_speedup_vs_loop: 1.0
+    max_peak_memory_ratio_vs_loop: 1.05
+    min_median_speedup_vs_dense_adaptive: 1.05
+    min_round_speedup_vs_dense_adaptive: 1.0
+    max_peak_memory_ratio_vs_dense_adaptive: 1.05
+    max_abs_delta_vs_loop: 0.02
+  - id: training_feasibility
+    requirement: "the complete student executes finite production-shaped forward, backward, clipping, and configured optimizer steps within target-GPU memory"
+    required_device_type: cuda
+    required_resolved_visual_attention_backend: flex
+    required_precision: bfloat16
+    require_gradient_checkpointing: true
+    required_gradient_checkpointing_components: [vision, connector, language]
+    required_gradient_checkpointing_use_reentrant: false
+    min_benchmark_schema_version: 2
+    required_micro_batch_size: 1
+    min_text_tokens: 2048
+    min_visual_tokens_per_sample: 2500
+    min_warmup_steps: 1
+    min_measured_steps: 2
+    max_peak_reserved_fraction: 0.95

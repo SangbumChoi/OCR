@@ -1,0 +1,684 @@
+"""Deterministic evidence attestation for native student experiments."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any, Iterable
+
+from .checkpoint import checkpoint_content_identity
+from .experiment import (
+    ExperimentPlan,
+    ExperimentRunner,
+    ExperimentStage,
+    _atomic_write_json,
+    _fingerprint,
+)
+from .model import validate_initialization_lineage
+
+
+_TRAINING_STAGES = ("pretrain", "sft", "preference", "rlvr")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected a JSON object: {path}")
+    return value
+
+
+def _last_jsonl(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    last: dict[str, Any] | None = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        if not raw_line.strip():
+            continue
+        value = json.loads(raw_line)
+        if isinstance(value, dict):
+            last = value
+    return last
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _display_path(path: Path, root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _file_record(path: Path, root: Path, *, hash_mode: str) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "path": _display_path(path, root),
+        "bytes": path.stat().st_size,
+    }
+    if hash_mode == "full" or path.stat().st_size <= 1024 * 1024:
+        record["sha256"] = _sha256_file(path)
+    else:
+        record["sha256"] = None
+    return record
+
+
+def _files_for_path(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    if path.is_dir():
+        return sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
+    return []
+
+
+def _checkpoint_path(root: Path, stage_name: str) -> Path | None:
+    pointer = root / "artifacts" / stage_name / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        return None
+    raw = pointer.read_text(encoding="utf-8").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _unique_files(paths: Iterable[Path]) -> list[Path]:
+    return sorted({path.resolve() for path in paths if path.is_file()})
+
+
+def _stage_files(stage: ExperimentStage, root: Path, state: dict[str, Any]) -> list[Path]:
+    files: list[Path] = []
+    for artifact in stage.artifacts:
+        files.extend(_files_for_path(Path(artifact.path)))
+    log = state.get("log")
+    if log:
+        files.extend(_files_for_path(Path(str(log))))
+    checkpoint = _checkpoint_path(root, stage.name)
+    if checkpoint is not None:
+        files.extend(_files_for_path(checkpoint))
+    return _unique_files(files)
+
+
+def _check(check_id: str, passed: bool, evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": check_id,
+        "status": "pass" if passed else "fail",
+        "evidence": evidence,
+    }
+
+
+def _training_proof(root: Path, stage_name: str) -> dict[str, Any] | None:
+    checkpoint = _checkpoint_path(root, stage_name)
+    if checkpoint is None:
+        return None
+    trainer_state = checkpoint / "trainer_state.json"
+    student_metadata = checkpoint / "student" / "metadata.json"
+    return {
+        "checkpoint": _display_path(checkpoint, root),
+        "trainer_state": _read_json(trainer_state) if trainer_state.is_file() else None,
+        "student_metadata": (
+            _read_json(student_metadata) if student_metadata.is_file() else None
+        ),
+        "last_metric": _last_jsonl(
+            root / "artifacts" / stage_name / "metrics.jsonl"
+        ),
+    }
+
+
+def _semantic_evidence(
+    plan: ExperimentPlan,
+    root: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    checks: list[dict[str, Any]] = []
+    evidence: dict[str, Any] = {"training": {}}
+
+    initialization_path = root / "artifacts" / "initial" / "metadata.json"
+    initialization = (
+        _read_json(initialization_path) if initialization_path.is_file() else None
+    )
+    evidence["initialization"] = initialization
+
+    stage_names = set(plan.stage_names)
+    training_proofs: dict[str, dict[str, Any] | None] = {}
+    attestation_candidates: list[tuple[str, Any]] = []
+    initial_attestation = (initialization or {}).get(
+        "parameter_attestation"
+    )
+    if initial_attestation is not None:
+        attestation_candidates.append(
+            ("initialization_metadata", initial_attestation)
+        )
+    for stage_name in _TRAINING_STAGES:
+        if stage_name not in stage_names:
+            continue
+        proof = _training_proof(root, stage_name)
+        training_proofs[stage_name] = proof
+        evidence["training"][stage_name] = proof
+        checkpoint_attestation = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "parameter_attestation"
+            )
+        )
+        if checkpoint_attestation is not None:
+            attestation_candidates.append(
+                (f"{stage_name}_checkpoint", checkpoint_attestation)
+            )
+
+    parameter_source, runtime_attestation = (
+        attestation_candidates[-1]
+        if attestation_candidates
+        else ("missing_runtime_attestation", None)
+    )
+    runtime_attestation = (
+        runtime_attestation
+        if isinstance(runtime_attestation, dict)
+        else {}
+    )
+    parameter_counts = runtime_attestation.get("parameter_counts")
+    parameter_counts = (
+        parameter_counts if isinstance(parameter_counts, dict) else {}
+    )
+    parameter_total = int(parameter_counts.get("total", 0))
+    architecture_fingerprint = runtime_attestation.get(
+        "architecture_fingerprint"
+    )
+    runtime_budget = runtime_attestation.get("budget")
+    runtime_budget = (
+        runtime_budget if isinstance(runtime_budget, dict) else {}
+    )
+    runtime_attested = (
+        runtime_attestation.get("source") == "runtime_numel"
+        and isinstance(architecture_fingerprint, str)
+        and architecture_fingerprint.startswith("sha256:")
+        and runtime_budget.get("within_budget") is True
+        and 0 < parameter_total < 1_000_000_000
+    )
+    checks.append(
+        _check(
+            "deployment_parameter_budget",
+            runtime_attested,
+            {
+                "actual_parameters": parameter_total,
+                "max_parameters_exclusive": 1_000_000_000,
+                "source": parameter_source,
+                "architecture_fingerprint": architecture_fingerprint,
+            },
+        )
+    )
+
+    lineage_candidates: list[tuple[str, Any]] = []
+    initial_lineage = (initialization or {}).get(
+        "initialization_lineage"
+    )
+    if initial_lineage is not None:
+        lineage_candidates.append(
+            ("initialization_metadata", initial_lineage)
+        )
+    for stage_name in _TRAINING_STAGES:
+        proof = training_proofs.get(stage_name)
+        checkpoint_lineage = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "initialization_lineage"
+            )
+        )
+        if checkpoint_lineage is not None:
+            lineage_candidates.append(
+                (f"{stage_name}_checkpoint", checkpoint_lineage)
+            )
+    reference_lineage_source, reference_lineage = (
+        lineage_candidates[0]
+        if lineage_candidates
+        else ("missing_initialization_lineage", None)
+    )
+    try:
+        reference_lineage = validate_initialization_lineage(
+            reference_lineage,
+            expected_architecture_fingerprint=architecture_fingerprint,
+        )
+    except (TypeError, ValueError):
+        reference_lineage = None
+    reference_lineage_fingerprint = (
+        reference_lineage.get("fingerprint")
+        if reference_lineage is not None
+        else None
+    )
+    evidence["initialization_lineage"] = reference_lineage
+    if "initialize_student" in stage_names:
+        checks.append(
+            _check(
+                "initialize_student_lineage_attestation",
+                reference_lineage_source == "initialization_metadata"
+                and reference_lineage is not None
+                and reference_lineage.get("schema_version") == 2,
+                {
+                    "source": reference_lineage_source,
+                    "lineage_fingerprint": reference_lineage_fingerprint,
+                    "initialization_arm": (
+                        reference_lineage or {}
+                    ).get("initialization_arm"),
+                    "transfer_report_count": len(
+                        (reference_lineage or {}).get(
+                            "transfer_reports",
+                            [],
+                        )
+                    ),
+                },
+            )
+        )
+    transfer_source_records = []
+    transfer_source_identity_passed = reference_lineage is not None
+    for report in (reference_lineage or {}).get("transfer_reports", []):
+        component = str(report.get("component") or "")
+        source_identity = report.get("source_identity") or {}
+        observed_fingerprint = source_identity.get(
+            "content_fingerprint"
+        )
+        plan_record = plan.input_fingerprints.get(
+            f"initialization_{component}_source"
+        )
+        expected_fingerprint = None
+        if isinstance(plan_record, dict):
+            expected_fingerprint = (
+                plan_record.get("content_fingerprint")
+                or plan_record.get("sha256")
+            )
+        fixture_record = plan.input_fingerprints.get(
+            f"initialization_{component}_fixture"
+        )
+        fixture_path = (
+            root
+            / "artifacts"
+            / "initialization_sources"
+            / f"{component}_fixture"
+        )
+        manifest_path = (
+            root
+            / "artifacts"
+            / "initialization_sources"
+            / f"{component}_checkpoint.json"
+        )
+        expected_source = "experiment_input"
+        source_records_match = True
+        if isinstance(fixture_record, dict) and fixture_path.exists():
+            fixture_identity = checkpoint_content_identity(fixture_path)
+            expected_fingerprint = fixture_identity["content_fingerprint"]
+            source_records_match = (
+                source_identity.get("files") == fixture_identity["files"]
+            )
+            expected_source = "generated_fixture"
+        elif manifest_path.is_file():
+            manifest = _read_json(manifest_path)
+            manifest_files = {
+                str(record.get("path")): record
+                for record in manifest.get("files", [])
+                if isinstance(record, dict)
+            }
+            observed_files = source_identity.get("files") or []
+            source_records_match = bool(observed_files) and all(
+                manifest_files.get(str(record.get("path"))) == record
+                for record in observed_files
+                if isinstance(record, dict)
+            )
+            expected_fingerprint = (
+                observed_fingerprint
+                if source_records_match
+                else manifest.get("content_fingerprint")
+            )
+            expected_source = "acquisition_manifest"
+        source_matches = (
+            isinstance(observed_fingerprint, str)
+            and observed_fingerprint.startswith("sha256:")
+            and source_records_match
+            and (
+                expected_fingerprint is None
+                or observed_fingerprint == expected_fingerprint
+            )
+            and component in {"vision", "language", "connector"}
+        )
+        if "initialize_student" in stage_names:
+            source_matches = (
+                source_matches
+                and isinstance(expected_fingerprint, str)
+            )
+        transfer_source_identity_passed = (
+            transfer_source_identity_passed and source_matches
+        )
+        transfer_source_records.append(
+            {
+                "component": component,
+                "observed_content_fingerprint": observed_fingerprint,
+                "expected_content_fingerprint": expected_fingerprint,
+                "expected_source": expected_source,
+                "source_records_match": source_records_match,
+                "matches": source_matches,
+            }
+        )
+    checks.append(
+        _check(
+            "selective_transfer_source_identity",
+            transfer_source_identity_passed,
+            {
+                "transfer_report_count": len(transfer_source_records),
+                "sources": transfer_source_records,
+            },
+        )
+    )
+
+    if "initialize_student" in stage_names:
+        initialization_matches = (
+            isinstance(initial_attestation, dict)
+            and initial_attestation.get("source") == "runtime_numel"
+            and initial_attestation.get("parameter_counts") == parameter_counts
+            and initial_attestation.get("architecture_fingerprint")
+            == architecture_fingerprint
+            and initial_attestation.get("deployment")
+            == runtime_attestation.get("deployment")
+            and (initial_attestation.get("budget") or {}).get(
+                "within_budget"
+            )
+            is True
+        )
+        checks.append(
+            _check(
+                "initialize_student_parameter_attestation",
+                initialization_matches,
+                {
+                    "source": "initialization_metadata",
+                    "parameter_attestation": initial_attestation,
+                },
+            )
+        )
+
+    for stage_name in _TRAINING_STAGES:
+        if stage_name not in stage_names:
+            continue
+        proof = training_proofs[stage_name]
+        state = (proof or {}).get("trainer_state") or {}
+        if stage_name in {"pretrain", "sft"}:
+            progress = int(state.get("global_step", 0))
+            progress_key = "global_step"
+        elif stage_name == "preference":
+            progress = min(
+                int(state.get("preference_step", 0)),
+                int(state.get("optimizer_step", 0)),
+            )
+            progress_key = "preference_and_optimizer_step"
+        else:
+            progress = min(
+                int(state.get("rollout_step", 0)),
+                int(state.get("optimizer_step", 0)),
+            )
+            progress_key = "rollout_and_optimizer_step"
+        checks.append(
+            _check(
+                f"{stage_name}_optimization_progress",
+                progress > 0,
+                {progress_key: progress, "trainer_state": state},
+            )
+        )
+        if stage_name == "rlvr":
+            policy_signal_steps = int(
+                state.get("policy_signal_steps", 0)
+            )
+            checks.append(
+                _check(
+                    "rlvr_policy_signal_progress",
+                    policy_signal_steps > 0,
+                    {
+                        "policy_signal_steps": policy_signal_steps,
+                        "replay_only_steps": int(
+                            state.get("replay_only_steps", 0)
+                        ),
+                        "trainer_state": state,
+                    },
+                )
+            )
+        checkpoint_attestation = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "parameter_attestation"
+            )
+        )
+        checkpoint_matches = (
+            isinstance(checkpoint_attestation, dict)
+            and checkpoint_attestation.get("source") == "runtime_numel"
+            and checkpoint_attestation.get("parameter_counts")
+            == parameter_counts
+            and checkpoint_attestation.get("architecture_fingerprint")
+            == architecture_fingerprint
+            and checkpoint_attestation.get("deployment")
+            == runtime_attestation.get("deployment")
+            and (
+                checkpoint_attestation.get("budget") or {}
+            ).get("within_budget")
+            is True
+        )
+        checks.append(
+            _check(
+                f"{stage_name}_parameter_attestation",
+                checkpoint_matches,
+                {
+                    "source": f"{stage_name}_checkpoint",
+                    "parameter_attestation": checkpoint_attestation,
+                },
+            )
+        )
+        checkpoint_lineage = (
+            ((proof or {}).get("student_metadata") or {}).get(
+                "initialization_lineage"
+            )
+        )
+        try:
+            checkpoint_lineage = validate_initialization_lineage(
+                checkpoint_lineage,
+                expected_architecture_fingerprint=architecture_fingerprint,
+            )
+        except (TypeError, ValueError):
+            checkpoint_lineage = None
+        checks.append(
+            _check(
+                f"{stage_name}_initialization_lineage",
+                checkpoint_lineage is not None
+                and checkpoint_lineage.get("schema_version") == 2
+                and reference_lineage_fingerprint is not None
+                and checkpoint_lineage.get("fingerprint")
+                == reference_lineage_fingerprint,
+                {
+                    "source": f"{stage_name}_checkpoint",
+                    "lineage_fingerprint": (
+                        checkpoint_lineage or {}
+                    ).get("fingerprint"),
+                    "expected_lineage_fingerprint": (
+                        reference_lineage_fingerprint
+                    ),
+                },
+            )
+        )
+
+    evaluation_root = root / "artifacts" / "evaluation"
+    comparison_path = evaluation_root / "comparison.json"
+    gates_path = evaluation_root / "gates.json"
+    manifest_path = evaluation_root / "manifest.json"
+    comparison = _read_json(comparison_path) if comparison_path.is_file() else None
+    gates = _read_json(gates_path) if gates_path.is_file() else None
+    manifest = _read_json(manifest_path) if manifest_path.is_file() else None
+    evidence["evaluation"] = {
+        "manifest": manifest,
+        "comparison": comparison,
+        "gates": gates,
+    }
+    splits = (comparison or {}).get("splits") or {}
+    split_counts = {
+        split: int((splits.get(split) or {}).get("n_samples", 0))
+        for split in ("train", "heldout")
+    }
+    checks.append(
+        _check(
+            "train_and_heldout_generation",
+            all(count > 0 for count in split_counts.values()),
+            {"n_samples": split_counts},
+        )
+    )
+    expected_final_stage = next(
+        (
+            name
+            for name in ("rlvr", "preference", "sft")
+            if name in stage_names
+        ),
+        None,
+    )
+    observed_stage = (
+        ((manifest or {}).get("checkpoint_metadata") or {}).get("run_stage")
+    )
+    observed_base_stage = (
+        str(observed_stage).split(":", 1)[0] if observed_stage is not None else None
+    )
+    checks.append(
+        _check(
+            "evaluation_uses_final_checkpoint",
+            expected_final_stage is not None
+            and observed_base_stage == expected_final_stage,
+            {
+                "expected_stage": expected_final_stage,
+                "observed_stage": observed_stage,
+            },
+        )
+    )
+    return evidence, checks
+
+
+def build_experiment_attestation(
+    plan: ExperimentPlan,
+    *,
+    repo_root: str | Path,
+    output: str | Path | None = None,
+    hash_mode: str = "full",
+) -> dict[str, Any]:
+    """Build a deterministic, independently re-verifiable experiment attestation."""
+    if hash_mode not in {"full", "metadata"}:
+        raise ValueError("hash_mode must be 'full' or 'metadata'")
+    root = Path(plan.root).resolve()
+    runner = ExperimentRunner(plan, repo_root=repo_root)
+    signatures = runner.signatures()
+    stage_records = []
+    contract_checks: list[dict[str, Any]] = []
+    for stage in plan.stages:
+        state = runner._load_state(stage.name) or {}
+        expected_signature = signatures[stage.name]
+        files = _stage_files(stage, root, state)
+        artifacts_valid = stage.artifacts_valid()
+        signature_matches = state.get("signature") == expected_signature
+        completed = state.get("status") == "completed"
+        stage_record = {
+            "stage": stage.name,
+            "state_status": state.get("status", "missing"),
+            "signature": state.get("signature"),
+            "expected_signature": expected_signature,
+            "signature_matches": signature_matches,
+            "artifacts_valid": artifacts_valid,
+            "started_at_unix": state.get("started_at_unix"),
+            "finished_at_unix": state.get("finished_at_unix"),
+            "duration_seconds": state.get("duration_seconds"),
+            "return_code": state.get("return_code"),
+            "files": [
+                _file_record(path, root, hash_mode=hash_mode) for path in files
+            ],
+        }
+        stage_record["content_sha256"] = _fingerprint(stage_record["files"])
+        stage_records.append(stage_record)
+        contract_checks.append(
+            _check(
+                f"stage:{stage.name}",
+                completed and signature_matches and artifacts_valid and bool(files),
+                {
+                    "state_status": stage_record["state_status"],
+                    "signature_matches": signature_matches,
+                    "artifacts_valid": artifacts_valid,
+                    "file_count": len(files),
+                },
+            )
+        )
+
+    semantic_evidence, semantic_checks = _semantic_evidence(plan, root)
+    contract_checks.extend(semantic_checks)
+    contract_status = (
+        "pass"
+        if contract_checks and all(item["status"] == "pass" for item in contract_checks)
+        else "fail"
+    )
+    gates = semantic_evidence["evaluation"].get("gates") or {}
+    capability_status = str(gates.get("overall_status") or "missing")
+    quality_claim_authorized = (
+        contract_status == "pass" and capability_status == "pass"
+    )
+    control_files = []
+    for name in (
+        "resolved_blueprint.yaml",
+        "experiment_plan.json",
+        "experiment_spec.json",
+        "run_summary.json",
+    ):
+        path = root / name
+        if path.is_file():
+            control_files.append(_file_record(path, root, hash_mode="full"))
+    attested_times = [
+        float(record["finished_at_unix"])
+        for record in stage_records
+        if record["finished_at_unix"] is not None
+    ]
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "experiment": plan.name,
+        "experiment_root": str(root),
+        "experiment_fingerprint": plan.fingerprint,
+        "input_fingerprints": plan.input_fingerprints,
+        "hash_mode": hash_mode,
+        "attested_at_unix": max(attested_times) if attested_times else None,
+        "control_files": control_files,
+        "stages": stage_records,
+        "semantic_evidence": semantic_evidence,
+        "contract_checks": contract_checks,
+        "contract_status": contract_status,
+        "capability_status": capability_status,
+        "quality_claim_authorized": quality_claim_authorized,
+        "claim_scope": (
+            "deployment_capability"
+            if quality_claim_authorized
+            else "execution_contract_only"
+        ),
+    }
+    payload["attestation_sha256"] = _fingerprint(payload)
+    if output is not None:
+        _atomic_write_json(Path(output), payload)
+    return payload
+
+
+def verify_experiment_attestation(
+    plan: ExperimentPlan,
+    attestation: str | Path,
+    *,
+    repo_root: str | Path,
+) -> dict[str, Any]:
+    """Recompute an attestation from current files and compare it byte-semantically."""
+    path = Path(attestation)
+    observed = _read_json(path)
+    hash_mode = str(observed.get("hash_mode") or "")
+    expected = build_experiment_attestation(
+        plan,
+        repo_root=repo_root,
+        hash_mode=hash_mode,
+    )
+    valid = observed == expected
+    return {
+        "valid": valid,
+        "path": str(path.resolve()),
+        "observed_attestation_sha256": observed.get("attestation_sha256"),
+        "expected_attestation_sha256": expected.get("attestation_sha256"),
+        "contract_status": expected["contract_status"],
+        "capability_status": expected["capability_status"],
+        "claim_scope": expected["claim_scope"],
+    }

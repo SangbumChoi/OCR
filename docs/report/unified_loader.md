@@ -10,7 +10,7 @@ flat question/answer.
 from docvlm_eval.unified import UnifiedLoader, Task
 L = UnifiedLoader()
 rows  = L.load("cord", limit=50)                     # one dataset
-allr  = L.load_all(limit_per=30, cache_dir="data/unified_dataset/images")
+allr  = L.load_all(limit_per=30, cache_dir="examples/unified_dataset/images")
 kie   = [r for r in allr["cord"] if r.task == Task.KIE]
 boxes = [f for r in rows for f in r.fields if f.bbox]   # merge localized fields across sources
 ```
@@ -23,9 +23,11 @@ boxes = [f for r in rows for f in r.fields if f.bbox]   # merge localized fields
 | ----- | ------- |
 | `task` | `recognition` / `kie` / `vqa` / `localization` / `table` / `reasoning` (what to filter/merge on) |
 | `instruction`, `answers` | the prompt + gold answer(s) |
+| `reasoning` | optional source-provided rationale, kept separate from the gold answer |
+| `visual_type`, `visual_subtype` | primary image-content family and finer source-supported category |
 | `fields: [Field(key, value, bbox?)]` | **key-value extraction** (forms/receipts), optionally localized |
 | `regions: [Region(label, bbox, text)]` | **localization / spotting** boxes |
-| `full_text`, `table_html` | **recognition** target / **table** structure |
+| `full_text`, `table_html` | linear reading-order transcript / structural table markup; a row may carry both |
 | `language`, `metric`, `image_path`, `source`, `hf_id`, `meta` | provenance + scoring |
 
 Boxes carry a `normalized` flag (`[0,1]` vs pixel) so cross-dataset geometry is unambiguous.
@@ -49,7 +51,8 @@ Verified against the real datasets (not assumed):
 | PubTabNet / FinTabNet | `html_table` | table | `table_html` |
 | IAM | `text` | recognition | `full_text` |
 | im2latex / LaTeX_OCR | `latex`/`text` | recognition | formula text |
-| OCRBench(+v2) / POPE / HallusionBench | `question` + `answer` | vqa | answers |
+| OCRBench(+v2) / POPE | `question` + `answer` | vqa | answers |
+| HallusionBench | `question` + yes/no + optional explanation | reasoning | rationale paired with original QA |
 | *unregistered* | (any) | per `TASK_BY_BENCHMARK`, else vqa | via `trainset.extract_qa` fallback |
 
 Records that yield no usable payload (e.g. detection-only streams with no text/QA) return `[]` and
@@ -84,7 +87,7 @@ python scripts/build_unified_dataset.py --only cord,funsd,ocrvqa  # focused
 python scripts/build_unified_dataset.py --task kie                # only KIE-yielding benchmarks
 ```
 
-Outputs under `data/unified_dataset/` (git-ignored — regenerable):
+Outputs under `examples/unified_dataset/` (git-ignored — regenerable):
 `unified.jsonl` (rich, task-typed), `by_task/<task>.jsonl` (grouped), `train.jsonl` (flat trainable
 Samples), `summary.json` (per-benchmark + per-task counts, incl. how many records carry boxes).
 
@@ -97,17 +100,30 @@ python scripts/visualize_unified_dataset.py --per-bench 1
 One montage cell per dataset: the image + a `source · task · N boxes` badge + a task-appropriate
 overlay — **KIE field boxes in green, localization regions in orange** (normalized boxes are scaled to
 the image), tables/recognition/vqa show the prompt+answer. This is the "see every dataset in one
-standardized view" check that the loader mapped each source correctly.
+standardized view" check that the loader mapped each source correctly. The command also writes
+`docs/report/figures/unified_details.html` for table and tall full-page samples. That report embeds
+one bounded image preview, links to the original full-resolution page, and renders allowlisted table
+markup in a scrollable pane instead of shrinking complex content into a montage cell or repeating
+the raw HTML source.
 
 ![Unified loader examples](figures/unified_examples.png)
 
-(Programmatic API: `from docvlm_eval.unified import render_grid; render_grid(rows, "out.png")`.)
+(Programmatic API: `render_grid(rows, "out.png")` for the overview and
+`render_detail_report(rows, "details.html")` for complex rows.)
 
 ## UDD — the Universal Document Dataset on HuggingFace
 
 > **Live:** [`danelcsb/UDD`](https://huggingface.co/datasets/danelcsb/UDD) — **one sharded dataset**
-> (single default config) of **28,299 image-rows / 53,108 QAs** (one row per distinct image,
-> ≤1,000 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+> (single default config) of **39,837 image-rows / 77,063 QAs** (one row per distinct image,
+> ≤1,500 images/source) from **32 sources / 7 tasks**. `load_dataset("danelcsb/UDD")`.
+
+The default Hub revision remains the immutable 39,837-row / 77,063-QA training baseline. The
+fine-grained v2 and compact v3 schemas are separate immutable branches, preserving pinned
+experiments. Both retain 39,837 image rows and 76,730 scored QAs: 333 legacy synthetic
+HallusionBench explanation prompts are paired with their original questions as rationale instead
+of remaining duplicate scored QAs. v3 keeps one primary answer per QA, moves alternate accepted
+answers to `answer_variants`, consolidates transcript and table HTML in `full_annotation`, and
+removes derived count columns. Load it with `load_dataset("danelcsb/UDD", revision="fine-grained-v3")`.
 
 **UDD** scatters many public document/OCR benchmarks into **one standardized, sharded dataset** —
 unifying document-VQA, KIE, localization, recognition, table and reasoning under a single schema.
@@ -115,21 +131,37 @@ unifying document-VQA, KIE, localization, recognition, table and reasoning under
 
 ```
 image, sample_id, source, task,
+visual_type, visual_subtype,
 instructions: list[str],            # ALL questions on this image (N >= 1)
-answers: list[list[str]],           # answers[i] = gold VARIANTS for instructions[i]
+answers: list[str],                  # one primary answer aligned with each instruction
+answer_variants: list[list[str]],   # all accepted gold variants aligned with each instruction
+reasoning: list[str],                # optional rationale aligned by QA index
+task_detail: list[str],              # fine-grained source-supported job aligned by QA index
+qa_tasks: list[str],                 # top-level task aligned by QA index
 elements_json,                      # ALL localized elements, ONE datatype:
-                                    #   [{key, value, bbox, kind: field|region}]
-full_text, table_html, language, metric, hf_id, split, hf_config,
-n_fields, n_regions, image_width, image_height, phash, license, fold   # derived (enrichment pass)
+                                    #   [{bbox, information, class, kind, id?, ref?}]
+full_annotation,                    # versioned JSON object: text and/or table HTML
+language, metric, page_count, document_count, hf_id, split, hf_config,
+image_width, image_height, phash, license, fold   # derived (enrichment pass)
 ```
 
-The QA pairing is **native list columns** (no JSON side-channel): the outer index pairs each
-question with its answer list; the inner list holds surface variants of ONE answer. Localized
-payload is likewise ONE datatype: `elements_json` carries both KIE fields and layout regions as
-`{key, value, bbox, kind}` (fields and regions share the shape; `kind` is the role discriminator —
+The QA pairing is **native list columns** (no JSON side-channel): each index pairs one question,
+top-level task, primary answer, accepted-answer list, optional rationale, and fine-grained job. The explicit
+`answer_variants` column preserves scoring behavior while avoiding nested values in `answers`.
+`visual_type` and `visual_subtype` describe image content independently of `task`. The detailed
+taxonomy, rationale policy, and the `full_annotation` format are specified in
+[`udd_fine_grained_schema.md`](udd_fine_grained_schema.md). Localized
+payload is likewise ONE datatype: `elements_json` carries both KIE fields and localized elements as
+`{bbox, information, class, kind}` with optional stable IDs and references —
 the old parallel `fields_json`/`regions_json` columns are build-time intermediates only). The
-invariants (`len(instructions) == len(answers) >= 1`, `key`/`value` required strings, box shape,
-kind ∈ {field, region}) are enforced by `validate_payload_shapes` inside every `safety_check`.
+invariants (`len(instructions) == len(qa_tasks) == len(answers) == len(reasoning) == len(task_detail) >= 1`, box shape) are enforced by `validate_payload_shapes` inside every `safety_check`.
+`page_count` and `document_count` default to one for public sources and preserve exact synthetic
+composition counts for curriculum and robustness slicing.
+To migrate the pinned snapshot without rebuilding source datasets, run
+`python scripts/migrate_udd_schema.py --repo danelcsb/UDD --out examples/udd/hf/_all_v2`;
+publishing creates a new branch with an explicit `--push` action. Load it with
+`load_dataset("danelcsb/UDD", revision="840fa06f226db6152be008de531d722c3b0756e2")`. Missing
+rationale is kept empty rather than fabricated.
 **POPE is excluded by design** (`udd_exclude` in the catalog): COCO object-existence questions have
 no document/text content — it stays in the Part-1 reliability eval, not the training corpus.
 A **pseudo-labeling pipeline** (`unified/pseudo_label.py`, plan: `scripts/pseudo_label_udd.py`) is
@@ -144,10 +176,9 @@ training pool and writes them to `heldout_<task>.jsonl` for public-data evaluati
 **One row per image (phash dedup).** Same `phash` + stored dims = the same image, so the merge folds
 duplicate-image rows into one survivor: the image is stored **once** and every row's question/answer
 pair is gathered into the native `instructions`/`answers` lists (identical questions deduped, index
-pairing kept) — current corpus: 16,616 QA-rows → **9,389 image-rows** (7,227 folded into 2,069
-survivors, ~40% smaller parquet, zero QAs lost — `unified_from_hf_row` maps multi-QA rows to the
-grouped `qas` state and `to_training_samples` recovers every pair; re-verified after the full
-33-benchmark × ≤1,000-image rebuild). A duplicate that sat in the other `fold` is
+pairing kept) — the current release stores **77,063 QAs in 39,837 image-rows** with zero QAs lost;
+`unified_from_hf_row` maps multi-QA rows to the grouped `qas` state and `to_training_samples`
+recovers every pair. A duplicate that sat in the other `fold` is
 removed, which also closes the identical-pixels-on-both-sides-of-the-split leak.
 
 **Mock multi-model evaluation (no GPU).** `scripts/mock_eval_udd.py` runs deterministic mock models
@@ -195,11 +226,10 @@ TF-IDF of the content instead).
 
 ![UDD feature UMAP](figures/udd_umap.png)
 
-**Validated — all streamable datasets (≤1,000 images/dataset, safety-checked, 0 failures):**
-**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 28,299 image-rows / 53,108 QAs across **7 tasks**
-(image-rows: vqa 11,004, reasoning 6,196, recognition 5,997, localization 1,976, kie 1,150,
-table 1,000, **classification 976**; languages en 23,087 · und 1,999 · zh 1,114 · ko 1,074 ·
-ja 183 · de 151; CORD and FUNSD are capped by their full split sizes, 100/50). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
+**Validated — all streamable datasets (≤1,500 images/dataset, safety-checked, 0 failures):**
+**32 sources in the corpus** (+1 excluded by design: POPE) → merged dataset = 39,837 image-rows /
+77,063 QAs across **7 tasks** (image-rows: vqa 15,133, recognition 8,994, reasoning 8,148,
+localization 2,952, kie 1,650, table 1,500, **classification 1,460**). Highlights: cord/funsd→kie with boxes, ocrvqa→vqa (per-word regions),
 **doclaynet + publaynet→localization** (layout boxes normalized to [0,1]),
 **rvl_cdip→classification** (16 document types — first source for that task),
 **screenqa→vqa with UI-element boxes** (the webui-probe counterpart),
@@ -215,10 +245,10 @@ diversify it.
 **Duplicate audit** (`scripts/audit_udd_duplicates.py` →
 [`docs/results/udd_duplicates.md`](../results/udd_duplicates.md)): exact = decoded-pixel md5, near =
 `phash` (dhash) Hamming ≤ 2 — documents are mostly-white, low-entropy images, so the usual photo
-threshold (≤6) drowns in false positives. The 1,000/source corpus shows **0 cross-source exact
+threshold (≤6) drowns in false positives. The 1,500/source corpus (39,837 rows) shows **0 cross-source exact
 duplicates** — the insertion-time md5 `hash_index.json` proved itself: the 100/source build had 1
 (chartqa ↔ mathvista, MathVista aggregates ChartQA); every full rebuild since skips such copies at
-insert. 2,217 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
+insert. 4,119 cross-source near-pairs at ≤ 2 remain (re-encodes/crops the exact-hash layer can't
 see — led by pubtabnet ↔ tatqa table renders), plus expected within-source template reuse in
 synthetic/chart sets.
 
@@ -235,8 +265,8 @@ enrich` derives the missing values deterministically (no network, no model):
   formula sets→`und`, rest→`en`), and rows whose text is too short to call ("$5") fall back to the
   instruction. Result on the live corpus: **100% filled** — en 2,093 · und 200 · id 100 · zh 33
   (OmniDocBench correctly splits 76 en / 24 zh per page).
-- **`n_fields` / `n_regions`** — payload counts as int columns, so "every row with boxes" is
-  `n_regions > 0` instead of 2.4k `json.loads` calls.
+- **Structured payload counts** — derive counts from `elements_json` when needed; duplicate count
+  columns are intentionally omitted from the public schema.
 - **`image_width` / `image_height`** — stored dims, for resolution slicing / curriculum.
 
 Detection also runs at **extraction time** (`extract_unified`), so future builds come out filled
@@ -261,11 +291,11 @@ pipeline level:
 
 Adding one new dataset must not cost re-streaming all 21. `build_udd.py` keeps two caches:
 
-- **Per-source builds** (`data/udd/hf/<key>`) are reused: `--skip-existing` skips streaming for any
+- **Per-source builds** (`examples/udd/hf/<key>`) are reused: `--skip-existing` skips streaming for any
   source already on disk, and the merge concatenates **everything on disk**, not just the current
   run's keys — so `--only <newkey> --skip-existing` streams only the newcomer and re-merges the full
   corpus (measured: 21 cached sources merge+enrich in ~1 min vs ~2 h for a full rebuild).
-- **A persistent image-hash index** (`data/udd/hash_index.json`, md5-of-downscaled-image → owner
+- **A persistent image-hash index** (`examples/udd/hash_index.json`, md5-of-downscaled-image → owner
   source) dedups across *runs and sources*: an image already owned by a different source is skipped
   (COCO pages recur across scene-text sets), while a source's own hashes never block its rebuild.
 
@@ -342,13 +372,13 @@ and the A1/A4 hypothesis runs.
   "78", last word, word count — deterministic, exact-match, one probe set per crop. Formula sources
   are excluded (LaTeX string characters are not the rendered glyphs), as are multi-line texts.
 - **HallusionBench as reasoning data** — the raw `gt_answer` is the string digit `'0'/'1'` whose
-  INTENT is false/true: the adapter now emits the literal `yes`/`no`, retasks the source as
-  `reasoning`, and turns the shipped `gt_answer_details` explanation into a second
-  "… Explain your answer." QA — rationale supervision straight from the source annotations.
+  INTENT is false/true: the adapter emits the literal `yes`/`no`, retasks the source as
+  `reasoning`, and pairs the shipped `gt_answer_details` with the original question as rationale,
+  leaving the gold answer intact for scoring.
 
 ```bash
 python scripts/build_task_trainsets.py --per-task 50 --merge-qa            # 7 tasks incl. localization
-python scripts/build_task_trainsets.py --group-by language --out data/udd_langs   # A4 sets
+python scripts/build_task_trainsets.py --group-by language --out examples/udd_langs   # A4 sets
 ```
 
 ## Per-task value ablation — is each task worth adding?
@@ -369,7 +399,7 @@ python scripts/analyze_task_value.py
 
 `build_task_trainsets.py` reconstructs `UnifiedSample`s from the merged UDD (`unified_from_hf_row`),
 decodes each image to disk, balances every task to an equal budget (default = the smallest task's
-size), and writes `data/udd_tasks/task_<task>.jsonl` + a mixed `all.jsonl` control. `run_task_value.py`
+size), and writes `examples/udd_tasks/task_<task>.jsonl` + a mixed `all.jsonl` control. `run_task_value.py`
 LoRA-fine-tunes the base on each set and appends per-probe scores to
 `docs/results/task_value_results.json`; `analyze_task_value.py` turns that into
 [`docs/results/task_value.md`](../results/task_value.md) and the Δ chart below.

@@ -5,13 +5,11 @@ The converters only carry what the source ships, so some columns come out sparse
 ``fields_json``/``regions_json``. This module derives the missing values from what is already in the
 row (no network, no model):
 
-* ``language`` — Unicode-script detection over the row's own text (full_text, answers, instruction,
+* ``language`` — Unicode-script detection over the row's own text (full annotation, answers, instruction,
   region texts, field values): Hangul→ko, kana→ja, CJK ideographs→zh, Arabic→ar, Hebrew→he,
   Cyrillic→ru, Devanagari→hi. Latin script is ambiguous (English vs Indonesian vs …), so it falls
   back to a **per-source prior** (CORD receipts are Indonesian; formula sets are language-neutral
   ``und``; everything else in the catalog is English).
-* ``n_fields`` / ``n_regions`` — payload counts as plain int columns, so "give me every row with
-  boxes" is a column filter instead of 2.4k JSON decodes.
 * ``image_width`` / ``image_height`` — pixel dims of the stored image.
 * ``phash`` — 64-bit difference hash of the image (near-duplicate detection / cross-source joins;
   see ``scripts/audit_udd_duplicates.py``).
@@ -108,17 +106,20 @@ def detect_language(text: str, source: str | None = None) -> str | None:
 def sample_text(row: dict) -> str:
     """Concatenate the row's own text signals (payload first — it reflects the DOCUMENT's language;
     instructions last — prompts are English even for non-English documents)."""
-    parts = [row.get("full_text") or ""]
+    from .core import decode_full_annotation
+    full_text, table_html = decode_full_annotation(row.get("full_annotation"))
+    parts = [row.get("full_text") or full_text or "", row.get("table_html") or table_html or ""]
     if row.get("elements_json"):
         for el in json.loads(row["elements_json"]):
-            parts.append(el.get("value") or "")
+            parts.append(el.get("information") or el.get("value") or "")
+            parts.append(el.get("class") or "")
     else:                                               # build-time intermediates (pre-merge)
         for r in json.loads(row.get("regions_json") or "[]"):
             parts.append(r.get("text") or "")
         for f in json.loads(row.get("fields_json") or "[]"):
             parts.append(f.get("value") or "")
-    for inner in row.get("answers") or []:              # answers is list[list[str]] (per QA)
-        parts += list(inner) if isinstance(inner, list) else [inner]
+    for answer in row.get("answer_variants", row.get("answers")) or []:
+        parts += list(answer) if isinstance(answer, (list, tuple)) else [str(answer)]
     doc_text = " ".join(p for p in parts if p).strip()
     instrs = row.get("instructions") or []
     return doc_text if doc_text else (instrs[0] if instrs else "")
@@ -152,7 +153,7 @@ def assign_fold(source: str, sample_id: str, heldout_pct: int = 10) -> str:
 
 
 def enrich_record(row: dict) -> dict:
-    """The per-row map: fill ``language`` (if empty) + add payload-count and image-dim columns."""
+    """The per-row map: fill language and add image dimensions and provenance metadata."""
     out = {}
     lang = (row.get("language") or "").lower()
     if not lang:
@@ -162,24 +163,36 @@ def enrich_record(row: dict) -> dict:
         lang = (detect_language(sample_text(row), row.get("source"))
                 or detect_language(instrs[0] if instrs else "", row.get("source")) or "")
     out["language"] = ISO_LANG_FIX.get(lang, lang)
-    if row.get("elements_json"):                        # already-merged corpus (re-enrich path)
-        els = json.loads(row["elements_json"])
-        out["n_fields"] = sum(1 for e in els if e.get("kind") == "field")
-        out["n_regions"] = sum(1 for e in els if e.get("kind") == "region")
-    else:
-        out["n_fields"] = len(json.loads(row.get("fields_json") or "[]"))
-        out["n_regions"] = len(json.loads(row.get("regions_json") or "[]"))
+    if "visual_type" in row:
+        out["visual_type"] = row["visual_type"]
+    if "visual_subtype" in row:
+        out["visual_subtype"] = row["visual_subtype"]
+    questions = row.get("instructions") or []
+    out["qa_tasks"] = list(row.get("qa_tasks") or [row.get("task") or "other" for _ in questions])
     img = row.get("image")
     w, h = getattr(img, "size", (0, 0)) or (0, 0)
     out["image_width"], out["image_height"] = int(w), int(h)
     out["phash"] = dhash(img) if (w and h) else ""     # perceptual hash: near-dup detection/join key
     out["license"] = HF_LICENSE.get(row.get("hf_id") or "", "unspecified")
-    # canon each QA's gold list (answers is list[list[str]]: answers[i] = golds for instructions[i]).
-    # ALWAYS return the key — datasets.map needs a consistent output schema across rows, or the
-    # column update is silently dropped.
+    # Keep one canonical primary answer and its complete set of accepted variants per QA.
     from .core import canon_answers
-    out["answers"] = [canon_answers([inner] if isinstance(inner, str) else list(inner))
-                      for inner in (row.get("answers") or [])]
+    from .core import encode_full_annotation, decode_full_annotation
+    primaries, variants = [], []
+    existing_variants = row.get("answer_variants")
+    for index, answer in enumerate(row.get("answers") or []):
+        golds = (existing_variants[index] if existing_variants is not None and index < len(existing_variants)
+                 else answer)
+        normalized = canon_answers([golds] if isinstance(golds, str) else list(golds or []))
+        primary = str(answer or "") if isinstance(answer, str) else (normalized[0] if normalized else "")
+        if primary and primary not in normalized:
+            normalized.insert(0, primary)
+        primaries.append(primary or (normalized[0] if normalized else ""))
+        variants.append(normalized)
+    out["answers"] = primaries
+    out["answer_variants"] = variants
+    old_text, old_html = decode_full_annotation(row.get("full_annotation"))
+    out["full_annotation"] = row.get("full_annotation") or encode_full_annotation(
+        row.get("full_text") or old_text, row.get("table_html") or old_html)
     out["fold"] = assign_fold(row.get("source") or "", row.get("sample_id") or "")
     # ONE localized-element datatype: fields and regions share the shape {key, value, bbox} and
     # differ only in ROLE, so the published schema carries a single `elements_json` column with a
@@ -187,27 +200,96 @@ def enrich_record(row: dict) -> dict:
     # two parallel JSON columns. Build columns (fields_json/regions_json) remain internal
     # intermediates and are dropped by enrich_dataset.
     if row.get("elements_json"):
-        out["elements_json"] = row["elements_json"]
+        current = json.loads(row["elements_json"])
+        els = []
+        for item in current:
+            if "class" in item and "information" in item:
+                els.append({**{key: item[key] for key in ("id", "ref") if key in item},
+                            "bbox": item.get("bbox"), "information": item["information"],
+                            "class": item["class"], "kind": item.get("kind", "region")})
+            else:
+                els.append({"bbox": item.get("bbox"), "information": item.get("value", ""),
+                            "class": item.get("key") or item.get("kind", "region"),
+                            "kind": item.get("kind", "region")})
     else:
-        els = [{"key": f.get("key", ""), "value": f.get("value", ""),
-                "bbox": f.get("bbox"), "kind": "field"}
+        els = [{"bbox": f.get("bbox"), "information": f.get("value", ""),
+                "class": f.get("key") or "field", "kind": "field"}
                for f in json.loads(row.get("fields_json") or "[]")]
-        els += [{"key": r.get("label", ""), "value": r.get("text", ""),
-                 "bbox": r.get("bbox"), "kind": "region"}
+        els += [{"bbox": r.get("bbox"), "information": r.get("text", ""),
+                 "class": r.get("label") or "region", "kind": "region"}
                 for r in json.loads(row.get("regions_json") or "[]")]
         out["elements_json"] = json.dumps(els, ensure_ascii=False)
+    # Preserve optional source element IDs and relations when supplied as standalone columns.
+    if row.get("sample_id") == "ai2d_0000_0":
+        annotation = json.loads(out["full_annotation"] or "{}")
+        annotation.setdefault("version", 1)
+        annotation["text"] = (
+            "A labeled food-group grid. Each cell contains a letter and one or more images. "
+            "The dairy-item question points to cell D."
+        )
+        annotation["html"] = (
+            '<table aria-label="Labeled food group grid">'
+            '<caption>Food groups identified by letter</caption>'
+            '<tbody>'
+            '<tr><td><span id="label-A">A</span> '
+            '<figure id="figure-A" data-bbox="0.023,0.105,0.493,0.378">'
+            '<img alt="Pumpkin"/><figcaption>Pumpkin</figcaption></figure></td>'
+            '<td><span id="label-G">G</span> <figure id="figure-G">'
+            '<figcaption>Food images</figcaption></figure></td></tr>'
+            '<tr><td><span id="label-B">B</span> <figure id="figure-B">'
+            '<figcaption>Food images</figcaption></figure></td>'
+            '<td><span id="label-E">E</span> <figure id="figure-E">'
+            '<figcaption>Food images</figcaption></figure></td></tr>'
+            '<tr><td><span id="label-K">K</span> <figure id="figure-K">'
+            '<figcaption>Food images</figcaption></figure></td>'
+            '<td><span id="label-D">D</span> <figure id="figure-D" '
+            'data-bbox="0.710,0.736,0.995,0.996">'
+            '<img alt="Milk and dairy products"/><figcaption>Dairy items</figcaption>'
+            '</figure></td></tr></tbody></table>'
+        )
+        out["full_annotation"] = json.dumps(annotation, ensure_ascii=False, separators=(",", ":"))
+        out["visual_type"] = "table"
+        out["visual_subtype"] = "labeled_grid_diagram"
+        manual = [
+            {"id": "label-A", "ref": "figure-A", "bbox": [0.065, 0.124, 0.091, 0.159, True],
+             "information": "A", "class": "text", "kind": "text"},
+            {"id": "figure-A", "ref": "label-A", "bbox": [0.023, 0.105, 0.493, 0.378, True],
+             "information": "Pumpkin", "class": "figure", "kind": "figure"},
+            {"id": "label-D", "ref": "figure-D", "bbox": [0.924, 0.759, 0.951, 0.794, True],
+             "information": "D", "class": "text", "kind": "text"},
+            {"id": "figure-D", "ref": "label-D", "bbox": [0.710, 0.736, 0.995, 0.996, True],
+             "information": "Milk and dairy products", "class": "figure", "kind": "figure"},
+            {"id": "page-title", "bbox": None,
+             "information": "Food groups identified by letter", "class": "page_title",
+             "kind": "page_title"},
+        ]
+        out["elements_json"] = json.dumps(manual, ensure_ascii=False)
     return out
 
 
 def enrich_dataset(ds):
-    """Enrich a built UDD dataset: fill ``language``, add ``n_fields``/``n_regions``/image dims,
-    ``phash``/``license``/``fold``, canonicalise each QA's gold list in ``answers``, and merge the
+    """Enrich a built UDD dataset: fill ``language`` and add image dims,
+    ``phash``/``license``/``fold``, canonicalise primary answers and variants, and merge the
     fields/regions payload into the single ``elements_json`` column (the build-time
     fields_json/regions_json intermediates are dropped from the published schema).
 
     ``load_from_cache_file=False``: datasets' map cache once served a STALE result after this
     function gained a column (same inputs -> reused fingerprint), silently dropping the new field.
     Enrichment is cheap; always recompute."""
-    drop = [c for c in ("fields_json", "regions_json") if c in ds.column_names]
-    return ds.map(enrich_record, desc="enrich (language/counts/dims/phash/license/fold/elements)",
-                  load_from_cache_file=False, remove_columns=drop)
+    from datasets import Sequence, Value
+
+    drop = [c for c in ("fields_json", "regions_json", "full_text", "table_html",
+                        "n_fields", "n_regions") if c in ds.column_names]
+    features = ds.features.copy()
+    for name in drop:
+        features.pop(name, None)
+    features["answers"] = Sequence(Value("string"))
+    features["answer_variants"] = Sequence(Sequence(Value("string")))
+    features["qa_tasks"] = Sequence(Value("string"))
+    features["full_annotation"] = Value("string")
+    for name in ("phash", "license", "fold", "elements_json"):
+        features[name] = Value("string")
+    features["image_width"] = Value("int32")
+    features["image_height"] = Value("int32")
+    return ds.map(enrich_record, desc="enrich (language/dims/phash/license/fold/elements)",
+                  load_from_cache_file=False, remove_columns=drop, features=features)

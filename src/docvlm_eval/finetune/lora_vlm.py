@@ -11,15 +11,24 @@ and intentionally small (peft + a plain torch loop). Used by ``scripts/run_ablat
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable
 
 # capability -> module bucket (mirrors the hypotheses in research_novelty.md / ablation_plan.md)
-PLACEMENT_GROUPS = ("vision", "connector", "llm_attn", "llm_mlp", "all")
+PLACEMENT_GROUPS = (
+    "vision",
+    "connector",
+    "vision_connector",
+    "llm_attn",
+    "llm_mlp",
+    "all",
+)
 
 _VISION_PAT = re.compile(r"vis(ual|ion)|patch|siglip|navit|aimv2", re.I)
 _CONNECTOR_PAT = re.compile(r"merger|projector|connector|mlp1|multi_modal|abstractor|resampler", re.I)
+_ATTN_PATH = re.compile(r"(^|\.)(self_?attn|attention|attn)(\.|$)", re.I)
 _ATTN_LEAF = re.compile(r"(^|\.)(q|k|v|o|qkv|out|wq|wk|wv|wo)_?proj$", re.I)
+_MLP_PATH = re.compile(r"(^|\.)(mlp|feed_?forward|ffn)(\.|$)", re.I)
 _MLP_LEAF = re.compile(
     r"(^|\.)(gate|up|down)_?proj$|(^|\.)(fc1|fc2|w1|w2|w3)$",
     re.I,
@@ -65,11 +74,119 @@ def resolve_lora_targets(
             targets.append(name)
         elif group == "connector" and bkt == "connector":
             targets.append(name)
-        elif group == "llm_attn" and bkt == "llm" and _ATTN_LEAF.search(leaf):
+        elif group == "vision_connector" and bkt in {"vision", "connector"}:
             targets.append(name)
-        elif group == "llm_mlp" and bkt == "llm" and _MLP_LEAF.search(leaf):
+        elif (
+            group == "llm_attn"
+            and bkt == "llm"
+            and _ATTN_PATH.search(name)
+            and _ATTN_LEAF.search(leaf)
+        ):
+            targets.append(name)
+        elif (
+            group == "llm_mlp"
+            and bkt == "llm"
+            and (_MLP_PATH.search(name) or _MLP_LEAF.search(leaf))
+        ):
             targets.append(name)
     return sorted(set(targets))
+
+
+def lora_parameter_coefficient(
+    named_modules: Iterable[tuple[str, Any]],
+    targets: Iterable[str],
+) -> int:
+    """Return LoRA trainable parameters per rank for selected Linear modules."""
+    modules = dict(named_modules)
+    coefficient = 0
+    for name in targets:
+        module = modules.get(name)
+        in_features = getattr(module, "in_features", None)
+        out_features = getattr(module, "out_features", None)
+        if (
+            not isinstance(in_features, int)
+            or not isinstance(out_features, int)
+            or in_features <= 0
+            or out_features <= 0
+        ):
+            raise ValueError(
+                f"LoRA target {name!r} does not expose positive "
+                "in_features/out_features"
+            )
+        coefficient += in_features + out_features
+    if coefficient <= 0:
+        raise ValueError("LoRA parameter coefficient requires at least one target")
+    return coefficient
+
+
+def resolve_lora_budget(
+    named_modules: Iterable[tuple[str, Any]],
+    placement: str,
+    *,
+    requested_rank: int,
+    requested_alpha: int,
+    reference_placement: str | None = None,
+    is_linear: Callable[[Any], bool] | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    """Resolve targets and optionally match their adapter size to a reference placement."""
+    if requested_rank <= 0 or requested_alpha <= 0:
+        raise ValueError("LoRA rank and alpha must be positive")
+    named_modules = list(named_modules)
+    targets = resolve_lora_targets(
+        named_modules,
+        placement,
+        is_linear=is_linear,
+    )
+    if not targets:
+        return targets, {}
+    coefficient = lora_parameter_coefficient(named_modules, targets)
+    reference_targets = (
+        targets
+        if reference_placement is None
+        else resolve_lora_targets(
+            named_modules,
+            reference_placement,
+            is_linear=is_linear,
+        )
+    )
+    if not reference_targets:
+        raise ValueError(
+            f"reference placement {reference_placement!r} has no LoRA targets"
+        )
+    reference_coefficient = lora_parameter_coefficient(
+        named_modules,
+        reference_targets,
+    )
+    target_budget = reference_coefficient * requested_rank
+    effective_rank = max(1, round(target_budget / coefficient))
+    alpha_ratio = requested_alpha / requested_rank
+    effective_alpha = max(1, round(alpha_ratio * effective_rank))
+    actual_parameters = coefficient * effective_rank
+    relative_error = abs(actual_parameters - target_budget) / target_budget
+    return targets, {
+        "placement": placement,
+        "reference_placement": reference_placement or placement,
+        "target_count": len(targets),
+        "reference_target_count": len(reference_targets),
+        "requested_rank": requested_rank,
+        "effective_rank": effective_rank,
+        "requested_alpha": requested_alpha,
+        "effective_alpha": effective_alpha,
+        "parameters_per_rank": coefficient,
+        "reference_parameters_per_rank": reference_coefficient,
+        "target_trainable_parameters": target_budget,
+        "actual_trainable_parameters": actual_parameters,
+        "relative_budget_error": relative_error,
+    }
+
+
+def _linear_module_summary(named_modules: Iterable[tuple[str, Any]]) -> str:
+    """Compact module-name evidence for actionable placement failures."""
+    import torch
+
+    names = [name for name, mod in named_modules if name and isinstance(mod, torch.nn.Linear)]
+    leaves = sorted({name.rsplit(".", 1)[-1] for name in names})
+    return f"{len(names)} linear modules; leaves={leaves[:32]}"
 
 
 # ----------------------------------------------------------------------------- training (GPU)
@@ -81,6 +198,8 @@ class LoraVLMConfig:
     placement: str = "all"                 # A5 group -> resolve_lora_targets
     lora_r: int = 16
     lora_alpha: int = 32
+    lora_budget_reference_placement: str | None = None
+    lora_budget_max_relative_error: float = 0.05
     lora_dropout: float = 0.05
     learning_rate: float = 1e-4
     epochs: int = 1
@@ -88,6 +207,7 @@ class LoraVLMConfig:
     batch_size: int = 2                    # micro-batch (images/forward); effective batch = bs * grad_accum
     grad_accum: int = 8
     dtype: str = "bfloat16"
+    quantization_bits: int | None = 4
     seed: int = 7
     use_rationale: bool = True             # train target = rationale + answer (A2) when present
     grounding_repeat: int = 1              # A1 curriculum: repeat grounding rows so boxes are not diluted
@@ -104,6 +224,20 @@ class LoraVLMConfig:
     log_every: int = 10                    # stdout + W&B train-loss cadence (micro-steps)
 
 
+def validate_lora_runtime_config(cfg: LoraVLMConfig) -> None:
+    """Reject invalid loop controls before importing or allocating the model."""
+    if cfg.epochs <= 0:
+        raise ValueError(f"epochs must be positive, got {cfg.epochs}")
+    if cfg.max_steps is not None and cfg.max_steps <= 0:
+        raise ValueError(f"max_steps must be positive when set, got {cfg.max_steps}")
+    if cfg.batch_size <= 0 or cfg.grad_accum <= 0:
+        raise ValueError(
+            f"batch_size and grad_accum must be positive, got {cfg.batch_size} and {cfg.grad_accum}"
+        )
+    if cfg.log_every <= 0:
+        raise ValueError(f"log_every must be positive, got {cfg.log_every}")
+
+
 def _device_dtype(prefer_dtype: str):
     """Pick a device + a safe dtype: GPU keeps the requested dtype; CPU forces float32
     (bf16/fp16 matmul is slow/unsupported for some ops on CPU)."""
@@ -111,6 +245,21 @@ def _device_dtype(prefer_dtype: str):
     if torch.cuda.is_available():
         return "cuda", getattr(torch, prefer_dtype)
     return "cpu", torch.float32
+
+
+def resolve_lora_quantization(
+    quantization_bits: int | None,
+    device: str,
+) -> str:
+    """Resolve the base-weight loading mode before allocating the model."""
+
+    if quantization_bits is None or quantization_bits == 16:
+        return "dense"
+    if quantization_bits != 4:
+        raise ValueError("LoRA quantization_bits must be 4, 16, or null")
+    if device != "cuda":
+        raise RuntimeError("4-bit QLoRA requires a CUDA device")
+    return "nf4_double_quant"
 
 
 def _norm_box_answer(answer: str) -> str | None:
@@ -192,7 +341,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
     project's aggregate summary. ``max_samples`` caps the eval set — the arm path regenerates
     realistic_cases at --count (thousands of samples), so without a cap the suite eval would score the
     whole TRAINING set (slow + memorization-tainted). None/0 = score all."""
-    import sys, time
+    import sys
+    import time
     from pathlib import Path
 
     import torch
@@ -226,7 +376,8 @@ def _score(model, proc, device, jsonl: str, max_new_tokens: int = 64,
                 out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
             text = proc.batch_decode(out[:, n:], skip_special_tokens=True)[0].strip()
         except torch.cuda.OutOfMemoryError:        # skip the offending sample, keep scoring the rest
-            torch.cuda.empty_cache(); text = ""
+            torch.cuda.empty_cache()
+            text = ""
         preds[s.sample_id] = Prediction(sample_id=s.sample_id, prediction=text, raw=text)
         if i == 1 or i % every == 0 or i == len(samples):
             print(f"    [eval {tag}] {i}/{len(samples)} ({(time.time()-t0):.0f}s)", flush=True)
@@ -258,7 +409,8 @@ def _wandb_init(cfg: "LoraVLMConfig"):
     try:
         import wandb
     except ImportError:
-        print("[wandb] not installed (pip install wandb) -> training without logging"); return None
+        print("[wandb] not installed (pip install wandb) -> training without logging")
+        return None
     try:
         if wandb.run is not None:           # close any run left open by a previous size, THEN init a
             wandb.finish()                  # fresh one — this replaces the now-deprecated reinit=True
@@ -268,12 +420,14 @@ def _wandb_init(cfg: "LoraVLMConfig"):
         run = wandb.init(project=cfg.wandb_project, name=cfg.wandb_run,
                          config={"model": cfg.model_id, "placement": cfg.placement,
                                  "epochs": cfg.epochs, "lr": cfg.learning_rate, "r": cfg.lora_r,
+                                 "quantization_bits": cfg.quantization_bits,
                                  "train_jsonl": cfg.train_jsonl})
         print(f"[wandb] logging to project={cfg.wandb_project} run={cfg.wandb_run}")
         return run
     except Exception as e:                  # not logged in / offline / no API key -> continue, no crash
         print(f"[wandb] init failed ({type(e).__name__}: {e}); set WANDB_API_KEY or run "
-              f"`wandb login` -> training WITHOUT logging"); return None
+              f"`wandb login` -> training WITHOUT logging")
+        return None
 
 
 def train_lora_vlm(cfg: LoraVLMConfig,
@@ -285,29 +439,127 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     loss and — for every (name, jsonl) in ``eval_specs`` (e.g. train + held-out) — an in-process eval
     summary, to stdout and to Weights & Biases (when cfg.wandb_project is set). ``last_eval`` maps
     each spec name to its final-epoch summary so callers can record it without reloading the model."""
+    validate_lora_runtime_config(cfg)
+
     import json
     from pathlib import Path
 
     import torch
-    from peft import LoraConfig, get_peft_model
+    from peft import (
+        LoraConfig,
+        get_peft_model,
+        prepare_model_for_kbit_training,
+    )
     from torch.utils.data import DataLoader, Dataset
-    from transformers import AutoProcessor
+    from transformers import AutoProcessor, BitsAndBytesConfig
     from PIL import Image
 
     torch.manual_seed(cfg.seed)
     device, dt = _device_dtype(cfg.dtype)
+    quantization_mode = resolve_lora_quantization(
+        cfg.quantization_bits,
+        device,
+    )
     print(f"[lora_vlm.train] device={device} dtype={dt}"
+          + f" quantization={quantization_mode}"
           + ("" if device == "cuda" else "  (CPU — training will be slow; expected a GPU?)"))
     proc = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
-    model = _auto_vlm().from_pretrained(cfg.model_id, torch_dtype=dt,
-                                        trust_remote_code=True).to(device)
+    model_kwargs = {
+        "torch_dtype": dt,
+        "trust_remote_code": True,
+    }
+    if quantization_mode == "nf4_double_quant":
+        model_kwargs.update(
+            {
+                "device_map": {"": 0},
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype=dt,
+                ),
+            }
+        )
+    model = _auto_vlm().from_pretrained(cfg.model_id, **model_kwargs)
+    if quantization_mode == "dense":
+        model = model.to(device)
+    else:
+        model = prepare_model_for_kbit_training(
+            model,
+            use_gradient_checkpointing=cfg.grad_checkpointing,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
 
-    targets = resolve_lora_targets(model.named_modules(), cfg.placement)
+    named_modules = list(model.named_modules())
+    targets, budget_report = resolve_lora_budget(
+        named_modules,
+        cfg.placement,
+        requested_rank=cfg.lora_r,
+        requested_alpha=cfg.lora_alpha,
+        reference_placement=cfg.lora_budget_reference_placement,
+    )
     if not targets:
-        raise RuntimeError(f"no LoRA targets for placement={cfg.placement!r} on {cfg.model_id}")
+        summary = _linear_module_summary(named_modules)
+        raise RuntimeError(
+            f"no LoRA targets for placement={cfg.placement!r} on {cfg.model_id}; {summary}. "
+            "Confirm that the Colab checkout is current and inspect the model's module names."
+        )
+    cfg = replace(
+        cfg,
+        lora_r=budget_report["effective_rank"],
+        lora_alpha=budget_report["effective_alpha"],
+    )
+    if (
+        budget_report["relative_budget_error"]
+        > cfg.lora_budget_max_relative_error
+    ):
+        raise RuntimeError(
+            "integer LoRA rank cannot satisfy the requested adapter budget: "
+            f"relative error {budget_report['relative_budget_error']:.2%} > "
+            f"{cfg.lora_budget_max_relative_error:.2%}; increase the reference "
+            "rank or relax lora_budget_max_relative_error"
+        )
+    print(
+        f"[lora_vlm.train] placement={cfg.placement} resolved {len(targets)} targets; "
+        f"rank={cfg.lora_r} alpha={cfg.lora_alpha} "
+        f"adapter_params={budget_report['actual_trainable_parameters']:,} "
+        f"budget_error={budget_report['relative_budget_error']:.2%}; "
+        f"sample={targets[:8]}",
+        flush=True,
+    )
     model = get_peft_model(model, LoraConfig(
         r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
         bias="none", target_modules=targets, task_type="CAUSAL_LM"))
+    budget_report["realized_trainable_parameters"] = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    )
+    budget_report["base_weight_quantization"] = {
+        "bits": cfg.quantization_bits,
+        "mode": quantization_mode,
+        "quant_type": "nf4" if quantization_mode != "dense" else None,
+        "double_quant": quantization_mode != "dense",
+        "compute_dtype": str(dt),
+    }
+    budget_report["realized_relative_budget_error"] = (
+        abs(
+            budget_report["realized_trainable_parameters"]
+            - budget_report["target_trainable_parameters"]
+        )
+        / budget_report["target_trainable_parameters"]
+    )
+    if (
+        cfg.lora_budget_reference_placement is not None
+        and budget_report["realized_relative_budget_error"]
+        > cfg.lora_budget_max_relative_error
+    ):
+        raise RuntimeError(
+            "realized PEFT trainable parameters violate the adapter budget: "
+            f"relative error "
+            f"{budget_report['realized_relative_budget_error']:.2%} > "
+            f"{cfg.lora_budget_max_relative_error:.2%}"
+        )
     model.print_trainable_parameters()
     if cfg.grad_checkpointing:                 # big activation-memory saver (the main OOM lever)
         if hasattr(model, "config"):
@@ -315,7 +567,11 @@ def train_lora_vlm(cfg: LoraVLMConfig,
         model.enable_input_require_grads()     # needed so grads flow with a frozen embedding + PEFT
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
-    rows = [json.loads(l) for l in Path(cfg.train_jsonl).read_text().splitlines() if l.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(cfg.train_jsonl).read_text().splitlines()
+        if line.strip()
+    ]
     rows = [r for r in rows if r.get("answers")]
     if not rows:
         raise RuntimeError(f"no trainable rows (with answers) in {cfg.train_jsonl}")
@@ -364,7 +620,9 @@ def train_lora_vlm(cfg: LoraVLMConfig,
     run = _wandb_init(cfg)
     if run:        # distinct namespaces so define_metric globs don't collide: loss vs step, eval vs epoch
         import wandb
-        wandb.define_metric("train/global_step"); wandb.define_metric("epoch")
+        run.config.update({"lora_budget": budget_report}, allow_val_change=True)
+        wandb.define_metric("train/global_step")
+        wandb.define_metric("epoch")
         wandb.define_metric("train/loss", step_metric="train/global_step")
         wandb.define_metric("epoch/*", step_metric="epoch")
         wandb.define_metric("eval/*", step_metric="epoch")
@@ -376,10 +634,12 @@ def train_lora_vlm(cfg: LoraVLMConfig,
           f"(grad_accum={cfg.grad_accum} -> ~{max(total // cfg.grad_accum, 1)} optimizer steps) | "
           f"img_cap={cfg.max_image_long_side} grad_ckpt={cfg.grad_checkpointing}", flush=True)
     t0 = time.time()
-    gstep = 0; last_eval: dict = {}
+    gstep = 0
+    last_eval: dict = {}
     try:
         for epoch in range(cfg.epochs):
-            model.train(); losses = []
+            model.train()
+            losses = []
             for batch in dl:
                 out = model(**batch)
                 if out.loss is None:
@@ -387,11 +647,14 @@ def train_lora_vlm(cfg: LoraVLMConfig,
                                        "model's forward; check the processor chat-template / image keys")
                 (out.loss / cfg.grad_accum).backward()
                 if (gstep + 1) % cfg.grad_accum == 0:
-                    opt.step(); opt.zero_grad()
+                    opt.step()
+                    opt.zero_grad()
                 losses.append(float(out.loss.detach()))
                 gstep += 1
                 if gstep == 1 or gstep % cfg.log_every == 0 or gstep >= total:
-                    el = time.time() - t0; rate = gstep / max(el, 1e-9); eta = (total - gstep) / max(rate, 1e-9)
+                    el = time.time() - t0
+                    rate = gstep / max(el, 1e-9)
+                    eta = (total - gstep) / max(rate, 1e-9)
                     print(f"    step {gstep}/{total} (ep {epoch+1}/{cfg.epochs}) loss={losses[-1]:.3f} "
                           f"| {rate:.2f} it/s | elapsed {el/60:.1f}m | eta {eta/60:.1f}m", flush=True)
                     if run:
@@ -417,8 +680,14 @@ def train_lora_vlm(cfg: LoraVLMConfig,
             if gstep >= cap:
                 break
 
-        out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
-        model.save_pretrained(out_dir); proc.save_pretrained(out_dir)
+        out_dir = Path(cfg.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(out_dir)
+        proc.save_pretrained(out_dir)
+        (out_dir / "lora_budget.json").write_text(
+            json.dumps(budget_report, indent=2),
+            encoding="utf-8",
+        )
     finally:
         if run:                                            # always close, even on OOM/crash, so the
             run.finish()                                   # next sweep size's wandb.init() is clean
@@ -429,7 +698,7 @@ def _load_for_eval(model_id: str, adapter_path: str | None, dtype: str = "bfloat
     """Load the (optionally LoRA-adapted) model + processor ONCE -> (model, proc, device)."""
     device, dt = _device_dtype(dtype)
     print(f"[lora_vlm.eval] loading {model_id}"
-          + (f" + adapter" if adapter_path else "") + f" on {device}/{dt}"
+          + (" + adapter" if adapter_path else "") + f" on {device}/{dt}"
           + ("" if device == "cuda" else "  (CPU — eval will be slow)"), flush=True)
     from transformers import AutoProcessor
     proc = AutoProcessor.from_pretrained(adapter_path or model_id, trust_remote_code=True)

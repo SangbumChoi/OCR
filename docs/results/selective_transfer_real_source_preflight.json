@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "executed_on": "2026-07-25",
+  "initialization_arm": "I5_structured_mlp",
+  "claim_scope": "real_source_initialization_contract_only",
+  "quality_claim_authorized": false,
+  "target": {
+    "total_parameters": 799919884,
+    "vision_parameters": 88654080,
+    "language_parameters": 677508096
+  },
+  "runtime": {
+    "device": "cpu",
+    "host": "Apple M5, 32GB",
+    "wall_seconds": 19.81,
+    "maximum_resident_bytes": 5454725120
+  },
+  "sources": {
+    "vision": {
+      "model": "google/siglip-base-patch16-224",
+      "revision": "7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed",
+      "weight_format": "safetensors",
+      "content_fingerprint": "sha256:4df677113d0c24dfdc8c9b987a6fd25ed457a4d537c43b87dc5b7d1c7d821979",
+      "total_bytes": 812672752,
+      "manifest_file_sha256": "sha256:53d4997b111ffcb99d253415957df47d1b195f79ab4f590a74741e55475efad1"
+    },
+    "language": {
+      "model": "Qwen/Qwen2.5-1.5B",
+      "revision": "8faed761d45a263340a0528343f099c05c9a4323",
+      "weight_format": "safetensors",
+      "content_fingerprint": "sha256:186e7f47b8b6c3e2b98cb52fc2499072d040cbd2ff0c9b5fc6a831bd69ce992a",
+      "total_bytes": 3087467828,
+      "manifest_file_sha256": "sha256:a799c436859e429f490d52cb7708dfa50f6d4085a2048f36e7fa4a18ee47cba4"
+    }
+  },
+  "transfers": {
+    "vision": {
+      "copied_tensors": 99,
+      "copied_parameters": 42529536,
+      "realized_component_parameter_fraction": 0.4797245202928055,
+      "minimum_component_parameter_fraction": 0.4,
+      "shape_skips": 2,
+      "semantic_skips": 0,
+      "missing_source": 0,
+      "mapping_fingerprint": "sha256:e872726ba708fc6a1f827951408ae7e689ec7f41c233fda0a78c0bdec03f4e78",
+      "copied_values_fingerprint": "sha256:7e6d2978b8686289d1bb38df5e1b9d0abc3bc5dd2cf5e56d4afab4fed8b54133",
+      "value_verified": true
+    },
+    "language": {
+      "copied_tensors": 97,
+      "structured_tensors": 36,
+      "copied_parameters": 283172352,
+      "structured_parameters": 226492416,
+      "realized_component_parameter_fraction": 0.41796157665398587,
+      "minimum_component_parameter_fraction": 0.25,
+      "shape_skips": 48,
+      "semantic_skips": 0,
+      "missing_source": 48,
+      "mapping_fingerprint": "sha256:0f45632dd55dde4a802bddb20e416e4efca3ff3dfecc31b01d6ca27785618414",
+      "copied_values_fingerprint": "sha256:cd23bbe591dd0a15e2e9a7897cb471f84279e410e057a188de03b56065e9a538",
+      "value_verified": true
+    }
+  },
+  "limitations": [
+    "The preflight materializes initialization but does not train or evaluate the target.",
+    "CPU memory and latency do not establish target-CUDA feasibility.",
+    "A quality conclusion requires the pinned-source paired GPU sweep."
+  ]
+}

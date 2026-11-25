@@ -8,7 +8,7 @@
 >   [`docs/report/ablation_plan.md`](report/ablation_plan.md) (A1–A7 ablations → staircase), and
 > - the **synthetic training-data generator** with built-in ground truth
 >   ([`scripts/make_realistic_cases.py --count N`](../scripts/make_realistic_cases.py), see
->   [`data/probes/realistic_cases/`](../data/probes/realistic_cases/README.md)).
+>   [`examples/probes/realistic_cases/`](../examples/probes/realistic_cases/README.md)).
 >
 > Prefer those for new work; treat this page as the historical "how the pieces fit" reference.
 
@@ -36,7 +36,7 @@ pip install -e ".[models,finetune]"     # unified package + LoRA fine-tuning dep
 
 ### 2) Dataset format
 
-Expects `data/my_dataset/train.jsonl`, `data/my_dataset/val.jsonl`.
+Expects `examples/my_dataset/train.jsonl`, `examples/my_dataset/val.jsonl`.
 
 Each line has these fields:
 - `image_path`: path to the image file (absolute or relative).
@@ -45,7 +45,7 @@ Each line has these fields:
 Example:
 
 ```json
-{"image_path":"data/my_dataset/images/0001.png","text":"Hello world"}
+{"image_path":"examples/my_dataset/images/0001.png","text":"Hello world"}
 ```
 
 ### 3) LoRA fine-tuning
@@ -53,8 +53,8 @@ Example:
 ```bash
 python scripts/finetune_lora.py \
   --model_id deepseek-ai/DeepSeek-OCR \
-  --train_jsonl data/my_dataset/train.jsonl \
-  --val_jsonl data/my_dataset/val.jsonl \
+  --train_jsonl examples/my_dataset/train.jsonl \
+  --val_jsonl examples/my_dataset/val.jsonl \
   --output_dir outputs/exp1 \
   --use_wandb 0
 ```
@@ -64,7 +64,7 @@ python scripts/finetune_lora.py \
 ```bash
 python scripts/eval.py \
   --model_id outputs/exp1 \
-  --val_jsonl data/my_dataset/val.jsonl \
+  --val_jsonl examples/my_dataset/val.jsonl \
   --report_path outputs/exp1/eval_report.json
 ```
 
@@ -74,7 +74,7 @@ python scripts/eval.py \
 python scripts/compare.py \
   --base_model_id deepseek-ai/DeepSeek-OCR \
   --finetuned_model_id outputs/exp1 \
-  --val_jsonl data/my_dataset/val.jsonl \
+  --val_jsonl examples/my_dataset/val.jsonl \
   --report_path outputs/compare_report.json
 ```
 
@@ -92,7 +92,7 @@ python scripts/merge_lora.py \
 ```bash
 python scripts/crawl.py \
   --seed_url "https://example.com" \
-  --out_dir data/crawled \
+  --out_dir examples/crawled \
   --max_pages 50
 ```
 
@@ -102,7 +102,7 @@ python scripts/crawl.py \
 python scripts/vllm_client_infer.py \
   --base_url "http://localhost:8000/v1" \
   --model "deepseek-ocr" \
-  --image_path "data/my_dataset/images/0001.png" \
+  --image_path "examples/my_dataset/images/0001.png" \
   --prompt "Extract all text from the image."
 ```
 

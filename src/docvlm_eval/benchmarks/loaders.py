@@ -2,7 +2,7 @@
 
 JSONL schema (one object per line) mirrors :class:`~docvlm_eval.schema.Sample`::
 
-    {"sample_id": "docvqa_val_0", "image_path": "data/docvqa/img/0.png",
+    {"sample_id": "docvqa_val_0", "image_path": "examples/docvqa/img/0.png",
      "question": "What is the total?", "answers": ["$1,200"],
      "answer_type": "form/total", "metric": "anls", "meta": {}}
 """
@@ -21,8 +21,8 @@ def _portable_path(p: str) -> str:
     """Re-anchor a fixture image path at THIS repo root when it does not exist here.
 
     Checked-in jsonls (probe suites) carry absolute paths from the machine that generated them
-    (e.g. ``/home/user/OCR/data/...``); on a clone rooted elsewhere (Colab: ``/content/OCR``)
-    those break. The ``data/...`` tail is machine-independent, so resolve it against this repo."""
+    (e.g. ``/home/user/OCR/examples/...``); on a clone rooted elsewhere (Colab: ``/content/OCR``)
+    those break. The ``examples/...`` tail is machine-independent, so resolve it against this repo."""
     if not p or Path(p).exists():
         return p
     q = Path(p)
@@ -30,8 +30,8 @@ def _portable_path(p: str) -> str:
         cand = ROOT / q
         return str(cand) if cand.exists() else p
     parts = q.parts
-    if "data" in parts:
-        cand = ROOT.joinpath(*parts[parts.index("data"):])
+    if "examples" in parts:
+        cand = ROOT.joinpath(*parts[parts.index("examples"):])
         if cand.exists():
             return str(cand)
     return p

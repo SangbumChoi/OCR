@@ -9,7 +9,7 @@ Two tiers:
   profile) that cannot train on a CPU CI box.
 * **execution (opt-in: ``RUN_NB_E2E=1``)** — the CPU-runnable notebooks are executed end to
   end with a real kernel: ``udd_ablation.ipynb`` (needs the merged corpus at
-  ``data/udd/hf/_all``) and ``synthetic_data_design.ipynb``. Slow (minutes each), hence
+  ``examples/udd/hf/_all``) and ``synthetic_data_design.ipynb``. Slow (minutes each), hence
   env-gated; run locally or in a scheduled job, not on every push.
 """
 from __future__ import annotations
@@ -56,7 +56,7 @@ def test_no_stored_error_outputs(nb):
 def test_executes_end_to_end(name):
     if not os.environ.get("RUN_NB_E2E"):
         pytest.skip("set RUN_NB_E2E=1 to execute the CPU-runnable notebooks (slow)")
-    if name == "udd_ablation.ipynb" and not (ROOT / "data/udd/hf/_all").exists():
+    if name == "udd_ablation.ipynb" and not (ROOT / "examples/udd/hf/_all").exists():
         pytest.skip("merged UDD corpus not built (scripts/build_udd.py)")
     import nbformat
     from nbclient import NotebookClient

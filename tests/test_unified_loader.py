@@ -276,8 +276,8 @@ def test_hallusionbench_yes_no_and_rationale():
     r = _one("hallusionbench", ex)[0]
     assert r.task == Task.REASONING
     assert r.qas[0].answers == ["yes"]                       # '1' -> the INTENT, not the digit
-    assert r.qas[1].question.endswith("Explain your answer.")
-    assert r.qas[1].answers[0].endswith("So the answer is yes.")
+    assert r.qas[0].question == ex["question"]
+    assert r.qas[0].reasoning == ex["gt_answer_details"]
     r0 = _one("hallusionbench", {"question": "Is France the leader?", "gt_answer": "0"})[0]
     assert r0.answers == ["no"] and not r0.qas               # no details -> flat single QA
 
@@ -331,7 +331,7 @@ def test_extract_unified_fills_language():
     assert r2.language == "en"
 
 
-def test_enrich_record_counts_and_dims():
+def test_enrich_record_omits_derived_counts_and_keeps_dims():
     from docvlm_eval.unified import enrich_record
     row = {"language": "", "source": "funsd", "instruction": "Transcribe.",
            "answers": ["Name Bob"], "full_text": "Name Bob",
@@ -339,7 +339,8 @@ def test_enrich_record_counts_and_dims():
            "regions_json": json.dumps([{"label": "word", "text": ""}]), "image": None,
            "hf_id": "naver-clova-ix/cord-v2"}
     out = enrich_record(row)
-    assert out["language"] == "en" and out["n_fields"] == 1 and out["n_regions"] == 1
+    assert out["language"] == "en"
+    assert "n_fields" not in out and "n_regions" not in out
     assert out["image_width"] == 0                  # no image object -> dims default to 0
     assert out["phash"] == "" and out["license"] == "cc-by-4.0"
 

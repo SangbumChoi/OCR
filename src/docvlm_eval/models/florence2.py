@@ -29,11 +29,16 @@ class _Florence2(ModelAdapter):
         from transformers import AutoModelForCausalLM, AutoProcessor
 
         self.processor = AutoProcessor.from_pretrained(
-            self.hf_id, trust_remote_code=True
+            self.hf_id,
+            revision=self.revision,
+            trust_remote_code=True,
         )
         self.model = (
             AutoModelForCausalLM.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype), trust_remote_code=True
+                self.hf_id,
+                revision=self.revision,
+                torch_dtype=getattr(torch, self.dtype),
+                trust_remote_code=True,
             )
             .eval()
             .to(self.device)

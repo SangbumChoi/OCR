@@ -40,7 +40,7 @@ HARD_CAP = 200
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=str(ROOT / "data" / "unified_dataset"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "unified_dataset"))
     p.add_argument("--per-bench", type=int, default=50, help=f"images per benchmark (< {HARD_CAP})")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys to include")
     p.add_argument("--skip", default=None, help="comma-separated benchmark keys to skip")

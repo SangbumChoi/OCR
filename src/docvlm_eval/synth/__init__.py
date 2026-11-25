@@ -1,8 +1,10 @@
 """Synthetic document generation with built-in ground truth.
 
-Render HTML/CSS (single source of truth) -> raster + exact GT boxes, then optionally apply
-photometric degradation that keeps the boxes valid. Heavy deps (weasyprint, pymupdf, augraphy,
-faker) live in the ``[synth]`` extra and are imported lazily.
+Render HTML/CSS (single source of truth) -> raster + exact GT boxes, optionally author grounded
+document marks, transform pixels and boxes through one homography, then apply photometric
+degradation in that coordinate frame.
+Heavy deps (weasyprint, pymupdf, augraphy, faker) live in the ``[synth]`` extra and are imported
+lazily.
 
     from docvlm_eval.synth import DocBuilder, degrade
     b = DocBuilder("invoice", ["table"], "KIE F1")
@@ -11,7 +13,17 @@ faker) live in the ``[synth]`` extra and are imported lazily.
     deg = degrade(img, "scan")
 """
 
-from .degrade import PRESETS, degrade
+from .degrade import (
+    DegradationError, PRESETS, degrade, degrade_with_retries, derive_degradation_seed,
+)
+from .bundle import BundleDocument, compose_document_bundle
+from .geometry import (
+    GeometryAugmentationError,
+    derive_perspective_seed,
+    transform_box,
+    transform_ground_truth,
+    warp_perspective,
+)
 from .derive import (
     Derivation, aggregate, count_occurrences, locate, region_box, resolve, union_box, word_boxes,
 )
@@ -20,11 +32,30 @@ from .dto import (
     script_for,
 )
 from .patterns import DocBuilder, esc
+from .latent import (
+    DifficultySpec, GraphEdge, GraphNode, GraphQuery, LatentDocumentGraph, ResolvedQuery,
+)
+from .hard_layout import HARD_LAYOUT_FAMILIES, HardLayoutSpec, hard_layout_spec, layout_fingerprint
+from .hard_diagram import hard_process_diagram
+from .overlays import (
+    OVERLAY_TYPES, OverlayMark, apply_document_overlays, derive_overlay_seed,
+    overlay_fingerprint,
+)
 from .render import RenderResult, render_html, resolve_boxes
+from .quality import (
+    EvidenceQualityError, audit_degraded_evidence, audit_render_evidence, collect_evidence_boxes,
+    redact_evidence_quality_report,
+)
+from .splits import SplitPolicy, validate_split_leakage
+from .supervision import apply_supervision_toggles
 from .to_samples import case_to_samples, load_case_dir, load_realistic_samples
 
 __all__ = [
-    "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade", "PRESETS",
+    "DocBuilder", "esc", "render_html", "resolve_boxes", "RenderResult", "degrade",
+    "degrade_with_retries", "derive_degradation_seed", "DegradationError", "PRESETS",
+    "BundleDocument", "compose_document_bundle",
+    "warp_perspective", "transform_box", "transform_ground_truth",
+    "derive_perspective_seed", "GeometryAugmentationError",
     "case_to_samples", "load_case_dir", "load_realistic_samples",
     # structured GT + generation-config DTOs
     "DocSample", "GenConfig", "Field", "QAItem", "BBox", "RenderSpec", "Degradation",
@@ -32,4 +63,14 @@ __all__ = [
     # model-free understanding-GT derivation
     "Derivation", "resolve", "locate", "count_occurrences", "region_box", "union_box",
     "word_boxes", "aggregate",
+    # executable semantic graphs and leakage-safe splitting
+    "DifficultySpec", "GraphEdge", "GraphNode", "GraphQuery", "LatentDocumentGraph",
+    "ResolvedQuery", "SplitPolicy", "validate_split_leakage",
+    "HARD_LAYOUT_FAMILIES", "HardLayoutSpec", "hard_layout_spec", "layout_fingerprint",
+    "hard_process_diagram",
+    "OVERLAY_TYPES", "OverlayMark", "apply_document_overlays", "derive_overlay_seed",
+    "overlay_fingerprint",
+    "apply_supervision_toggles",
+    "EvidenceQualityError", "audit_render_evidence", "audit_degraded_evidence",
+    "collect_evidence_boxes", "redact_evidence_quality_report",
 ]

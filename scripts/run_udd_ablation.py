@@ -93,7 +93,7 @@ def arm_definitions(td: Path) -> dict[str, dict]:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--tasksets-dir", default=str(ROOT / "data" / "udd_tasks"))
+    p.add_argument("--tasksets-dir", default=str(ROOT / "examples" / "udd_tasks"))
     p.add_argument("--arm", nargs="+", required=True,
                    help="arm ids or families: A1 A2 A3 A4 (family expands to all its variants)")
     p.add_argument("--models", nargs="+", default=["lfm2_5-vl-1.6b"])

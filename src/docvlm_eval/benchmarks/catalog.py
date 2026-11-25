@@ -1,8 +1,8 @@
-"""Benchmark catalog access + one-sample fetching.
+"""Benchmark catalog access + compact source-example fetching.
 
 The catalog (``configs/benchmark_catalog.yaml``) lists every benchmark across the 10
 capability categories with its ``purpose``, metric and HF id. This module loads it and can
-materialise a one-sample preview (image + GT + purpose) per benchmark via HF streaming.
+fetch source images and their annotation records per benchmark via HF streaming.
 """
 
 from __future__ import annotations
@@ -55,46 +55,22 @@ def json_safe(ex: dict) -> dict:
             json.dumps(v)
             out[k] = v if not isinstance(v, str) else v[:2000]
         except (TypeError, ValueError):
-            out[k] = f"<{type(v).__name__}>"
+            continue
     return out
 
 
-def meta(e: dict, ground_truth: dict | None = None) -> dict:
-    """Build the sample.json payload (label + metric + purpose + source) for a catalog entry."""
-    label = {
-        "benchmark": e["key"],
-        "name": e.get("name", e["key"]),
-        "category": e.get("category", "-"),
-        "metric": e.get("metric", "-"),
-        "purpose": e.get("purpose", "-"),
-        "hf_id": e.get("hf_id"),
-        "config": e.get("config"),
-        "split": e.get("split"),
-        "source": e.get("source", "-"),
-    }
-    if ground_truth is not None:
-        label["ground_truth"] = ground_truth
-    return label
-
-
-def fetch_one(e: dict, out_dir: str | Path, force: bool = False, refresh_meta: bool = False) -> str:
+def fetch_one(e: dict, out_dir: str | Path, force: bool = False) -> str:
     """Fetch a single sample for one catalog entry. Returns a status string."""
     key = e["key"]
     if not e.get("hf_id"):
         return "documented"
     folder = Path(out_dir) / key
-    img_path = folder / "sample.png"
-    json_path = folder / "sample.json"
+    download_dir = folder / "download"
+    img_path = download_dir / "00.png"
+    annotation_path = folder / "annotations.jsonl"
 
-    if img_path.exists() and not force:
-        gt = None
-        if json_path.exists():
-            try:
-                gt = json.loads(json_path.read_text(encoding="utf-8")).get("ground_truth")
-            except Exception:
-                gt = None
-        json_path.write_text(json.dumps(meta(e, gt), indent=2, ensure_ascii=False), encoding="utf-8")
-        return "refreshed" if refresh_meta else "skip"
+    if annotation_path.exists() and not force:
+        return "skip"
 
     from datasets import load_dataset
 
@@ -106,11 +82,17 @@ def fetch_one(e: dict, out_dir: str | Path, force: bool = False, refresh_meta: b
         return "fail"
 
     img = find_image(ex)
-    folder.mkdir(parents=True, exist_ok=True)
-    if img is not None:
-        img.convert("RGB").save(img_path)
-    json_path.write_text(json.dumps(meta(e, json_safe(ex)), indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"[ok]   {key}: image={'yes' if img is not None else 'NONE'} -> {folder}")
+    if img is None:
+        print(f"[skip] {key}: source record has no image")
+        return "no-image"
+    download_dir.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(img_path)
+    row = {"image": "download/00.png", "ground_truth": json_safe(ex)}
+    annotation_path.write_text(
+        json.dumps(row, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"[ok]   {key}: downloaded one image -> {folder}")
     return "ok"
 
 
@@ -126,18 +108,17 @@ def _downscale(img, max_px: int = 1000):
 
 def fetch_many(e: dict, out_dir: str | Path, n: int = 10, force: bool = False,
                max_px: int = 1000, quality: int = 80) -> str:
-    """Fetch up to ``n`` samples for one entry into ``<key>/samples/NN.jpg`` + ``<key>/samples.jsonl``.
+    """Fetch up to ``n`` source examples into ``<key>/download/`` and ``annotations.jsonl``.
 
-    Non-destructive: the existing one-image preview (``sample.png``/``sample.json``) is left as is.
-    Images are downscaled + JPEG-compressed so 10 samples × ~22 benchmarks stay a reasonable size.
-    Each ``samples.jsonl`` line is ``{"image": "samples/NN.jpg", "ground_truth": {...}}``.
+    Images are downscaled and JPEG-compressed to keep the checked-in examples compact. Each
+    annotation line stores a relative image path and the raw source record.
     """
     key = e["key"]
     if not e.get("hf_id"):
         return "documented"
     folder = Path(out_dir) / key
-    sdir = folder / "samples"
-    jsonl = folder / "samples.jsonl"
+    sdir = folder / "download"
+    jsonl = folder / "annotations.jsonl"
     if jsonl.exists() and not force:
         return "skip"
 
@@ -168,12 +149,12 @@ def fetch_many(e: dict, out_dir: str | Path, n: int = 10, force: bool = False,
             seen.add(h)
             fn = f"{len(rows):02d}.jpg"
             small.save(sdir / fn, quality=quality)
-            rows.append({"image": f"samples/{fn}", "ground_truth": json_safe(ex)})
+            rows.append({"image": f"download/{fn}", "ground_truth": json_safe(ex)})
     except Exception as exc:
         print(f"[warn] {key}: stopped after {len(rows)} ({type(exc).__name__})")
 
     if not rows:
         return "no-image"
     jsonl.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
-    print(f"[ok]   {key}: {len(rows)} samples -> {sdir}")
+    print(f"[ok]   {key}: {len(rows)} source examples -> {sdir}")
     return "ok"

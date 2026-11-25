@@ -4,11 +4,11 @@
 
 Each case is declared through ``docvlm_eval.synth.DocBuilder`` so the ground truth is *produced
 by* the render — every value is declared once (no drift between pixels and labels) and spotting
-boxes are read straight out of the rendered PDF. A photometric Augraphy preset then makes a
-realistic degraded copy whose boxes are still valid (no geometry changed). Faker (seeded) fills
-field content deterministically.
+boxes are read straight out of the rendered PDF. Photo-style cases may receive a deterministic
+perspective warp whose exact homography is applied to every box before a photometric Augraphy
+preset makes a realistic degraded copy. Faker (seeded) fills field content deterministically.
 
-Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
+Output per case: examples/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.json}
 
     python scripts/make_realistic_cases.py                       # all cases
     python scripts/make_realistic_cases.py --only id_card cheque
@@ -18,6 +18,7 @@ Output per case: data/probes/realistic_cases/<key>/{clean.png, degraded.png, gt.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import random
@@ -30,10 +31,37 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from docvlm_eval.synth import DocBuilder, degrade, esc  # noqa: E402
+from docvlm_eval.synth import (  # noqa: E402
+    BundleDocument,
+    DifficultySpec,
+    DocBuilder,
+    GraphNode,
+    GraphQuery,
+    LatentDocumentGraph,
+    OVERLAY_TYPES,
+    apply_document_overlays,
+    compose_document_bundle,
+    degrade_with_retries,
+    derive_degradation_seed,
+    derive_overlay_seed,
+    derive_perspective_seed,
+    esc,
+    hard_process_diagram,
+    warp_perspective,
+)
 from docvlm_eval.synth.dto import Degradation, DocSample, GenConfig  # noqa: E402
+from docvlm_eval.synth.hard_cases import HARD_CASE_FACTORIES  # noqa: E402
+from docvlm_eval.synth.hard_layout import HARD_LAYOUT_FAMILIES  # noqa: E402
+from docvlm_eval.synth.hard_locale import validate_hard_document_language  # noqa: E402
+from docvlm_eval.synth.splits import SplitPolicy  # noqa: E402
+from docvlm_eval.synth.supervision import apply_supervision_toggles  # noqa: E402
+from docvlm_eval.synth.quality import (  # noqa: E402
+    audit_degraded_evidence,
+    audit_render_evidence,
+    redact_evidence_quality_report,
+)
 
-OUT = ROOT / "data" / "probes" / "realistic_cases"
+OUT = ROOT / "examples" / "probes" / "realistic_cases"
 
 # Faker locale per language code (A4). Latin locales localise name/company/address content;
 # CJK/Arabic locales need the matching Noto fonts (referenced in the case CSS) to render.
@@ -47,6 +75,55 @@ CFG: GenConfig = GenConfig()
 CURRENT_VARIANT: str | None = None
 CURRENT_LANG: str = "en"
 records: list[dict] = []
+
+
+def _counterfactual_variant_index() -> int | None:
+    if (
+        not CFG.emit_counterfactual_pairs
+        or CURRENT_VARIANT is None
+        or not CURRENT_VARIANT.isdigit()
+    ):
+        return None
+    return int(CURRENT_VARIANT)
+
+
+def _validate_counterfactual_records() -> None:
+    grouped: dict[str, list[dict]] = {}
+    for record in records:
+        counterfactual = record.get("counterfactual")
+        if counterfactual:
+            grouped.setdefault(str(counterfactual["pair_id"]), []).append(
+                record
+            )
+    for pair_id, pair in grouped.items():
+        roles = {
+            str(record["counterfactual"]["role"])
+            for record in pair
+        }
+        languages = {str(record["language"]) for record in pair}
+        templates = {str(record["template_fingerprint"]) for record in pair}
+        contents = {str(record["content_fingerprint"]) for record in pair}
+        overlay_kinds = {
+            tuple(
+                mark["kind"]
+                for mark in (record.get("overlays") or {}).get("marks", [])
+            )
+            for record in pair
+        }
+        if (
+            len(pair) != 2
+            or roles != {"factual", "edited"}
+            or len(languages) != 1
+            or len(templates) != 1
+            or len(contents) != 2
+            or len(overlay_kinds) != 1
+        ):
+            raise ValueError(
+                f"invalid counterfactual pair {pair_id!r}: "
+                f"roles={sorted(roles)}, languages={sorted(languages)}, "
+                f"templates={len(templates)}, contents={len(contents)}, "
+                f"overlay_signatures={len(overlay_kinds)}"
+            )
 
 
 def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
@@ -81,21 +158,44 @@ def _resize_with_boxes(img: Image.Image, gt: dict) -> Image.Image:
                 q["rationale"] = (re.sub(r"\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\]",
                                          f"[{nb[0]}, {nb[1]}, {nb[2]}, {nb[3]}]", q["rationale"], count=1)
                                   ).replace(f"{w}x{h}px", f"{nw}x{nh}px")
-    gt.setdefault("render", {})["size_px"] = list(new)
+    render = gt.setdefault("render", {})
+    render["size_px"] = list(new)
+    if render.get("page_origins_px"):
+        render["page_origins_px"] = [
+            [round(origin[0] * sx), round(origin[1] * sy)]
+            for origin in render["page_origins_px"]
+        ]
+    if render.get("page_sizes_px"):
+        render["page_sizes_px"] = [
+            [round(size[0] * sx), round(size[1] * sy)]
+            for size in render["page_sizes_px"]
+        ]
+    if render.get("page_gap_px"):
+        render["page_gap_px"] = round(render["page_gap_px"] * sy)
+    if render.get("document_origins_px"):
+        render["document_origins_px"] = [
+            [round(origin[0] * sx), round(origin[1] * sy)]
+            for origin in render["document_origins_px"]
+        ]
+    if render.get("document_sizes_px"):
+        render["document_sizes_px"] = [
+            [round(size[0] * sx), round(size[1] * sy)]
+            for size in render["document_sizes_px"]
+        ]
+    if render.get("document_gap_px"):
+        render["document_gap_px"] = round(render["document_gap_px"] * sy)
+    for document in render.get("documents") or []:
+        if document.get("origin_px"):
+            document["origin_px"] = [
+                round(document["origin_px"][0] * sx),
+                round(document["origin_px"][1] * sy),
+            ]
+        if document.get("size_px"):
+            document["size_px"] = [
+                round(document["size_px"][0] * sx),
+                round(document["size_px"][1] * sy),
+            ]
     return img
-
-
-def _apply_emit_toggles(gt: dict) -> None:
-    """Honour the supervision switches by dropping GT the control arm must not see."""
-    if not CFG.emit_spotting:
-        gt.pop("spotting", None)
-    if not CFG.emit_rationale:
-        for q in gt.get("qa", []):
-            q.pop("rationale", None)
-    if not getattr(CFG, "emit_understanding", True):
-        gt["qa"] = [q for q in gt.get("qa", []) if not q.get("derived")]
-    # note: the internal "box"/"derived" keys are consumed by from_builder_gt and then dropped by
-    # DocSample.to_dict (which rebuilds qa from QAItem), so they never reach the saved gt.json.
 
 
 # --- visual-diversity themes (per-doc, deterministic). Photometric/typographic only -> boxes stay
@@ -145,7 +245,27 @@ def _theme_css(rng: random.Random, *, structural: bool = True) -> str:
 
 def _doc_rng(key: str) -> random.Random:
     """Deterministic per-(seed,case,variant) RNG for visual jitter."""
-    return random.Random(f"{CFG.seed}:{key}:{CURRENT_VARIANT}:{CURRENT_LANG}")
+    variant = CURRENT_VARIANT
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        variant = f"pair-{counterfactual_index // 2:04d}"
+    return random.Random(f"{CFG.seed}:{key}:{variant}:{CURRENT_LANG}")
+
+
+def _paired_variant(key: str) -> str | None:
+    """Return a geometry variant that counterfactual pairs can share."""
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        return f"pair-{counterfactual_index // 2:04d}"
+    return CURRENT_VARIANT
+
+
+def _hard_layout_family(key: str) -> str:
+    """Select a layout without consuming the document-content RNG stream."""
+    rng = random.Random(
+        f"{CFG.seed}:{key}:{_paired_variant(key)}:{CURRENT_LANG}:hard-layout"
+    )
+    return rng.choice(CFG.hard_layout_families)
 
 
 # --- content randomisers (avoid constant-content templates -> true duplicates -> memorization) ---
@@ -186,55 +306,258 @@ def _pick_preset(key: str, default: str) -> str:
 
 
 def emit(key: str, builder_or_img, preset: str, do_degrade: bool, gt: dict | None = None,
-         *, builder=None, domain: str | None = None, acquisition: str | None = None):
+         *, builder=None, domain: str | None = None, acquisition: str | None = None,
+         language: str | None = None):
     """Render a builder (or accept a prebuilt PIL image + gt) -> clean.png + degraded.png + gt.json.
 
     Writes the structured DocSample DTO (a superset of the legacy flat gt schema)."""
+    sample_language = language or CURRENT_LANG
     if gt is None:
         builder = builder_or_img
+        builder.language = sample_language
+        for field_key in list(builder.field_lang):
+            if builder.field_lang[field_key] == "en":
+                builder.field_lang[field_key] = sample_language
         if getattr(CFG, "jitter", False):       # per-doc visual theme (paper/accent/font/margin)
             builder.css += _theme_css(_doc_rng(key), structural=key not in _FIXED_LAYOUT)
-        img, gt = builder.build(dpi=CFG.dpi)
+        img, gt = builder.build(
+            dpi=CFG.dpi,
+            color_probe_fallback=CFG.color_probe_fallback,
+        )
     else:
         img = builder_or_img
-    # A7 resize (with box rescale) + A1/A2 supervision toggles
+    required_spotting_keys = (
+        [spot[0] for spot in builder._spots]
+        if builder is not None
+        else list((gt.get("render") or {}).get("required_spotting_keys") or [])
+    )
     img = _resize_with_boxes(img, gt)
-    # A4: this doc's content was generated under CURRENT_LANG's locale -> tag its fields
-    if builder is not None and CURRENT_LANG != "en":
-        for k in list(builder.field_lang):
-            if builder.field_lang[k] == "en":
-                builder.field_lang[k] = CURRENT_LANG
-    _apply_emit_toggles(gt)
+    overlay_seed = derive_overlay_seed(
+        CFG.seed,
+        key,
+        _paired_variant(key),
+        sample_language,
+    )
+    img, gt = apply_document_overlays(
+        img,
+        gt,
+        seed=overlay_seed,
+        probability=CFG.overlay_prob,
+        overlay_types=CFG.overlay_types,
+        max_count=CFG.overlay_max_count,
+        language=sample_language,
+    )
+    photo_style = preset == "photo" or acquisition == "photo"
+    geometry_seed = derive_perspective_seed(
+        CFG.seed,
+        key,
+        _paired_variant(key),
+        sample_language,
+    )
+    if (
+        do_degrade
+        and photo_style
+        and random.Random(geometry_seed).random() < CFG.perspective_prob
+    ):
+        img, gt = warp_perspective(
+            img,
+            gt,
+            seed=geometry_seed,
+            max_inset_fraction=CFG.perspective_max_inset_fraction,
+            min_area_ratio=CFG.perspective_min_area_ratio,
+        )
+    # Preserve a private pre-ablation audit view before A1/A2 removes supervision. It is never
+    # serialized, so spotting-off arms keep the same image-quality gate without leaking boxes.
+    quality_gt = copy.deepcopy(gt)
+    apply_supervision_toggles(gt, CFG)
 
+    doc = DocSample.from_builder_gt(
+        gt, builder=builder, gen_config=CFG, degradation=None,
+        domain=domain, acquisition=acquisition,
+    )
+    doc.languages = [sample_language] if builder is not None else doc.languages
+    out = doc.to_dict()
+    quality_out = out
+    if CFG.validate_evidence_pixels or CFG.validate_degraded_evidence:
+        quality_doc = DocSample.from_builder_gt(
+            quality_gt,
+            builder=builder,
+            gen_config=CFG,
+            degradation=None,
+            domain=domain,
+            acquisition=acquisition,
+        )
+        quality_doc.languages = (
+            [sample_language]
+            if builder is not None
+            else quality_doc.languages
+        )
+        quality_out = quality_doc.to_dict()
+    if CFG.validate_evidence_pixels:
+        clean_quality = audit_render_evidence(
+            img,
+            quality_out,
+            required_spotting_keys=required_spotting_keys,
+            min_contrast=CFG.evidence_min_contrast,
+            min_foreground_fraction=CFG.evidence_min_foreground_fraction,
+            min_foreground_pixels=CFG.evidence_min_foreground_pixels,
+        )
+        out["render"]["evidence_quality"] = (
+            clean_quality
+            if CFG.emit_spotting
+            else redact_evidence_quality_report(clean_quality)
+        )
+    deg = None
+    if do_degrade and random.random() < CFG.degrade_prob:
+        chosen = _pick_preset(key, preset)
+        base_seed = derive_degradation_seed(
+            CFG.seed,
+            key,
+            CURRENT_VARIANT,
+            sample_language,
+        )
+        degraded_quality = None
+
+        def validate_degraded(candidate: Image.Image) -> None:
+            nonlocal degraded_quality
+            if CFG.validate_degraded_evidence:
+                degraded_quality = audit_degraded_evidence(
+                    img,
+                    candidate,
+                    quality_out,
+                    min_structure_correlation=CFG.degraded_min_structure_correlation,
+                    min_contrast=CFG.evidence_min_contrast,
+                    min_foreground_fraction=CFG.evidence_min_foreground_fraction,
+                    min_foreground_pixels=CFG.evidence_min_foreground_pixels,
+                )
+
+        deg, seed, attempts = degrade_with_retries(
+            img,
+            chosen,
+            base_seed=base_seed,
+            max_attempts=CFG.degrade_max_attempts,
+            validator=validate_degraded,
+        )
+        degradation = Degradation(
+            preset=chosen,
+            severity=CFG.degrade_severity,
+            seed=seed,
+            attempts=attempts,
+        )
+        out["degradation"] = degradation.to_dict()
+        out["degraded_preset"] = chosen
+        if degraded_quality is not None:
+            out["degradation"]["evidence_quality"] = (
+                degraded_quality
+                if CFG.emit_spotting
+                else redact_evidence_quality_report(degraded_quality)
+            )
+    counterfactual_index = _counterfactual_variant_index()
+    if key in HARD_CASE_FACTORIES and counterfactual_index is not None:
+        out["counterfactual"] = {
+            "schema_version": 1,
+            "pair_id": f"{key}:{counterfactual_index // 2:04d}",
+            "role": "factual" if counterfactual_index % 2 == 0 else "edited",
+            "edit_scope": "latent_values",
+            "language": sample_language,
+        }
+    if key in HARD_CASE_FACTORIES:
+        validate_hard_document_language(out, sample_language)
+    out["generator_case"] = key
+    if not out.get("semantic_graph"):
+        from docvlm_eval.synth.splits import build_record_semantic_identity
+
+        out["semantic_identity"] = build_record_semantic_identity(out)
+    policy = SplitPolicy(seed=CFG.split_seed, group_by=CFG.split_group_by)
+    out["suggested_split"] = policy.assign(out)
     folder = OUT / key if CURRENT_VARIANT is None else OUT / key / CURRENT_VARIANT
     folder.mkdir(parents=True, exist_ok=True)
     img.save(folder / "clean.png")
-
-    degradation = None
-    if do_degrade and random.random() < CFG.degrade_prob:
-        chosen = _pick_preset(key, preset)
-        # stable per-case seed (Python's str hash is salted per-process -> not reproducible)
-        seed = CFG.seed + int(hashlib.md5(key.encode()).hexdigest(), 16) % 1000
-        deg = degrade(img, chosen, seed=seed)
-        if deg is not None:
-            deg.save(folder / "degraded.png")
-            degradation = Degradation(preset=chosen, severity=CFG.degrade_severity, seed=seed)
-
-    doc = DocSample.from_builder_gt(
-        gt, builder=builder, gen_config=CFG, degradation=degradation,
-        domain=domain, acquisition=acquisition,
-    )
-    doc.languages = [CURRENT_LANG] if builder is not None else doc.languages
-    out = doc.to_dict()
+    if deg is not None:
+        deg.save(folder / "degraded.png")
     (folder / "gt.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     sup = out["ablation_support"]
     records.append({"key": key, "variant": CURRENT_VARIANT, "type": gt["type"],
-                    "language": CURRENT_LANG, "stressors": gt["stressors"],
-                    "anchor_metric": gt["anchor_metric"], "support": sup})
+                    "language": sample_language, "stressors": gt["stressors"],
+                    "anchor_metric": gt["anchor_metric"], "support": sup,
+                    "split": out["split"], "suggested_split": out.get("suggested_split"),
+                    "difficulty": out.get("difficulty"),
+                    "template_fingerprint": (
+                        out.get("semantic_graph")
+                        or out.get("semantic_identity")
+                        or {}
+                    ).get("template_fingerprint"),
+                    "content_fingerprint": (
+                        out.get("semantic_graph")
+                        or out.get("semantic_identity")
+                        or {}
+                    ).get("content_fingerprint"),
+                    "counterfactual": out.get("counterfactual"),
+                    "layout": {
+                        "family": out.get("render", {}).get("layout_family"),
+                        "fingerprint": out.get("render", {}).get(
+                            "layout_fingerprint"
+                        ),
+                    } if out.get("render", {}).get("layout_family") else None,
+                    "overlays": {
+                        "seed": out.get("render", {}).get("overlay_seed"),
+                        "fingerprint": out.get("render", {}).get(
+                            "overlay_fingerprint"
+                        ),
+                        "marks": out.get("render", {}).get("overlays", []),
+                    } if out.get("render", {}).get("overlays") else None,
+                    "pages": {
+                        "pdf_count": out.get("render", {}).get("page_count", 1),
+                        "rendered_count": out.get("render", {}).get(
+                            "rendered_page_count",
+                            1,
+                        ),
+                        "mode": out.get("render", {}).get("page_mode", "first"),
+                        "gap_px": out.get("render", {}).get("page_gap_px", 0),
+                    },
+                    "documents": {
+                        "count": out.get("render", {}).get("document_count", 1),
+                        "mode": out.get("render", {}).get(
+                            "document_mode",
+                            "single",
+                        ),
+                        "ids": out.get("render", {}).get("document_ids", []),
+                        "gap_px": out.get("render", {}).get(
+                            "document_gap_px",
+                            0,
+                        ),
+                    },
+                    "geometry": {
+                        "kind": out.get("render", {}).get("geometry", {}).get("kind"),
+                        "seed": out.get("render", {}).get("geometry", {}).get("seed"),
+                        "sampled_area_ratio": (
+                            out.get("render", {})
+                            .get("geometry", {})
+                            .get("sampled_area_ratio")
+                        ),
+                    } if out.get("render", {}).get("geometry") else None,
+                    "quality": {
+                        "clean_status": (
+                            out.get("render", {})
+                            .get("evidence_quality", {})
+                            .get("status")
+                        ),
+                        "degraded_status": (
+                            out.get("degradation", {})
+                            .get("evidence_quality", {})
+                            .get("status")
+                        ),
+                        "degraded_min_structure_correlation": (
+                            out.get("degradation", {})
+                            .get("evidence_quality", {})
+                            .get("minimum_structure_correlation")
+                        ),
+                        "degradation_attempts": out.get("degradation", {}).get("attempts"),
+                    }})
     if CURRENT_VARIANT in (None, "0000"):  # keep the log readable when fanning out
         flags = "".join(c for c, on in [("S", sup["spotting"]), ("R", sup["rationale"]),
                         ("M", sup["multilingual"]), ("s", sup["small_text"])] if on)
-        print(f"[ok] {key:14} {img.size} lang={CURRENT_LANG:2} fields={len(out.get('fields',{}))} "
+        print(f"[ok] {key:14} {img.size} lang={sample_language:2} fields={len(out.get('fields',{}))} "
               f"spots={len(out.get('spotting',{}))} [{flags}]")
 
 
@@ -334,7 +657,7 @@ def case_checkbox_form(do_degrade):
         contact[fake.random_int(0, 3)] = (contact[fake.random_int(0, 3)][0], True)
     _langs = ["English", "Korean", "Spanish", "Japanese"]
     _chosen = fake.random_int(0, len(_langs) - 1)
-    langs = [(l, i == _chosen) for i, l in enumerate(_langs)]
+    langs = [(language, i == _chosen) for i, language in enumerate(_langs)]
     b = DocBuilder("checkbox form", ["selection-marks", "layout", "hallucination"],
                    "selection-mark accuracy + F1", page="A5")
     b.title("SERVICE ENROLLMENT FORM", level=2)
@@ -366,7 +689,7 @@ def case_redacted(do_degrade):
                    "abstain (no-hallucination)", page="A5")
     b.title("CONFIDENTIAL MEMORANDUM", level=2)
     b.field("Subject", name, key="subject")
-    b.redaction(f"The disclosed account number ", fake.numerify("###########"),
+    b.redaction("The disclosed account number ", fake.numerify("###########"),
                 key="account_number", suffix_html=" has been sealed by court order.")
     b.redaction("Authorising officer: ", fake.name(), key="authorising_officer", bar="█" * 8)
     b.line(f"Next review: {fake.date('%Y-%m-%d')}.")
@@ -704,6 +1027,591 @@ def case_pdf_paper(do_degrade):
     emit("pdf_paper", b, "scan", do_degrade)
 
 
+def case_audit_packet(do_degrade):
+    """Three-page procurement packet with exact cross-page reconciliation."""
+    purchase_order = f"PO-{fake.random_int(10000, 99999)}"
+    vendor = fake.company()
+    ordered = fake.random_int(80, 160)
+    received = ordered - fake.random_int(1, 6)
+    damaged = fake.random_int(1, min(3, received))
+    accepted = received - damaged
+    unit_price = fake.random_int(1250, 7800) / 100
+    shipping = fake.random_int(1200, 6500) / 100
+    discount = fake.random_int(500, 3000) / 100
+    claimed_total = ordered * unit_price + shipping - discount
+    net_payable = accepted * unit_price + shipping - discount
+    quantity_shortfall = ordered - accepted
+
+    def money(value):
+        return f"${value:,.2f}"
+
+    css = """
+    @page{ size:A5; margin:14mm 13mm;}
+    body{ font-size:10px;}
+    .sheet{ min-height:175mm; break-after:page; position:relative;}
+    .sheet:last-child{ break-after:auto;}
+    .packet-head{ border-bottom:3px solid #315f86; margin-bottom:12px; padding-bottom:8px;}
+    .packet-head h2{ color:#315f86;}
+    .meta{ color:#555; font-size:9px;}
+    .section{ border:1px solid #aab4bd; padding:10px; margin:12px 0;}
+    .warning{ border-left:5px solid #a14a35; background:#faf1ee; padding:9px;}
+    .approval{ border:2px solid #315f86; padding:10px; margin-top:14px;}
+    .page-label{ position:absolute; bottom:0; right:0; color:#777; font-size:8px;}
+    """
+    b = DocBuilder(
+        "three-page procurement audit packet",
+        [
+            "multi-page",
+            "cross-page-reasoning",
+            "reconciliation",
+            "evidence-grounding",
+        ],
+        "relaxed accuracy + evidence IoU",
+        page="A5",
+        css=css,
+        page_mode=CFG.multipage_mode,
+    )
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("PURCHASE ORDER", level=2)
+    b.line(f"Vendor: {esc(vendor)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Purchase order", purchase_order, key="purchase_order", spot=True)
+    b.field("Quantity ordered", str(ordered), key="ordered_quantity", spot=True)
+    b.field("Unit price", money(unit_price), key="unit_price", spot=True)
+    b.raw("</div>")
+    b.line("Terms: pay only for accepted units after receiving inspection.")
+    b.raw("<span class=page-label>Page 1 of 3 — Order</span></section>")
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("RECEIVING INSPECTION", level=2)
+    b.line(f"Reference: {esc(purchase_order)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Quantity received", str(received), key="received_quantity", spot=True)
+    b.field("Units rejected as damaged", str(damaged), key="damaged_quantity", spot=True)
+    b.field("Units accepted", str(accepted), key="accepted_quantity", spot=True)
+    b.raw("</div><div class=warning>")
+    b.line("Rejected units are not payable and must be excluded from authorization.")
+    b.raw("</div><span class=page-label>Page 2 of 3 — Receiving</span></section>")
+
+    b.raw("<section class=sheet><header class=packet-head>")
+    b.title("PAYMENT AUTHORIZATION", level=2)
+    b.line(f"Reference: {esc(purchase_order)}", cls="meta")
+    b.raw("</header><div class=section>")
+    b.field("Shipping charge", money(shipping), key="shipping", spot=True)
+    b.field("Contract discount", money(discount), key="discount", spot=True)
+    b.field(
+        "Vendor claimed total",
+        money(claimed_total),
+        key="claimed_total",
+        spot=True,
+    )
+    b.raw("</div><div class=approval>")
+    b.line("Controller must reconcile the order and receiving inspection before payment.")
+    b.raw("</div><span class=page-label>Page 3 of 3 — Authorization</span></section>")
+
+    b.task(
+        "Reconcile the order, receiving inspection, and authorization across all three pages."
+    )
+    b.qa(
+        "What is the correct net amount payable after excluding rejected or missing units?",
+        [money(net_payable), f"{net_payable:.2f}", f"{net_payable:,.2f}"],
+        metric="relaxed_acc",
+        answer_type="H-cross-page-reconciliation",
+        rationale=(
+            f"Accepted quantity is {received} - {damaged} = {accepted}. "
+            f"Net payable is {accepted} x {money(unit_price)} + {money(shipping)} "
+            f"- {money(discount)} = {money(net_payable)}."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "unit_price",
+            "received_quantity",
+            "damaged_quantity",
+            "shipping",
+            "discount",
+        ],
+    )
+    b.qa(
+        "How many ordered units are not payable after receiving inspection?",
+        str(quantity_shortfall),
+        metric="exact",
+        answer_type="H-cross-page-quantity",
+        rationale=(
+            f"Ordered {ordered}; accepted {received} - {damaged} = {accepted}; "
+            f"shortfall is {ordered} - {accepted} = {quantity_shortfall}."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "received_quantity",
+            "damaged_quantity",
+        ],
+    )
+    b.qa(
+        "Does the vendor claimed total correctly account for the receiving inspection?",
+        ["no", "it overstates the payable amount"],
+        metric="anls",
+        answer_type="H-cross-page-consistency",
+        rationale=(
+            f"The claim prices all {ordered} ordered units, but only {accepted} units "
+            "were accepted, so the claim overstates the payable amount."
+        ),
+        evidence_keys=[
+            "ordered_quantity",
+            "received_quantity",
+            "damaged_quantity",
+            "claimed_total",
+        ],
+    )
+    b.probe(
+        "abstain",
+        "What bank account should receive the payment?",
+        "not present — abstain",
+    )
+    b.want_fulltext()
+    b.difficulty = DifficultySpec(
+        level=5,
+        reasoning_hops=4,
+        distractor_count=3,
+        visual_density=0.72,
+        cross_region=True,
+        skills=(
+            "cross-page-retrieval",
+            "reconciliation",
+            "claim-verification",
+            "evidence-grounding",
+        ),
+    ).to_dict()
+    emit(
+        "audit_packet",
+        b,
+        "scan",
+        do_degrade,
+        domain="finance",
+        acquisition="scan",
+        language="en",
+    )
+
+
+def case_investment_dossier(do_degrade):
+    """Three independent sources with exact cross-document investment analysis."""
+    ticker = "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(4))
+    company = fake.company()
+    prior_revenue = fake.random_int(820, 1600)
+    current_revenue = prior_revenue + fake.random_int(70, 340)
+    cash = fake.random_int(120, 620)
+    debt = fake.random_int(max(cash + 80, 350), 1300)
+    shares = fake.random_int(100, 450)
+    share_price = fake.random_int(1800, 9200) / 100
+    enterprise_value = shares * share_price + debt - cash
+    revenue_growth = (
+        (current_revenue - prior_revenue) / prior_revenue * 100
+    )
+    claimed_ev = enterprise_value + fake.random_int(250, 1200)
+    claimed_growth = revenue_growth + fake.random_int(125, 475) / 100
+    ev_overstatement = claimed_ev - enterprise_value
+    growth_overstatement = claimed_growth - revenue_growth
+
+    def money_m(value):
+        return f"${value:,.2f}m"
+
+    def build_source(
+        document_id: str,
+        builder: DocBuilder,
+    ) -> BundleDocument:
+        if CFG.jitter:
+            builder.css += _theme_css(
+                _doc_rng(f"investment_dossier:{document_id}"),
+                structural=True,
+            )
+        image, ground_truth = builder.build(
+            dpi=CFG.dpi,
+            color_probe_fallback=CFG.color_probe_fallback,
+        )
+        return BundleDocument(
+            document_id,
+            image,
+            ground_truth,
+            required_spotting_keys=tuple(spot[0] for spot in builder._spots),
+        )
+
+    filing = DocBuilder(
+        "audited annual filing",
+        ["financial-table", "small-text", "source-reliability"],
+        "KIE F1 + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Serif',serif;font-size:10px;}
+        .head{border-bottom:4px solid #24486b;padding-bottom:8px;margin-bottom:12px;}
+        .head h2{color:#24486b;}
+        .audit{border:1px solid #708090;background:#f3f6f8;padding:8px;margin:10px 0;}
+        .note{font-size:8px;color:#555;margin-top:18px;}
+        """,
+    )
+    filing.raw("<header class=head>")
+    filing.title(f"{esc(company)} - AUDITED ANNUAL FILING", level=2)
+    filing.line(f"Ticker: {esc(ticker)} | Fiscal year 2025", cls="muted")
+    filing.raw("</header><div class=audit>Independent auditor status: Unqualified</div>")
+    filing.field(
+        "FY2025 revenue (USD millions)",
+        f"{current_revenue:,}",
+        key="revenue_current",
+        spot=True,
+    )
+    filing.field(
+        "FY2024 revenue (USD millions)",
+        f"{prior_revenue:,}",
+        key="revenue_prior",
+        spot=True,
+    )
+    filing.field(
+        "Cash and equivalents (USD millions)",
+        f"{cash:,}",
+        key="cash",
+        spot=True,
+    )
+    filing.field(
+        "Total debt (USD millions)",
+        f"{debt:,}",
+        key="debt",
+        spot=True,
+    )
+    filing.field(
+        "Diluted shares outstanding (millions)",
+        f"{shares:,}",
+        key="shares",
+        spot=True,
+    )
+    filing.raw(
+        "<p class=note>Source A - filed financial statements. "
+        "Figures are audited and stated in USD millions.</p>"
+    )
+
+    market = DocBuilder(
+        "independent market snapshot",
+        ["market-data", "timestamp", "source-reliability"],
+        "KIE F1 + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Sans',sans-serif;font-size:10px;}
+        .head{background:#173f35;color:white;padding:11px;margin-bottom:14px;}
+        .head h2{color:white !important;}
+        .quote{border:2px solid #2e715f;padding:14px;margin:20px 0;}
+        .price{font-size:28px;color:#173f35;font-weight:bold;}
+        .note{font-size:8px;color:#555;margin-top:22px;}
+        """,
+    )
+    market.raw("<header class=head>")
+    market.title("INDEPENDENT MARKET SNAPSHOT", level=2)
+    market.raw("</header><div class=quote>")
+    market.field("Ticker", ticker, key="ticker", spot=True)
+    market.field(
+        "Closing share price (USD)",
+        f"${share_price:.2f}",
+        key="share_price",
+        spot=True,
+        cls="price",
+    )
+    market.field(
+        "Quote date",
+        "2025-03-31",
+        key="quote_date",
+        spot=True,
+    )
+    market.raw("</div>")
+    market.line("Valuation convention: market capitalization plus debt less cash.")
+    market.raw(
+        "<p class=note>Source B - exchange close. Price is per diluted share.</p>"
+    )
+
+    memo = DocBuilder(
+        "external analyst memo",
+        ["conflicting-claims", "source-reliability", "review-action"],
+        "claim verification + evidence IoU",
+        page="A5",
+        css="""
+        @page{size:A5;margin:14mm 13mm;}
+        body{font-family:'Liberation Sans',sans-serif;font-size:10px;}
+        .head{border-bottom:2px solid #8b3c36;padding-bottom:8px;margin-bottom:14px;}
+        .head h2{color:#8b3c36;}
+        .claim{border-left:5px solid #8b3c36;background:#faf1ef;padding:10px;margin:14px 0;}
+        .disclaimer{font-size:8px;color:#666;margin-top:25px;}
+        """,
+    )
+    memo.raw("<header class=head>")
+    memo.title("EXTERNAL ANALYST VALUATION MEMO", level=2)
+    memo.line(f"Subject: {esc(ticker)} | Preliminary, unaudited", cls="muted")
+    memo.raw("</header><div class=claim>")
+    memo.field(
+        "Claimed enterprise value (USD millions)",
+        f"{claimed_ev:,.2f}",
+        key="claimed_ev",
+        spot=True,
+    )
+    memo.field(
+        "Claimed year-over-year revenue growth",
+        f"{claimed_growth:.2f}%",
+        key="claimed_growth",
+        spot=True,
+    )
+    memo.field(
+        "Recommendation",
+        "APPROVE WITHOUT FURTHER REVIEW",
+        key="recommendation",
+        spot=True,
+    )
+    memo.raw("</div>")
+    memo.raw(
+        "<p class=disclaimer>Source C - third-party opinion. "
+        "Claims must be reconciled to primary sources before approval.</p>"
+    )
+
+    graph = LatentDocumentGraph(
+        graph_id=f"investment-dossier-{ticker}",
+        template_family="cross-document-investment-dossier-v1",
+        language="en",
+        nodes=[
+            GraphNode(
+                "revenue_current",
+                "financial_fact",
+                current_revenue,
+                "FY2025 revenue",
+                "USD millions",
+                {"field_key": "filing.revenue_current", "document_id": "filing"},
+            ),
+            GraphNode(
+                "revenue_prior",
+                "financial_fact",
+                prior_revenue,
+                "FY2024 revenue",
+                "USD millions",
+                {"field_key": "filing.revenue_prior", "document_id": "filing"},
+            ),
+            GraphNode(
+                "cash",
+                "financial_fact",
+                cash,
+                "cash",
+                "USD millions",
+                {"field_key": "filing.cash", "document_id": "filing"},
+            ),
+            GraphNode(
+                "debt",
+                "financial_fact",
+                debt,
+                "debt",
+                "USD millions",
+                {"field_key": "filing.debt", "document_id": "filing"},
+            ),
+            GraphNode(
+                "shares",
+                "financial_fact",
+                shares,
+                "diluted shares",
+                "millions",
+                {"field_key": "filing.shares", "document_id": "filing"},
+            ),
+            GraphNode(
+                "share_price",
+                "market_fact",
+                share_price,
+                "share price",
+                "USD",
+                {"field_key": "market.share_price", "document_id": "market"},
+            ),
+            GraphNode(
+                "actual_ev",
+                "derived_fact",
+                enterprise_value,
+                "recomputed enterprise value",
+                "USD millions",
+            ),
+            GraphNode(
+                "actual_growth",
+                "derived_fact",
+                revenue_growth,
+                "recomputed revenue growth",
+                "percent",
+            ),
+            GraphNode(
+                "claimed_ev",
+                "analyst_claim",
+                claimed_ev,
+                "claimed enterprise value",
+                "USD millions",
+                {"field_key": "memo.claimed_ev", "document_id": "memo"},
+            ),
+            GraphNode(
+                "claimed_growth",
+                "analyst_claim",
+                claimed_growth,
+                "claimed revenue growth",
+                "percent",
+                {"field_key": "memo.claimed_growth", "document_id": "memo"},
+            ),
+            GraphNode(
+                "review_action",
+                "decision",
+                "escalate the memo for review",
+                "required action",
+            ),
+        ],
+        queries=[
+            GraphQuery(
+                "enterprise_value",
+                "Using the audited filing and market snapshot, what is the "
+                "enterprise value in USD millions?",
+                "weighted_sum",
+                ("shares", "debt", "cash"),
+                "H-cross-document-valuation",
+                evidence=("shares", "share_price", "debt", "cash"),
+                parameters={"weights": [share_price, 1.0, -1.0]},
+                answer_format="money",
+                expected=f"${enterprise_value:,.2f}",
+            ),
+            GraphQuery(
+                "revenue_growth",
+                "What is the audited year-over-year revenue growth?",
+                "percent_change",
+                ("revenue_current", "revenue_prior"),
+                "H-cross-document-growth",
+                evidence=("revenue_current", "revenue_prior"),
+                answer_format="percent",
+                expected=f"{revenue_growth:.2f}%",
+            ),
+            GraphQuery(
+                "ev_overstatement",
+                "By how much does the analyst memo overstate enterprise value "
+                "in USD millions?",
+                "difference",
+                ("claimed_ev", "actual_ev"),
+                "H-cross-document-consistency",
+                evidence=("claimed_ev", "shares", "share_price", "debt", "cash"),
+                answer_format="money",
+                expected=f"${ev_overstatement:,.2f}",
+            ),
+            GraphQuery(
+                "growth_overstatement",
+                "By how many percentage points does the memo overstate revenue growth?",
+                "difference",
+                ("claimed_growth", "actual_growth"),
+                "H-cross-document-consistency",
+                evidence=(
+                    "claimed_growth",
+                    "revenue_current",
+                    "revenue_prior",
+                ),
+                answer_format="decimal:2",
+                expected=f"{growth_overstatement:.2f}",
+            ),
+            GraphQuery(
+                "review_action",
+                "What should the reviewer do next?",
+                "value",
+                ("review_action",),
+                "H-cross-document-action",
+                metric="anls",
+                evidence=(
+                    "claimed_ev",
+                    "claimed_growth",
+                    "shares",
+                    "share_price",
+                    "debt",
+                    "cash",
+                    "revenue_current",
+                    "revenue_prior",
+                ),
+                answer_format="text",
+                expected="escalate the memo for review",
+            ),
+        ],
+        metadata={
+            "document_ids": ["filing", "market", "memo"],
+            "source_order_invariant": True,
+        },
+    )
+    qas = []
+    for query in graph.queries:
+        resolved = graph.resolve(query.query_id)
+        rationale = resolved.rationale
+        if query.query_id == "review_action":
+            rationale = (
+                f"The memo overstates enterprise value by {money_m(ev_overstatement)} "
+                f"and growth by {growth_overstatement:.2f} percentage points, "
+                "so its approve-without-review recommendation is unsupported."
+            )
+        qas.append(
+            {
+                "question": query.question + " Answer concisely, no explanation.",
+                "answers": [resolved.answer],
+                "metric": query.metric,
+                "answer_type": query.answer_type,
+                "rationale": rationale,
+                "evidence_keys": list(resolved.evidence_keys),
+                "graph_query_id": query.query_id,
+                "languages": ["en"],
+            }
+        )
+
+    image, ground_truth = compose_document_bundle(
+        [
+            build_source("filing", filing),
+            build_source("market", market),
+            build_source("memo", memo),
+        ],
+        mode=CFG.multidocument_mode,
+        doc_type="cross-document investment dossier",
+        stressors=[
+            "multi-document",
+            "cross-document-reasoning",
+            "source-reliability",
+            "financial-reconciliation",
+            "next-action",
+        ],
+        anchor_metric="relaxed accuracy + evidence IoU",
+        task=(
+            "Reconcile the audited filing, independent market snapshot, and "
+            "external analyst memo before approving the recommendation."
+        ),
+        qa=qas,
+        probes=[
+            {
+                "kind": "abstain",
+                "question": "What is the company's 2026 revenue guidance?",
+                "expected": "not present - abstain",
+            }
+        ],
+        include_source_qa=False,
+    )
+    ground_truth["semantic_graph"] = graph.to_dict()
+    ground_truth["difficulty"] = DifficultySpec(
+        level=5,
+        reasoning_hops=4,
+        distractor_count=3,
+        visual_density=0.72,
+        cross_region=True,
+        skills=(
+            "cross-document-retrieval",
+            "valuation",
+            "claim-verification",
+            "source-reliability",
+            "next-action",
+        ),
+    ).to_dict()
+    emit(
+        "investment_dossier",
+        image,
+        "scan",
+        do_degrade,
+        gt=ground_truth,
+        domain="finance",
+        acquisition="scan",
+        language="en",
+    )
+
+
 # ============================================================ non-HTML special case
 def case_lcd(do_degrade):
     digits = fake.numerify("0####")
@@ -712,8 +1620,10 @@ def case_lcd(do_degrade):
     d = ImageDraw.Draw(im)
     _seg7(d, digits, 40, 50, on=(40, 255, 150), off=(28, 40, 36))
     d.rectangle([0, 0, W - 1, H - 1], outline=(60, 70, 80), width=4)
+    display_box = [36, 46, 490, 180]
     gt = {"type": "LCD / meter / 7-seg", "stressors": ["non-font digits", "glare"],
           "anchor_metric": "exact + IoU", "fields": {"reading": digits, "_task": "Read the display."},
+          "spotting": {"reading": display_box},
           "qa": [{"key": "reading", "question": "What number is on the display?",
                   "answers": [digits], "metric": "exact", "answer_type": "special-glyph"}],
           "source": "SYNTHETIC (docvlm_eval.synth; PIL — no real 7-seg font)",
@@ -739,12 +1649,70 @@ def _seg7(d, digits, x0, y0, on, off, w=60, h=58, t=10, gap=34):
         seg("c", [(x + w, y0 + h + t), (x + w + t, y0 + h + 2 * t), (x + w + t, y0 + 2 * h - t), (x + w, y0 + 2 * h)])
 
 
+def _emit_hard_case(key: str, do_degrade: bool) -> None:
+    """Build a graph-authored hard case from the isolated per-case RNG stream."""
+
+    case = HARD_CASE_FACTORIES[key](
+        random.Random(random.randrange(2**31)),
+        CFG.difficulty_level,
+        CURRENT_LANG,
+        layout_family=_hard_layout_family(key),
+    )
+    emit(
+        case.key,
+        case.builder,
+        case.degradation_preset,
+        do_degrade,
+        domain=case.domain,
+        acquisition=case.acquisition,
+    )
+
+
+def case_hard_table(do_degrade):
+    _emit_hard_case("hard_table", do_degrade)
+
+
+def case_hard_chart(do_degrade):
+    _emit_hard_case("hard_chart", do_degrade)
+
+
+def case_hard_investment(do_degrade):
+    _emit_hard_case("hard_investment", do_degrade)
+
+
+def case_hard_science(do_degrade):
+    _emit_hard_case("hard_science", do_degrade)
+
+
+def case_hard_diagram(do_degrade):
+    image, ground_truth = hard_process_diagram(
+        random.Random(random.randrange(2**31)),
+        level=CFG.difficulty_level,
+        layout_family=_hard_layout_family("hard_diagram"),
+    )
+    emit(
+        "hard_diagram",
+        image,
+        "scan",
+        do_degrade,
+        gt=ground_truth,
+        domain="science",
+        acquisition="pdf-native",
+        language="en",
+    )
+
+
 CASES = {
     "invoice": case_invoice, "id_card": case_id_card, "checkbox_form": case_checkbox_form,
     "redacted": case_redacted, "bank_statement": case_bank_statement, "rtl_arabic": case_rtl_arabic,
     "webtoon": case_webtoon, "prescription": case_prescription, "cheque": case_cheque,
     "ancient": case_ancient, "website": case_website, "mobile_app": case_mobile_app,
-    "pdf_paper": case_pdf_paper, "lcd_7seg": case_lcd,
+    "pdf_paper": case_pdf_paper, "audit_packet": case_audit_packet,
+    "investment_dossier": case_investment_dossier,
+    "lcd_7seg": case_lcd,
+    "hard_table": case_hard_table, "hard_chart": case_hard_chart,
+    "hard_investment": case_hard_investment, "hard_science": case_hard_science,
+    "hard_diagram": case_hard_diagram,
 }
 
 
@@ -754,7 +1722,7 @@ def _choose_lang(rng: random.Random) -> str:
     if len(langs) == 1:
         return langs[0]
     if CFG.language_weights:
-        ws = [CFG.language_weights.get(l, 0.0) for l in langs]
+        ws = [CFG.language_weights.get(language, 0.0) for language in langs]
         if sum(ws) > 0:
             return rng.choices(langs, weights=ws, k=1)[0]
     return rng.choice(langs)
@@ -772,8 +1740,54 @@ def main():
     ap.add_argument("--count", type=int, default=None,
                     help="variants per case (overrides config.count; >1 fans out into <key>/<NNNN>/)")
     ap.add_argument("--seed", type=int, default=None, help="base seed (overrides config.seed)")
+    ap.add_argument(
+        "--language",
+        default=None,
+        help="force one generation language (overrides config languages and weights)",
+    )
+    ap.add_argument("--difficulty-level", type=int, choices=range(1, 6), default=None,
+                    help="hard-document curriculum level in [1,5] (overrides config)")
+    ap.add_argument(
+        "--perspective-prob",
+        type=float,
+        default=None,
+        help="photo-style perspective probability in [0,1] (overrides config)",
+    )
+    ap.add_argument(
+        "--hard-layout",
+        choices=HARD_LAYOUT_FAMILIES,
+        default=None,
+        help="force one hard-document layout family (overrides config)",
+    )
+    ap.add_argument(
+        "--overlay-prob",
+        type=float,
+        default=None,
+        help="document handwriting/stamp/seal probability in [0,1] (overrides config)",
+    )
+    ap.add_argument(
+        "--overlay-type",
+        nargs="+",
+        choices=OVERLAY_TYPES,
+        default=None,
+        help="enabled document overlay types (overrides config)",
+    )
+    ap.add_argument(
+        "--multipage-mode",
+        choices=["vertical", "grid"],
+        default=None,
+        help="multi-page raster composition (overrides config)",
+    )
+    ap.add_argument(
+        "--multidocument-mode",
+        choices=["vertical", "grid"],
+        default=None,
+        help="multi-document raster composition (overrides config)",
+    )
+    ap.add_argument("--split-name", choices=["synthetic", "train", "validation", "heldout"],
+                    default=None, help="recorded split provenance (overrides config)")
     ap.add_argument("--out", default=None,
-                    help="output dir (default data/probes/realistic_cases) — use a different dir + "
+                    help="output dir (default examples/probes/realistic_cases) — use a different dir + "
                          "--seed for a held-out TEST split (memorization-vs-understanding, A0)")
     args = ap.parse_args()
     if args.out:
@@ -784,8 +1798,46 @@ def main():
         CFG.count = args.count
     if args.seed is not None:
         CFG.seed = args.seed
+    if args.language is not None:
+        language = args.language.strip()
+        if not language:
+            raise ValueError("language cannot be empty")
+        CFG.languages = [language]
+        CFG.language_weights = None
+    if args.difficulty_level is not None:
+        CFG.difficulty_level = args.difficulty_level
+    if args.perspective_prob is not None:
+        if not 0 <= args.perspective_prob <= 1:
+            raise ValueError("perspective probability must be within [0, 1]")
+        CFG.perspective_prob = args.perspective_prob
+    if args.hard_layout is not None:
+        CFG.hard_layout_families = [args.hard_layout]
+    if args.overlay_prob is not None:
+        if not 0 <= args.overlay_prob <= 1:
+            raise ValueError("overlay probability must be within [0, 1]")
+        CFG.overlay_prob = args.overlay_prob
+    if args.overlay_type is not None:
+        CFG.overlay_types = list(args.overlay_type)
+    if args.multipage_mode is not None:
+        CFG.multipage_mode = args.multipage_mode
+    if args.multidocument_mode is not None:
+        CFG.multidocument_mode = args.multidocument_mode
+    if args.split_name is not None:
+        CFG.split_name = args.split_name
     if args.no_degrade:
         CFG.degrade_prob = 0.0
+    if (
+        CFG.emit_counterfactual_pairs
+        and CFG.count > 1
+        and CFG.count % 2
+        and any(
+            key in HARD_CASE_FACTORIES
+            for key in (args.only or CASES)
+        )
+    ):
+        raise ValueError(
+            "counterfactual hard-document generation requires an even count"
+        )
 
     # Simulation-only guard: keep generation LLM-/network-free by default. The "corpus"/"llm" text
     # sources are documented future seams (docs/report/synth_generation_survey.md §4), not yet wired.
@@ -797,21 +1849,40 @@ def main():
 
     OUT.mkdir(parents=True, exist_ok=True)
     keys = args.only or list(CASES)
+    pair_languages = (
+        CFG.emit_counterfactual_pairs
+        and CFG.count > 1
+        and any(key in HARD_CASE_FACTORIES for key in keys)
+    )
     print(f"[config] {CFG.name} (ablation={CFG.ablation})  dpi={CFG.dpi} "
           f"long_side={CFG.target_long_side} spot={CFG.emit_spotting} reason={CFG.emit_rationale} "
-          f"langs={CFG.languages} degrade_p={CFG.degrade_prob}")
+          f"langs={CFG.languages} degrade_p={CFG.degrade_prob} "
+          f"difficulty={CFG.difficulty_level} split={CFG.split_name} "
+          f"color_probe={CFG.color_probe_fallback} pixel_gate={CFG.validate_evidence_pixels} "
+          f"degraded_gate={CFG.validate_degraded_evidence} "
+          f"perspective_p={CFG.perspective_prob} "
+          f"hard_layouts={CFG.hard_layout_families} "
+          f"overlay_p={CFG.overlay_prob} overlay_types={CFG.overlay_types} "
+          f"multipage_mode={CFG.multipage_mode} "
+          f"multidocument_mode={CFG.multidocument_mode}")
     # Fail loud, once: CJK content needs a Noto CJK font (named in the base CSS). Without it CJK glyphs
     # tofu and never reach the searchable text layer, so ask_where/locate on CJK values is silently
     # skipped (e.g. the A4 multilingual "[warn] locate('최옥순') found nothing" reports).
     if {"ko", "ja", "zh"} & set(CFG.languages or []):
         from docvlm_eval.benchmarks.fonts import have_cjk
         if not have_cjk():
-            print("[warn] CJK language(s) requested but NO Noto CJK font found on this system — CJK "
-                  "glyphs will not render into the text layer, so spotting/locate on CJK values will "
-                  "be skipped. Install it (apt-get install -y fonts-noto-cjk) to fix.", flush=True)
+            raise RuntimeError(
+                "CJK language generation requires a CJK-capable font, but none was found. "
+                "Install fonts-noto-cjk before generating this configuration."
+            )
     for v in range(CFG.count):
         CURRENT_VARIANT = None if CFG.count == 1 else f"{v:04d}"
-        rng = random.Random(CFG.seed + v)
+        language_variant = (
+            v // 2
+            if pair_languages
+            else v
+        )
+        rng = random.Random(CFG.seed + language_variant)
         for k in keys:
             CURRENT_LANG = _choose_lang(rng)
             # Reseed BOTH global random and Faker per (variant, case) with a stable, well-spread seed.
@@ -827,6 +1898,7 @@ def main():
         # generation heartbeat for the variant fan-out (~20 lines total) so a big sweep isn't silent
         if CFG.count > 1 and (v == 0 or (v + 1) % max(1, CFG.count // 20) == 0 or v + 1 == CFG.count):
             print(f"[gen] variant {v+1}/{CFG.count}  (~{(v+1)*len(keys)} docs)", flush=True)
+    _validate_counterfactual_records()
     (OUT / "index.json").write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     (OUT / "gen_config.json").write_text(json.dumps(CFG.to_dict(), indent=2), encoding="utf-8")
     print(f"\n[done] {len(keys)} cases x {CFG.count} variant(s) = {len(records)} docs -> {OUT}")

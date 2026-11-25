@@ -31,9 +31,9 @@ HF_ID = {"qwen3_5-0.8b": "Qwen/Qwen3.5-0.8B",
          # tiny base for --smoke wiring proofs: small enough that a few LoRA steps + a 16-sample
          # eval complete on CPU (NOT a measurement base)
          "smolvlm-256m": "HuggingFaceTB/SmolVLM-256M-Instruct"}
-PROBES = {"capability": "data/probes/capability_probe/capability.jsonl",
-          "spatial": "data/probes/spatial_context_probe/probe.jsonl",
-          "realistic": "data/probes/realistic_cases/realistic_cases.jsonl"}
+PROBES = {"capability": "examples/probes/capability_probe/capability.jsonl",
+          "spatial": "examples/probes/spatial_context_probe/probe.jsonl",
+          "realistic": "examples/probes/realistic_cases/realistic_cases.jsonl"}
 # Score EVERY arm on the whole suite to see cross-capability transfer (does spotting help CER/KIE?
 # does multilingual hurt EN?), not just the arm's target axis.
 EVAL_SUITE = ["capability", "spatial", "realistic"]
@@ -76,16 +76,17 @@ def _subsample_jsonl(src: str, n: int, out_path: Path, seed: int = 7) -> tuple[s
 def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
     """A0 PREREQUISITE — memorization vs understanding as a function of training-data SIZE.
 
-    For each size N (variants/case): train LoRA for a FIXED #epochs on seed=7 data, then score BOTH
-    (a) the TRAIN set it just fit (memorization signal) and (b) a FIXED held-out set on a DIFFERENT
-    seed (understanding/generalization signal). A big train≫held-out gap that grows as N shrinks =
-    memorization; the held-out curve flattening = the recommended synthetic size. Result lands in
-    ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite section."""
+    For each size N (variants/case): train LoRA under the same explicit micro-step cap, then score
+    BOTH (a) the TRAIN set it just fit (memorization signal) and (b) a FIXED held-out set on a
+    DIFFERENT seed (understanding/generalization signal). A big train≫held-out gap that grows as N
+    shrinks = memorization; the held-out curve flattening = the recommended synthetic size. Result
+    lands in ablation_results.json -> models[<model>]["A0"], read by the notebook's prerequisite
+    section."""
     # Validation/held-out set is ALWAYS synthetic (built ONCE so every size scores the identical set).
     # In public-data mode (--train-jsonl) this means: TRAIN on public benchmark data, VALIDATE on
     # synthetic — the train-vs-synthetic gap then also reflects domain shift, not memorization alone.
     public = getattr(args, "train_jsonl", None)
-    test_jsonl = _gen_realistic(ROOT / "data" / "probes" / "_a0_heldout",
+    test_jsonl = _gen_realistic(ROOT / "examples" / "probes" / "_a0_heldout",
                                 seed=args.a0_test_seed, count=args.a0_test_count)
     n_test = _n_samples(test_jsonl)
     sizes = sorted(set(args.a0_sizes))
@@ -94,28 +95,37 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
         sizes = [n for n in sizes if n <= n_pub] or [n_pub]   # can't subsample beyond available rows
         print(f"[A0 public] train source = {public} ({n_pub} rows); sizes={sizes}; "
               f"validation = synthetic (seed {args.a0_test_seed}, {n_test} samples)")
-    total = len(args.models) * len(sizes); done = 0
+    total = len(args.models) * len(sizes)
+    done = 0
     for model in args.models:
         hf = HF_ID[model]
-        rec = {"epochs": args.a0_epochs, "test_seed": args.a0_test_seed,
+        rec = {"epochs": args.a0_epochs, "max_micro_steps": args.steps,
+               "data_seed": args.data_seed, "test_seed": args.a0_test_seed,
                "n_test_samples": n_test, "mode": "public" if public else "synthetic",
                "train_source": public or "synthetic(realistic_cases)", "sizes": {}}
         for n in sizes:
             done += 1
             unit = f"{n} images (public)" if public else f"{n} (x14 cases)"
             print(f"[{done}/{total}] ({total-done} left) {model} :: A0 size={unit} "
-                  f"epochs={args.a0_epochs}")
+                  f"epochs<={args.a0_epochs} micro_steps<={args.steps}")
             if public:
                 train_jsonl, n_train = _subsample_jsonl(
-                    public, n, ROOT / "data" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
+                    public, n, ROOT / "examples" / "probes" / "_public_a0" / f"train_n{n}.jsonl")
             else:
-                train_jsonl = _gen_realistic(ROOT / "data" / "probes" / "realistic_cases", seed=7, count=n)
+                train_jsonl = _gen_realistic(ROOT / "examples" / "probes" / "realistic_cases",
+                                             seed=args.data_seed, count=n)
                 n_train = _n_samples(train_jsonl)
             # per-epoch eval on BOTH train (memorization) and held-out (understanding) -> W&B curves
             _, last = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                epochs=args.a0_epochs, max_steps=None,
+                epochs=args.a0_epochs, max_steps=args.steps,
                 output_dir=f"outputs/{model}/A0_n{n}",
+                lora_r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                learning_rate=args.lr,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
                 wandb_run=f"{args.wandb_run_prefix}A0-{model}-n{n}",
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
@@ -126,6 +136,7 @@ def run_a0(args, eval_vlm, train_lora_vlm, LoraVLMConfig) -> None:
             gap = (ts - hs) if (ts is not None and hs is not None) else None
             rec["sizes"][str(n)] = {"variants_per_case": n, "n_images": n_train,
                                     "n_train_samples": n_train,
+                                    "max_micro_steps": args.steps,
                                     "train": train_s, "heldout": held_s, "gap": gap}
             print(f"    train={ts}  heldout={hs}  gap(train-heldout)={gap}")
             _record(model, "A0", rec)   # checkpoint after every size
@@ -139,11 +150,18 @@ def main() -> None:
     p.add_argument("--arm", required=True,
                    help="'baseline' (eval only), 'A0' (memorization-vs-size prerequisite sweep), or a "
                         "configs/synth_data.yaml ablation id (e.g. A1_spotting_on, A4_ko_en)")
-    p.add_argument("--placement", default="all", help="A5 LoRA group: vision|connector|llm_attn|llm_mlp|all")
+    p.add_argument(
+        "--placement",
+        default="all",
+        help=(
+            "A5 LoRA group: vision|connector|vision_connector|"
+            "llm_attn|llm_mlp|all"
+        ),
+    )
     # PUBLIC-DATA path: train on a prebuilt benchmark jsonl (scripts/build_benchmark_trainset.py) and
     # validate on the SYNTHETIC suite. Use --arm public for a single run, or --arm A0 for the scale sweep.
     p.add_argument("--train-jsonl", default=None,
-                   help="train on THIS jsonl (e.g. data/benchmark_trainset/train.jsonl) instead of "
+                   help="train on THIS jsonl (e.g. examples/benchmark_trainset/train.jsonl) instead of "
                         "generating synthetic data; validation stays synthetic. Supports --arm public/A0.")
     p.add_argument("--record-key", default=None,
                    help="key to store results under in ablation_results.json (default: <arm>:<placement>)")
@@ -153,13 +171,14 @@ def main() -> None:
     # CONTROL FACTOR — held fixed across arms so a delta is attributable to the factor alone:
     p.add_argument("--count", type=int, default=50,
                    help="variants per case = the fixed #images/iterations control (keep equal across arms)")
-    p.add_argument("--steps", type=int, default=300, help="fixed max training steps (the iteration control)")
+    p.add_argument("--steps", type=int, default=300,
+                   help="fixed maximum micro-steps (the iteration control; also caps every A0 size)")
     p.add_argument("--heldout-seed", type=int, default=None,
                    help="A0 memorization test: also eval on a realistic set generated with THIS seed "
                         "(different from training) -> unseen content; reports the train/held-out gap")
     p.add_argument("--heldout-jsonl", default=None,
                    help="use THIS prebuilt jsonl as the held-out eval set instead of generating a "
-                        "synthetic one (e.g. data/udd_tasks/heldout_all.jsonl — the UDD public "
+                        "synthetic one (e.g. examples/udd_tasks/heldout_all.jsonl — the UDD public "
                         "heldout fold from build_task_trainsets.py)")
     p.add_argument("--before-after", action="store_true",
                    help="public arms: ALSO evaluate the UN-tuned base on the full suite before "
@@ -172,8 +191,7 @@ def main() -> None:
                    help="A0: train-data scale sweep = variants/case (x14 cases = #images). Span a wide "
                         "range so the held-out plateau is visible; the config's full curve adds 3200.")
     p.add_argument("--a0-epochs", type=int, default=3,
-                   help="A0: epochs per size (FIXED across sizes so each example is seen equally -> the "
-                        "only thing changing is dataset size). Train-to-fit reveals memorization.")
+                   help="A0: maximum epochs per size; --steps may stop a size earlier.")
     p.add_argument("--a0-test-seed", type=int, default=999, help="A0: held-out TEST seed (never trained on)")
     p.add_argument("--a0-test-count", type=int, default=5,
                    help="A0: held-out TEST scale (variants/case). FIXED across sizes so the test set is "
@@ -187,7 +205,29 @@ def main() -> None:
     # --- A6 HPO knobs (threaded into LoraVLMConfig; defaults = the config's defaults) ---
     p.add_argument("--lora-r", type=int, default=16, help="A6: LoRA rank")
     p.add_argument("--lora-alpha", type=int, default=32, help="A6: LoRA alpha (convention: 2*r)")
+    p.add_argument(
+        "--lora-budget-reference",
+        default=None,
+        help=(
+            "match adapter trainable parameters to this placement at --lora-r; "
+            "for the confirmatory A5 test use 'vision'"
+        ),
+    )
     p.add_argument("--lr", type=float, default=1e-4, help="A6: learning rate")
+    p.add_argument(
+        "--quantization-bits",
+        type=int,
+        choices=[4, 16],
+        default=4,
+        help="base-weight precision for LoRA training; 4 enables NF4 QLoRA",
+    )
+    p.add_argument("--seed", type=int, default=7, help="LoRA optimizer/data-loader seed")
+    p.add_argument(
+        "--data-seed",
+        type=int,
+        default=7,
+        help="synthetic training-set seed; vary only across paired replicates",
+    )
     # --- throughput / OOM controls ---
     p.add_argument("--batch-size", type=int, default=2,
                    help="micro-batch (images/forward). LFM at 768px uses ~5GB on a T4 -> bs=2 fits; "
@@ -208,6 +248,8 @@ def main() -> None:
                    help="A1 curriculum target format. 'norm' teaches 0-1 boxes, which are scale-stable "
                         "and still accepted by the grounding metric.")
     args = p.parse_args()
+    if args.steps <= 0:
+        p.error("--steps must be positive")
     args._mils = args.max_image_long_side or None      # 0 -> None (native resolution)
     if args.results:
         global RESULTS
@@ -224,10 +266,13 @@ def main() -> None:
                  f"Run: pip install -U 'transformers>=5'  (and restart the kernel if it was imported).")
 
     try:
-        import peft, accelerate  # noqa: F401  (the [finetune] extra; missing on a bare install)
+        import accelerate  # noqa: F401  (the [finetune] extra)
+        import peft  # noqa: F401  (the [finetune] extra)
+        if args.quantization_bits == 4:
+            import bitsandbytes  # noqa: F401  (NF4 QLoRA)
     except ModuleNotFoundError as e:
         sys.exit(f"[run_ablation] missing fine-tuning dependency '{e.name}'. "
-                 f"Run: pip install -e '.[models,finetune]'")
+                 f"Run: pip install -e '.[newvlms,finetune]'")
 
     from docvlm_eval.finetune.lora_vlm import LoraVLMConfig, eval_vlm, train_lora_vlm
 
@@ -237,7 +282,7 @@ def main() -> None:
 
     heldout_jsonl = args.heldout_jsonl   # prebuilt public heldout (UDD fold), if given
     if heldout_jsonl is None and args.heldout_seed is not None:    # else synth with a different seed
-        test_dir = ROOT / "data" / "probes" / "_realistic_heldout"
+        test_dir = ROOT / "examples" / "probes" / "_realistic_heldout"
         heldout_cmd = [sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
                        "--seed", str(args.heldout_seed), "--count", str(max(1, args.count // 5)),
                        "--out", str(test_dir)]
@@ -277,7 +322,8 @@ def main() -> None:
             out[pb] = d
         return out
 
-    total = len(args.models); done = 0
+    total = len(args.models)
+    done = 0
     for model in args.models:
         done += 1
         hf = HF_ID[model]
@@ -296,7 +342,7 @@ def main() -> None:
             n_avail = _n_samples(args.train_jsonl)
             if args.count and args.count < n_avail:
                 train_jsonl, n_train = _subsample_jsonl(
-                    args.train_jsonl, args.count, ROOT / "data" / "probes" / "_public_train.jsonl")
+                    args.train_jsonl, args.count, ROOT / "examples" / "probes" / "_public_train.jsonl")
             else:
                 train_jsonl, n_train = args.train_jsonl, n_avail
             print(f"    [public] train on {n_train} rows from {args.train_jsonl}; validate on synthetic")
@@ -305,22 +351,39 @@ def main() -> None:
             if args.before_after:      # BASE model on the full suite BEFORE any training
                 print("    [before] scoring the un-tuned base on the full suite")
                 probes_before = eval_all(hf, save_preds_dir=str(arm_dir / "preds_before"))
-            out, _ = train_lora_vlm(LoraVLMConfig(
+            out, training_eval = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                max_steps=args.steps, output_dir=f"outputs/{model}/public_{args.placement}_{args._mils}",
-                lora_r=args.lora_r, lora_alpha=args.lora_alpha, learning_rate=args.lr,
+                max_steps=args.steps,
+                output_dir=(
+                    f"outputs/{model}/public_{args.placement}_"
+                    f"{args._mils}_s{args.seed}"
+                ),
+                lora_r=args.lora_r, lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
+                learning_rate=args.lr,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
-                wandb_run=f"{args.wandb_run_prefix}public-{model}-{args.placement}-img{args._mils}",
+                wandb_run=(
+                    f"{args.wandb_run_prefix}public-{model}-{args.placement}-"
+                    f"img{args._mils}-s{args.seed}"
+                ),
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples),
                 eval_specs=[("train", train_jsonl)] + ([("heldout", heldout_jsonl)] if heldout_jsonl else []))
             probes_after = eval_all(hf, adapter=out,
                                     save_preds_dir=str(arm_dir / "preds_after")
                                     if args.before_after else None)
+            budget_path = Path(out) / "lora_budget.json"
+            budget = json.loads(budget_path.read_text(encoding="utf-8"))
             payload = {"control": {"count": n_train, "steps": args.steps, "placement": args.placement,
                                    "lora_r": args.lora_r, "lora_alpha": args.lora_alpha, "lr": args.lr,
+                                   "seed": args.seed,
+                                   "lora_budget_reference": args.lora_budget_reference,
+                                   "lora_budget": budget,
                                    "max_image_long_side": args._mils, "train_source": args.train_jsonl},
-                       "probes": probes_after}
+                       "probes": probes_after,
+                       "training_eval": training_eval}
             if probes_before is not None:
                 payload["probes_before"] = probes_before
                 payload["delta"] = _deltas(probes_before, probes_after)
@@ -328,11 +391,16 @@ def main() -> None:
                 hd = payload["delta"].get("heldout", {})
                 print(f"    [before/after] heldout Δscore={hd.get('score', 0):+.2f}  "
                       f"by-axis={hd.get('by_axis')}")
-            _record(model, args.record_key or f"public:{args.placement}", payload)
+            _record(
+                model,
+                args.record_key or f"public:{args.placement}",
+                payload,
+            )
         else:
             # 1) data for this arm (count = the fixed #images control)
             subprocess.run([sys.executable, "scripts/make_realistic_cases.py", "--no-degrade",
-                            "--ablation", args.arm, "--count", str(args.count)], cwd=ROOT, check=True)
+                            "--ablation", args.arm, "--count", str(args.count),
+                            "--seed", str(args.data_seed)], cwd=ROOT, check=True)
             subprocess.run([sys.executable, "scripts/build_realistic_benchmark.py"], cwd=ROOT, check=True)
             train_jsonl = str(ROOT / PROBES["realistic"])
             is_a1 = args.arm.startswith("A1_") or args.arm.startswith("A3_spot")
@@ -340,23 +408,44 @@ def main() -> None:
             if heldout_jsonl:
                 eval_specs.append(("heldout", heldout_jsonl))
             # 2) LoRA fine-tune (steps = the fixed iteration control); per-epoch loss/train-score -> W&B
-            out, _ = train_lora_vlm(LoraVLMConfig(
+            out, training_eval = train_lora_vlm(LoraVLMConfig(
                 model_id=hf, train_jsonl=train_jsonl, placement=args.placement,
-                max_steps=args.steps, output_dir=f"outputs/{model}/{args.arm}_{args.placement}",
+                max_steps=args.steps,
+                output_dir=(
+                    f"outputs/{model}/{args.arm}_{args.placement}_s{args.seed}"
+                ),
+                lora_r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                quantization_bits=args.quantization_bits,
+                lora_budget_reference_placement=args.lora_budget_reference,
+                seed=args.seed,
                 wandb_project=args.wandb_project,
-                wandb_run=f"{args.wandb_run_prefix}{args.arm}-{model}-{args.placement}",
+                wandb_run=(
+                    f"{args.wandb_run_prefix}{args.arm}-{model}-"
+                    f"{args.placement}-s{args.seed}"
+                ),
                 grad_checkpointing=not args.no_grad_ckpt, max_image_long_side=args._mils,
                 batch_size=args.batch_size, eval_max_samples=args.eval_max_samples,
                 grounding_repeat=args.grounding_repeat if is_a1 else 1,
                 grounding_target=args.grounding_target if is_a1 else "pixel"),
                 eval_specs=eval_specs)
             # 3) evaluate the adapted model on the WHOLE suite (cross-capability transfer)
+            budget_path = Path(out) / "lora_budget.json"
+            budget = json.loads(budget_path.read_text(encoding="utf-8"))
             payload = {"control": {"count": args.count, "steps": args.steps, "placement": args.placement,
+                                   "seed": args.seed, "data_seed": args.data_seed,
+                                   "lora_budget_reference": args.lora_budget_reference,
+                                   "lora_budget": budget,
                                    "grounding_repeat": args.grounding_repeat if is_a1 else 1,
                                    "grounding_target": args.grounding_target if is_a1 else "pixel",
                                    "heldout_seed": args.heldout_seed},
-                       "probes": eval_all(hf, adapter=out)}
-            _record(model, f"{args.arm}:{args.placement}", payload)
+                       "probes": eval_all(hf, adapter=out),
+                       "training_eval": training_eval}
+            _record(
+                model,
+                args.record_key or f"{args.arm}:{args.placement}",
+                payload,
+            )
         cap = payload["probes"].get("capability", {})
         print(f"    capability score={cap.get('score')}  by_axis={cap.get('by_answer_type')}")
     print(f"[done] -> {RESULTS}")

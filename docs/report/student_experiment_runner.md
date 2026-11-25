@@ -1,0 +1,356 @@
+# End-to-end student experiment runner
+
+[`scripts/run_student_experiment.py`](../../scripts/run_student_experiment.py) compiles one validated
+YAML experiment into a resumable stage DAG. It connects hard-document synthesis, semantic split
+validation, UDD conversion, weighted data mixing, quality-gated cross-tokenizer distillation,
+tokenizer training, student initialization, pretraining, grounded SFT, optional preference
+optimization or RLVR, train/validation/heldout generation evaluation, and failure-driven planning
+of the next synthetic train batch. The full configuration first benchmarks packed visual attention on the
+active runtime and stores the requested/resolved backend, numerical parity, latency, throughput,
+and peak memory as a checked run artifact.
+
+The production DAG begins with `audit_method_evidence`. It verifies that all 29 methods marked
+`adopt` in the 100-method frontier catalog bind every declared knob to live implementation and
+test anchors. Target-device preflights and initialization depend on its fingerprinted report, so
+stale research claims fail before model allocation.
+
+The next preflight, `audit_weight_commonality`, validates bounded real-weight evidence from five
+pinned small VLMs. It binds immutable revisions, safetensors sample digests, sampling ceilings,
+and the cross-model report fingerprint. Initialization depends on this audit. Materialized
+transfer reports then resample the checkpoint in memory and skip any semantic role whose sampled
+weights are non-finite, degenerate, highly sparse, or extreme.
+
+After tokenizer training, the production DAG audits exact structured-target token lengths under
+the evaluation, preference, and RLVR budget policies. It derives recommendations from train and
+validation only, checks heldout without tuning on it, and blocks initialization on inadequate
+coverage or policy drift. Its compact JSON stores quantiles and bounded sample-ID diagnostics
+rather than full table HTML or repeated long completions.
+
+To execute that plan for multiple rounds while preserving the complete student and tokenizer, use
+[`student_curriculum_runner.md`](student_curriculum_runner.md). Its continuation DAG skips
+acquisition, tokenizer construction, initialization, and pretraining only after a full-hash parent
+attestation validates the exact checkpoint, tokenizer, validation-derived policy, and replay
+source.
+
+Random initialization is reproducible: `initialization.seed` is validated, passed to model
+construction before parameter allocation, included in the stage signature, and written into the
+initial checkpoint metadata.
+
+All initialization arms also emit a fingerprinted `initialization_lineage`. For transferred arms,
+schema version 2 contains the use-time source-file identity, canonical source/target topology
+hashes, exact source-to-target tensor mapping, and verified target-dtype copied-value hashes. Local
+source checkpoints, pinned Hub manifests, and token maps remain separately content-addressed
+experiment inputs. Evidence requires the embedded source identity to match that independent plan
+or acquisition record. Native checkpoint I/O propagates the lineage through pretraining and every
+post-training stage, while exact resume and final evidence attestation reject missing, legacy, or
+changed lineage.
+
+External generation inputs are content-addressed. The plan records the byte count and SHA-256 of
+`synthetic.config`; changing that YAML invalidates the experiment fingerprint and every dependent
+stage instead of incorrectly resuming old documents. Configured sequence-teacher prediction files,
+local initialization checkpoints, and initialization token maps receive the same treatment. Pinned
+Hub initialization sources receive dedicated acquisition stages whose manifests validate the
+resolved revision and cached weight files. A combined SHA-256 over the
+`docvlm_eval` Python source tree and every compiled script entrypoint also invalidates resume after
+generator, model, loss, reward, or runner implementation changes.
+
+Checkpoint acquisition chooses one weight representation, preferring safetensors, instead of
+downloading both safetensors and PyTorch bin when a Hub repository publishes duplicates. It records
+the selected allow patterns and rehashes every manifest file when resolving the source for
+initialization. The inexpensive stage-resume check remains size-based, while the use-time boundary
+is full-hash and fail-closed.
+
+RLVR uses periodic supervised replay from its active samples by default. Set
+`posttraining.rlvr.replay_samples` to an external benchmark JSONL to anchor broader multimodal
+capabilities; the compiler content-addresses that file and passes it to the RLVR stage.
+Set `posttraining.rlvr.enabled: false` with all RLVR runtime overrides null to compile an SFT-only
+DAG. In that mode evaluation loads `@student:sft` directly. Non-null disabled-stage overrides fail
+before data generation so an intended RLVR treatment cannot disappear silently.
+Set `posttraining.preference.enabled: true` to insert verifier-ranked DPO or IPO after SFT.
+Preference optimization may run alone or feed the trainable policy into RLVR. In the sequential
+case, RLVR still loads the exact SFT checkpoint as its frozen KL reference; the compiler does not
+replace that reference with the preference checkpoint. The policy-start and reference checkpoint
+content identities are bound independently in the RLVR checkpoint contract.
+
+The final evaluation also writes `gates.json`. Gate outcomes are `pass`, `fail`, or
+`insufficient_evidence`; missing comparisons never count as success. The parameter gate uses the
+actual runtime count embedded in the latest native checkpoint. A continuation without an
+initialization stage therefore proves its size from the inherited training checkpoint rather than
+substituting a blueprint estimate. Initialization, pretraining, SFT, preference, and RLVR
+checkpoints must report the same tensor-shape fingerprint, parameter decomposition, and
+initialization-lineage fingerprint.
+Generalization, grounding, counterfactual reasoning, and reliability require a matched
+reference-checkpoint evaluation. Set `evaluation.baseline_checkpoint_stage` to `initial`,
+`pretrain`, or another enabled stage that precedes the final checkpoint to materialize that
+reference inside the same DAG. Continuation plans use `inherited` to reevaluate the parent final
+checkpoint. The baseline stage uses the exact train/validation/heldout files,
+generation controls, calibration contract, tokenizer, and resolved blueprint used by the final
+evaluation. Its comparison and per-sample rows are declared artifacts, and final evaluation
+depends on them. `baseline_evaluation` remains available for an external reference root, but the
+two options are mutually exclusive. Multilingual retention still requires a separately trained
+per-language monolingual-control evaluation. The visual-efficiency gate consumes the preflight
+JSON and requires matched loop/candidate measurements from the exact resolved student
+configuration. Configured external evaluation roots are content-addressed so changing a baseline
+invalidates the evaluation stage.
+
+For matched multi-run ablations, use
+[`student_sweep_runner.md`](student_sweep_runner.md). It compiles RFC 6902 experiment/blueprint
+patches, rejects changes to declared fixed controls, reuses this runner for every variant, and
+aggregates baseline deltas from the final train/heldout comparisons.
+
+The tiny CPU experiment keeps the production response contract rather than reducing it to a
+single supervised token. Its resolved text horizon is 768 tokens, enough for the complete hard
+table prompt and answer/evidence/rationale targets used by the smoke path. This is a contract test,
+not a throughput proxy for the 2,048-token production configuration.
+
+## Configurations
+
+The full approximately 800M experiment is
+[`configs/sub1b_experiment.yaml`](../../configs/sub1b_experiment.yaml). Inspect its commands and
+dependencies without creating files:
+
+```bash
+python scripts/run_student_experiment.py --dry-run
+```
+
+The full plan has 27 stages, including adopted-method and real-weight evidence, target-device visual-backend and
+full-training preflights,
+the pre-initialization generation-budget audit,
+an initial-checkpoint matched baseline, validation conversion/evaluation, and next-batch
+synthesis planning.
+The CPU contract test disables those deployment preflights and omits the full plan's public-Hub acquisition, leaving
+17 stages with a dummy cross-tokenizer teacher, one 587k-parameter student, one optimizer step per
+training phase, and the same internal baseline comparison:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_tiny.yaml
+```
+
+Use the bounded capability smoke when the task-label sampling and quality-gate inputs also need
+coverage on CPU:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_capability_tiny.yaml \
+  --no-resume
+```
+
+It combines hard tables, charts, scientific pages, and multi-page audit packets with deterministic
+`answer_type_round_robin` evaluation. The run still uses a tiny fixture model and one optimization
+step per phase, so it proves representative gate wiring rather than model quality or target-device
+feasibility. The compact executed evidence is
+[`student_capability_tiny_smoke.json`](../results/student_capability_tiny_smoke.json).
+
+The selective-transfer CPU contract adds deterministic, differently shaped vision and language
+fixture checkpoints. Its 23 stages execute real exact and structured-MLP transfer before the same
+pretraining, SFT, RLVR, matched evaluation, and schema-v3 feedback-plan path:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment_selective_tiny.yaml \
+  --no-resume
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment_selective_tiny.yaml
+```
+
+The fixture weights are random and authorize only an execution-contract claim. They do not
+substitute for the pinned-source, multi-seed GPU sweep required to claim a quality benefit.
+The committed compact result is
+[`selective_transfer_tiny_smoke.json`](../results/selective_transfer_tiny_smoke.json).
+
+The resolved full blueprint uses a hard 20B effective-token pretraining budget. It repeats
+deterministic sampler epochs until that counter is reached; `pretraining.max_steps` is a deliberate
+smoke or ablation ceiling. Checkpoints preserve supervised, text, and effective counters so a
+resumed run continues the same learning-rate and curriculum position.
+
+The experiment YAML controls synthetic families, difficulty, independent split seeds and counts,
+degradation, data components and weights, tokenizer size, initialization arm and transfer sources,
+training limits, evaluation settings, and W&B metadata. `synthetic.train_count` and
+`synthetic.heldout_count` may override the legacy shared `synthetic.count`, allowing training-scale
+experiments to retain one fixed benchmark. Setting both `synthetic.validation_count` and
+`synthetic.validation_seed` adds a third leakage-checked root, converts it to UDD, and passes it to
+pretraining through `--eval-src`. This optimizer-heldout validation split can drive adaptive data
+mixing while the final heldout root remains untouched. It is also converted to structured
+evaluation samples. When `synthetic.adaptation_policy.enabled` is true, the final
+`plan_next_synthetic_batch` stage joins exact baseline and final validation rows, then turns
+residual failures and matched learning progress into an authorized plan for the next run. Setting
+`synthetic.training_policy_plan` to that artifact replaces fixed train generation with exact policy
+execution; heldout-derived plans are rejected. See
+[`student_failure_driven_synthesis.md`](student_failure_driven_synthesis.md). The runner writes a
+resolved architecture blueprint whose `data_mix`, sampler groups, and tokenizer/model dimensions
+match the experiment.
+
+The production synthesis policy uses schema version 3. It preserves decomposed validation
+verifier deficits and matched progress, routing table, chart, formula, grounding, rationale, text,
+and abstention signals only to generator families that can author the corresponding exact target.
+The plan stores component statistics once and compact route diagnostics per job.
+
+W&B is optional and stage-specific. Set `wandb_project`, entity, group, run, and tags under
+`pretraining`, `posttraining.sft`, `posttraining.preference`, `posttraining.rlvr`, or `evaluation`.
+Training stages stream the same numeric records persisted in their local `metrics.jsonl`; rank zero
+is the only writer. When a project is configured, the compiler adds a deterministic stage run ID
+derived from the full experiment fingerprint, so exact resume appends to the same W&B run while a
+changed plan receives a new identity. Internal baseline evaluation receives a distinct run ID,
+`baseline` and `checkpoint-stage:<stage>` tags, and a `--baseline` run-name suffix so its curves
+can be selected alongside the final evaluation without merging their histories.
+
+The production synthetic list includes five single-page hard families plus `audit_packet` and
+`investment_dossier`. Those composed families supply the exact multi-page and cross-document tiers
+used by the native composition curriculum. A reduced smoke list remains valid: unavailable tiers
+are renormalized inside each primary task rather than replaced with invented examples.
+
+`runtime.visual_backend_benchmark` compiles
+[`benchmark_student_visual_backend.py`](../../scripts/benchmark_student_visual_backend.py) as the
+first artifact-checked stage. Its sequence lengths, backends, warmup, measured iterations, mode,
+precision, seed, parity tolerance, Flex requirement, and W&B destination are all explicit in the
+experiment fingerprint. `initialize_student` depends on the resulting JSON. Set `require_flex:
+true` on the target CUDA image to stop before model initialization when `auto` or explicit `flex`
+falls back or fails. Keep it false when the portable loop backend is an accepted treatment; the
+resolved fallback remains visible in the artifact and W&B.
+
+The final evaluator receives that artifact through `--visual-backend-benchmark`. The default
+`visual_efficiency` gate requires schema-v2 CUDA training-mode evidence over at least 4,096 visual
+tokens, batch size two, three warmup iterations, ten measured iterations, and three order-rotated
+rounds. The `auto` candidate must resolve to `flex`, be at least 1.05 times as fast as `loop` at
+paired median latency, never fall below 1.0 in an individual round, and stay within 1.05
+worst-round loop peak allocated memory. The same speed and memory rules apply against the matched
+`dense_adaptive` control. It must also remain within 0.02 maximum absolute output delta. A CPU
+report, legacy or short benchmark, or missing dense control is `insufficient_evidence`; a
+mismatched architecture, fallback, execution error, numerical violation, or runtime regression
+is `fail`.
+
+`runtime.training_feasibility_benchmark` then runs the complete 799,919,884-parameter student with
+the production micro-batch, 2,048 text tokens, a 40x63 packed visual grid, all native auxiliary
+heads, loss construction, scaled backward, gradient clipping, and the configured optimizer. The
+production optimizer is fail-closed bitsandbytes AdamW8bit, including an explicit quantization
+threshold and block-wise mode. The first warmup step materializes optimizer state; two measured
+steps record steady latency. Its schema-v2 JSON preserves the requested optimizer spec, realized
+implementation, bitsandbytes version, setup,
+state-materialization, and steady-state CUDA peaks, optimizer-state bytes and step counters,
+per-loss finiteness, the resolved visual backend, and failure/OOM evidence. The
+`training_feasibility` gate requires bfloat16 CUDA execution resolved to FlexAttention, all three
+optimizer steps to advance, exact agreement with the production optimizer contract, finite losses
+and gradients, and effective peak reserved memory below
+95% of device memory. It also requires the benchmark to use the exact production
+`vision`/`connector`/`language` non-reentrant activation-checkpointing contract.
+The report must explicitly attest native CUDA BF16 hardware support. A T4 report is rejected even
+if the framework accepts a BF16 dtype request, because silently emulated or downgraded precision is
+not the declared production experiment.
+
+Run both authoritative target-GPU preflights before committing to a full training job:
+
+```bash
+python scripts/run_student_experiment.py \
+  --experiment configs/sub1b_experiment.yaml \
+  --no-resume \
+  --to-stage training_feasibility_benchmark
+```
+
+The production experiment enables `require_deployment_gate` for both stages. They write their
+benchmarks, embedded gate decisions, experiment state, logs, and optional W&B evidence, then stop
+nonzero unless both CUDA contracts pass. `--no-resume` forces fresh measurements instead of
+accepting older successful state. Blocking mode rejects a non-CUDA runtime before allocating either
+benchmark model. `initialize_student` and final evaluation depend on both artifacts, so an OOM or
+silent skipped optimizer step cannot be bypassed by continuing the expensive run.
+
+Initialization sources may be local paths or immutable Hub mappings. Hub snapshots remain in the
+shared Hugging Face cache while each run stores a content manifest, avoiding checkpoint duplication
+across paired sweeps. See
+[`student_initialization_runner.md`](student_initialization_runner.md) for the source schema,
+compatibility analyzer, five-arm baseline initialization suite, and structured-MLP comparison.
+Sweep specifications may also declare zero-sum linear contrasts. The aggregator evaluates each
+contrast within replicate before deterministic bootstrap aggregation, enabling difference-in-
+differences without treating independent runs as paired observations.
+
+Set `evaluation.baseline_evaluation` to an evaluation root produced by
+`scripts/eval_student.py`, and set `evaluation.monolingual_control_evaluation` to the corresponding
+control root. Both roots must contain `comparison.json` and split-level `per_sample.jsonl` files.
+The native evaluator records each sample's source metadata and geometric-mean generated-token
+confidence, enabling matched counterfactual and fixed-coverage reliability checks.
+The production configuration also carves a deterministic, disjoint calibration subset from
+heldout, fits scalar temperature scaling, preserves raw confidence, and evaluates calibrated ECE
+only on the untouched remainder. See
+[`student_temperature_calibration.md`](student_temperature_calibration.md).
+It uses compact-GQA KV caching by default and records `generation_backend`; setting
+`evaluation.use_kv_cache: false` compiles an explicit full-prefix ablation.
+`evaluation.max_new_tokens_by_answer_type` can increase the 128-token base horizon for declared
+long-form task labels, but every value must remain within `max_new_tokens_hard_cap`. The compiler
+passes the complete policy to both internal-baseline and final evaluation, preserving matched
+generation conditions without consulting answer length.
+The `generation_stability` deployment gate then compares candidate and baseline heldout rows under
+that identical policy. It fails on excessive exact-cycle repetition or max-token termination in
+table, HTML, full-page, transcription, reading-order, long-context, and markup slices, and it also
+forbids a score or structural-validity regression on the same samples.
+
+Public components may use a local `path` or a pinned Hugging Face `hub` specification. The full
+configuration acquires the public UDD train fold at an immutable commit, validates its schema,
+payload, duplicate identities, and image dimensions, then mixes it at 55% with 45% authored hard
+documents. See
+[`student_data_acquisition.md`](student_data_acquisition.md).
+
+The full configuration uses `lfm2_5-vl-1.6b` as an offline sequence teacher. It exports 4,096
+deterministic fingerprinted image-question requests, resumes generation from one pinned Hub
+revision, applies each sample's native metric as a quality gate, and retains exactly 400 accepted
+targets. Model/revision mismatches fail during apply. The student tokenizer is fit without teacher
+answers, preventing teacher-specific vocabulary drift. The tiny configuration uses `dummy-echo`;
+its deliberately incorrect outputs prove that all teacher responses can be rejected while the
+pipeline safely trains on gold.
+
+## Data mixture
+
+Each `data.components` entry names an on-disk or pinned-Hub UDD dataset, sampling weight, and
+optional source fold. `path: "@synthetic"` refers to the UDD produced by the experiment. The mixer
+normalizes every component to the canonical UDD superset, marks selected rows as training data, and
+records their component identity without duplicating rows.
+
+`mixture_manifest.json` records row counts, fingerprints, paths, and normalized weights. The
+balanced batch sampler applies those weights at runtime with `balance_by: component`. This keeps
+the physical corpus stable while allowing mixture probabilities to change explicitly.
+
+## Resume and provenance
+
+Every stage has a command signature, dependencies, and required artifacts. Successful stages are
+skipped only when their state signature still matches and every artifact remains valid. Interrupted
+pretraining, SFT, preference, and RLVR stages automatically pass `--resume latest` only when the
+interrupted state has the same signature and a checkpoint pointer exists. A changed upstream
+checkpoint starts the dependent stage fresh.
+
+When a signature changes, the runner removes only that stage's declared outputs inside the
+experiment root before rebuilding them. It applies the same cleanup to interrupted
+non-checkpoint stages and completed stages with invalid artifacts. Checkpoints remain intact for
+an interrupted training stage with the same signature, preserving exact resume.
+
+Each run root contains:
+
+- `resolved_blueprint.yaml`, `experiment_spec.json`, and `experiment_plan.json`;
+- `state/stages/<stage>.json` with status, command, timing, return code, and signature;
+- `logs/<stage>.log` with combined process output;
+- `artifacts/` with immutable stage handoffs and final split comparison;
+- schema-v2 `run_summary.json`, which separates latest-invocation completed/skipped outcomes from
+  cumulative authoritative stage completion, signature, artifact, timing, and log evidence.
+
+After a complete run, create a deterministic evidence attestation:
+
+```bash
+python scripts/attest_student_experiment.py \
+  --experiment configs/sub1b_experiment.yaml
+```
+
+The attestation re-hashes declared artifacts, logs, and resolved latest checkpoints; verifies
+optimization and train/heldout generation progress; and reports pipeline-contract status separately
+from capability/deployment gates. Re-run it with `--verify <path>` before publishing or promoting a
+checkpoint. See
+[`student_experiment_evidence.md`](student_experiment_evidence.md).
+
+Run a bounded section only after its external dependencies have completed:
+
+```bash
+python scripts/run_student_experiment.py \
+  --from-stage pretrain \
+  --to-stage evaluate
+```
+
+The runner fails closed when a command exits successfully but its declared artifacts are absent.
+Train and heldout synthesis must use different seeds, and split validation runs before either split
+can enter training or evaluation.

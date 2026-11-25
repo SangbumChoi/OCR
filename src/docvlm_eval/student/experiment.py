@@ -1,0 +1,3558 @@
+"""Resumable end-to-end orchestration for the native document VLM student."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import time
+from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
+from typing import Any, Iterable
+
+import yaml
+
+from ..architecture import estimate_parameters, load_blueprint, validate_blueprint
+from ..generation_policy import validate_generation_token_budget_policy
+from ..method_catalog import (
+    audit_adopted_method_evidence,
+    load_method_catalog,
+)
+from .acquisition import HubComponentSpec
+from .checkpoint_acquisition import (
+    HubCheckpointSpec,
+    checkpoint_manifest_valid,
+    checkpoint_path_from_manifest,
+)
+from .checkpoint import checkpoint_content_identity
+from .config import StudentConfig
+from .continuation import resolve_continuation_contract
+from .distillation import DistillationConfig
+from .mixture import MixtureComponent, validate_components
+from .pretrain import PretrainConfig, pretraining_supervision_contract
+from .synthesis_policy import (
+    load_synthesis_policy_config,
+    validate_generation_plan,
+)
+from .weight_commonality import (
+    load_weight_commonality_report,
+    validate_weight_commonality_report,
+)
+
+
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_HUB_REVISION = re.compile(r"^[0-9a-f]{40}$")
+_CHECKPOINT_STAGES = {"pretrain", "sft", "preference", "rlvr"}
+_OUTPUT_FLAGS = {"--out", "--output", "--save"}
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _fingerprint(value: Any) -> str:
+    return f"sha256:{hashlib.sha256(_stable_json(value).encode('utf-8')).hexdigest()}"
+
+
+def _file_fingerprint(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "sha256": f"sha256:{digest.hexdigest()}",
+    }
+
+
+def _evaluation_fingerprint(path: Path) -> dict[str, Any]:
+    if not path.is_dir():
+        raise ValueError(f"evaluation root does not exist: {path}")
+    files = [
+        candidate
+        for pattern in ("comparison.json", "*/summary.json", "*/per_sample.jsonl")
+        for candidate in path.glob(pattern)
+        if candidate.is_file()
+    ]
+    if not any(candidate.name == "comparison.json" for candidate in files):
+        raise ValueError(f"evaluation root has no comparison.json: {path}")
+    records = []
+    for candidate in sorted(set(files)):
+        record = _file_fingerprint(candidate)
+        record["path"] = str(candidate.relative_to(path))
+        records.append(record)
+    return {
+        "path": str(path),
+        "files": len(records),
+        "sha256": _fingerprint(records),
+    }
+
+
+def _source_fingerprint(
+    repo_root: Path,
+    stages: Iterable["ExperimentStage"],
+) -> dict[str, Any]:
+    files = set((repo_root / "src" / "docvlm_eval").rglob("*.py"))
+    for stage in stages:
+        for argument in stage.command:
+            path = Path(argument)
+            if path.suffix == ".py" and path.is_file():
+                files.add(path.resolve())
+    records = []
+    for path in sorted(files):
+        record = _file_fingerprint(path)
+        try:
+            record["path"] = str(path.relative_to(repo_root))
+        except ValueError:
+            record["path"] = str(path)
+        records.append(record)
+    return {
+        "files": len(records),
+        "sha256": _fingerprint(records),
+    }
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+@dataclass(frozen=True)
+class Artifact:
+    path: str
+    kind: str = "file"
+
+    def validate(self) -> bool:
+        path = Path(self.path)
+        if self.kind == "file":
+            return path.is_file() and path.stat().st_size > 0
+        if self.kind == "directory":
+            return path.is_dir() and any(path.iterdir())
+        if self.kind == "checkpoint_manifest":
+            return checkpoint_manifest_valid(path)
+        raise ValueError(f"unknown artifact kind {self.kind!r}")
+
+
+@dataclass(frozen=True)
+class ExperimentStage:
+    name: str
+    command: tuple[str, ...]
+    dependencies: tuple[str, ...]
+    artifacts: tuple[Artifact, ...]
+
+    def signature(self, experiment_fingerprint: str, dependency_signatures: dict[str, str]) -> str:
+        return _fingerprint(
+            {
+                "experiment": experiment_fingerprint,
+                "name": self.name,
+                "command": self.command,
+                "dependencies": {
+                    dependency: dependency_signatures[dependency]
+                    for dependency in self.dependencies
+                },
+                "artifacts": [asdict(artifact) for artifact in self.artifacts],
+            }
+        )
+
+    def artifacts_valid(self) -> bool:
+        return bool(self.artifacts) and all(artifact.validate() for artifact in self.artifacts)
+
+
+@dataclass(frozen=True)
+class ExperimentPlan:
+    name: str
+    root: str
+    blueprint: str
+    resolved_blueprint: dict[str, Any]
+    raw_spec: dict[str, Any]
+    components: tuple[MixtureComponent, ...]
+    stages: tuple[ExperimentStage, ...]
+    fingerprint: str
+    input_fingerprints: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def stage_names(self) -> list[str]:
+        return [stage.name for stage in self.stages]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "name": self.name,
+            "root": self.root,
+            "blueprint": self.blueprint,
+            "fingerprint": self.fingerprint,
+            "input_fingerprints": self.input_fingerprints,
+            "components": [asdict(component) for component in self.components],
+            "stages": [
+                {
+                    "name": stage.name,
+                    "command": list(stage.command),
+                    "dependencies": list(stage.dependencies),
+                    "artifacts": [asdict(artifact) for artifact in stage.artifacts],
+                }
+                for stage in self.stages
+            ],
+        }
+
+
+def _resolve_path(root: Path, value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _checkpoint_path_fingerprint(path: Path) -> dict[str, Any]:
+    try:
+        identity = checkpoint_content_identity(path)
+    except FileNotFoundError as error:
+        raise ValueError(
+            f"initialization checkpoint does not exist or is incomplete: {path}"
+        ) from error
+    return {
+        "path": str(path),
+        **identity,
+        "file_count": len(identity["files"]),
+        "sha256": identity["content_fingerprint"],
+    }
+
+
+def _checkpoint_sources(
+    initialization: dict[str, Any],
+    repo_root: Path,
+    artifacts: Path,
+) -> tuple[
+    dict[str, str],
+    dict[str, HubCheckpointSpec],
+    dict[str, Path],
+    dict[str, dict[str, Any]],
+    dict[str, Any],
+]:
+    resolved: dict[str, str] = {}
+    hub_specs: dict[str, HubCheckpointSpec] = {}
+    manifests: dict[str, Path] = {}
+    fixture_specs: dict[str, dict[str, Any]] = {}
+    fingerprints: dict[str, Any] = {}
+    for component in ("vision", "language"):
+        source = initialization.get(f"{component}_source")
+        if source is None:
+            continue
+        family = str(
+            initialization.get(f"{component}_family")
+            or ("siglip" if component == "vision" else "llama")
+        )
+        if isinstance(source, (str, Path)):
+            path = _resolve_path(repo_root, source)
+            resolved[component] = str(path)
+            fingerprints[f"initialization_{component}_source"] = (
+                _checkpoint_path_fingerprint(path)
+            )
+            continue
+        if isinstance(source, dict) and isinstance(
+            source.get("fixture"),
+            dict,
+        ):
+            if not bool(initialization.get("tiny", False)):
+                raise ValueError(
+                    "initialization checkpoint fixtures require tiny=true"
+                )
+            if family != "student":
+                raise ValueError(
+                    "initialization checkpoint fixtures require family=student"
+                )
+            fixture = dict(source["fixture"])
+            expected = {
+                "seed",
+                "vocab_size",
+                "vision_layers",
+                "language_layers",
+                "language_mlp_width",
+            }
+            if set(fixture) != expected:
+                raise ValueError(
+                    "initialization checkpoint fixture must define seed, "
+                    "vocab_size, vision_layers, language_layers, and "
+                    "language_mlp_width"
+                )
+            normalized = {
+                key: int(fixture[key])
+                for key in sorted(expected)
+            }
+            if (
+                normalized["seed"] < 0
+                or normalized["vocab_size"] < 260
+                or normalized["vision_layers"] <= 0
+                or normalized["language_layers"] <= 0
+                or normalized["language_mlp_width"] <= 0
+            ):
+                raise ValueError(
+                    "initialization checkpoint fixture values are invalid"
+                )
+            output = (
+                artifacts
+                / "initialization_sources"
+                / f"{component}_fixture"
+            )
+            resolved[component] = str(output)
+            fixture_specs[component] = {
+                **normalized,
+                "output": str(output),
+            }
+            fingerprints[f"initialization_{component}_fixture"] = {
+                "component": component,
+                "family": family,
+                "spec": normalized,
+                "sha256": _fingerprint(
+                    {
+                        "component": component,
+                        "family": family,
+                        "spec": normalized,
+                    }
+                ),
+            }
+            continue
+        if not isinstance(source, dict) or not isinstance(
+            source.get("hub"),
+            dict,
+        ):
+            raise ValueError(
+                f"initialization.{component}_source must be a path, hub "
+                "mapping, or tiny fixture mapping"
+            )
+        hub = source["hub"]
+        checkpoint_kwargs: dict[str, Any] = {}
+        if hub.get("allow_patterns") is not None:
+            checkpoint_kwargs["allow_patterns"] = tuple(
+                str(pattern) for pattern in hub["allow_patterns"]
+            )
+        if "tensor_prefixes" in hub:
+            raw_prefixes = hub["tensor_prefixes"]
+            if (
+                not isinstance(raw_prefixes, list)
+                or not raw_prefixes
+                or any(
+                    not isinstance(prefix, str) or not prefix
+                    for prefix in raw_prefixes
+                )
+            ):
+                raise ValueError(
+                    "selective Hub tensor_prefixes must be a non-empty "
+                    "list of non-empty strings"
+                )
+            checkpoint_kwargs["tensor_prefixes"] = tuple(
+                raw_prefixes
+            )
+        if checkpoint_kwargs.get("tensor_prefixes") and hub.get(
+            "allow_patterns"
+        ) is not None:
+            raise ValueError(
+                "selective Hub sources cannot also define allow_patterns"
+            )
+        spec = HubCheckpointSpec(
+            repo_id=str(hub.get("repo_id") or ""),
+            revision=str(hub.get("revision") or ""),
+            family=family,
+            **checkpoint_kwargs,
+        )
+        manifest = (
+            artifacts
+            / "initialization_sources"
+            / f"{component}_checkpoint.json"
+        )
+        resolved[component] = f"@checkpoint:{component}"
+        hub_specs[component] = spec
+        manifests[component] = manifest
+    return (
+        resolved,
+        hub_specs,
+        manifests,
+        fixture_specs,
+        fingerprints,
+    )
+
+
+def _require_mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
+    value = raw.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"experiment.{key} must be a mapping")
+    return value
+
+
+def _validate_wandb_options(
+    section: dict[str, Any],
+    path: str,
+) -> None:
+    for key in (
+        "wandb_project",
+        "wandb_entity",
+        "wandb_run",
+        "wandb_group",
+        "wandb_id",
+    ):
+        value = section.get(key)
+        if value is not None and (
+            not isinstance(value, str) or not value.strip()
+        ):
+            raise ValueError(f"{path}.{key} must be a non-empty string or null")
+    tags = section.get("wandb_tags")
+    if tags is not None and (
+        not isinstance(tags, list)
+        or any(not isinstance(tag, str) or not tag for tag in tags)
+    ):
+        raise ValueError(f"{path}.wandb_tags must be a list of strings")
+
+
+def _synthetic_count(synthetic: dict[str, Any], split: str) -> int:
+    value = synthetic.get(f"{split}_count")
+    return int(synthetic.get("count", 0) if value is None else value)
+
+
+def _validate_spec(raw: dict[str, Any], repo_root: Path) -> tuple[str, Path, Path]:
+    if int(raw.get("schema_version", 0)) != 1:
+        raise ValueError("experiment schema_version must be 1")
+    name = str(raw.get("name") or "")
+    if not _NAME.fullmatch(name):
+        raise ValueError("experiment name must match [A-Za-z0-9][A-Za-z0-9_.-]*")
+    output_root = _resolve_path(repo_root, raw.get("output_root") or f"outputs/{name}")
+    blueprint = _resolve_path(
+        repo_root,
+        raw.get("blueprint") or "configs/sub1b_architecture.yaml",
+    )
+    if not blueprint.is_file():
+        raise ValueError(f"experiment blueprint does not exist: {blueprint}")
+    method_evidence = raw.get("method_evidence") or {}
+    if not isinstance(method_evidence, dict):
+        raise ValueError("experiment.method_evidence must be a mapping")
+    if "enabled" in method_evidence and not isinstance(
+        method_evidence["enabled"],
+        bool,
+    ):
+        raise ValueError("experiment.method_evidence.enabled must be a boolean")
+    if bool(method_evidence.get("enabled", False)):
+        for key, default in (
+            ("catalog", "configs/frontier_method_catalog.jsonl"),
+            ("evidence", "configs/frontier_method_evidence.yaml"),
+        ):
+            path = _resolve_path(repo_root, method_evidence.get(key) or default)
+            if not path.is_file():
+                raise ValueError(
+                    f"experiment.method_evidence.{key} does not exist: {path}"
+                )
+    weight_commonality = raw.get("weight_commonality") or {}
+    if not isinstance(weight_commonality, dict):
+        raise ValueError("experiment.weight_commonality must be a mapping")
+    if "enabled" in weight_commonality and not isinstance(
+        weight_commonality["enabled"],
+        bool,
+    ):
+        raise ValueError(
+            "experiment.weight_commonality.enabled must be a boolean"
+        )
+    if bool(weight_commonality.get("enabled", False)):
+        for key, default in (
+            ("catalog", "configs/small_vlm_architectures.yaml"),
+            (
+                "report",
+                "docs/results/small_vlm_weight_commonality.json",
+            ),
+        ):
+            path = _resolve_path(
+                repo_root,
+                weight_commonality.get(key) or default,
+            )
+            if not path.is_file():
+                raise ValueError(
+                    f"experiment.weight_commonality.{key} does not exist: "
+                    f"{path}"
+                )
+    runtime = raw.get("runtime") or {}
+    if not isinstance(runtime, dict):
+        raise ValueError("experiment.runtime must be a mapping")
+    visual_benchmark = runtime.get("visual_backend_benchmark") or {}
+    if not isinstance(visual_benchmark, dict):
+        raise ValueError("runtime.visual_backend_benchmark must be a mapping")
+    for option in (
+        "enabled",
+        "require_flex",
+        "require_deployment_gate",
+    ):
+        if option in visual_benchmark and not isinstance(
+            visual_benchmark[option], bool
+        ):
+            raise ValueError(
+                f"runtime.visual_backend_benchmark.{option} must be a boolean"
+            )
+    if "wandb_tags" in visual_benchmark and not isinstance(
+        visual_benchmark["wandb_tags"], list
+    ):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.wandb_tags must be a list"
+        )
+    if bool(visual_benchmark.get("enabled", False)):
+        lengths = visual_benchmark.get("sequence_lengths")
+        grids = visual_benchmark.get("patch_grids")
+        if lengths is not None and grids is not None:
+            raise ValueError(
+                "runtime.visual_backend_benchmark must set only one of "
+                "sequence_lengths or patch_grids"
+            )
+        if grids is not None:
+            if (
+                not isinstance(grids, list)
+                or not grids
+                or any(
+                    not isinstance(grid, list)
+                    or len(grid) != 2
+                    or any(
+                        not isinstance(dimension, int)
+                        or isinstance(dimension, bool)
+                        or dimension <= 0
+                        for dimension in grid
+                    )
+                    for grid in grids
+                )
+            ):
+                raise ValueError(
+                    "runtime.visual_backend_benchmark.patch_grids must contain "
+                    "positive [height, width] pairs"
+                )
+            lengths = [height * width for height, width in grids]
+        if (
+            not isinstance(lengths, list)
+            or not lengths
+            or any(
+                not isinstance(length, int)
+                or isinstance(length, bool)
+                or length <= 0
+                for length in lengths
+            )
+        ):
+            raise ValueError(
+                "enabled runtime.visual_backend_benchmark requires positive "
+                "sequence_lengths"
+            )
+        backends = visual_benchmark.get("backends")
+        if (
+            not isinstance(backends, list)
+            or not backends
+            or any(not isinstance(backend, str) for backend in backends)
+            or len(set(backends)) != len(backends)
+            or any(
+                backend
+                not in {
+                    "loop",
+                    "auto",
+                    "flex",
+                    "dense_adaptive",
+                    "dense_fixed_square",
+                }
+                for backend in backends
+            )
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark.backends must be a unique "
+                "list of supported policies"
+            )
+        if "loop" not in backends:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.backends must include loop "
+                "for relative measurements"
+            )
+        if (
+            bool(visual_benchmark.get("require_flex", False))
+            and not {"auto", "flex"}.intersection(backends)
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark.require_flex needs auto or flex"
+            )
+        if any(backend.startswith("dense_") for backend in backends) and (
+            grids is None
+        ):
+            raise ValueError(
+                "runtime.visual_backend_benchmark dense policies require patch_grids"
+            )
+        if visual_benchmark.get("mode", "training") not in {
+            "forward",
+            "training",
+        }:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.mode must be forward or training"
+            )
+        if visual_benchmark.get("precision", "auto") not in {
+            "auto",
+            "float32",
+            "float16",
+            "bfloat16",
+        }:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.precision is unsupported"
+            )
+        if int(visual_benchmark.get("warmup_iterations", 3)) < 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.warmup_iterations must be "
+                "non-negative"
+            )
+        if int(visual_benchmark.get("iterations", 10)) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.iterations must be positive"
+            )
+        if int(visual_benchmark.get("rounds", 3)) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.rounds must be positive"
+            )
+        if int(visual_benchmark.get("seed", 7)) < 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.seed must be non-negative"
+            )
+        parity_atol = visual_benchmark.get("parity_atol")
+        if parity_atol is not None and float(parity_atol) <= 0:
+            raise ValueError(
+                "runtime.visual_backend_benchmark.parity_atol must be positive"
+            )
+    training_benchmark = runtime.get("training_feasibility_benchmark") or {}
+    if not isinstance(training_benchmark, dict):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark must be a mapping"
+        )
+    for option in ("enabled", "require_deployment_gate"):
+        if option in training_benchmark and not isinstance(
+            training_benchmark[option], bool
+        ):
+            raise ValueError(
+                "runtime.training_feasibility_benchmark."
+                f"{option} must be a boolean"
+            )
+    if "wandb_tags" in training_benchmark and not isinstance(
+        training_benchmark["wandb_tags"], list
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.wandb_tags must be a list"
+        )
+    if bool(training_benchmark.get("enabled", False)):
+        patch_grid = training_benchmark.get("patch_grid")
+        if (
+            not isinstance(patch_grid, list)
+            or len(patch_grid) != 2
+            or any(
+                not isinstance(dimension, int)
+                or isinstance(dimension, bool)
+                or dimension <= 0
+                for dimension in patch_grid
+            )
+        ):
+            raise ValueError(
+                "enabled runtime.training_feasibility_benchmark requires "
+                "a positive [height, width] patch_grid"
+            )
+        for key in ("text_tokens", "micro_batch_size", "measured_steps"):
+            if int(training_benchmark.get(key, 0)) <= 0:
+                raise ValueError(
+                    "runtime.training_feasibility_benchmark."
+                    f"{key} must be positive"
+                )
+        if int(training_benchmark.get("warmup_steps", 1)) < 0:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark.warmup_steps "
+                "must be non-negative"
+            )
+        if training_benchmark.get(
+            "packed_attention_backend", "auto"
+        ) not in {"loop", "auto", "flex"}:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark."
+                "packed_attention_backend is unsupported"
+            )
+        if training_benchmark.get("precision", "auto") not in {
+            "auto",
+            "float32",
+            "float16",
+            "bfloat16",
+        }:
+            raise ValueError(
+                "runtime.training_feasibility_benchmark.precision is unsupported"
+            )
+    synthetic = _require_mapping(raw, "synthetic")
+    if not bool(synthetic.get("enabled", True)):
+        raise ValueError("synthetic.enabled=false is not supported by the end-to-end schema")
+    train_count = _synthetic_count(synthetic, "train")
+    heldout_count = _synthetic_count(synthetic, "heldout")
+    validation_count_raw = synthetic.get("validation_count")
+    validation_count = (
+        None if validation_count_raw is None else int(validation_count_raw)
+    )
+    difficulty = int(synthetic.get("difficulty_level", 0))
+    train_seed = int(synthetic.get("train_seed", 0))
+    heldout_seed = int(synthetic.get("heldout_seed", 0))
+    validation_seed_raw = synthetic.get("validation_seed")
+    validation_seed = (
+        None if validation_seed_raw is None else int(validation_seed_raw)
+    )
+    cases = synthetic.get("cases")
+    if min(train_count, heldout_count) <= 0 or not 1 <= difficulty <= 5:
+        raise ValueError(
+            "synthetic train/heldout counts must be positive and "
+            "difficulty_level within [1, 5]"
+        )
+    if train_seed == heldout_seed:
+        raise ValueError("synthetic train_seed and heldout_seed must differ")
+    if validation_count is not None:
+        if validation_count <= 0 or validation_seed is None:
+            raise ValueError(
+                "synthetic validation_count requires a positive count and "
+                "validation_seed"
+            )
+        if len({train_seed, validation_seed, heldout_seed}) != 3:
+            raise ValueError(
+                "synthetic train, validation, and heldout seeds must differ"
+            )
+    elif validation_seed is not None:
+        raise ValueError(
+            "synthetic validation_seed requires validation_count"
+        )
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("synthetic.cases must be a non-empty list")
+    synth_config = _resolve_path(
+        repo_root,
+        synthetic.get("config") or "configs/synth_data.yaml",
+    )
+    if not synth_config.is_file():
+        raise ValueError(f"synthetic config does not exist: {synth_config}")
+    training_policy_plan = synthetic.get("training_policy_plan")
+    if training_policy_plan:
+        plan_path = _resolve_path(repo_root, training_policy_plan)
+        if not plan_path.is_file():
+            raise ValueError(
+                f"synthetic training policy plan does not exist: {plan_path}"
+            )
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        if not isinstance(plan, dict):
+            raise ValueError("synthetic training policy plan must be a mapping")
+        validate_generation_plan(
+            plan,
+            require_training_authorized=True,
+        )
+    adaptation = synthetic.get("adaptation_policy") or {}
+    if not isinstance(adaptation, dict):
+        raise ValueError("synthetic.adaptation_policy must be a mapping")
+    if bool(adaptation.get("enabled", False)):
+        if validation_count is None:
+            raise ValueError(
+                "enabled synthetic adaptation policy requires validation_count"
+            )
+        policy_path = _resolve_path(
+            repo_root,
+            adaptation.get("config")
+            or "configs/sub1b_synthesis_policy.yaml",
+        )
+        if not policy_path.is_file():
+            raise ValueError(
+                f"synthetic adaptation policy config does not exist: {policy_path}"
+            )
+        policy_config = load_synthesis_policy_config(policy_path)
+        if bool(policy_config.get("require_matched_baseline", False)):
+            evaluation_config = raw.get("evaluation")
+            has_matched_baseline = isinstance(
+                evaluation_config,
+                dict,
+            ) and bool(
+                evaluation_config.get("baseline_checkpoint_stage")
+                or evaluation_config.get("baseline_evaluation")
+            )
+            if not has_matched_baseline:
+                raise ValueError(
+                    "matched-baseline synthesis adaptation requires "
+                    "evaluation.baseline_checkpoint_stage or "
+                    "evaluation.baseline_evaluation"
+                )
+        budget = adaptation.get("budget", policy_config["budget"])
+        seed = adaptation.get("seed", policy_config["seed"])
+        if int(budget) <= 0 or int(seed) < 0:
+            raise ValueError(
+                "synthetic adaptation policy budget must be positive and "
+                "seed non-negative"
+            )
+    data = _require_mapping(raw, "data")
+    if not isinstance(data.get("components"), list) or not data["components"]:
+        raise ValueError("data.components must be a non-empty list")
+    sequence_teacher = raw.get("sequence_teacher") or {}
+    if not isinstance(sequence_teacher, dict):
+        raise ValueError("experiment.sequence_teacher must be a mapping")
+    if bool(sequence_teacher.get("enabled", False)):
+        model = str(sequence_teacher.get("model") or "").strip()
+        if not model:
+            raise ValueError("enabled sequence_teacher requires a model")
+        from ..models import list_models
+
+        if model not in list_models():
+            raise ValueError(
+                f"sequence_teacher.model is not registered: {model!r}"
+            )
+        revision = sequence_teacher.get("revision")
+        if model != "dummy-echo" and not _HUB_REVISION.fullmatch(
+            str(revision or "")
+        ):
+            raise ValueError(
+                "non-dummy sequence_teacher requires a pinned 40-character "
+                "Hub revision"
+            )
+        for field in ("min_score", "min_acceptance_rate", "target_probability"):
+            value = float(sequence_teacher.get(field, -1.0))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"sequence_teacher.{field} must be within [0, 1]")
+        if sequence_teacher.get("target_format", "answer") not in {"answer", "response"}:
+            raise ValueError("sequence_teacher.target_format must be answer or response")
+        max_requests = int(sequence_teacher.get("max_requests", 0))
+        accepted_target_count = sequence_teacher.get("accepted_target_count")
+        selection_seed = int(sequence_teacher.get("selection_seed", -1))
+        if max_requests <= 0:
+            raise ValueError("sequence_teacher.max_requests must be positive")
+        if selection_seed < 0:
+            raise ValueError(
+                "sequence_teacher.selection_seed must be non-negative"
+            )
+        if accepted_target_count is not None:
+            accepted_target_count = int(accepted_target_count)
+            guaranteed_eligible = int(
+                max_requests
+                * float(sequence_teacher.get("min_acceptance_rate", 0.0))
+            )
+            if (
+                accepted_target_count <= 0
+                or accepted_target_count > guaranteed_eligible
+            ):
+                raise ValueError(
+                    "sequence_teacher.accepted_target_count must be positive "
+                    "and no larger than the acceptance-rate floor"
+                )
+        if int(sequence_teacher.get("max_new_tokens", 0)) <= 0:
+            raise ValueError(
+                "sequence_teacher.max_new_tokens must be positive"
+            )
+        if float(sequence_teacher.get("temperature", 0.0)) < 0:
+            raise ValueError(
+                "sequence_teacher.temperature must be non-negative"
+            )
+    initialization = raw.get("initialization") or {}
+    if not isinstance(initialization, dict):
+        raise ValueError("experiment.initialization must be a mapping")
+    if int(initialization.get("seed", 0)) < 0:
+        raise ValueError("initialization.seed must be non-negative")
+    continuation = raw.get("continuation") or {"enabled": False}
+    if not isinstance(continuation, dict):
+        raise ValueError("experiment.continuation must be a mapping")
+    if "enabled" in continuation and not isinstance(
+        continuation["enabled"],
+        bool,
+    ):
+        raise ValueError("continuation.enabled must be a boolean")
+    if bool(continuation.get("enabled", False)):
+        if not synthetic.get("training_policy_plan"):
+            raise ValueError(
+                "enabled continuation requires synthetic.training_policy_plan"
+            )
+        if not bool(adaptation.get("enabled", False)):
+            raise ValueError(
+                "enabled continuation requires synthetic adaptation_policy "
+                "for the next round"
+            )
+        if _resolve_path(
+            repo_root,
+            continuation.get("parent_root") or "",
+        ) == output_root:
+            raise ValueError(
+                "continuation parent_root and output_root must differ"
+            )
+    pretraining = _require_mapping(raw, "pretraining")
+    _validate_wandb_options(pretraining, "pretraining")
+    posttraining = _require_mapping(raw, "posttraining")
+    sft = posttraining.get("sft")
+    preference = posttraining.get("preference")
+    rlvr = posttraining.get("rlvr")
+    if not isinstance(sft, dict):
+        raise ValueError("experiment.posttraining.sft must be a mapping")
+    if not isinstance(preference, dict):
+        raise ValueError("experiment.posttraining.preference must be a mapping")
+    if not isinstance(rlvr, dict):
+        raise ValueError("experiment.posttraining.rlvr must be a mapping")
+    _validate_wandb_options(sft, "posttraining.sft")
+    _validate_wandb_options(preference, "posttraining.preference")
+    _validate_wandb_options(rlvr, "posttraining.rlvr")
+    if "enabled" in sft and not isinstance(sft["enabled"], bool):
+        raise ValueError("posttraining.sft.enabled must be a boolean")
+    if not bool(sft.get("enabled", True)):
+        raise ValueError("posttraining.sft.enabled=false is not supported")
+    if sft.get("target_mode", "evidence_linked") not in {
+        "answer_only",
+        "free_rationale",
+        "evidence_linked",
+    }:
+        raise ValueError("posttraining.sft.target_mode is invalid")
+    if "enabled" in preference and not isinstance(preference["enabled"], bool):
+        raise ValueError("posttraining.preference.enabled must be a boolean")
+    preference_enabled = bool(preference.get("enabled", False))
+    if not preference_enabled:
+        ignored = sorted(
+            key for key in ("max_steps",) if preference.get(key) is not None
+        )
+        if ignored:
+            raise ValueError(
+                "disabled preference cannot set stage-specific overrides: "
+                f"{ignored}"
+            )
+    if "enabled" in rlvr and not isinstance(rlvr["enabled"], bool):
+        raise ValueError("posttraining.rlvr.enabled must be a boolean")
+    rlvr_enabled = bool(rlvr.get("enabled", True))
+    if not rlvr_enabled:
+        ignored = sorted(
+            key
+            for key in (
+                "max_steps",
+                "replay_every_steps",
+                "replay_loss_coefficient",
+                "replay_samples",
+            )
+            if rlvr.get(key) is not None
+        )
+        if ignored:
+            raise ValueError(
+                "disabled RLVR cannot set stage-specific overrides: "
+                f"{ignored}"
+            )
+    evaluation = _require_mapping(raw, "evaluation")
+    _validate_wandb_options(evaluation, "evaluation")
+    baseline_checkpoint_stage = evaluation.get("baseline_checkpoint_stage")
+    if baseline_checkpoint_stage is not None:
+        if baseline_checkpoint_stage not in {
+            "initial",
+            "pretrain",
+            "sft",
+            "preference",
+            "rlvr",
+            "inherited",
+        }:
+            raise ValueError(
+                "evaluation.baseline_checkpoint_stage must be one of "
+                "initial, pretrain, sft, preference, rlvr, or inherited"
+            )
+        if evaluation.get("baseline_evaluation"):
+            raise ValueError(
+                "evaluation.baseline_checkpoint_stage and "
+                "evaluation.baseline_evaluation are mutually exclusive"
+            )
+        if bool(continuation.get("enabled", False)) and (
+            baseline_checkpoint_stage in {"initial", "pretrain"}
+        ):
+            raise ValueError(
+                "continuation cannot evaluate an internal initial or "
+                "pretrain baseline because those stages are inherited"
+            )
+        if (
+            baseline_checkpoint_stage == "inherited"
+            and not bool(continuation.get("enabled", False))
+        ):
+            raise ValueError(
+                "evaluation inherited baseline requires continuation"
+            )
+        if baseline_checkpoint_stage == "preference" and not preference_enabled:
+            raise ValueError(
+                "evaluation baseline requests the disabled preference stage"
+            )
+        if baseline_checkpoint_stage == "rlvr" and not rlvr_enabled:
+            raise ValueError(
+                "evaluation baseline requests the disabled RLVR stage"
+            )
+        final_checkpoint_stage = (
+            "rlvr"
+            if rlvr_enabled
+            else "preference"
+            if preference_enabled
+            else "sft"
+        )
+        if (
+            baseline_checkpoint_stage != "inherited"
+            and baseline_checkpoint_stage == final_checkpoint_stage
+        ):
+            raise ValueError(
+                "evaluation baseline must precede the final checkpoint stage"
+            )
+    if int(evaluation.get("max_new_tokens", 0)) <= 0:
+        raise ValueError("evaluation.max_new_tokens must be positive")
+    if evaluation.get("sample_selection", "random") not in {
+        "random",
+        "answer_type_round_robin",
+    }:
+        raise ValueError("evaluation.sample_selection is unsupported")
+    for key, default, minimum in (
+        ("repetition_guard_min_tokens", 24, 1),
+        ("repetition_guard_max_period", 16, 1),
+        ("repetition_guard_repetitions", 3, 2),
+    ):
+        value = evaluation.get(key, default)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < minimum
+        ):
+            raise ValueError(
+                f"evaluation.{key} must be an integer at least {minimum}"
+            )
+    validate_generation_token_budget_policy(
+        base_tokens=evaluation["max_new_tokens"],
+        hard_cap=evaluation.get(
+            "max_new_tokens_hard_cap",
+            evaluation["max_new_tokens"],
+        ),
+        by_answer_type=evaluation.get(
+            "max_new_tokens_by_answer_type",
+            {},
+        ),
+    )
+    generation_budget_audit = evaluation.get("generation_budget_audit") or {}
+    if not isinstance(generation_budget_audit, dict):
+        raise ValueError(
+            "evaluation.generation_budget_audit must be a mapping"
+        )
+    if "enabled" in generation_budget_audit and not isinstance(
+        generation_budget_audit["enabled"],
+        bool,
+    ):
+        raise ValueError(
+            "evaluation.generation_budget_audit.enabled must be a boolean"
+        )
+    if generation_budget_audit.get(
+        "target_mode",
+        "evidence_linked",
+    ) not in {"answer_only", "free_rationale", "evidence_linked"}:
+        raise ValueError(
+            "evaluation.generation_budget_audit.target_mode is unsupported"
+        )
+    minimum_coverage = float(
+        generation_budget_audit.get("minimum_coverage", 1.0)
+    )
+    if not 0.0 < minimum_coverage <= 1.0:
+        raise ValueError(
+            "evaluation.generation_budget_audit.minimum_coverage must be "
+            "within (0, 1]"
+        )
+    for key, default in (
+        ("recommendation_multiple", 32),
+        ("max_overflow_examples", 20),
+    ):
+        value = generation_budget_audit.get(key, default)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+        ):
+            raise ValueError(
+                "evaluation.generation_budget_audit."
+                f"{key} must be a positive integer"
+            )
+    if "require_policy_consistency" in generation_budget_audit and not isinstance(
+        generation_budget_audit["require_policy_consistency"],
+        bool,
+    ):
+        raise ValueError(
+            "evaluation.generation_budget_audit."
+            "require_policy_consistency must be a boolean"
+        )
+    if not isinstance(evaluation.get("use_kv_cache"), bool):
+        raise ValueError("evaluation.use_kv_cache must be a boolean")
+    if evaluation.get("precision", "auto") not in {
+        "auto",
+        "float32",
+        "float16",
+        "bfloat16",
+    }:
+        raise ValueError("evaluation.precision is unsupported")
+    calibration = evaluation.get("temperature_calibration")
+    if not isinstance(calibration, dict):
+        raise ValueError(
+            "evaluation.temperature_calibration must be a mapping"
+        )
+    if not isinstance(calibration.get("enabled"), bool):
+        raise ValueError(
+            "evaluation.temperature_calibration.enabled must be a boolean"
+        )
+    allowed_calibration_splits = {"train", "heldout"}
+    if validation_count is not None:
+        allowed_calibration_splits.add("validation")
+    if calibration.get("source_split") not in allowed_calibration_splits:
+        raise ValueError(
+            "evaluation.temperature_calibration.source_split must be an "
+            "available train, validation, or heldout split"
+        )
+    fraction = float(calibration.get("fraction", 0.0))
+    if not 0.0 < fraction < 1.0:
+        raise ValueError(
+            "evaluation.temperature_calibration.fraction must be within (0, 1)"
+        )
+    if int(calibration.get("min_samples", 0)) <= 0:
+        raise ValueError(
+            "evaluation.temperature_calibration.min_samples must be positive"
+        )
+    correct_threshold = float(
+        calibration.get("correct_threshold", -1.0)
+    )
+    if not 0.0 <= correct_threshold <= 1.0:
+        raise ValueError(
+            "evaluation.temperature_calibration.correct_threshold must be within [0, 1]"
+        )
+    minimum_temperature = float(
+        calibration.get("min_temperature", 0.0)
+    )
+    maximum_temperature = float(
+        calibration.get("max_temperature", 0.0)
+    )
+    if not 0.0 < minimum_temperature < maximum_temperature:
+        raise ValueError(
+            "evaluation.temperature_calibration temperature bounds must be positive and ordered"
+        )
+    if int(calibration.get("seed", -1)) < 0:
+        raise ValueError(
+            "evaluation.temperature_calibration.seed must be non-negative"
+        )
+    return name, output_root, blueprint
+
+
+def _component_specs(
+    raw: dict[str, Any],
+    repo_root: Path,
+    synthetic_udd: Path,
+    *,
+    synthetic_enabled: bool,
+    acquired_paths: dict[str, Path],
+) -> tuple[MixtureComponent, ...]:
+    components = []
+    for item in raw["data"]["components"]:
+        if not isinstance(item, dict):
+            raise ValueError("every data component must be a mapping")
+        name = str(item.get("name") or "")
+        configured_path = str(item.get("path") or "")
+        hub = item.get("hub")
+        if configured_path and hub:
+            raise ValueError(f"data component {name!r} cannot set both path and hub")
+        if hub:
+            if name not in acquired_paths:
+                raise ValueError(f"data component {name!r} has no compiled Hub acquisition")
+            path = acquired_paths[name]
+        elif configured_path == "@synthetic":
+            if not synthetic_enabled:
+                raise ValueError("@synthetic requires synthetic.enabled=true")
+            path = synthetic_udd
+        else:
+            path = _resolve_path(repo_root, configured_path)
+            if not path.is_dir():
+                raise ValueError(f"data component path does not exist: {path}")
+        components.append(
+            MixtureComponent(
+                name=name,
+                path=str(path),
+                weight=float(item.get("weight", 0.0)),
+                fold=(str(item["fold"]) if item.get("fold") is not None else None),
+            )
+        )
+    components = validate_components(components)
+    supplied_total = sum(float(item.get("weight", 0.0)) for item in raw["data"]["components"])
+    if abs(supplied_total - 1.0) > 1e-6:
+        raise ValueError(f"data component weights sum to {supplied_total:.6f}, expected 1.0")
+    return components
+
+
+def _resolved_blueprint(
+    blueprint_path: Path,
+    components: Iterable[MixtureComponent],
+    *,
+    tiny: bool,
+    tiny_vocab_size: int,
+    sequence_target_probability: float,
+    sequence_target_min_score: float,
+    sequence_target_seed: int,
+) -> dict[str, Any]:
+    blueprint = copy.deepcopy(load_blueprint(blueprint_path))
+    if tiny:
+        if tiny_vocab_size < 260:
+            raise ValueError("tiny tokenizer vocab_size must be at least 260")
+        tiny_config = asdict(StudentConfig.tiny(vocab_size=tiny_vocab_size))
+        blueprint["student"] = {
+            "parameter_budget": "<1B",
+            **tiny_config,
+        }
+        blueprint["tokenizer"]["vocab_size"] = tiny_config["language"]["vocab_size"]
+        pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+        pipeline["max_text_tokens"] = 768
+        pipeline["max_image_long_side"] = tiny_config["vision"]["image_size"]
+        pipeline["rotation_probability"] = 0.0
+        distillation = blueprint["training"]["pretraining"]["distillation"]
+        distillation["logit_top_k"] = min(
+            int(distillation["logit_top_k"]),
+            tiny_config["language"]["vocab_size"] - 1,
+        )
+        distillation["vision_layer_pairs"] = []
+        distillation["language_layer_pairs"] = []
+        optimizer_sections = [
+            blueprint["training"]["pretraining"]["optimizer"],
+            blueprint["training"]["posttraining"]["sft"]["optimizer"],
+            blueprint["training"]["posttraining"]["preference"]["optimizer"],
+            blueprint["training"]["posttraining"]["rlvr"]["optimizer"],
+        ]
+        for optimizer in optimizer_sections:
+            optimizer["name"] = "adamw"
+        blueprint["name"] = f"{blueprint['name']}-tiny"
+        blueprint["budget"]["target_parameters"] = estimate_parameters(blueprint)["total"]
+    weights = {component.name: component.weight for component in components}
+    pipeline = blueprint["training"]["pretraining"]["input_pipeline"]
+    pipeline["balance_by"] = "component"
+    pipeline["group_weights"] = weights
+    blueprint["training"]["pretraining"]["data_mix"] = weights
+    sequence_targets = blueprint["training"]["pretraining"]["distillation"][
+        "sequence_targets"
+    ]
+    sequence_targets["probability"] = sequence_target_probability
+    sequence_targets["min_score"] = sequence_target_min_score
+    sequence_targets["seed"] = sequence_target_seed
+    _, errors = validate_blueprint(blueprint)
+    if errors:
+        raise ValueError("resolved blueprint is invalid:\n" + "\n".join(errors))
+    return blueprint
+
+
+def _add_optional(command: list[str], flag: str, value: Any) -> None:
+    if value is not None:
+        command.extend([flag, str(value)])
+
+
+def _add_wandb_options(
+    command: list[str],
+    section: dict[str, Any],
+) -> None:
+    for key, flag in (
+        ("wandb_project", "--wandb-project"),
+        ("wandb_entity", "--wandb-entity"),
+        ("wandb_run", "--wandb-run"),
+        ("wandb_group", "--wandb-group"),
+        ("wandb_id", "--wandb-id"),
+    ):
+        _add_optional(command, flag, section.get(key))
+    tags = section.get("wandb_tags") or []
+    if tags:
+        command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+
+
+def _with_default_wandb_ids(
+    stages: list[ExperimentStage],
+    experiment_fingerprint: str,
+) -> list[ExperimentStage]:
+    tracked_stages = {
+        "pretrain",
+        "sft",
+        "preference",
+        "rlvr",
+        "evaluate_baseline",
+        "evaluate",
+    }
+    out = []
+    for stage in stages:
+        command = list(stage.command)
+        if (
+            stage.name in tracked_stages
+            and "--wandb-project" in command
+            and "--wandb-id" not in command
+        ):
+            run_id = hashlib.sha256(
+                f"{experiment_fingerprint}:{stage.name}".encode("utf-8")
+            ).hexdigest()[:32]
+            command.extend(["--wandb-id", run_id])
+            stage = replace(stage, command=tuple(command))
+        out.append(stage)
+    return out
+
+
+def build_experiment_plan(
+    config_path: str | Path,
+    *,
+    repo_root: str | Path,
+    python: str,
+) -> ExperimentPlan:
+    """Load, validate, and compile one experiment YAML into an ordered stage DAG."""
+
+    repo_root = Path(repo_root).resolve()
+    config_path = _resolve_path(repo_root, config_path)
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("experiment root must be a mapping")
+    experiment_name, output_root, blueprint_path = _validate_spec(raw, repo_root)
+    method_evidence_spec = raw.get("method_evidence") or {}
+    method_evidence_enabled = bool(
+        method_evidence_spec.get("enabled", False)
+    )
+    method_catalog_path = _resolve_path(
+        repo_root,
+        method_evidence_spec.get("catalog")
+        or "configs/frontier_method_catalog.jsonl",
+    )
+    method_evidence_path = _resolve_path(
+        repo_root,
+        method_evidence_spec.get("evidence")
+        or "configs/frontier_method_evidence.yaml",
+    )
+    weight_commonality_spec = raw.get("weight_commonality") or {}
+    weight_commonality_enabled = bool(
+        weight_commonality_spec.get("enabled", False)
+    )
+    weight_commonality_catalog_path = _resolve_path(
+        repo_root,
+        weight_commonality_spec.get("catalog")
+        or "configs/small_vlm_architectures.yaml",
+    )
+    weight_commonality_report_path = _resolve_path(
+        repo_root,
+        weight_commonality_spec.get("report")
+        or "docs/results/small_vlm_weight_commonality.json",
+    )
+    continuation_spec = raw.get("continuation") or {"enabled": False}
+    continuation_enabled = bool(continuation_spec.get("enabled", False))
+    runtime = raw.get("runtime") or {}
+    device = str(runtime.get("device") or "auto")
+    visual_benchmark = runtime.get("visual_backend_benchmark") or {}
+    visual_benchmark_enabled = bool(visual_benchmark.get("enabled", False))
+    training_benchmark = runtime.get("training_feasibility_benchmark") or {}
+    training_benchmark_enabled = bool(
+        training_benchmark.get("enabled", False)
+    )
+    synthetic = raw["synthetic"]
+    synth_config_path = _resolve_path(
+        repo_root,
+        synthetic.get("config") or "configs/synth_data.yaml",
+    )
+    input_fingerprints: dict[str, Any] = {
+        "synthetic_config": _file_fingerprint(synth_config_path),
+    }
+    if method_evidence_enabled:
+        input_fingerprints["frontier_method_catalog"] = _file_fingerprint(
+            method_catalog_path
+        )
+        input_fingerprints["frontier_method_evidence"] = _file_fingerprint(
+            method_evidence_path
+        )
+        method_evidence_contract = audit_adopted_method_evidence(
+            load_method_catalog(method_catalog_path),
+            yaml.safe_load(method_evidence_path.read_text(encoding="utf-8")),
+            repo_root=repo_root,
+        )
+        if method_evidence_contract["status"] != "pass":
+            raise ValueError(
+                "frontier method evidence failed:\n- "
+                + "\n- ".join(method_evidence_contract["errors"])
+            )
+        input_fingerprints["frontier_method_evidence_contract"] = (
+            method_evidence_contract
+        )
+    if weight_commonality_enabled:
+        from .architecture_commonality import load_architecture_catalog
+
+        input_fingerprints["small_vlm_architecture_catalog"] = (
+            _file_fingerprint(weight_commonality_catalog_path)
+        )
+        input_fingerprints["small_vlm_weight_commonality"] = (
+            _file_fingerprint(weight_commonality_report_path)
+        )
+        weight_commonality_contract = validate_weight_commonality_report(
+            load_weight_commonality_report(
+                weight_commonality_report_path
+            ),
+            load_architecture_catalog(weight_commonality_catalog_path),
+        )
+        if weight_commonality_contract["status"] != "pass":
+            raise ValueError(
+                "small-VLM weight commonality failed:\n- "
+                + "\n- ".join(weight_commonality_contract["errors"])
+            )
+        input_fingerprints["small_vlm_weight_commonality_contract"] = (
+            weight_commonality_contract
+        )
+    training_policy_plan_path = (
+        _resolve_path(repo_root, synthetic["training_policy_plan"])
+        if synthetic.get("training_policy_plan")
+        else None
+    )
+    if training_policy_plan_path is not None:
+        input_fingerprints["synthetic_training_policy_plan"] = (
+            _file_fingerprint(training_policy_plan_path)
+        )
+    adaptation_spec = synthetic.get("adaptation_policy") or {}
+    adaptation_enabled = bool(adaptation_spec.get("enabled", False))
+    adaptation_config_path = (
+        _resolve_path(
+            repo_root,
+            adaptation_spec.get("config")
+            or "configs/sub1b_synthesis_policy.yaml",
+        )
+        if adaptation_enabled
+        else None
+    )
+    adaptation_policy_config = (
+        load_synthesis_policy_config(adaptation_config_path)
+        if adaptation_config_path is not None
+        else None
+    )
+    if adaptation_config_path is not None:
+        input_fingerprints["synthetic_adaptation_policy"] = (
+            _file_fingerprint(adaptation_config_path)
+        )
+    posttraining_spec = raw.get("posttraining") or {}
+    preference_spec = posttraining_spec.get("preference") or {}
+    preference_enabled = bool(preference_spec.get("enabled", False))
+    rlvr_spec = posttraining_spec.get("rlvr") or {}
+    rlvr_enabled = bool(rlvr_spec.get("enabled", True))
+    configured_replay = (
+        rlvr_spec.get("replay_samples") if rlvr_enabled else None
+    )
+    if configured_replay:
+        input_fingerprints["rlvr_replay_samples"] = _file_fingerprint(
+            _resolve_path(repo_root, configured_replay)
+        )
+    evaluation_spec = raw.get("evaluation") or {}
+    for key in ("baseline_evaluation", "monolingual_control_evaluation"):
+        if evaluation_spec.get(key):
+            input_fingerprints[key] = _evaluation_fingerprint(
+                _resolve_path(repo_root, evaluation_spec[key])
+            )
+    synthetic_enabled = bool(synthetic.get("enabled", True))
+    validation_enabled = synthetic.get("validation_count") is not None
+    artifacts = output_root / "artifacts"
+    train_cases = artifacts / "synthetic" / "train"
+    validation_cases = artifacts / "synthetic" / "validation"
+    heldout_cases = artifacts / "synthetic" / "heldout"
+    synthetic_udd_root = artifacts / "data" / "synthetic_train"
+    synthetic_udd = synthetic_udd_root / "hf"
+    validation_udd_root = artifacts / "data" / "synthetic_validation"
+    validation_udd = validation_udd_root / "hf"
+    mixed_data = artifacts / "data" / "mixture"
+    sample_dir = artifacts / "samples"
+    train_samples = sample_dir / "train.jsonl"
+    validation_samples = sample_dir / "validation.jsonl"
+    heldout_samples = sample_dir / "heldout.jsonl"
+    tokenizer_dir = artifacts / "tokenizer"
+    initial_dir = artifacts / "initial"
+    pretrain_dir = artifacts / "pretrain"
+    sft_dir = artifacts / "sft"
+    preference_dir = artifacts / "preference"
+    rlvr_dir = artifacts / "rlvr"
+    baseline_eval_dir = artifacts / "evaluation_baseline"
+    eval_dir = artifacts / "evaluation"
+    next_synthesis_plan = artifacts / "synthetic" / "next_train_plan.json"
+    continuation_dir = artifacts / "continuation"
+    continuation_manifest = continuation_dir / "manifest.json"
+    curriculum_samples = continuation_dir / "train_with_replay.jsonl"
+    replay_memory = continuation_dir / "replay_memory.jsonl"
+    curriculum_samples_manifest = (
+        continuation_dir / "train_with_replay.manifest.json"
+    )
+    leakage_report = artifacts / "data" / "split_leakage.json"
+    method_evidence_report = artifacts / "data" / "method_evidence.json"
+    weight_commonality_audit = (
+        artifacts / "data" / "weight_commonality_audit.json"
+    )
+    generation_budget_report = (
+        artifacts / "data" / "generation_budget_audit.json"
+    )
+    resolved_blueprint_path = output_root / "resolved_blueprint.yaml"
+    component_root = artifacts / "data" / "components"
+    acquired_paths: dict[str, Path] = {}
+    hub_specs: dict[str, HubComponentSpec] = {}
+    for item in raw["data"]["components"]:
+        hub = item.get("hub") if isinstance(item, dict) else None
+        if not hub:
+            continue
+        if not isinstance(hub, dict):
+            raise ValueError("data component hub must be a mapping")
+        name = str(item.get("name") or "")
+        spec = HubComponentSpec(
+            repo_id=str(hub.get("repo_id") or ""),
+            revision=str(hub.get("revision") or ""),
+            split=str(hub.get("split") or "train"),
+            config_name=(
+                str(hub["config_name"]) if hub.get("config_name") is not None else None
+            ),
+            fold=(str(hub["fold"]) if hub.get("fold") is not None else None),
+            sources=tuple(str(value) for value in (hub.get("sources") or [])),
+            tasks=tuple(str(value) for value in (hub.get("tasks") or [])),
+            languages=tuple(str(value) for value in (hub.get("languages") or [])),
+            max_rows=(int(hub["max_rows"]) if hub.get("max_rows") is not None else None),
+            seed=int(hub.get("seed", 7)),
+            decode_checks=int(hub.get("decode_checks", 16)),
+            sampling_strategy=str(
+                hub.get("sampling_strategy", "global_hash")
+            ),
+            min_rows_per_task=int(hub.get("min_rows_per_task", 0)),
+            coverage_languages=tuple(
+                str(value)
+                for value in (hub.get("coverage_languages") or [])
+            ),
+            min_rows_per_language=int(
+                hub.get("min_rows_per_language", 0)
+            ),
+        )
+        hub_specs[name] = spec
+        acquired_paths[name] = component_root / name
+    components = _component_specs(
+        raw,
+        repo_root,
+        synthetic_udd,
+        synthetic_enabled=synthetic_enabled,
+        acquired_paths=acquired_paths,
+    )
+    initialization = raw.get("initialization") or {}
+    (
+        initialization_sources,
+        checkpoint_specs,
+        checkpoint_manifests,
+        checkpoint_fixture_specs,
+        checkpoint_fingerprints,
+    ) = _checkpoint_sources(
+        initialization,
+        repo_root,
+        artifacts,
+    )
+    input_fingerprints.update(checkpoint_fingerprints)
+    tokenizer = raw.get("tokenizer") or {}
+    sequence_teacher = raw.get("sequence_teacher") or {}
+    sequence_teacher_enabled = bool(sequence_teacher.get("enabled", False))
+    if sequence_teacher.get("predictions"):
+        predictions_input = _resolve_path(repo_root, sequence_teacher["predictions"])
+        input_fingerprints["sequence_teacher_predictions"] = _file_fingerprint(
+            predictions_input
+        )
+    token_map = initialization.get("token_map")
+    if token_map:
+        input_fingerprints["initialization_token_map"] = _file_fingerprint(
+            _resolve_path(repo_root, token_map)
+        )
+    blueprint = _resolved_blueprint(
+        blueprint_path,
+        components,
+        tiny=bool(initialization.get("tiny", False)),
+        tiny_vocab_size=int(tokenizer.get("vocab_size") or 512),
+        sequence_target_probability=(
+            float(sequence_teacher.get("target_probability", 0.0))
+            if sequence_teacher_enabled
+            else 0.0
+        ),
+        sequence_target_min_score=float(sequence_teacher.get("min_score", 0.8)),
+        sequence_target_seed=int(sequence_teacher.get("seed", 7)),
+    )
+    continuation_contract = (
+        resolve_continuation_contract(
+            continuation_spec,
+            repo_root=repo_root,
+            blueprint=blueprint,
+        )
+        if continuation_enabled
+        else None
+    )
+    if continuation_contract is not None:
+        if (
+            training_policy_plan_path is None
+            or training_policy_plan_path.resolve()
+            != Path(
+                continuation_contract.training_policy_plan
+            ).resolve()
+        ):
+            raise ValueError(
+                "continuation training policy plan must be the exact parent "
+                "next_train_plan.json"
+            )
+        input_fingerprints["continuation_contract"] = (
+            continuation_contract.to_dict()
+        )
+        for control_name in (
+            "experiment_plan.json",
+            "experiment_spec.json",
+            "run_summary.json",
+        ):
+            input_fingerprints[f"continuation_parent_{control_name}"] = (
+                _file_fingerprint(
+                    Path(continuation_contract.parent_root) / control_name
+                )
+            )
+    visual_benchmark_lengths = (
+        [
+            height * width
+            for height, width in visual_benchmark.get("patch_grids", [])
+        ]
+        or visual_benchmark.get("sequence_lengths", [])
+    )
+    if visual_benchmark_enabled and max(visual_benchmark_lengths) > int(
+        blueprint["student"]["vision"]["max_position_tokens"]
+    ):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.sequence_lengths exceed the "
+            "resolved visual position grid"
+        )
+    visual_position_side = math.isqrt(
+        int(blueprint["student"]["vision"]["max_position_tokens"])
+    )
+    if visual_benchmark_enabled and any(
+        height > visual_position_side or width > visual_position_side
+        for height, width in visual_benchmark.get("patch_grids", [])
+    ):
+        raise ValueError(
+            "runtime.visual_backend_benchmark.patch_grids exceed the "
+            "resolved visual position grid"
+        )
+    training_grid = training_benchmark.get("patch_grid") or []
+    if training_benchmark_enabled and (
+        training_grid[0] > visual_position_side
+        or training_grid[1] > visual_position_side
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.patch_grid exceeds "
+            "the resolved visual position grid"
+        )
+    if training_benchmark_enabled and int(
+        training_benchmark["text_tokens"]
+    ) > int(
+        blueprint["training"]["pretraining"]["input_pipeline"][
+            "max_text_tokens"
+        ]
+    ):
+        raise ValueError(
+            "runtime.training_feasibility_benchmark.text_tokens exceeds "
+            "the resolved pretraining maximum"
+        )
+    has_online_teacher = bool(
+        (raw.get("pretraining") or {}).get("teacher_checkpoint")
+    )
+    teacher_checkpoint = (
+        str((raw.get("pretraining") or {}).get("teacher_checkpoint") or "")
+    )
+    pretraining_supervision_contract(
+        PretrainConfig.from_blueprint(
+            blueprint,
+            output_root / "artifacts" / "pretrain",
+        ),
+        has_online_teacher=has_online_teacher,
+        online_distillation_contract=(
+            {
+                "teacher_id": f"path:{teacher_checkpoint}",
+                **DistillationConfig.from_blueprint(blueprint).to_dict(),
+            }
+            if has_online_teacher
+            else None
+        ),
+    )
+    for component, allowed in (
+        ("vision", {"student", "siglip"}),
+        ("language", {"student", "llama", "lfm2"}),
+    ):
+        family = str(
+            initialization.get(f"{component}_family")
+            or (
+                checkpoint_specs[component].family
+                if component in checkpoint_specs
+                else "student" if component in initialization_sources else ""
+            )
+        )
+        if family and family not in allowed:
+            raise ValueError(
+                f"initialization.{component}_family must be one of "
+                f"{sorted(allowed)}"
+            )
+    arms = {
+        str(arm["id"]): arm
+        for arm in blueprint["initialization_arms"]
+    }
+    arm_id = str(initialization.get("arm") or "I0_random")
+    if arm_id not in arms:
+        raise ValueError(f"unknown initialization arm {arm_id!r}")
+    required_sources = [
+        component
+        for component in ("vision", "language")
+        if float(arms[arm_id].get(f"{component}_transfer", 0.0)) > 0
+        and component not in initialization_sources
+    ]
+    if required_sources:
+        raise ValueError(
+            f"initialization arm {arm_id!r} requires sources for "
+            f"{required_sources}"
+        )
+    stages: list[ExperimentStage] = []
+
+    def script(name: str) -> str:
+        return str((repo_root / "scripts" / name).resolve())
+
+    method_evidence_stage_names: list[str] = []
+    if method_evidence_enabled:
+        stages.append(
+            ExperimentStage(
+                "audit_method_evidence",
+                (
+                    python,
+                    script("audit_method_evidence.py"),
+                    "--catalog",
+                    str(method_catalog_path),
+                    "--evidence",
+                    str(method_evidence_path),
+                    "--repo-root",
+                    str(repo_root),
+                    "--output",
+                    str(method_evidence_report),
+                ),
+                (),
+                (Artifact(str(method_evidence_report)),),
+            )
+        )
+        method_evidence_stage_names.append("audit_method_evidence")
+
+    weight_commonality_stage_names: list[str] = []
+    if weight_commonality_enabled:
+        stages.append(
+            ExperimentStage(
+                "audit_weight_commonality",
+                (
+                    python,
+                    script("analyze_small_vlm_weights.py"),
+                    "--catalog",
+                    str(weight_commonality_catalog_path),
+                    "--json-output",
+                    str(weight_commonality_report_path),
+                    "--validate-only",
+                    "--audit-output",
+                    str(weight_commonality_audit),
+                ),
+                tuple(method_evidence_stage_names),
+                (Artifact(str(weight_commonality_audit)),),
+            )
+        )
+        weight_commonality_stage_names.append(
+            "audit_weight_commonality"
+        )
+
+    if continuation_contract is not None:
+        stages.append(
+            ExperimentStage(
+                "attest_continuation",
+                (
+                    python,
+                    script("attest_student_continuation.py"),
+                    "--parent-root",
+                    continuation_contract.parent_root,
+                    "--round-index",
+                    str(continuation_contract.round_index),
+                    "--replay-fraction",
+                    str(continuation_contract.replay_fraction),
+                    "--replay-seed",
+                    str(continuation_contract.replay_seed),
+                    "--optimizer-policy",
+                    continuation_contract.optimizer_policy,
+                    "--blueprint",
+                    str(resolved_blueprint_path),
+                    "--output",
+                    str(continuation_manifest),
+                    "--tokenizer-output",
+                    str(tokenizer_dir),
+                ),
+                tuple(method_evidence_stage_names),
+                (
+                    Artifact(str(continuation_manifest)),
+                    Artifact(str(tokenizer_dir / "tokenizer.json")),
+                    Artifact(str(tokenizer_dir / "tokenizer_config.json")),
+                ),
+            )
+        )
+
+    visual_benchmark_stage_names: list[str] = []
+    if visual_benchmark_enabled:
+        output = artifacts / "benchmarks" / "visual_backend.json"
+        command = [
+            python,
+            script("benchmark_student_visual_backend.py"),
+            "--config",
+            str(resolved_blueprint_path),
+        ]
+        if visual_benchmark.get("patch_grids") is not None:
+            command.extend(
+                [
+                    "--patch-grids",
+                    ",".join(
+                        f"{height}x{width}"
+                        for height, width in visual_benchmark["patch_grids"]
+                    ),
+                ]
+            )
+        else:
+            command.extend(
+                [
+                    "--sequence-lengths",
+                    ",".join(
+                        str(value)
+                        for value in visual_benchmark["sequence_lengths"]
+                    ),
+                ]
+            )
+        command.extend(
+            [
+                "--backends",
+                *[str(value) for value in visual_benchmark["backends"]],
+                "--warmup-iterations",
+                str(int(visual_benchmark.get("warmup_iterations", 3))),
+                "--iterations",
+                str(int(visual_benchmark.get("iterations", 10))),
+                "--rounds",
+                str(int(visual_benchmark.get("rounds", 3))),
+                "--mode",
+                str(visual_benchmark.get("mode") or "training"),
+                "--precision",
+                str(visual_benchmark.get("precision") or "auto"),
+                "--device",
+                device,
+                "--seed",
+                str(int(visual_benchmark.get("seed", 7))),
+                "--output",
+                str(output),
+            ]
+        )
+        _add_optional(
+            command,
+            "--parity-atol",
+            visual_benchmark.get("parity_atol"),
+        )
+        if bool(visual_benchmark.get("require_flex", False)):
+            command.append("--require-flex")
+        if bool(
+            visual_benchmark.get("require_deployment_gate", False)
+        ):
+            command.append("--require-deployment-gate")
+        for key, flag in (
+            ("wandb_project", "--wandb-project"),
+            ("wandb_entity", "--wandb-entity"),
+            ("wandb_run", "--wandb-run"),
+            ("wandb_group", "--wandb-group"),
+        ):
+            _add_optional(command, flag, visual_benchmark.get(key))
+        tags = visual_benchmark.get("wandb_tags") or []
+        if tags:
+            command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+        stages.append(
+            ExperimentStage(
+                "visual_backend_benchmark",
+                tuple(command),
+                tuple(method_evidence_stage_names),
+                (Artifact(str(output)),),
+            )
+        )
+        visual_benchmark_stage_names.append("visual_backend_benchmark")
+
+    training_benchmark_stage_names: list[str] = []
+    if training_benchmark_enabled:
+        output = artifacts / "benchmarks" / "training_feasibility.json"
+        command = [
+            python,
+            script("benchmark_student_training_step.py"),
+            "--config",
+            str(resolved_blueprint_path),
+            "--patch-grid",
+            "x".join(
+                str(value) for value in training_benchmark["patch_grid"]
+            ),
+            "--text-tokens",
+            str(int(training_benchmark["text_tokens"])),
+            "--micro-batch-size",
+            str(int(training_benchmark["micro_batch_size"])),
+            "--warmup-steps",
+            str(int(training_benchmark.get("warmup_steps", 1))),
+            "--measured-steps",
+            str(int(training_benchmark["measured_steps"])),
+            "--packed-attention-backend",
+            str(
+                training_benchmark.get("packed_attention_backend")
+                or "auto"
+            ),
+            "--precision",
+            str(training_benchmark.get("precision") or "auto"),
+            "--device",
+            device,
+            "--seed",
+            str(int(training_benchmark.get("seed", 7))),
+            "--output",
+            str(output),
+        ]
+        if bool(
+            training_benchmark.get("require_deployment_gate", False)
+        ):
+            command.append("--require-deployment-gate")
+        for key, flag in (
+            ("wandb_project", "--wandb-project"),
+            ("wandb_entity", "--wandb-entity"),
+            ("wandb_run", "--wandb-run"),
+            ("wandb_group", "--wandb-group"),
+        ):
+            _add_optional(command, flag, training_benchmark.get(key))
+        tags = training_benchmark.get("wandb_tags") or []
+        if tags:
+            command.extend(["--wandb-tags", *[str(tag) for tag in tags]])
+        stages.append(
+            ExperimentStage(
+                "training_feasibility_benchmark",
+                tuple(command),
+                (
+                    *method_evidence_stage_names,
+                    *visual_benchmark_stage_names,
+                ),
+                (Artifact(str(output)),),
+            )
+        )
+        training_benchmark_stage_names.append(
+            "training_feasibility_benchmark"
+        )
+
+    checkpoint_stage_names: list[str] = []
+    for component, fixture in checkpoint_fixture_specs.items():
+        stage_name = f"build_{component}_fixture_checkpoint"
+        output = Path(fixture["output"])
+        stages.append(
+            ExperimentStage(
+                stage_name,
+                (
+                    python,
+                    script("build_tiny_transfer_source.py"),
+                    "--output",
+                    str(output),
+                    "--seed",
+                    str(fixture["seed"]),
+                    "--vocab-size",
+                    str(fixture["vocab_size"]),
+                    "--vision-layers",
+                    str(fixture["vision_layers"]),
+                    "--language-layers",
+                    str(fixture["language_layers"]),
+                    "--language-mlp-width",
+                    str(fixture["language_mlp_width"]),
+                ),
+                (),
+                (
+                    Artifact(str(output / "student_config.json")),
+                    Artifact(str(output / "model.pt")),
+                    Artifact(str(output / "metadata.json")),
+                ),
+            )
+        )
+        checkpoint_stage_names.append(stage_name)
+    for component, spec in checkpoint_specs.items():
+        stage_name = f"acquire_{component}_checkpoint"
+        manifest = checkpoint_manifests[component]
+        if spec.tensor_prefixes:
+            cache_key = _fingerprint(
+                {
+                    "repo_id": spec.repo_id,
+                    "revision": spec.revision,
+                    "tensor_prefixes": sorted(spec.tensor_prefixes),
+                }
+            ).split(":", 1)[1]
+            output_dir = (
+                repo_root
+                / "outputs"
+                / "checkpoint_cache"
+                / "selective"
+                / cache_key
+            )
+            command = [
+                python,
+                script("acquire_selective_checkpoint.py"),
+                "--repo-id",
+                spec.repo_id,
+                "--revision",
+                spec.revision,
+            ]
+            for prefix in spec.tensor_prefixes:
+                command.extend(["--tensor-prefix", prefix])
+            command.extend(
+                [
+                    "--output-dir",
+                    str(output_dir),
+                    "--manifest",
+                    str(manifest),
+                ]
+            )
+        else:
+            command = [
+                python,
+                script("acquire_student_checkpoint.py"),
+                "--repo-id",
+                spec.repo_id,
+                "--revision",
+                spec.revision,
+                "--family",
+                spec.family,
+                "--output",
+                str(manifest),
+            ]
+        stages.append(
+            ExperimentStage(
+                stage_name,
+                tuple(command),
+                (),
+                (Artifact(str(manifest), "checkpoint_manifest"),),
+            )
+        )
+        checkpoint_stage_names.append(stage_name)
+
+    if synthetic_enabled:
+        common = [
+            python,
+            script("make_realistic_cases.py"),
+            "--config",
+            str(synth_config_path),
+            "--only",
+            *[str(case) for case in synthetic["cases"]],
+            "--difficulty-level",
+            str(int(synthetic["difficulty_level"])),
+        ]
+        if bool(synthetic.get("no_degrade", False)):
+            common.append("--no-degrade")
+        split_specs = [
+            (
+                "train",
+                synthetic["train_seed"],
+                _synthetic_count(synthetic, "train"),
+                train_cases,
+            ),
+            (
+                "heldout",
+                synthetic["heldout_seed"],
+                _synthetic_count(synthetic, "heldout"),
+                heldout_cases,
+            ),
+        ]
+        if validation_enabled:
+            split_specs.insert(
+                1,
+                (
+                    "validation",
+                    synthetic["validation_seed"],
+                    int(synthetic["validation_count"]),
+                    validation_cases,
+                ),
+            )
+        for split, seed, count, output in split_specs:
+            if split == "train" and training_policy_plan_path is not None:
+                command = [
+                    python,
+                    script("generate_from_synthesis_policy.py"),
+                    "--plan",
+                    str(training_policy_plan_path),
+                    "--config",
+                    str(synth_config_path),
+                    "--out",
+                    str(output),
+                    "--python",
+                    python,
+                ]
+            else:
+                command = [
+                    *common,
+                    "--count",
+                    str(count),
+                    "--seed",
+                    str(int(seed)),
+                    "--split-name",
+                    split,
+                    "--out",
+                    str(output),
+                ]
+            stages.append(
+                ExperimentStage(
+                    f"synthetic_{split}",
+                    tuple(command),
+                    (
+                        ("attest_continuation",)
+                        if split == "train"
+                        and continuation_contract is not None
+                        else ()
+                    ),
+                    (
+                        Artifact(str(output / "index.json")),
+                        Artifact(str(output / "gen_config.json")),
+                    ),
+                )
+            )
+        validation_command = [
+            python,
+            script("validate_synth_splits.py"),
+            "--split",
+            f"train={train_cases}",
+        ]
+        validation_dependencies = ["synthetic_train"]
+        if validation_enabled:
+            validation_command.extend(
+                ["--split", f"validation={validation_cases}"]
+            )
+            validation_dependencies.append("synthetic_validation")
+        validation_command.extend(
+            [
+                "--split",
+                f"heldout={heldout_cases}",
+                "--output",
+                str(leakage_report),
+            ]
+        )
+        validation_dependencies.append("synthetic_heldout")
+        stages.append(
+            ExperimentStage(
+                "validate_synthetic_splits",
+                tuple(validation_command),
+                tuple(validation_dependencies),
+                (Artifact(str(leakage_report)),),
+            )
+        )
+        variant = str(synthetic.get("variant") or "clean")
+        stages.extend(
+            [
+                ExperimentStage(
+                    "build_synthetic_udd",
+                    (
+                        python,
+                        script("build_udd_synthetic.py"),
+                        "--root",
+                        str(train_cases),
+                        "--out",
+                        str(synthetic_udd_root),
+                        "--variant",
+                        variant,
+                    ),
+                    ("validate_synthetic_splits",),
+                    (Artifact(str(synthetic_udd), "directory"),),
+                ),
+                ExperimentStage(
+                    "build_train_samples",
+                    (
+                        python,
+                        script("build_realistic_benchmark.py"),
+                        "--root",
+                        str(train_cases),
+                        "--variant",
+                        variant,
+                        "--out",
+                        str(train_samples),
+                    ),
+                    ("validate_synthetic_splits",),
+                    (Artifact(str(train_samples)),),
+                ),
+                ExperimentStage(
+                    "build_heldout_samples",
+                    (
+                        python,
+                        script("build_realistic_benchmark.py"),
+                        "--root",
+                        str(heldout_cases),
+                        "--variant",
+                        variant,
+                        "--out",
+                        str(heldout_samples),
+                    ),
+                    ("validate_synthetic_splits",),
+                    (Artifact(str(heldout_samples)),),
+                ),
+            ]
+        )
+        if validation_enabled:
+            stages.extend(
+                [
+                    ExperimentStage(
+                        "build_validation_udd",
+                        (
+                            python,
+                            script("build_udd_synthetic.py"),
+                            "--root",
+                            str(validation_cases),
+                            "--out",
+                            str(validation_udd_root),
+                            "--variant",
+                            variant,
+                        ),
+                        ("validate_synthetic_splits",),
+                        (Artifact(str(validation_udd), "directory"),),
+                    ),
+                    ExperimentStage(
+                        "build_validation_samples",
+                        (
+                            python,
+                            script("build_realistic_benchmark.py"),
+                            "--root",
+                            str(validation_cases),
+                            "--variant",
+                            variant,
+                            "--out",
+                            str(validation_samples),
+                        ),
+                        ("validate_synthetic_splits",),
+                        (Artifact(str(validation_samples)),),
+                    ),
+                ]
+            )
+
+    for component_name, spec in hub_specs.items():
+        output = acquired_paths[component_name]
+        command = [
+            python,
+            script("acquire_student_data.py"),
+            "--repo-id",
+            spec.repo_id,
+            "--revision",
+            spec.revision,
+            "--split",
+            spec.split,
+            "--seed",
+            str(spec.seed),
+            "--decode-checks",
+            str(spec.decode_checks),
+            "--sampling-strategy",
+            spec.sampling_strategy,
+            "--min-rows-per-task",
+            str(spec.min_rows_per_task),
+            "--output",
+            str(output),
+        ]
+        _add_optional(command, "--config-name", spec.config_name)
+        _add_optional(command, "--fold", spec.fold)
+        _add_optional(command, "--max-rows", spec.max_rows)
+        for value in spec.sources:
+            command.extend(["--source", value])
+        for value in spec.tasks:
+            command.extend(["--task", value])
+        for value in spec.languages:
+            command.extend(["--language", value])
+        for value in spec.coverage_languages:
+            command.extend(["--coverage-language", value])
+        command.extend(
+            [
+                "--min-rows-per-language",
+                str(spec.min_rows_per_language),
+            ]
+        )
+        stages.append(
+            ExperimentStage(
+                f"acquire_component_{component_name}",
+                tuple(command),
+                (),
+                (
+                    Artifact(str(output), "directory"),
+                    Artifact(str(output / "component_manifest.json")),
+                ),
+            )
+        )
+
+    mix_command = [python, script("mix_student_data.py")]
+    mix_dependencies: list[str] = []
+    for component in components:
+        mix_command.extend(["--component", f"{component.name}={component.path}"])
+        mix_command.extend(["--weight", f"{component.name}={component.weight:.17g}"])
+        if component.fold:
+            mix_command.extend(["--fold", f"{component.name}={component.fold}"])
+        if Path(component.path) == synthetic_udd:
+            mix_dependencies.append("build_synthetic_udd")
+        if component.name in hub_specs:
+            mix_dependencies.append(f"acquire_component_{component.name}")
+    mix_command.extend(["--output", str(mixed_data)])
+    stages.append(
+        ExperimentStage(
+            "mix_pretraining_data",
+            tuple(mix_command),
+            tuple(mix_dependencies),
+            (Artifact(str(mixed_data / "mixture_manifest.json")),),
+        )
+    )
+
+    training_data = mixed_data
+    training_data_dependency = "mix_pretraining_data"
+    if sequence_teacher_enabled:
+        teacher_requests = artifacts / "data" / "teacher_requests"
+        generated_predictions = artifacts / "data" / "teacher_predictions.jsonl"
+        distilled_data = artifacts / "data" / "distilled_mixture"
+        stages.append(
+            ExperimentStage(
+                "export_teacher_requests",
+                (
+                    python,
+                    script("build_teacher_targets.py"),
+                    "export",
+                    "--src",
+                    str(mixed_data),
+                    "--output",
+                    str(teacher_requests),
+                    "--max-requests",
+                    str(int(sequence_teacher["max_requests"])),
+                    "--selection-seed",
+                    str(int(sequence_teacher.get("selection_seed", 0))),
+                ),
+                ("mix_pretraining_data",),
+                (
+                    Artifact(str(teacher_requests / "requests.jsonl")),
+                    Artifact(str(teacher_requests / "manifest.json")),
+                ),
+            )
+        )
+        configured_predictions = sequence_teacher.get("predictions")
+        if configured_predictions:
+            predictions_path = _resolve_path(repo_root, configured_predictions)
+            if not predictions_path.is_file():
+                raise ValueError(
+                    f"sequence teacher predictions do not exist: {predictions_path}"
+                )
+            apply_dependencies = ("export_teacher_requests",)
+        else:
+            predictions_path = generated_predictions
+            generate_command = [
+                python,
+                script("build_teacher_targets.py"),
+                "generate",
+                "--requests",
+                str(teacher_requests / "requests.jsonl"),
+                "--output",
+                str(predictions_path),
+                "--model",
+                str(sequence_teacher["model"]),
+                "--model-revision",
+                str(sequence_teacher.get("revision") or ""),
+                "--device",
+                str(sequence_teacher.get("device") or device),
+                "--dtype",
+                str(sequence_teacher.get("dtype") or "bfloat16"),
+                "--max-new-tokens",
+                str(int(sequence_teacher.get("max_new_tokens", 128))),
+                "--temperature",
+                str(float(sequence_teacher.get("temperature", 0.0))),
+            ]
+            if not sequence_teacher.get("revision"):
+                revision_index = generate_command.index("--model-revision")
+                del generate_command[revision_index : revision_index + 2]
+            stages.append(
+                ExperimentStage(
+                    "generate_teacher_predictions",
+                    tuple(generate_command),
+                    ("export_teacher_requests",),
+                    (
+                        Artifact(str(predictions_path)),
+                        Artifact(str(predictions_path) + ".manifest.json"),
+                    ),
+                )
+            )
+            apply_dependencies = (
+                "export_teacher_requests",
+                "generate_teacher_predictions",
+            )
+        apply_command = [
+            python,
+            script("build_teacher_targets.py"),
+            "apply",
+            "--src",
+            str(mixed_data),
+            "--requests",
+            str(teacher_requests / "requests.jsonl"),
+            "--predictions",
+            str(predictions_path),
+            "--output",
+            str(distilled_data),
+            "--min-score",
+            str(float(sequence_teacher.get("min_score", 0.8))),
+            "--min-acceptance-rate",
+            str(float(sequence_teacher.get("min_acceptance_rate", 0.0))),
+            "--target-format",
+            str(sequence_teacher.get("target_format") or "answer"),
+            "--selection-seed",
+            str(int(sequence_teacher.get("selection_seed", 0))),
+            "--expected-model",
+            str(sequence_teacher["model"]),
+        ]
+        _add_optional(
+            apply_command,
+            "--accepted-target-count",
+            sequence_teacher.get("accepted_target_count"),
+        )
+        _add_optional(
+            apply_command,
+            "--expected-revision",
+            sequence_teacher.get("revision"),
+        )
+        stages.append(
+            ExperimentStage(
+                "apply_teacher_targets",
+                tuple(apply_command),
+                apply_dependencies,
+                (
+                    Artifact(str(distilled_data), "directory"),
+                    Artifact(str(distilled_data / "teacher_target_manifest.json")),
+                ),
+            )
+        )
+        training_data = distilled_data
+        training_data_dependency = "apply_teacher_targets"
+
+    if continuation_contract is not None:
+        pretraining_only = {
+            "build_synthetic_udd",
+            "build_validation_udd",
+            "mix_pretraining_data",
+            "export_teacher_requests",
+            "generate_teacher_predictions",
+            "apply_teacher_targets",
+        }
+        stages = [
+            stage
+            for stage in stages
+            if stage.name not in pretraining_only
+            and not stage.name.startswith("acquire_component_")
+            and not (
+                stage.name.startswith("acquire_")
+                and stage.name.endswith("_checkpoint")
+            )
+        ]
+        stages.append(
+            ExperimentStage(
+                "build_curriculum_samples",
+                (
+                    python,
+                    script("build_student_curriculum_samples.py"),
+                    "--current-samples",
+                    str(train_samples),
+                    "--replay-samples",
+                    continuation_contract.replay_samples,
+                    "--replay-fraction",
+                    str(continuation_contract.replay_fraction),
+                    "--replay-seed",
+                    str(continuation_contract.replay_seed),
+                    "--parent-round-index",
+                    str(continuation_contract.parent_round_index),
+                    "--output",
+                    str(curriculum_samples),
+                    "--memory-output",
+                    str(replay_memory),
+                    "--manifest-output",
+                    str(curriculum_samples_manifest),
+                ),
+                ("attest_continuation", "build_train_samples"),
+                (
+                    Artifact(str(curriculum_samples)),
+                    Artifact(str(replay_memory)),
+                    Artifact(str(curriculum_samples_manifest)),
+                ),
+            )
+        )
+
+    tokenizer_command = [
+        python,
+        script("train_student_tokenizer.py"),
+        "--config",
+        str(resolved_blueprint_path),
+        "--src",
+        str(training_data),
+        "--output",
+        str(tokenizer_dir),
+        "--min-frequency",
+        str(int(tokenizer.get("min_frequency", 2))),
+    ]
+    _add_optional(tokenizer_command, "--vocab-size", tokenizer.get("vocab_size"))
+    if not bool(tokenizer.get("include_teacher_targets", False)):
+        tokenizer_command.append("--exclude-teacher-targets")
+    if bool(tokenizer.get("no_progress", True)):
+        tokenizer_command.append("--no-progress")
+    stages.append(
+        ExperimentStage(
+            "train_tokenizer",
+            tuple(tokenizer_command),
+            (training_data_dependency,),
+            (
+                Artifact(str(tokenizer_dir / "tokenizer.json")),
+                Artifact(str(tokenizer_dir / "tokenizer_config.json")),
+            ),
+        )
+    )
+
+    generation_budget_audit = (
+        evaluation_spec.get("generation_budget_audit") or {}
+    )
+    generation_budget_audit_enabled = bool(
+        generation_budget_audit.get("enabled", False)
+    )
+
+    def generation_budget_audit_stage(
+        *,
+        tokenizer_path: Path,
+        training_samples: Path,
+        dependencies: tuple[str, ...],
+    ) -> ExperimentStage:
+        command = [
+            python,
+            script("audit_generation_budgets.py"),
+            "--config",
+            str(resolved_blueprint_path),
+            "--tokenizer",
+            str(tokenizer_path),
+            "--split",
+            f"train={training_samples}",
+            "--split",
+            f"heldout={heldout_samples}",
+        ]
+        if validation_enabled:
+            command.extend(
+                [
+                    "--split",
+                    f"validation={validation_samples}",
+                ]
+            )
+        command.extend(
+            [
+                "--calibration-split",
+                "train",
+            ]
+        )
+        if validation_enabled:
+            command.extend(
+                [
+                    "--calibration-split",
+                    "validation",
+                ]
+            )
+        command.extend(
+            [
+                "--evaluation-base-tokens",
+                str(int(evaluation_spec["max_new_tokens"])),
+                "--evaluation-hard-cap",
+                str(
+                    int(
+                        evaluation_spec.get(
+                            "max_new_tokens_hard_cap",
+                            evaluation_spec["max_new_tokens"],
+                        )
+                    )
+                ),
+                "--target-mode",
+                str(
+                    generation_budget_audit.get(
+                        "target_mode",
+                        "evidence_linked",
+                    )
+                ),
+                "--minimum-coverage",
+                str(
+                    float(
+                        generation_budget_audit.get(
+                            "minimum_coverage",
+                            1.0,
+                        )
+                    )
+                ),
+                "--recommendation-multiple",
+                str(
+                    int(
+                        generation_budget_audit.get(
+                            "recommendation_multiple",
+                            32,
+                        )
+                    )
+                ),
+                "--max-overflow-examples",
+                str(
+                    int(
+                        generation_budget_audit.get(
+                            "max_overflow_examples",
+                            20,
+                        )
+                    )
+                ),
+                "--output",
+                str(generation_budget_report),
+            ]
+        )
+        for pattern, budget in (
+            evaluation_spec.get("max_new_tokens_by_answer_type") or {}
+        ).items():
+            command.extend(
+                [
+                    "--evaluation-token-budget",
+                    f"{pattern}={int(budget)}",
+                ]
+            )
+        if not bool(
+            generation_budget_audit.get(
+                "require_policy_consistency",
+                True,
+            )
+        ):
+            command.append("--allow-policy-mismatch")
+        return ExperimentStage(
+            "audit_generation_budgets",
+            tuple(command),
+            dependencies,
+            (Artifact(str(generation_budget_report)),),
+        )
+
+    if (
+        generation_budget_audit_enabled
+        and continuation_contract is None
+    ):
+        audit_dependencies = [
+            "train_tokenizer",
+            "build_train_samples",
+            "build_heldout_samples",
+        ]
+        if validation_enabled:
+            audit_dependencies.append("build_validation_samples")
+        stages.append(
+            generation_budget_audit_stage(
+                tokenizer_path=tokenizer_dir,
+                training_samples=train_samples,
+                dependencies=tuple(audit_dependencies),
+            )
+        )
+
+    init_command = [
+        python,
+        script("build_sub1b_student.py"),
+        "--config",
+        str(resolved_blueprint_path),
+        "--device",
+        str(initialization.get("device") or ("cpu" if initialization.get("tiny") else device)),
+        "--seed",
+        str(int(initialization.get("seed", 0))),
+        "--init-arm",
+        str(initialization.get("arm") or "I0_random"),
+        "--save",
+        str(initial_dir),
+    ]
+    if bool(initialization.get("tiny", False)):
+        init_command.extend(
+            [
+                "--tiny",
+                "--tiny-vocab-size",
+                str(blueprint["student"]["language"]["vocab_size"]),
+            ]
+        )
+    if bool(initialization.get("allow_full_memory", False)):
+        init_command.append("--allow-full-memory")
+    for component in ("vision", "language"):
+        source = initialization_sources.get(component)
+        if source is not None:
+            init_command.extend([f"--{component}-source", source])
+        family = (
+            initialization.get(f"{component}_family")
+            or (
+                checkpoint_specs[component].family
+                if component in checkpoint_specs
+                else None
+            )
+        )
+        if family is not None:
+            init_command.extend([f"--{component}-family", str(family)])
+    if token_map is not None:
+        init_command.extend(
+            ["--token-map", str(_resolve_path(repo_root, token_map))]
+        )
+    stages.append(
+        ExperimentStage(
+            "initialize_student",
+            tuple(init_command),
+            (
+                "train_tokenizer",
+                *checkpoint_stage_names,
+                *visual_benchmark_stage_names,
+                *training_benchmark_stage_names,
+                *method_evidence_stage_names,
+                *weight_commonality_stage_names,
+                *(
+                    ("audit_generation_budgets",)
+                    if generation_budget_audit_enabled
+                    and continuation_contract is None
+                    else ()
+                ),
+            ),
+            (
+                Artifact(str(initial_dir / "student_config.json")),
+                Artifact(str(initial_dir / "model.pt")),
+                Artifact(str(initial_dir / "metadata.json")),
+            ),
+        )
+    )
+
+    pretraining = raw.get("pretraining") or {}
+    pretrain_command = [
+        python,
+        script("pretrain_student.py"),
+        "--config",
+        str(resolved_blueprint_path),
+        "--src",
+        str(training_data),
+        "--tokenizer",
+        str(tokenizer_dir),
+        "--student-checkpoint",
+        str(initial_dir),
+        "--output",
+        str(pretrain_dir),
+        "--device",
+        device,
+        "--eval-group-by",
+        str(pretraining.get("eval_group_by") or "component"),
+    ]
+    pretrain_dependencies = ["initialize_student"]
+    if validation_enabled:
+        pretrain_command.extend(["--eval-src", str(validation_udd)])
+        pretrain_dependencies.append("build_validation_udd")
+    for key, flag in (
+        ("epochs", "--epochs"),
+        ("max_steps", "--max-steps"),
+        ("batch_size", "--batch-size"),
+        ("num_workers", "--num-workers"),
+    ):
+        _add_optional(pretrain_command, flag, pretraining.get(key))
+    if pretraining.get("teacher_checkpoint"):
+        pretrain_command.extend(
+            [
+                "--teacher-checkpoint",
+                str(_resolve_path(repo_root, pretraining["teacher_checkpoint"])),
+            ]
+        )
+    if bool(pretraining.get("no_grounding", False)):
+        pretrain_command.append("--no-grounding")
+    _add_wandb_options(pretrain_command, pretraining)
+    stages.append(
+        ExperimentStage(
+            "pretrain",
+            tuple(pretrain_command),
+            tuple(pretrain_dependencies),
+            (Artifact(str(pretrain_dir / "latest_checkpoint.txt")),),
+        )
+    )
+
+    active_tokenizer = tokenizer_dir
+    posttraining_samples = train_samples
+    sft_checkpoint = "@student:pretrain"
+    sft_dependencies: tuple[str, ...] = (
+        "pretrain",
+        "build_train_samples",
+    )
+    if continuation_contract is not None:
+        stages = [
+            stage
+            for stage in stages
+            if stage.name
+            not in {"train_tokenizer", "initialize_student", "pretrain"}
+        ]
+        active_tokenizer = tokenizer_dir
+        posttraining_samples = curriculum_samples
+        sft_checkpoint = continuation_contract.checkpoint
+        sft_dependencies = ("build_curriculum_samples",)
+        if generation_budget_audit_enabled:
+            audit_dependencies = [
+                "attest_continuation",
+                "build_curriculum_samples",
+                "build_heldout_samples",
+            ]
+            if validation_enabled:
+                audit_dependencies.append("build_validation_samples")
+            stages.append(
+                generation_budget_audit_stage(
+                    tokenizer_path=active_tokenizer,
+                    training_samples=posttraining_samples,
+                    dependencies=tuple(audit_dependencies),
+                )
+            )
+            sft_dependencies = (
+                *sft_dependencies,
+                "audit_generation_budgets",
+            )
+
+    posttraining = raw.get("posttraining") or {}
+    sft = posttraining.get("sft") or {}
+    sft_command = [
+        python,
+        script("posttrain_student.py"),
+        "sft",
+        "--config",
+        str(resolved_blueprint_path),
+        "--samples",
+        str(posttraining_samples),
+        "--tokenizer",
+        str(active_tokenizer),
+        "--checkpoint",
+        sft_checkpoint,
+        "--output",
+        str(sft_dir),
+        "--device",
+        device,
+    ]
+    for key, flag in (("max_steps", "--max-steps"), ("num_workers", "--num-workers")):
+        _add_optional(sft_command, flag, sft.get(key))
+    _add_optional(sft_command, "--target-mode", sft.get("target_mode"))
+    _add_wandb_options(sft_command, sft)
+    stages.append(
+        ExperimentStage(
+            "sft",
+            tuple(sft_command),
+            sft_dependencies,
+            (Artifact(str(sft_dir / "latest_checkpoint.txt")),),
+        )
+    )
+
+    final_checkpoint_stage = "sft"
+    preference = posttraining.get("preference") or {}
+    if preference_enabled:
+        preference_command = [
+            python,
+            script("posttrain_student.py"),
+            "preference",
+            "--config",
+            str(resolved_blueprint_path),
+            "--samples",
+            str(posttraining_samples),
+            "--tokenizer",
+            str(active_tokenizer),
+            "--checkpoint",
+            "@student:sft",
+            "--output",
+            str(preference_dir),
+            "--device",
+            device,
+        ]
+        _add_optional(preference_command, "--max-steps", preference.get("max_steps"))
+        _add_wandb_options(preference_command, preference)
+        stages.append(
+            ExperimentStage(
+                "preference",
+                tuple(preference_command),
+                ("sft",),
+                (Artifact(str(preference_dir / "latest_checkpoint.txt")),),
+            )
+        )
+        final_checkpoint_stage = "preference"
+
+    rlvr = posttraining.get("rlvr") or {}
+    if rlvr_enabled:
+        rlvr_policy_stage = "preference" if preference_enabled else "sft"
+        rlvr_command = [
+            python,
+            script("posttrain_student.py"),
+            "rlvr",
+            "--config",
+            str(resolved_blueprint_path),
+            "--samples",
+            str(posttraining_samples),
+            "--tokenizer",
+            str(active_tokenizer),
+            "--checkpoint",
+            f"@student:{rlvr_policy_stage}",
+            "--reference-checkpoint",
+            "@student:sft",
+            "--output",
+            str(rlvr_dir),
+            "--device",
+            device,
+        ]
+        _add_optional(rlvr_command, "--max-steps", rlvr.get("max_steps"))
+        _add_optional(
+            rlvr_command,
+            "--replay-every-steps",
+            rlvr.get("replay_every_steps"),
+        )
+        _add_optional(
+            rlvr_command,
+            "--replay-loss-coefficient",
+            rlvr.get("replay_loss_coefficient"),
+        )
+        if rlvr.get("replay_samples"):
+            rlvr_command.extend(
+                [
+                    "--replay-samples",
+                    str(_resolve_path(repo_root, rlvr["replay_samples"])),
+                ]
+            )
+        _add_wandb_options(rlvr_command, rlvr)
+        stages.append(
+            ExperimentStage(
+                "rlvr",
+                tuple(rlvr_command),
+                (rlvr_policy_stage,),
+                (Artifact(str(rlvr_dir / "latest_checkpoint.txt")),),
+            )
+        )
+        final_checkpoint_stage = "rlvr"
+
+    evaluation = raw.get("evaluation") or {}
+    eval_command = [
+        python,
+        script("eval_student.py"),
+        "--config",
+        str(resolved_blueprint_path),
+        "--split",
+        f"train={posttraining_samples}",
+        "--tokenizer",
+        str(active_tokenizer),
+        "--checkpoint",
+        f"@student:{final_checkpoint_stage}",
+        "--output",
+        str(eval_dir),
+        "--device",
+        device,
+        "--precision",
+        str(evaluation.get("precision") or "bfloat16"),
+        "--max-new-tokens",
+        str(int(evaluation.get("max_new_tokens", 128))),
+        "--max-new-tokens-hard-cap",
+        str(
+            int(
+                evaluation.get(
+                    "max_new_tokens_hard_cap",
+                    evaluation.get("max_new_tokens", 128),
+                )
+            )
+        ),
+        "--repetition-guard-min-tokens",
+        str(int(evaluation.get("repetition_guard_min_tokens", 24))),
+        "--repetition-guard-max-period",
+        str(int(evaluation.get("repetition_guard_max_period", 16))),
+        "--repetition-guard-repetitions",
+        str(int(evaluation.get("repetition_guard_repetitions", 3))),
+        "--seed",
+        str(int(evaluation.get("seed", 0))),
+    ]
+    if validation_enabled:
+        heldout_split_index = eval_command.index("--tokenizer")
+        eval_command[heldout_split_index:heldout_split_index] = [
+            "--split",
+            f"validation={validation_samples}",
+        ]
+    heldout_split_index = eval_command.index("--tokenizer")
+    eval_command[heldout_split_index:heldout_split_index] = [
+        "--split",
+        f"heldout={heldout_samples}",
+    ]
+    _add_optional(eval_command, "--max-samples", evaluation.get("max_samples"))
+    eval_command.extend(
+        [
+            "--sample-selection",
+            str(evaluation.get("sample_selection", "random")),
+        ]
+    )
+    for pattern, budget in (
+        evaluation.get("max_new_tokens_by_answer_type") or {}
+    ).items():
+        eval_command.extend(
+            [
+                "--answer-type-token-budget",
+                f"{pattern}={int(budget)}",
+            ]
+        )
+    if not bool(evaluation["use_kv_cache"]):
+        eval_command.append("--no-kv-cache")
+    calibration = evaluation["temperature_calibration"]
+    if not bool(calibration["enabled"]):
+        eval_command.append("--no-temperature-calibration")
+    eval_command.extend(
+        [
+            "--calibration-source-split",
+            str(calibration["source_split"]),
+            "--calibration-fraction",
+            str(float(calibration["fraction"])),
+            "--calibration-min-samples",
+            str(int(calibration["min_samples"])),
+            "--calibration-correct-threshold",
+            str(float(calibration["correct_threshold"])),
+            "--calibration-min-temperature",
+            str(float(calibration["min_temperature"])),
+            "--calibration-max-temperature",
+            str(float(calibration["max_temperature"])),
+            "--calibration-seed",
+            str(int(calibration["seed"])),
+        ]
+    )
+    internal_baseline_stage = evaluation.get("baseline_checkpoint_stage")
+    if internal_baseline_stage is not None:
+        baseline_command = list(eval_command)
+        if internal_baseline_stage == "initial":
+            baseline_checkpoint = str(initial_dir)
+            baseline_checkpoint_dependency = "initialize_student"
+        elif internal_baseline_stage == "inherited":
+            if continuation_contract is None:
+                raise ValueError(
+                    "inherited baseline has no continuation contract"
+                )
+            baseline_checkpoint = continuation_contract.checkpoint
+            baseline_checkpoint_dependency = "attest_continuation"
+        else:
+            baseline_checkpoint = f"@student:{internal_baseline_stage}"
+            baseline_checkpoint_dependency = str(internal_baseline_stage)
+        baseline_command[
+            baseline_command.index("--checkpoint") + 1
+        ] = baseline_checkpoint
+        baseline_command[
+            baseline_command.index("--output") + 1
+        ] = str(baseline_eval_dir)
+        baseline_tracking = copy.deepcopy(evaluation)
+        baseline_tracking.pop("wandb_id", None)
+        if baseline_tracking.get("wandb_run"):
+            baseline_tracking["wandb_run"] = (
+                f"{baseline_tracking['wandb_run']}--baseline"
+            )
+        baseline_tracking["wandb_tags"] = list(
+            dict.fromkeys(
+                [
+                    *[
+                        str(tag)
+                        for tag in baseline_tracking.get("wandb_tags") or []
+                    ],
+                    "baseline",
+                    f"checkpoint-stage:{internal_baseline_stage}",
+                ]
+            )
+        )
+        _add_wandb_options(baseline_command, baseline_tracking)
+        baseline_dependencies = [
+            baseline_checkpoint_dependency,
+            (
+                "build_curriculum_samples"
+                if continuation_contract is not None
+                else "build_train_samples"
+            ),
+            "build_heldout_samples",
+        ]
+        if validation_enabled:
+            baseline_dependencies.append("build_validation_samples")
+        baseline_artifacts = [
+            Artifact(str(baseline_eval_dir / "manifest.json")),
+            Artifact(str(baseline_eval_dir / "comparison.json")),
+            Artifact(
+                str(
+                    baseline_eval_dir
+                    / "train"
+                    / "per_sample.jsonl"
+                )
+            ),
+            Artifact(
+                str(
+                    baseline_eval_dir
+                    / "heldout"
+                    / "per_sample.jsonl"
+                )
+            ),
+        ]
+        if validation_enabled:
+            baseline_artifacts.append(
+                Artifact(
+                    str(
+                        baseline_eval_dir
+                        / "validation"
+                        / "per_sample.jsonl"
+                    )
+                )
+            )
+        stages.append(
+            ExperimentStage(
+                "evaluate_baseline",
+                tuple(baseline_command),
+                tuple(dict.fromkeys(baseline_dependencies)),
+                tuple(baseline_artifacts),
+            )
+        )
+        eval_command.extend(
+            ["--baseline-evaluation", str(baseline_eval_dir)]
+        )
+    for key, flag in (
+        ("baseline_evaluation", "--baseline-evaluation"),
+        (
+            "monolingual_control_evaluation",
+            "--monolingual-control-evaluation",
+        ),
+    ):
+        if evaluation.get(key):
+            eval_command.extend(
+                [flag, str(_resolve_path(repo_root, evaluation[key]))]
+            )
+    if visual_benchmark_enabled:
+        eval_command.extend(
+            [
+                "--visual-backend-benchmark",
+                str(artifacts / "benchmarks" / "visual_backend.json"),
+            ]
+        )
+    if training_benchmark_enabled:
+        eval_command.extend(
+            [
+                "--training-feasibility-benchmark",
+                str(
+                    artifacts
+                    / "benchmarks"
+                    / "training_feasibility.json"
+                ),
+            ]
+        )
+    _add_wandb_options(eval_command, evaluation)
+    evaluation_dependencies = [
+        final_checkpoint_stage,
+        (
+            "build_curriculum_samples"
+            if continuation_contract is not None
+            else "build_train_samples"
+        ),
+        "build_heldout_samples",
+        *visual_benchmark_stage_names,
+        *training_benchmark_stage_names,
+    ]
+    if validation_enabled:
+        evaluation_dependencies.append("build_validation_samples")
+    if internal_baseline_stage is not None:
+        evaluation_dependencies.append("evaluate_baseline")
+    stages.append(
+        ExperimentStage(
+            "evaluate",
+            tuple(eval_command),
+            tuple(evaluation_dependencies),
+            (
+                Artifact(str(eval_dir / "manifest.json")),
+                Artifact(str(eval_dir / "comparison.json")),
+                Artifact(str(eval_dir / "gates.json")),
+            ),
+        )
+    )
+    if adaptation_enabled:
+        baseline_policy_root = (
+            baseline_eval_dir
+            if internal_baseline_stage is not None
+            else _resolve_path(
+                repo_root,
+                evaluation["baseline_evaluation"],
+            )
+            if evaluation.get("baseline_evaluation")
+            else None
+        )
+        policy_command = [
+            python,
+            script("plan_student_synthesis.py"),
+            "--per-sample",
+            str(eval_dir / "validation" / "per_sample.jsonl"),
+            "--config",
+            str(adaptation_config_path),
+            "--output",
+            str(next_synthesis_plan),
+        ]
+        if bool(
+            (adaptation_policy_config or {}).get(
+                "require_matched_baseline",
+                False,
+            )
+        ):
+            if baseline_policy_root is None:
+                raise ValueError(
+                    "matched-baseline synthesis adaptation has no baseline "
+                    "evaluation root"
+                )
+            config_index = policy_command.index("--config")
+            policy_command[config_index:config_index] = [
+                "--baseline-per-sample",
+                str(
+                    baseline_policy_root
+                    / "validation"
+                    / "per_sample.jsonl"
+                ),
+            ]
+        _add_optional(
+            policy_command,
+            "--budget",
+            adaptation_spec.get("budget"),
+        )
+        _add_optional(
+            policy_command,
+            "--seed",
+            adaptation_spec.get("seed"),
+        )
+        stages.append(
+            ExperimentStage(
+                "plan_next_synthetic_batch",
+                tuple(policy_command),
+                ("evaluate",),
+                (Artifact(str(next_synthesis_plan)),),
+            )
+        )
+
+    input_fingerprints["python_source"] = _source_fingerprint(
+        repo_root,
+        stages,
+    )
+    fingerprint = _fingerprint(
+        {
+            "config": raw,
+            "blueprint": blueprint,
+            "components": [asdict(component) for component in components],
+            "input_fingerprints": input_fingerprints,
+        }
+    )
+    stages = _with_default_wandb_ids(stages, fingerprint)
+    return ExperimentPlan(
+        name=experiment_name,
+        root=str(output_root),
+        blueprint=str(resolved_blueprint_path),
+        resolved_blueprint=blueprint,
+        raw_spec=raw,
+        components=components,
+        stages=tuple(stages),
+        fingerprint=fingerprint,
+        input_fingerprints=input_fingerprints,
+    )
+
+
+def _checkpoint_student(output: Path) -> Path:
+    pointer = output / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        raise FileNotFoundError(f"missing checkpoint pointer {pointer}")
+    checkpoint = Path(pointer.read_text(encoding="utf-8").strip())
+    student = checkpoint / "student"
+    if not (student / "model.pt").is_file():
+        raise FileNotFoundError(f"checkpoint student is incomplete: {student}")
+    return student
+
+
+def _resolve_command(command: tuple[str, ...], root: Path) -> list[str]:
+    stage_outputs = {
+        "pretrain": root / "artifacts" / "pretrain",
+        "sft": root / "artifacts" / "sft",
+        "preference": root / "artifacts" / "preference",
+        "rlvr": root / "artifacts" / "rlvr",
+    }
+    resolved = []
+    for argument in command:
+        if argument.startswith("@student:"):
+            stage = argument.split(":", 1)[1]
+            if stage not in stage_outputs:
+                raise ValueError(f"unknown checkpoint placeholder {argument!r}")
+            resolved.append(str(_checkpoint_student(stage_outputs[stage])))
+        elif argument.startswith("@checkpoint:"):
+            component = argument.split(":", 1)[1]
+            if component not in {"vision", "language"}:
+                raise ValueError(f"unknown checkpoint placeholder {argument!r}")
+            manifest = (
+                root
+                / "artifacts"
+                / "initialization_sources"
+                / f"{component}_checkpoint.json"
+            )
+            resolved.append(str(checkpoint_path_from_manifest(manifest)))
+        else:
+            resolved.append(argument)
+    return resolved
+
+
+def _with_training_resume(
+    command: list[str],
+    stage: str,
+    root: Path,
+    *,
+    eligible: bool,
+) -> list[str]:
+    if not eligible or stage not in _CHECKPOINT_STAGES or "--resume" in command:
+        return command
+    pointer = root / "artifacts" / stage / "latest_checkpoint.txt"
+    if pointer.is_file():
+        return [*command, "--resume", "latest"]
+    return command
+
+
+def _owned_output_paths(
+    stage: ExperimentStage,
+    command: list[str],
+    root: Path,
+) -> tuple[Path, ...]:
+    candidates = {Path(artifact.path).resolve() for artifact in stage.artifacts}
+    for index, argument in enumerate(command[:-1]):
+        if argument in _OUTPUT_FLAGS:
+            candidates.add(Path(command[index + 1]).resolve())
+    owned = []
+    resolved_root = root.resolve()
+    for path in sorted(candidates, key=lambda value: len(value.parts)):
+        if path == resolved_root or resolved_root not in path.parents:
+            raise ValueError(
+                f"stage {stage.name!r} output is outside experiment root: {path}"
+            )
+        if any(parent == path or parent in path.parents for parent in owned):
+            continue
+        owned.append(path)
+    return tuple(owned)
+
+
+def _clear_stale_outputs(
+    stage: ExperimentStage,
+    command: list[str],
+    root: Path,
+) -> list[str]:
+    removed = []
+    for path in _owned_output_paths(stage, command, root):
+        if path.is_dir():
+            shutil.rmtree(path)
+            removed.append(str(path))
+        elif path.exists():
+            path.unlink()
+            removed.append(str(path))
+        for suffix in (".manifest.json", ".tmp"):
+            sidecar = Path(str(path) + suffix)
+            if sidecar.is_file():
+                sidecar.unlink()
+                removed.append(str(sidecar))
+    return removed
+
+
+class ExperimentRunner:
+    """Execute a compiled plan with signature-aware, artifact-checked resume."""
+
+    def __init__(self, plan: ExperimentPlan, *, repo_root: str | Path):
+        self.plan = plan
+        self.repo_root = Path(repo_root).resolve()
+        self.root = Path(plan.root)
+        self.state_dir = self.root / "state" / "stages"
+        self.log_dir = self.root / "logs"
+
+    def _state_path(self, stage: str) -> Path:
+        return self.state_dir / f"{stage}.json"
+
+    def _load_state(self, stage: str) -> dict[str, Any] | None:
+        path = self._state_path(stage)
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+    def _write_static_manifests(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        (self.root / "resolved_blueprint.yaml").write_text(
+            yaml.safe_dump(self.plan.resolved_blueprint, sort_keys=False),
+            encoding="utf-8",
+        )
+        _atomic_write_json(self.root / "experiment_plan.json", self.plan.to_dict())
+        _atomic_write_json(self.root / "experiment_spec.json", self.plan.raw_spec)
+
+    def signatures(self) -> dict[str, str]:
+        signatures: dict[str, str] = {}
+        for stage in self.plan.stages:
+            signatures[stage.name] = stage.signature(self.plan.fingerprint, signatures)
+        return signatures
+
+    def _is_complete(self, stage: ExperimentStage, signature: str) -> bool:
+        state = self._load_state(stage.name)
+        return bool(
+            state
+            and state.get("status") == "completed"
+            and state.get("signature") == signature
+            and stage.artifacts_valid()
+        )
+
+    def _selection(self, start: str | None, stop: str | None) -> tuple[ExperimentStage, ...]:
+        names = self.plan.stage_names
+        if start is not None and start not in names:
+            raise ValueError(f"unknown --from-stage {start!r}")
+        if stop is not None and stop not in names:
+            raise ValueError(f"unknown --to-stage {stop!r}")
+        first = names.index(start) if start else 0
+        last = names.index(stop) if stop else len(names) - 1
+        if first > last:
+            raise ValueError("--from-stage occurs after --to-stage")
+        return self.plan.stages[first : last + 1]
+
+    def run(
+        self,
+        *,
+        dry_run: bool = False,
+        resume: bool = True,
+        start: str | None = None,
+        stop: str | None = None,
+    ) -> dict[str, Any]:
+        signatures = self.signatures()
+        selected = self._selection(start, stop)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "fingerprint": self.plan.fingerprint,
+                "stages": [
+                    {
+                        "name": stage.name,
+                        "command": list(stage.command),
+                        "dependencies": list(stage.dependencies),
+                        "would_skip": self._is_complete(stage, signatures[stage.name]),
+                    }
+                    for stage in selected
+                ],
+            }
+
+        invocation_started = time.time()
+        self._write_static_manifests()
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        outcomes = []
+        selected_names = {stage.name for stage in selected}
+        for stage in selected:
+            for dependency in stage.dependencies:
+                dependency_stage = next(
+                    candidate for candidate in self.plan.stages if candidate.name == dependency
+                )
+                if dependency not in selected_names and not self._is_complete(
+                    dependency_stage,
+                    signatures[dependency],
+                ):
+                    raise RuntimeError(
+                        f"stage {stage.name!r} requires incomplete dependency {dependency!r}"
+                    )
+            signature = signatures[stage.name]
+            if resume and self._is_complete(stage, signature):
+                outcomes.append({"stage": stage.name, "status": "skipped"})
+                continue
+            prior_state = self._load_state(stage.name)
+            resolved_command = _resolve_command(stage.command, self.root)
+            resume_interrupted = bool(
+                resume
+                and prior_state
+                and prior_state.get("signature") == signature
+                and prior_state.get("status") in {"running", "failed"}
+            )
+            signature_changed = bool(
+                prior_state
+                and prior_state.get("signature") != signature
+            )
+            invalid_completed_artifacts = bool(
+                prior_state
+                and prior_state.get("status") == "completed"
+                and not stage.artifacts_valid()
+            )
+            clear_outputs = (
+                signature_changed
+                or invalid_completed_artifacts
+                or (
+                    resume_interrupted
+                    and stage.name not in _CHECKPOINT_STAGES
+                )
+            )
+            removed_outputs = (
+                _clear_stale_outputs(stage, resolved_command, self.root)
+                if clear_outputs
+                else []
+            )
+            if clear_outputs:
+                resume_interrupted = False
+            command = _with_training_resume(
+                resolved_command,
+                stage.name,
+                self.root,
+                eligible=resume_interrupted,
+            )
+            started = time.time()
+            state = {
+                "stage": stage.name,
+                "status": "running",
+                "signature": signature,
+                "command": command,
+                "started_at_unix": started,
+            }
+            if removed_outputs:
+                state["invalidated_outputs"] = removed_outputs
+            _atomic_write_json(self._state_path(stage.name), state)
+            log_path = self.log_dir / f"{stage.name}.log"
+            with log_path.open("w", encoding="utf-8") as log:
+                process = subprocess.Popen(
+                    command,
+                    cwd=self.repo_root,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                assert process.stdout is not None
+                for line in process.stdout:
+                    print(line, end="", flush=True)
+                    log.write(line)
+                return_code = process.wait()
+            finished = time.time()
+            state.update(
+                {
+                    "finished_at_unix": finished,
+                    "duration_seconds": finished - started,
+                    "return_code": return_code,
+                    "log": str(log_path),
+                    "status": "completed" if return_code == 0 else "failed",
+                }
+            )
+            if return_code == 0 and not stage.artifacts_valid():
+                state["status"] = "failed"
+                state["error"] = "command succeeded but expected artifacts are missing"
+            _atomic_write_json(self._state_path(stage.name), state)
+            if state["status"] != "completed":
+                raise RuntimeError(
+                    f"stage {stage.name!r} failed; inspect {log_path}"
+                )
+            outcomes.append({"stage": stage.name, "status": "completed"})
+        invocation_finished = time.time()
+        invocation_outcomes = {
+            outcome["stage"]: outcome["status"] for outcome in outcomes
+        }
+        stage_summaries = []
+        for stage in self.plan.stages:
+            state = self._load_state(stage.name) or {}
+            expected_signature = signatures[stage.name]
+            stage_summaries.append(
+                {
+                    "stage": stage.name,
+                    "invocation_status": invocation_outcomes.get(
+                        stage.name,
+                        "not_selected",
+                    ),
+                    "state_status": state.get("status", "missing"),
+                    "signature": state.get("signature"),
+                    "signature_matches": state.get("signature")
+                    == expected_signature,
+                    "artifacts_valid": stage.artifacts_valid(),
+                    "started_at_unix": state.get("started_at_unix"),
+                    "finished_at_unix": state.get("finished_at_unix"),
+                    "duration_seconds": state.get("duration_seconds"),
+                    "return_code": state.get("return_code"),
+                    "log": state.get("log"),
+                }
+            )
+        pipeline_complete = all(
+            summary["state_status"] == "completed"
+            and summary["signature_matches"]
+            and summary["artifacts_valid"]
+            for summary in stage_summaries
+        )
+        result = {
+            "schema_version": 2,
+            "dry_run": False,
+            "fingerprint": self.plan.fingerprint,
+            "outcomes": outcomes,
+            "latest_invocation": {
+                "id": _fingerprint(
+                    {
+                        "experiment": self.plan.fingerprint,
+                        "started_at_unix": invocation_started,
+                        "selected_stages": [stage.name for stage in selected],
+                        "resume": resume,
+                    }
+                ),
+                "started_at_unix": invocation_started,
+                "finished_at_unix": invocation_finished,
+                "duration_seconds": invocation_finished - invocation_started,
+                "resume": resume,
+                "from_stage": start,
+                "to_stage": stop,
+                "selected_stages": [stage.name for stage in selected],
+            },
+            "pipeline_complete": pipeline_complete,
+            "stages": stage_summaries,
+        }
+        _atomic_write_json(self.root / "run_summary.json", result)
+        return result

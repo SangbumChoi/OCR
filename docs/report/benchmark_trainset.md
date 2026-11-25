@@ -51,7 +51,7 @@ python scripts/build_benchmark_trainset.py --per-bench 50
 python scripts/build_benchmark_trainset.py --only docvqa,chartqa,cord --per-bench 150
 ```
 
-Outputs under `data/benchmark_trainset/` (git-ignored — regenerable / lives on HF):
+Outputs under `examples/benchmark_trainset/` (git-ignored — regenerable / lives on HF):
 
 - `train.jsonl` — merged `Sample`s, **directly trainable** (`run_ablation` / `lora_vlm`).
 - `per_bench/<key>.jsonl` — per-benchmark splits.
@@ -69,16 +69,16 @@ Streaming 20+ datasets every run is slow and flaky. Build **once**, then publish
 python scripts/build_benchmark_trainset.py --push-to-hub <user>/docvlm-benchmark-trainset
 # B) build offline, upload the prepared Arrow dataset yourself:
 python -c "from datasets import load_from_disk as L; \
-           L('data/benchmark_trainset/hf_dataset').push_to_hub('<user>/docvlm-benchmark-trainset')"
+           L('examples/benchmark_trainset/hf_dataset').push_to_hub('<user>/docvlm-benchmark-trainset')"
 # C) or upload the raw imagefolder:
-huggingface-cli upload --repo-type dataset <user>/repo data/benchmark_trainset .
+huggingface-cli upload --repo-type dataset <user>/repo examples/benchmark_trainset .
 ```
 
 ## Train on it (public train, synthetic validation)
 
 [`notebooks/finetune_ablation(public_dataset).ipynb`](../../notebooks/finetune_ablation(public_dataset).ipynb)
 fine-tunes on this public set and **validates on the synthetic probe suite**, via
-`run_ablation.py --train-jsonl data/benchmark_trainset/train.jsonl` (`--arm public` for a single run,
+`run_ablation.py --train-jsonl examples/benchmark_trainset/train.jsonl` (`--arm public` for a single run,
 `--arm A0` for the data-scale curve; results go to a separate `ablation_results_public.json`).
 
 It is **feasibility-gated**: public benchmarks give the answer but no spotting boxes (A1) or reasoning

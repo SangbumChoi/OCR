@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure the *richness* of a generated synthetic corpus (PRD: prd_synthetic_diversity.md).
 
-Computes, over data/probes/realistic_cases (or --root): doc-type coverage, visual spread
+Computes, over examples/probes/realistic_cases (or --root): doc-type coverage, visual spread
 (brightness/colour/aspect CoV), layout spread (#fields, table rows, page sizes), task-type
 distribution, language distribution, near-duplicate rate (perceptual hash), and unique-content rate.
 Then checks the v1 "rich enough" acceptance criteria. Writes docs/results/synthetic_diversity_report.md.
@@ -51,7 +51,7 @@ def _cov(xs):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default=str(ROOT / "data" / "probes" / "realistic_cases"))
+    ap.add_argument("--root", default=str(ROOT / "examples" / "probes" / "realistic_cases"))
     ap.add_argument("--out", default=str(ROOT / "docs" / "results" / "synthetic_diversity_report.md"))
     ap.add_argument("--label", default=None,
                     help="human label for the corpus in the report header (defaults to --root); "

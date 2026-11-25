@@ -21,6 +21,8 @@ variant. The data-side ablation factors map onto the DTO as:
   * **A7 preprocessing** -> :class:`RenderSpec` (``dpi``, ``target_long_side``, ``keep_aspect``,
                             ``tiling``) plus :attr:`Field.font_px` / :attr:`Field.is_small` so a
                             *small-text* slice exists; driven by the render knobs in ``GenConfig``.
+  * **Document marks**   -> grounded handwriting/stamp/seal QAs plus
+                            :attr:`RenderSpec.overlays`; driven by ``GenConfig.overlay_*``.
 
 (A5 LoRA-placement and A6 HPO are *training-side* — they consume this GT but need no generator knob.)
 
@@ -33,6 +35,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from typing import Any
+
+from .hard_layout import HARD_LAYOUT_FAMILIES
+from .overlays import OVERLAY_TYPES
 
 # --- language -> writing system, used to label scripts for the A4 transfer matrix ----------
 _SCRIPT_BY_LANG = {
@@ -97,12 +102,17 @@ class QAItem:
     metric: str = "anls"
     rationale: str | None = None   # A2: chain-of-thought target (None when emit_rationale is off)
     answer_bbox: BBox | None = None  # A1: box of the answer span, when localisable
+    evidence_keys: list[str] = field(default_factory=list)
+    evidence_bboxes: list[BBox] = field(default_factory=list)
     languages: list[str] = field(default_factory=lambda: ["en"])
     key: str | None = None
+    graph_query_id: str | None = None
+    reasoning_trace: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["answer_bbox"] = self.answer_bbox.to_list() if self.answer_bbox else None
+        d["evidence_bboxes"] = [box.to_list() for box in self.evidence_bboxes]
         return d
 
 
@@ -115,10 +125,32 @@ class RenderSpec:
     size_px: list[int] = field(default_factory=lambda: [0, 0])
     page_size: str = "A5"
     page_count: int = 1
+    rendered_page_count: int = 1
+    page_mode: str = "first"
+    page_gap_px: int = 0
+    page_origins_px: list[list[int]] = field(default_factory=list)
+    page_sizes_px: list[list[int]] = field(default_factory=list)
+    page_document_indices: list[int] = field(default_factory=list)
+    page_document_ids: list[str] = field(default_factory=list)
+    document_count: int = 1
+    document_mode: str = "single"
+    document_gap_px: int = 0
+    document_ids: list[str] = field(default_factory=list)
+    document_origins_px: list[list[int]] = field(default_factory=list)
+    document_sizes_px: list[list[int]] = field(default_factory=list)
+    documents: list[dict[str, Any]] = field(default_factory=list)
     target_long_side: int | None = None  # A7: longest side the image was resized to (None = native)
     keep_aspect: bool = True             # A7
     tiling: dict[str, Any] | None = None  # A7: {"n_max": int, ...} when dynamic tiling was simulated
     fonts: list[str] = field(default_factory=list)
+    box_resolver: str = "pdf_text"
+    color_probe_fallback_count: int = 0
+    layout_family: str | None = None
+    layout_fingerprint: str | None = None
+    overlay_seed: int | None = None
+    overlay_fingerprint: str | None = None
+    overlays: list[dict[str, Any]] = field(default_factory=list)
+    geometry: dict[str, Any] | None = None
 
     @property
     def aspect_ratio(self) -> float:
@@ -138,6 +170,7 @@ class Degradation:
     preset: str                          # scan|photo|fax|historical|screenshot
     severity: float = 1.0                # multiplier knob for distribution matching
     seed: int | None = None
+    attempts: int = 1
     geometry_preserved: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -186,6 +219,23 @@ class GenConfig:
     # model-free UNDERSTANDING layer: where/how-many/totals derived from the render (derive.py).
     # The OCR GT is free; this is the non-OCR understanding GT that needs no external model.
     emit_understanding: bool = True
+    emit_counterfactual_pairs: bool = True
+    color_probe_fallback: bool = True
+    validate_evidence_pixels: bool = True
+    evidence_min_contrast: float = 8.0
+    evidence_min_foreground_fraction: float = 0.002
+    evidence_min_foreground_pixels: int = 4
+    validate_degraded_evidence: bool = True
+    degraded_min_structure_correlation: float = 0.25
+    degrade_max_attempts: int = 3
+    perspective_prob: float = 0.35
+    perspective_max_inset_fraction: float = 0.08
+    perspective_min_area_ratio: float = 0.70
+    overlay_prob: float = 0.35
+    overlay_types: list[str] = field(default_factory=lambda: list(OVERLAY_TYPES))
+    overlay_max_count: int = 2
+    multipage_mode: str = "grid"
+    multidocument_mode: str = "grid"
 
     # --- visual diversity (per-doc paper colour / accent / font / margin jitter; geometry-safe) ---
     jitter: bool = False
@@ -206,10 +256,71 @@ class GenConfig:
     degrade_severity: float = 1.0
     doc_type_weights: dict[str, float] | None = None     # sampling weights when choosing doc types
 
+    # --- hard-document curriculum and split provenance ---
+    difficulty_level: int = 4
+    hard_layout_families: list[str] = field(
+        default_factory=lambda: list(HARD_LAYOUT_FAMILIES)
+    )
+    split_name: str = "synthetic"
+    split_seed: int = 7
+    split_group_by: str = "content"
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "GenConfig":
         known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
         return cls(**{k: v for k, v in d.items() if k in known})
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.difficulty_level <= 5:
+            raise ValueError("difficulty_level must be within [1, 5]")
+        if self.split_name not in {"synthetic", "train", "validation", "heldout"}:
+            raise ValueError("split_name must be synthetic, train, validation, or heldout")
+        if self.split_group_by not in {"content", "template", "layout", "document"}:
+            raise ValueError(
+                "split_group_by must be content, template, layout, or document"
+            )
+        if not self.hard_layout_families:
+            raise ValueError("hard_layout_families cannot be empty")
+        unknown_layouts = sorted(
+            set(self.hard_layout_families) - set(HARD_LAYOUT_FAMILIES)
+        )
+        if unknown_layouts:
+            raise ValueError(f"unknown hard layout families: {unknown_layouts}")
+        if not isinstance(self.color_probe_fallback, bool):
+            raise ValueError("color_probe_fallback must be boolean")
+        if not isinstance(self.validate_evidence_pixels, bool):
+            raise ValueError("validate_evidence_pixels must be boolean")
+        if self.evidence_min_contrast <= 0:
+            raise ValueError("evidence_min_contrast must be positive")
+        if not 0 <= self.evidence_min_foreground_fraction <= 1:
+            raise ValueError("evidence_min_foreground_fraction must be within [0, 1]")
+        if self.evidence_min_foreground_pixels < 1:
+            raise ValueError("evidence_min_foreground_pixels must be positive")
+        if not isinstance(self.validate_degraded_evidence, bool):
+            raise ValueError("validate_degraded_evidence must be boolean")
+        if not 0 <= self.degraded_min_structure_correlation <= 1:
+            raise ValueError("degraded_min_structure_correlation must be within [0, 1]")
+        if self.degrade_max_attempts < 1:
+            raise ValueError("degrade_max_attempts must be positive")
+        if not 0 <= self.perspective_prob <= 1:
+            raise ValueError("perspective_prob must be within [0, 1]")
+        if not 0 < self.perspective_max_inset_fraction < 0.5:
+            raise ValueError("perspective_max_inset_fraction must be within (0, 0.5)")
+        if not 0 < self.perspective_min_area_ratio <= 1:
+            raise ValueError("perspective_min_area_ratio must be within (0, 1]")
+        if not 0 <= self.overlay_prob <= 1:
+            raise ValueError("overlay_prob must be within [0, 1]")
+        if not self.overlay_types:
+            raise ValueError("overlay_types cannot be empty")
+        unknown_overlays = sorted(set(self.overlay_types) - set(OVERLAY_TYPES))
+        if unknown_overlays:
+            raise ValueError(f"unknown document overlay types: {unknown_overlays}")
+        if self.overlay_max_count < 1:
+            raise ValueError("overlay_max_count must be positive")
+        if self.multipage_mode not in {"vertical", "grid"}:
+            raise ValueError("multipage_mode must be vertical or grid")
+        if self.multidocument_mode not in {"vertical", "grid"}:
+            raise ValueError("multidocument_mode must be vertical or grid")
 
     @classmethod
     def from_yaml(cls, path: str, ablation: str | None = None) -> "GenConfig":
@@ -257,6 +368,9 @@ class DocSample:
     acquisition: str | None = None        # pdf-native|scan|photo|screenshot (modality split)
     source: str = "SYNTHETIC (docvlm_eval.synth) — renders the task; not official data"
     gen_config: dict[str, Any] | None = None
+    semantic_graph: dict[str, Any] | None = None
+    difficulty: dict[str, Any] | None = None
+    split: str = "synthetic"
 
     # -------------------------------------------------------------------- support flags
     def support(self) -> AblationSupport:
@@ -307,7 +421,16 @@ class DocSample:
         # boxes that have no matching field (e.g. table cells, ui buttons) still carry A1 signal
         for key, box in spotting.items():
             if key not in {f.key for f in fields}:
-                fields.append(Field(key=key, value="", role="region", bbox=BBox.from_list(box)))
+                fields.append(
+                    Field(
+                        key=key,
+                        value="",
+                        role="region",
+                        bbox=BBox.from_list(box),
+                        language=getattr(builder, "language", "en"),
+                        script=script_for(getattr(builder, "language", "en")),
+                    )
+                )
 
         qa: list[QAItem] = []
         for q in gt.get("qa", []):
@@ -318,7 +441,18 @@ class DocSample:
                 answer_type=q.get("answer_type", "kie"), metric=q.get("metric", "anls"),
                 rationale=q.get("rationale"),
                 answer_bbox=BBox.from_list(abox),
-                languages=q.get("languages", ["en"]), key=q.get("key"),
+                evidence_keys=list(q.get("evidence_keys") or []),
+                evidence_bboxes=[
+                    box for key in (q.get("evidence_keys") or [])
+                    if (box := BBox.from_list(spotting.get(key))) is not None
+                ],
+                languages=q.get(
+                    "languages",
+                    [getattr(builder, "language", "en")],
+                ),
+                key=q.get("key"),
+                graph_query_id=q.get("graph_query_id"),
+                reasoning_trace=q.get("reasoning_trace"),
             ))
 
         rj = gt.get("render", {}) or {}
@@ -327,9 +461,53 @@ class DocSample:
             dpi=rj.get("dpi"), size_px=list(rj.get("size_px") or [0, 0]),
             page_size=getattr(builder, "page", rj.get("page_size", "A5")) if builder else rj.get("page_size", "A5"),
             page_count=rj.get("page_count", 1),
+            rendered_page_count=rj.get(
+                "rendered_page_count",
+                len(rj.get("page_origins_px") or []) or 1,
+            ),
+            page_mode=rj.get("page_mode", "first"),
+            page_gap_px=rj.get("page_gap_px", 0),
+            page_origins_px=[
+                list(origin) for origin in (rj.get("page_origins_px") or [])
+            ],
+            page_sizes_px=[
+                list(size) for size in (rj.get("page_sizes_px") or [])
+            ],
+            page_document_indices=[
+                int(index) for index in (rj.get("page_document_indices") or [])
+            ],
+            page_document_ids=[
+                str(document_id)
+                for document_id in (rj.get("page_document_ids") or [])
+            ],
+            document_count=int(rj.get("document_count") or 1),
+            document_mode=str(rj.get("document_mode") or "single"),
+            document_gap_px=int(rj.get("document_gap_px") or 0),
+            document_ids=[
+                str(document_id) for document_id in (rj.get("document_ids") or [])
+            ],
+            document_origins_px=[
+                list(origin) for origin in (rj.get("document_origins_px") or [])
+            ],
+            document_sizes_px=[
+                list(size) for size in (rj.get("document_sizes_px") or [])
+            ],
+            documents=[
+                dict(document) for document in (rj.get("documents") or [])
+            ],
             target_long_side=(gen_config.target_long_side if gen_config else None),
             keep_aspect=(gen_config.keep_aspect if gen_config else True),
             tiling=({"n_max": gen_config.tiling_n_max} if gen_config and gen_config.tiling_n_max else None),
+            box_resolver=rj.get("box_resolver", "pdf_text"),
+            color_probe_fallback_count=int(
+                rj.get("color_probe_fallback_count", 0)
+            ),
+            layout_family=rj.get("layout_family"),
+            layout_fingerprint=rj.get("layout_fingerprint"),
+            overlay_seed=rj.get("overlay_seed"),
+            overlay_fingerprint=rj.get("overlay_fingerprint"),
+            overlays=list(rj.get("overlays") or []),
+            geometry=rj.get("geometry"),
         )
         langs = sorted({f.language for f in fields} | {gt.get("fields", {}).get("language", "en")}
                        if isinstance(gt.get("fields", {}).get("language"), str) else
@@ -345,6 +523,9 @@ class DocSample:
             render=render, degradation=degradation, languages=langs or ["en"],
             domain=domain, acquisition=gt.get("acquisition") or acquisition,
             gen_config=(gen_config.to_dict() if gen_config else None),
+            semantic_graph=gt.get("semantic_graph"),
+            difficulty=gt.get("difficulty"),
+            split=(gen_config.split_name if gen_config else gt.get("split", "synthetic")),
         )
 
     # -------------------------------------------------------------------- serialisation
@@ -360,6 +541,7 @@ class DocSample:
             "anchor_metric": self.anchor_metric,
             "languages": list(self.languages),
             "source": self.source,
+            "split": self.split,
             # --- structured ---
             "fields_detailed": [f.to_dict() for f in self.fields],
             "qa_detailed": [q.to_dict() for q in self.qa],
@@ -371,6 +553,10 @@ class DocSample:
             d["degraded_preset"] = self.degradation.preset  # legacy key
         if self.gen_config is not None:
             d["gen_config"] = self.gen_config
+        if self.semantic_graph is not None:
+            d["semantic_graph"] = self.semantic_graph
+        if self.difficulty is not None:
+            d["difficulty"] = self.difficulty
 
         # --- legacy flat mirror (so to_samples.py and existing tests keep working) ---
         d["fields"] = {f.key: f.value for f in self.fields if f.value != ""}
@@ -380,7 +566,15 @@ class DocSample:
         if self.qa:
             d["qa"] = [{"key": q.key, "question": q.question, "answers": q.answers,
                         "metric": q.metric, "answer_type": q.answer_type,
-                        **({"rationale": q.rationale} if q.rationale else {})} for q in self.qa]
+                        **({"box": q.answer_bbox.to_list()} if q.answer_bbox else {}),
+                        **({"evidence_keys": q.evidence_keys} if q.evidence_keys else {}),
+                        **({"evidence_bboxes": [b.to_list() for b in q.evidence_bboxes]}
+                           if q.evidence_bboxes else {}),
+                        **({"rationale": q.rationale} if q.rationale else {}),
+                        **({"graph_query_id": q.graph_query_id}
+                           if q.graph_query_id else {}),
+                        **({"reasoning_trace": q.reasoning_trace}
+                           if q.reasoning_trace else {})} for q in self.qa]
         if self.table_html:
             d["table_html"] = self.table_html
         if self.selection:

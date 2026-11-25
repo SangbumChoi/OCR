@@ -43,12 +43,17 @@ class _HFChatVLM(ModelAdapter):
             from transformers import AutoModelForVision2Seq as _AutoVLM
 
         self.processor = AutoProcessor.from_pretrained(
-            self.hf_id, trust_remote_code=self.trust_remote
+            self.hf_id,
+            revision=self.revision,
+            trust_remote_code=self.trust_remote,
         )
         self.model = (
             _AutoVLM.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype),
-                trust_remote_code=self.trust_remote, attn_implementation=self.resolve_attn(),
+                self.hf_id,
+                revision=self.revision,
+                torch_dtype=getattr(torch, self.dtype),
+                trust_remote_code=self.trust_remote,
+                attn_implementation=self.resolve_attn(),
             )
             .eval()
             .to(self.device)

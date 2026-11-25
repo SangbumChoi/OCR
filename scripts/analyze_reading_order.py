@@ -14,7 +14,7 @@ reading strategy, so the report demonstrates that the measurement isolates what 
                       "logic switch" hypothesis; its order_tau-vs-gap curve shows the flip.
 
 Real models slot into the same harness later: generate predictions for
-``data/probes/reading_order/probe.jsonl`` (plus the OmniDocBench set) and score with the same
+``examples/probes/reading_order/probe.jsonl`` (plus the OmniDocBench set) and score with the same
 metrics. Writes docs/results/reading_order.md + docs/report/figures/reading_order_switch.png.
 
     python scripts/make_reading_order_probe.py && python scripts/analyze_reading_order.py
@@ -63,8 +63,8 @@ def readers() -> dict:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--probe", default=str(ROOT / "data" / "probes" / "reading_order" / "probe.jsonl"))
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"),
+    p.add_argument("--probe", default=str(ROOT / "examples" / "probes" / "reading_order" / "probe.jsonl"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"),
                    help="merged UDD (for the OmniDocBench heldout section; skipped if absent)")
     args = p.parse_args()
 
@@ -101,9 +101,12 @@ def main() -> None:
         try:
             from datasets import load_from_disk
             ds = load_from_disk(args.src)
-            n_omni = sum(1 for i in range(len(ds))
-                         if ds["source"][i] == "omnidocbench" and ds["fold"][i] == "heldout"
-                         and ds["n_regions"][i] > 1)
+            n_omni = sum(
+                1 for i in range(len(ds))
+                if ds["source"][i] == "omnidocbench" and ds["fold"][i] == "heldout"
+                and sum(element.get("kind") == "region"
+                        for element in json.loads(ds["elements_json"][i] or "[]")) > 1
+            )
             omni_note = (f"**{n_omni} OmniDocBench heldout pages** carry real reading-order GT "
                          "(`regions` are stored in reading order) — score real models on them with "
                          "`metric=content_bag/order_tau` using the region texts as the gold "

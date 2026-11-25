@@ -40,10 +40,10 @@ def test_answers_coerced_to_str(tmp_path):
 
 def test_foreign_absolute_paths_reanchor_at_this_repo(tmp_path):
     # Checked-in probe jsonls carry absolute paths from the generating machine
-    # (/home/user/OCR/data/...); on a clone rooted elsewhere (Colab /content/OCR) they must
-    # resolve against THIS repo root via their data/-relative tail.
+    # (/home/user/OCR/examples/...); on a clone rooted elsewhere (Colab /content/OCR) they must
+    # resolve against THIS repo root via their examples/-relative tail.
     from docvlm_eval.benchmarks.loaders import ROOT
-    real = next((ROOT / "data" / "probes").rglob("*.png"))
+    real = next((ROOT / "examples" / "benchmarks").glob("*/download/*.jpg"))
     rel = real.relative_to(ROOT)
     foreign = "/somewhere/else/OCR/" + str(rel)
     p = tmp_path / "f.jsonl"
@@ -52,6 +52,6 @@ def test_foreign_absolute_paths_reanchor_at_this_repo(tmp_path):
     out = load_jsonl(p)
     assert out[0].image_path == str(real)
     # a genuinely missing path stays untouched (no false remap)
-    p.write_text(json.dumps({"sample_id": "b", "image_path": "/no/data/here.png",
+    p.write_text(json.dumps({"sample_id": "b", "image_path": "/no/examples/here.png",
                              "question": "q", "answers": ["1"]}) + "\n", encoding="utf-8")
-    assert load_jsonl(p)[0].image_path == "/no/data/here.png"
+    assert load_jsonl(p)[0].image_path == "/no/examples/here.png"

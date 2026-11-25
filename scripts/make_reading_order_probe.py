@@ -121,7 +121,7 @@ def render_boxes(elements, out, gap=80):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=str(ROOT / "data" / "probes" / "reading_order"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "probes" / "reading_order"))
     p.add_argument("--count", type=int, default=6, help="images per layout")
     p.add_argument("--sweep", type=int, nargs="*", default=[20, 60, 120, 200, 320, 480],
                    help="box-layout gap sweep (px) for the switch-threshold characterization")

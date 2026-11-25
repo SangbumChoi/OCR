@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "executed_on": "2026-07-25",
+  "initialization_arm": "I8_lfm_aligned_language",
+  "claim_scope": "real_source_initialization_contract_only",
+  "quality_claim_authorized": false,
+  "target": {
+    "total_parameters": 814207243,
+    "vision_parameters": 88654080,
+    "connector_parameters": 36853761,
+    "language_parameters": 687966720,
+    "task_head_parameters": 732682
+  },
+  "runtime": {
+    "device": "cpu",
+    "host": "Apple M5, 32GB",
+    "wall_seconds": 21.92,
+    "maximum_resident_bytes": 6469451776
+  },
+  "source": {
+    "model": "LiquidAI/LFM2.5-VL-1.6B",
+    "revision": "919fde3d022e3f90a4716006f993938ee8c2eb97",
+    "weight_format": "safetensors",
+    "content_fingerprint": "sha256:66e41f3d4f2d31ecfbe7d15037e41371bf68d412d1e7d984d873a28ade612557",
+    "total_bytes": 3193336592,
+    "manifest_file_sha256": "sha256:12d9f5a0c487d6fbf8ee18ca9143685d7651708b4e250ee8ec140ce465d5316b"
+  },
+  "transfer": {
+    "component": "language",
+    "family": "lfm2",
+    "shape_policy": "structured_mlp",
+    "attention_geometry_compatible": true,
+    "short_convolution_compatible": true,
+    "mlp_operator_compatible": true,
+    "source_weight_profile_fingerprint": "sha256:75b083e4b8359413595852dd6fc3c7633ea282e5200a615805b9731daa25d644",
+    "unhealthy_source_weight_roles": [],
+    "copied_tensors": 109,
+    "copied_parameters": 553748992,
+    "structured_tensors": 36,
+    "structured_parameters": 377487360,
+    "structured_groups": 12,
+    "token_rows_copied": 0,
+    "policy_skips": 227,
+    "shape_skips": 0,
+    "semantic_skips": 0,
+    "missing_source": 0,
+    "realized_component_parameter_fraction": 0.8049066559498692,
+    "minimum_component_parameter_fraction": 0.5,
+    "source_topology_fingerprint": "sha256:b86a86a69388339a28f6ec3c0b58665dea9ec655c973185fccb617eec6ac5964",
+    "target_topology_fingerprint": "sha256:a7d405ef4cf15a3d28899583581e41fa54323bc7079f5ffc099a6a4dcd12400a",
+    "mapping_fingerprint": "sha256:d36ebc867e4c04e74f08f3fb42a397aeb7c00d7c62f91eb5e626a410bedcfa7f",
+    "copied_values_fingerprint": "sha256:8f243f6b9ac040e9aba3fb5b6783ecd6b083898ae275494409344a163009bdcb",
+    "value_verified": true
+  },
+  "limitations": [
+    "The preflight materializes initialization but does not train or evaluate the target.",
+    "CPU memory and latency do not establish target-CUDA feasibility.",
+    "A quality conclusion requires the paired multi-seed LFM transfer sweep."
+  ]
+}

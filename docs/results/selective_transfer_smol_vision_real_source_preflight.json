@@ -1,0 +1,42 @@
+{
+  "claim_scope": "real_source_vision_initialization_contract_only",
+  "executed_on": "cpu",
+  "limitations": [
+    "This verifies selective source acquisition and initialization values only.",
+    "Downstream benefit requires a matched language-only versus dual-source training experiment."
+  ],
+  "promotion_claim_authorized": false,
+  "quality_claim_authorized": false,
+  "report_fingerprint": "sha256:00b24d41e8f2c88af1ec8dc74d0ec79ff23802699323036daf54278c2086edc4",
+  "schema_version": 1,
+  "source": {
+    "model": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+    "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+    "selected_content_fingerprint": "sha256:4b800d8bb77adbee0e349c01d809fc4bda27b4ee7dd2aafdb23f12886d3dda13",
+    "selected_parameter_count": 85054464,
+    "selected_tensor_count": 192,
+    "selective_manifest_fingerprint": "sha256:b6fee91d03891bfe941d8f1de799101c76b3930ec5a3f1987ce8065346d7d08b",
+    "source_payload_bytes": 340217856
+  },
+  "target": {
+    "architecture": "docvlm-production-vision",
+    "component": "vision",
+    "parameters": 88654080
+  },
+  "transfer": {
+    "all_copied_keys_within_scope": true,
+    "copied_parameters": 85054464,
+    "copied_tensors": 192,
+    "copied_values_fingerprint": "sha256:d92416f777d04ec311892061b1ac9675281bc97c085831774758bccdc0e71ff5",
+    "family": "siglip",
+    "mapping_fingerprint": "sha256:45b267bb23d3ab1d67f8120cbbe8708699d308af47eb5445d85a334b0a8c905b",
+    "missing_source": 0,
+    "realized_component_parameter_fraction": 0.9593970632823667,
+    "semantic_skips": 0,
+    "shape_policy": "exact",
+    "shape_skips": 0,
+    "unhealthy_source_weight_roles": [],
+    "value_verified": true,
+    "vision_scope": "transformer_blocks"
+  }
+}

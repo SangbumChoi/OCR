@@ -33,6 +33,7 @@ class Ovis2_1B(ModelAdapter):
         self.model = (
             AutoModelForCausalLM.from_pretrained(
                 self.hf_id,
+                revision=self.revision,
                 torch_dtype=getattr(torch, self.dtype),
                 multimodal_max_length=8192,
                 trust_remote_code=True,
@@ -101,7 +102,10 @@ class Ovis2_5_2B(ModelAdapter):
 
         self.model = (
             AutoModelForCausalLM.from_pretrained(
-                self.hf_id, torch_dtype=getattr(torch, self.dtype), trust_remote_code=True,
+                self.hf_id,
+                revision=self.revision,
+                torch_dtype=getattr(torch, self.dtype),
+                trust_remote_code=True,
                 attn_implementation=self.resolve_attn(),
             )
             .eval()

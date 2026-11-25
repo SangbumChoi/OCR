@@ -1,0 +1,3037 @@
+"""Matched multi-run ablations for the native sub-1B document VLM."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import math
+import os
+import random
+import re
+import tempfile
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from ..architecture import estimate_parameters, load_blueprint
+from .evidence import (
+    build_experiment_attestation,
+    verify_experiment_attestation,
+)
+from .experiment import ExperimentPlan, ExperimentRunner, build_experiment_plan
+from .gates import (
+    evaluate_deployment_gates,
+    load_evaluation_artifacts,
+    write_gate_report,
+)
+
+
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_DOCUMENTS = {"experiment", "blueprint"}
+_RESERVED_EXPERIMENT_PATHS = {"/name", "/output_root", "/blueprint"}
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _fingerprint(value: Any) -> str:
+    return f"sha256:{hashlib.sha256(_stable_json(value).encode('utf-8')).hexdigest()}"
+
+
+def _attestation_plan(
+    plan: ExperimentPlan,
+    stage_names: list[str],
+) -> ExperimentPlan:
+    if not stage_names:
+        raise ValueError("sweep run attestation has no stages")
+    expected = [stage.name for stage in plan.stages[: len(stage_names)]]
+    if stage_names != expected:
+        raise ValueError(
+            "sweep run attestation stages are not an exact experiment prefix"
+        )
+    if "evaluate" not in stage_names:
+        raise ValueError(
+            "sweep run attestation does not cover final evaluation"
+        )
+    return replace(plan, stages=plan.stages[: len(stage_names)])
+
+
+def _write_run_attestation(
+    plan: ExperimentPlan,
+    *,
+    repo_root: str | Path,
+    stop: str | None,
+) -> dict[str, Any]:
+    stage_names = [stage.name for stage in plan.stages]
+    if stop is not None:
+        if stop not in stage_names:
+            raise ValueError(f"unknown attestation stop stage {stop!r}")
+        stage_names = stage_names[: stage_names.index(stop) + 1]
+    attestation_plan = _attestation_plan(plan, stage_names)
+    path = Path(plan.root) / "evidence_attestation.json"
+    attestation = build_experiment_attestation(
+        attestation_plan,
+        repo_root=repo_root,
+        output=path,
+        hash_mode="full",
+    )
+    if attestation["contract_status"] != "pass":
+        failed = [
+            check["id"]
+            for check in attestation["contract_checks"]
+            if check["status"] != "pass"
+        ]
+        raise RuntimeError(
+            "sweep run failed execution attestation: "
+            f"{failed[:8]}"
+        )
+    return {
+        "path": str(path),
+        "attestation_sha256": attestation["attestation_sha256"],
+        "stage_count": len(stage_names),
+        "contract_status": attestation["contract_status"],
+        "capability_status": attestation["capability_status"],
+        "claim_scope": attestation["claim_scope"],
+        "quality_claim_authorized": attestation[
+            "quality_claim_authorized"
+        ],
+    }
+
+
+def _verify_run_attestation(
+    plan: ExperimentPlan,
+    *,
+    repo_root: str | Path,
+) -> dict[str, Any]:
+    path = Path(plan.root) / "evidence_attestation.json"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"sweep run has no sealed execution attestation: {path}"
+        )
+    observed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(observed, dict):
+        raise ValueError(f"invalid sweep run attestation: {path}")
+    stages = observed.get("stages")
+    if not isinstance(stages, list) or not all(
+        isinstance(stage, dict)
+        and isinstance(stage.get("stage"), str)
+        for stage in stages
+    ):
+        raise ValueError(f"invalid sweep run attestation stages: {path}")
+    stage_names = [str(stage["stage"]) for stage in stages]
+    attestation_plan = _attestation_plan(plan, stage_names)
+    verification = verify_experiment_attestation(
+        attestation_plan,
+        path,
+        repo_root=repo_root,
+    )
+    if (
+        not verification["valid"]
+        or verification["contract_status"] != "pass"
+    ):
+        raise ValueError(
+            "sweep run execution attestation is stale, tampered, or failed: "
+            f"{path}"
+        )
+    return {
+        "path": str(path),
+        "attestation_sha256": observed.get("attestation_sha256"),
+        "stage_count": len(stage_names),
+        "contract_status": verification["contract_status"],
+        "capability_status": verification["capability_status"],
+        "claim_scope": verification["claim_scope"],
+        "quality_claim_authorized": bool(
+            observed.get("quality_claim_authorized")
+        ),
+    }
+
+
+def _without_wandb_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_wandb_metadata(item)
+            for key, item in value.items()
+            if not key.startswith("wandb_")
+        }
+    if isinstance(value, list):
+        return [_without_wandb_metadata(item) for item in value]
+    return copy.deepcopy(value)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _atomic_write_yaml(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as handle:
+        yaml.safe_dump(payload, handle, sort_keys=False)
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as handle:
+        handle.write(text)
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _resolve_path(root: Path, value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _pointer_parts(pointer: str) -> list[str]:
+    if not isinstance(pointer, str) or not pointer.startswith("/") or pointer == "/":
+        raise ValueError("JSON Patch paths must be non-root JSON pointers")
+    return [part.replace("~1", "/").replace("~0", "~") for part in pointer[1:].split("/")]
+
+
+def _list_index(token: str, length: int, *, allow_end: bool) -> int:
+    if token == "-" and allow_end:
+        return length
+    if not token.isdigit():
+        raise ValueError(f"invalid JSON Patch list index {token!r}")
+    index = int(token)
+    upper = length if allow_end else length - 1
+    if not 0 <= index <= upper:
+        raise ValueError(f"JSON Patch list index {index} is out of range")
+    return index
+
+
+def _pointer_parent(document: Any, pointer: str) -> tuple[Any, str]:
+    parts = _pointer_parts(pointer)
+    parent = document
+    for token in parts[:-1]:
+        if isinstance(parent, dict):
+            if token not in parent:
+                raise ValueError(f"JSON Patch path does not exist: {pointer}")
+            parent = parent[token]
+        elif isinstance(parent, list):
+            parent = parent[_list_index(token, len(parent), allow_end=False)]
+        else:
+            raise ValueError(f"JSON Patch path crosses a scalar: {pointer}")
+    return parent, parts[-1]
+
+
+def apply_json_patch(document: dict[str, Any], operations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Apply the add, replace, and remove subset of RFC 6902 to a copy."""
+
+    result = copy.deepcopy(document)
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, dict):
+            raise ValueError(f"patch operation {index} must be a mapping")
+        op = str(operation.get("op") or "")
+        path = str(operation.get("path") or "")
+        if op not in {"add", "replace", "remove"}:
+            raise ValueError(f"patch operation {index} has unsupported op {op!r}")
+        if op in {"add", "replace"} and "value" not in operation:
+            raise ValueError(f"patch operation {index} requires value")
+        parent, token = _pointer_parent(result, path)
+        if isinstance(parent, dict):
+            exists = token in parent
+            if op in {"replace", "remove"} and not exists:
+                raise ValueError(f"JSON Patch path does not exist: {path}")
+            if op == "remove":
+                del parent[token]
+            else:
+                parent[token] = copy.deepcopy(operation["value"])
+        elif isinstance(parent, list):
+            item_index = _list_index(token, len(parent), allow_end=op == "add")
+            if op == "remove":
+                parent.pop(item_index)
+            elif op == "replace":
+                parent[item_index] = copy.deepcopy(operation["value"])
+            else:
+                parent.insert(item_index, copy.deepcopy(operation["value"]))
+        else:
+            raise ValueError(f"JSON Patch path has scalar parent: {path}")
+    return result
+
+
+def _pointer_get(document: Any, pointer: str) -> Any:
+    value = document
+    for token in _pointer_parts(pointer):
+        if isinstance(value, dict):
+            if token not in value:
+                raise ValueError(f"matched control path does not exist: {pointer}")
+            value = value[token]
+        elif isinstance(value, list):
+            value = value[_list_index(token, len(value), allow_end=False)]
+        else:
+            raise ValueError(f"matched control path crosses a scalar: {pointer}")
+    return value
+
+
+def _patch_list(raw: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = raw.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"sweep.{key} must be a list")
+    return value
+
+
+def _validate_reserved_patches(operations: list[dict[str, Any]]) -> None:
+    for operation in operations:
+        path = str(operation.get("path") or "")
+        if path in _RESERVED_EXPERIMENT_PATHS:
+            raise ValueError(f"experiment patch path {path} is reserved by the sweep compiler")
+
+
+@dataclass(frozen=True)
+class MatchedControl:
+    document: str
+    path: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.document}:{self.path}"
+
+
+@dataclass(frozen=True)
+class CompiledVariant:
+    id: str
+    arm_id: str
+    replicate_id: str
+    hypothesis: str
+    replicate_experiment_patches: tuple[dict[str, Any], ...]
+    replicate_blueprint_patches: tuple[dict[str, Any], ...]
+    experiment_patches: tuple[dict[str, Any], ...]
+    blueprint_patches: tuple[dict[str, Any], ...]
+    experiment_path: str
+    blueprint_path: str
+    plan: ExperimentPlan
+    parameters: dict[str, int]
+    decision_metrics: dict[str, float]
+    fingerprint: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "arm_id": self.arm_id,
+            "replicate_id": self.replicate_id,
+            "hypothesis": self.hypothesis,
+            "replicate_experiment_patches": list(self.replicate_experiment_patches),
+            "replicate_blueprint_patches": list(self.replicate_blueprint_patches),
+            "experiment_patches": list(self.experiment_patches),
+            "blueprint_patches": list(self.blueprint_patches),
+            "experiment_path": self.experiment_path,
+            "blueprint_path": self.blueprint_path,
+            "experiment_root": self.plan.root,
+            "experiment_fingerprint": self.plan.fingerprint,
+            "parameters": self.parameters,
+            "decision_metrics": self.decision_metrics,
+            "fingerprint": self.fingerprint,
+        }
+
+
+@dataclass(frozen=True)
+class PromotionRule:
+    primary_metric: str
+    direction: str
+    minimum_effect: float
+    minimum_replicates: int
+    familywise_alpha: float
+    max_promotions: int
+    required_gates: tuple[str, ...]
+    required_axis_deltas: dict[str, float]
+    eligible_variants: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        result = {
+            "primary_metric": self.primary_metric,
+            "direction": self.direction,
+            "minimum_effect": self.minimum_effect,
+            "minimum_replicates": self.minimum_replicates,
+            "familywise_alpha": self.familywise_alpha,
+            "max_promotions": self.max_promotions,
+            "required_gates": list(self.required_gates),
+            "required_axis_deltas": self.required_axis_deltas,
+        }
+        if self.eligible_variants:
+            result["eligible_variants"] = list(self.eligible_variants)
+        return result
+
+
+@dataclass(frozen=True)
+class ParetoObjective:
+    metric: str
+    direction: str
+    minimum_effect: float
+    required_improvement: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metric": self.metric,
+            "direction": self.direction,
+            "minimum_effect": self.minimum_effect,
+            "required_improvement": self.required_improvement,
+        }
+
+
+@dataclass(frozen=True)
+class ParetoPromotionRule:
+    objectives: tuple[ParetoObjective, ...]
+    selection_order: tuple[str, ...]
+    minimum_replicates: int
+    familywise_alpha: float
+    max_promotions: int
+    required_gates: tuple[str, ...]
+    required_axis_deltas: dict[str, float]
+    eligible_variants: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        result = {
+            "mode": "pareto",
+            "objectives": [
+                objective.to_dict() for objective in self.objectives
+            ],
+            "selection_order": list(self.selection_order),
+            "minimum_replicates": self.minimum_replicates,
+            "familywise_alpha": self.familywise_alpha,
+            "max_promotions": self.max_promotions,
+            "required_gates": list(self.required_gates),
+            "required_axis_deltas": self.required_axis_deltas,
+        }
+        if self.eligible_variants:
+            result["eligible_variants"] = list(self.eligible_variants)
+        return result
+
+
+@dataclass(frozen=True)
+class LinearContrast:
+    id: str
+    hypothesis: str
+    coefficients: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "hypothesis": self.hypothesis,
+            "coefficients": self.coefficients,
+        }
+
+
+@dataclass(frozen=True)
+class SweepPlan:
+    name: str
+    root: str
+    baseline: str
+    base_experiment: str
+    controls: tuple[MatchedControl, ...]
+    replicate_controls: tuple[MatchedControl, ...]
+    control_values_by_replicate: dict[str, dict[str, Any]]
+    replicates: tuple[str, ...]
+    variants: tuple[CompiledVariant, ...]
+    contrasts: tuple[LinearContrast, ...]
+    promotion: PromotionRule | ParetoPromotionRule | None
+    fingerprint: str
+    raw_spec: dict[str, Any]
+
+    @property
+    def control_values(self) -> dict[str, Any]:
+        if len(self.control_values_by_replicate) == 1:
+            return next(iter(self.control_values_by_replicate.values()))
+        return self.control_values_by_replicate
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "name": self.name,
+            "root": self.root,
+            "baseline": self.baseline,
+            "base_experiment": self.base_experiment,
+            "matched_controls": [asdict(control) for control in self.controls],
+            "replicate_controls": [
+                asdict(control) for control in self.replicate_controls
+            ],
+            "control_values_by_replicate": self.control_values_by_replicate,
+            "replicates": list(self.replicates),
+            "variants": [variant.to_dict() for variant in self.variants],
+            "contrasts": [
+                contrast.to_dict() for contrast in self.contrasts
+            ],
+            "promotion": (
+                None if self.promotion is None else self.promotion.to_dict()
+            ),
+            "fingerprint": self.fingerprint,
+        }
+
+
+def _load_sweep(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("sweep root must be a mapping")
+    return raw
+
+
+def _parse_contrasts(
+    raw: dict[str, Any],
+    variant_ids: set[str],
+) -> tuple[LinearContrast, ...]:
+    value = raw.get("contrasts", [])
+    if not isinstance(value, list):
+        raise ValueError("sweep.contrasts must be a list")
+    contrasts = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("every sweep contrast must be a mapping")
+        contrast_id = str(item.get("id") or "")
+        if not _NAME.fullmatch(contrast_id) or contrast_id in seen:
+            raise ValueError("contrast ids must be unique safe names")
+        seen.add(contrast_id)
+        raw_coefficients = item.get("coefficients")
+        if not isinstance(raw_coefficients, dict):
+            raise ValueError("contrast coefficients must be a mapping")
+        coefficients: dict[str, float] = {}
+        for variant_id, coefficient in raw_coefficients.items():
+            if (
+                variant_id not in variant_ids
+                or not isinstance(coefficient, (int, float))
+                or isinstance(coefficient, bool)
+                or not math.isfinite(float(coefficient))
+                or float(coefficient) == 0.0
+            ):
+                raise ValueError(
+                    "contrast coefficients require known variants and "
+                    "finite nonzero numeric values"
+                )
+            coefficients[str(variant_id)] = float(coefficient)
+        if len(coefficients) < 2:
+            raise ValueError("a contrast requires at least two variants")
+        if not math.isclose(
+            sum(coefficients.values()),
+            0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError("contrast coefficients must sum to zero")
+        contrasts.append(
+            LinearContrast(
+                id=contrast_id,
+                hypothesis=str(item.get("hypothesis") or ""),
+                coefficients=coefficients,
+            )
+        )
+    return tuple(contrasts)
+
+
+def _parse_controls(
+    raw: dict[str, Any],
+    key: str = "matched_controls",
+) -> tuple[MatchedControl, ...]:
+    controls_raw = raw.get(key)
+    if not isinstance(controls_raw, list) or not controls_raw:
+        raise ValueError(f"sweep.{key} must be a non-empty list")
+    controls = []
+    seen = set()
+    for item in controls_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every matched control must be a mapping")
+        control = MatchedControl(
+            document=str(item.get("document") or ""),
+            path=str(item.get("path") or ""),
+        )
+        if control.document not in _DOCUMENTS:
+            raise ValueError(f"{key} document must be experiment or blueprint")
+        _pointer_parts(control.path)
+        if control.key in seen:
+            raise ValueError(f"duplicate {key} entry {control.key}")
+        seen.add(control.key)
+        controls.append(control)
+    return tuple(controls)
+
+
+def _parse_replicates(
+    raw: dict[str, Any],
+    replicate_controls: tuple[MatchedControl, ...],
+) -> tuple[dict[str, Any], ...]:
+    replicates_raw = raw.get("replicates")
+    if replicates_raw is None:
+        return ({"id": "default", "explicit": False},)
+    if not isinstance(replicates_raw, list) or not replicates_raw:
+        raise ValueError("sweep.replicates must be a non-empty list when set")
+    replicates = []
+    seen = set()
+    allowed = {
+        (control.document, control.path)
+        for control in replicate_controls
+    }
+    for item in replicates_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every sweep replicate must be a mapping")
+        replicate_id = str(item.get("id") or "")
+        if not _NAME.fullmatch(replicate_id) or replicate_id in seen:
+            raise ValueError("replicate ids must be unique safe names")
+        seen.add(replicate_id)
+        experiment_patches = _patch_list(item, "experiment_patches")
+        blueprint_patches = _patch_list(item, "blueprint_patches")
+        _validate_reserved_patches(experiment_patches)
+        if not experiment_patches and not blueprint_patches:
+            raise ValueError(f"replicate {replicate_id!r} has no seed or control patches")
+        patched = {
+            ("experiment", str(operation.get("path") or ""))
+            for operation in experiment_patches
+        } | {
+            ("blueprint", str(operation.get("path") or ""))
+            for operation in blueprint_patches
+        }
+        undeclared = sorted(patched - allowed)
+        if undeclared:
+            raise ValueError(
+                f"replicate {replicate_id!r} patches undeclared replicate controls: "
+                f"{undeclared}"
+            )
+        missing = sorted(allowed - patched)
+        if missing:
+            raise ValueError(
+                f"replicate {replicate_id!r} does not set every replicate control: "
+                f"{missing}"
+            )
+        replicates.append(
+            {
+                "id": replicate_id,
+                "explicit": True,
+                "experiment_patches": experiment_patches,
+                "blueprint_patches": blueprint_patches,
+            }
+        )
+    return tuple(replicates)
+
+
+def _promotion_common(
+    value: dict[str, Any],
+) -> tuple[
+    int,
+    float,
+    int,
+    tuple[str, ...],
+    dict[str, float],
+    tuple[str, ...],
+]:
+    minimum_replicates = value.get("minimum_replicates", 3)
+    if (
+        not isinstance(minimum_replicates, int)
+        or isinstance(minimum_replicates, bool)
+        or minimum_replicates < 2
+    ):
+        raise ValueError("promotion.minimum_replicates must be an integer >= 2")
+    familywise_alpha = value.get("familywise_alpha", 0.05)
+    if (
+        not isinstance(familywise_alpha, (int, float))
+        or isinstance(familywise_alpha, bool)
+        or not math.isfinite(float(familywise_alpha))
+        or not 0 < float(familywise_alpha) < 0.5
+    ):
+        raise ValueError("promotion.familywise_alpha must be within (0, 0.5)")
+    max_promotions = value.get("max_promotions", 1)
+    if (
+        not isinstance(max_promotions, int)
+        or isinstance(max_promotions, bool)
+        or max_promotions < 1
+    ):
+        raise ValueError("promotion.max_promotions must be an integer >= 1")
+    required_gates = value.get("required_gates", [])
+    normalized_gates = (
+        [str(gate) for gate in required_gates]
+        if isinstance(required_gates, list)
+        else []
+    )
+    if (
+        not isinstance(required_gates, list)
+        or any(not _NAME.fullmatch(gate) for gate in normalized_gates)
+        or len(set(normalized_gates)) != len(normalized_gates)
+    ):
+        raise ValueError(
+            "promotion.required_gates must contain unique safe names"
+        )
+    required_axis_deltas = value.get("required_axis_deltas", {})
+    if not isinstance(required_axis_deltas, dict):
+        raise ValueError("promotion.required_axis_deltas must be a mapping")
+    normalized_axes: dict[str, float] = {}
+    for axis, threshold in required_axis_deltas.items():
+        if not isinstance(axis, str) or not axis:
+            raise ValueError("promotion axis names must be non-empty strings")
+        if (
+            not isinstance(threshold, (int, float))
+            or isinstance(threshold, bool)
+            or not math.isfinite(float(threshold))
+        ):
+            raise ValueError(
+                "promotion.required_axis_deltas values must be finite"
+            )
+        normalized_axes[axis] = float(threshold)
+    eligible_raw = value.get("eligible_variants")
+    if eligible_raw is None:
+        eligible_variants: tuple[str, ...] = ()
+    else:
+        normalized_eligible = (
+            [str(variant) for variant in eligible_raw]
+            if isinstance(eligible_raw, list)
+            else []
+        )
+        if (
+            not isinstance(eligible_raw, list)
+            or not normalized_eligible
+            or any(
+                not _NAME.fullmatch(variant)
+                for variant in normalized_eligible
+            )
+            or len(set(normalized_eligible)) != len(normalized_eligible)
+        ):
+            raise ValueError(
+                "promotion.eligible_variants must contain unique safe names"
+            )
+        eligible_variants = tuple(normalized_eligible)
+    return (
+        minimum_replicates,
+        float(familywise_alpha),
+        max_promotions,
+        tuple(normalized_gates),
+        normalized_axes,
+        eligible_variants,
+    )
+
+
+def _parse_pareto_promotion(
+    value: dict[str, Any],
+) -> ParetoPromotionRule:
+    objectives_raw = value.get("objectives")
+    if not isinstance(objectives_raw, list) or len(objectives_raw) < 2:
+        raise ValueError(
+            "pareto promotion requires at least two objectives"
+        )
+    objectives: list[ParetoObjective] = []
+    seen: set[str] = set()
+    for item in objectives_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every pareto objective must be a mapping")
+        metric = str(item.get("metric") or "")
+        if metric.startswith("axis."):
+            valid_metric = bool(metric.removeprefix("axis."))
+        else:
+            valid_metric = bool(_NAME.fullmatch(metric))
+        if not valid_metric or metric in seen:
+            raise ValueError(
+                "pareto objective metrics must be unique valid names"
+            )
+        seen.add(metric)
+        direction = str(item.get("direction") or "")
+        if direction not in {"maximize", "minimize"}:
+            raise ValueError(
+                "pareto objective direction must be maximize or minimize"
+            )
+        minimum_effect = item.get("minimum_effect", 0.0)
+        if (
+            not isinstance(minimum_effect, (int, float))
+            or isinstance(minimum_effect, bool)
+            or not math.isfinite(float(minimum_effect))
+        ):
+            raise ValueError(
+                "pareto objective minimum_effect must be finite"
+            )
+        required_improvement = item.get("required_improvement", False)
+        if not isinstance(required_improvement, bool):
+            raise ValueError(
+                "pareto objective required_improvement must be boolean"
+            )
+        objectives.append(
+            ParetoObjective(
+                metric=metric,
+                direction=direction,
+                minimum_effect=float(minimum_effect),
+                required_improvement=required_improvement,
+            )
+        )
+    if not any(objective.required_improvement for objective in objectives):
+        raise ValueError(
+            "pareto promotion requires an efficiency improvement objective"
+        )
+    selection_order_raw = value.get("selection_order")
+    selection_order = (
+        [str(metric) for metric in selection_order_raw]
+        if isinstance(selection_order_raw, list)
+        else []
+    )
+    if (
+        not selection_order
+        or len(set(selection_order)) != len(selection_order)
+        or any(metric not in seen for metric in selection_order)
+    ):
+        raise ValueError(
+            "pareto promotion selection_order must be a unique objective subset"
+        )
+    (
+        minimum_replicates,
+        familywise_alpha,
+        max_promotions,
+        required_gates,
+        required_axis_deltas,
+        eligible_variants,
+    ) = _promotion_common(value)
+    return ParetoPromotionRule(
+        objectives=tuple(objectives),
+        selection_order=tuple(selection_order),
+        minimum_replicates=minimum_replicates,
+        familywise_alpha=familywise_alpha,
+        max_promotions=max_promotions,
+        required_gates=required_gates,
+        required_axis_deltas=required_axis_deltas,
+        eligible_variants=eligible_variants,
+    )
+
+
+def _parse_promotion(
+    raw: dict[str, Any],
+) -> PromotionRule | ParetoPromotionRule | None:
+    value = raw.get("promotion")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("sweep.promotion must be a mapping")
+    mode = str(value.get("mode") or "superiority")
+    if mode == "pareto":
+        return _parse_pareto_promotion(value)
+    if mode != "superiority":
+        raise ValueError("promotion.mode must be superiority or pareto")
+    primary_metric = str(value.get("primary_metric") or "")
+    if primary_metric.startswith("axis."):
+        if not primary_metric.removeprefix("axis."):
+            raise ValueError(
+                "promotion.primary_metric axis name must be non-empty"
+            )
+    elif not _NAME.fullmatch(primary_metric):
+        raise ValueError("promotion.primary_metric must be a safe metric name")
+    direction = str(value.get("direction") or "maximize")
+    if direction not in {"maximize", "minimize"}:
+        raise ValueError("promotion.direction must be maximize or minimize")
+    minimum_effect = value.get("minimum_effect", 0.0)
+    if (
+        not isinstance(minimum_effect, (int, float))
+        or isinstance(minimum_effect, bool)
+        or not math.isfinite(float(minimum_effect))
+        or float(minimum_effect) < 0
+    ):
+        raise ValueError("promotion.minimum_effect must be finite and non-negative")
+    (
+        minimum_replicates,
+        familywise_alpha,
+        max_promotions,
+        required_gates,
+        required_axis_deltas,
+        eligible_variants,
+    ) = _promotion_common(value)
+    return PromotionRule(
+        primary_metric=primary_metric,
+        direction=direction,
+        minimum_effect=float(minimum_effect),
+        minimum_replicates=minimum_replicates,
+        familywise_alpha=float(familywise_alpha),
+        max_promotions=max_promotions,
+        required_gates=required_gates,
+        required_axis_deltas=required_axis_deltas,
+        eligible_variants=eligible_variants,
+    )
+
+
+def compile_sweep_plan(
+    sweep_path: str | Path,
+    *,
+    repo_root: str | Path,
+    python: str,
+    compile_root: str | Path | None = None,
+) -> SweepPlan:
+    """Compile matched arms and replicate blocks into resumable experiments."""
+
+    repo = Path(repo_root).resolve()
+    source = _resolve_path(repo, sweep_path)
+    raw = _load_sweep(source)
+    if int(raw.get("schema_version", 0)) != 1:
+        raise ValueError("sweep schema_version must be 1")
+    name = str(raw.get("name") or "")
+    if not _NAME.fullmatch(name):
+        raise ValueError("sweep name must match [A-Za-z0-9][A-Za-z0-9_.-]*")
+    root = _resolve_path(repo, raw.get("output_root") or f"outputs/sweeps/{name}")
+    compiled_root = (
+        _resolve_path(repo, compile_root) if compile_root is not None else root / "compiled"
+    )
+    base_experiment_path = _resolve_path(repo, raw.get("base_experiment") or "")
+    if not base_experiment_path.is_file():
+        raise ValueError(f"base experiment does not exist: {base_experiment_path}")
+    with base_experiment_path.open(encoding="utf-8") as handle:
+        base_experiment = yaml.safe_load(handle) or {}
+    if not isinstance(base_experiment, dict):
+        raise ValueError("base experiment root must be a mapping")
+    base_blueprint_path = _resolve_path(repo, base_experiment.get("blueprint") or "")
+    base_blueprint = load_blueprint(base_blueprint_path)
+
+    shared_experiment = _patch_list(raw, "shared_experiment_patches")
+    shared_blueprint = _patch_list(raw, "shared_blueprint_patches")
+    _validate_reserved_patches(shared_experiment)
+    controls = _parse_controls(raw)
+    if raw.get("replicates") is None:
+        replicate_controls: tuple[MatchedControl, ...] = ()
+    else:
+        replicate_controls = _parse_controls(raw, "replicate_controls")
+        matched_keys = {control.key for control in controls}
+        unpaired = [
+            control.key
+            for control in replicate_controls
+            if control.key not in matched_keys
+        ]
+        if unpaired:
+            raise ValueError(
+                f"replicate controls must also be matched controls: {sorted(unpaired)}"
+            )
+    replicates = _parse_replicates(raw, replicate_controls)
+    promotion = _parse_promotion(raw)
+    variants_raw = raw.get("variants")
+    if not isinstance(variants_raw, list) or len(variants_raw) < 2:
+        raise ValueError("sweep.variants must contain at least two variants")
+    baseline = str(raw.get("baseline") or "")
+    ids: set[str] = set()
+    arm_specs = []
+    for item in variants_raw:
+        if not isinstance(item, dict):
+            raise ValueError("every sweep variant must be a mapping")
+        variant_id = str(item.get("id") or "")
+        if not _NAME.fullmatch(variant_id) or variant_id in ids:
+            raise ValueError("variant ids must be unique safe names")
+        ids.add(variant_id)
+        variant_experiment_patches = _patch_list(item, "experiment_patches")
+        variant_blueprint_patches = _patch_list(item, "blueprint_patches")
+        decision_metrics_raw = item.get("decision_metrics", {})
+        if not isinstance(decision_metrics_raw, dict):
+            raise ValueError("variant decision_metrics must be a mapping")
+        decision_metrics: dict[str, float] = {}
+        for metric, metric_value in decision_metrics_raw.items():
+            if (
+                not isinstance(metric, str)
+                or not _NAME.fullmatch(metric)
+                or not isinstance(metric_value, (int, float))
+                or isinstance(metric_value, bool)
+                or not math.isfinite(float(metric_value))
+            ):
+                raise ValueError(
+                    "variant decision_metrics require safe names and "
+                    "finite numeric values"
+                )
+            decision_metrics[metric] = float(metric_value)
+        _validate_reserved_patches(variant_experiment_patches)
+        if (
+            variant_id != baseline
+            and not variant_experiment_patches
+            and not variant_blueprint_patches
+        ):
+            raise ValueError(f"non-baseline variant {variant_id!r} has no patches")
+        arm_specs.append(
+            (
+                item,
+                variant_id,
+                variant_experiment_patches,
+                variant_blueprint_patches,
+                decision_metrics,
+            )
+        )
+    if baseline not in ids:
+        raise ValueError("sweep baseline must name one compiled variant")
+    if promotion is not None and promotion.eligible_variants:
+        invalid_eligible = (
+            set(promotion.eligible_variants) - ids
+        ) | ({baseline} & set(promotion.eligible_variants))
+        if invalid_eligible:
+            raise ValueError(
+                "promotion.eligible_variants must name non-baseline variants: "
+                f"{sorted(invalid_eligible)}"
+            )
+    contrasts = _parse_contrasts(raw, ids)
+
+    compiled: list[CompiledVariant] = []
+    control_values_by_replicate: dict[str, dict[str, Any]] = {}
+    for replicate in replicates:
+        replicate_id = str(replicate["id"])
+        replicate_experiment_patches = list(replicate.get("experiment_patches") or [])
+        replicate_blueprint_patches = list(replicate.get("blueprint_patches") or [])
+        replicate_control_values: dict[str, Any] | None = None
+        for (
+            item,
+            variant_id,
+            variant_experiment_patches,
+            variant_blueprint_patches,
+            decision_metrics,
+        ) in arm_specs:
+            experiment_patches = [
+                *shared_experiment,
+                *replicate_experiment_patches,
+                *variant_experiment_patches,
+            ]
+            blueprint_patches = [
+                *shared_blueprint,
+                *replicate_blueprint_patches,
+                *variant_blueprint_patches,
+            ]
+            _validate_reserved_patches(experiment_patches)
+            experiment = apply_json_patch(base_experiment, experiment_patches)
+            blueprint = apply_json_patch(base_blueprint, blueprint_patches)
+            run_id = (
+                f"{variant_id}--{replicate_id}"
+                if bool(replicate["explicit"])
+                else variant_id
+            )
+            variant_dir = compiled_root / run_id
+            blueprint_path = variant_dir / "blueprint.yaml"
+            experiment_path = variant_dir / "experiment.yaml"
+            stable_blueprint_path = root / "compiled" / run_id / "blueprint.yaml"
+            experiment["name"] = f"{name}--{run_id}"
+            experiment["output_root"] = str(root / "runs" / run_id)
+            experiment["blueprint"] = str(blueprint_path)
+            evaluation = experiment.setdefault("evaluation", {})
+            evaluation["wandb_group"] = name
+            evaluation["wandb_run"] = f"{name}--{run_id}"
+            tags = [str(tag) for tag in evaluation.get("wandb_tags") or []]
+            evaluation["wandb_tags"] = list(
+                dict.fromkeys(
+                    [
+                        *tags,
+                        "native-student-sweep",
+                        f"variant:{variant_id}",
+                        f"replicate:{replicate_id}",
+                    ]
+                )
+            )
+            training_sections = {
+                "pretrain": experiment.setdefault("pretraining", {}),
+                "sft": experiment.setdefault("posttraining", {}).setdefault(
+                    "sft",
+                    {},
+                ),
+                "preference": experiment["posttraining"].setdefault(
+                    "preference",
+                    {},
+                ),
+                "rlvr": experiment["posttraining"].setdefault("rlvr", {}),
+            }
+            for stage_name, section in training_sections.items():
+                section["wandb_group"] = name
+                section["wandb_run"] = (
+                    f"{name}--{run_id}--{stage_name}"
+                )
+                stage_tags = [
+                    str(tag) for tag in section.get("wandb_tags") or []
+                ]
+                section["wandb_tags"] = list(
+                    dict.fromkeys(
+                        [
+                            *stage_tags,
+                            "native-student-sweep",
+                            f"stage:{stage_name}",
+                            f"variant:{variant_id}",
+                            f"replicate:{replicate_id}",
+                        ]
+                    )
+                )
+            benchmark_sections = {
+                "visual_backend_benchmark": experiment.setdefault(
+                    "runtime", {}
+                ).setdefault("visual_backend_benchmark", {}),
+                "training_feasibility_benchmark": experiment["runtime"].setdefault(
+                    "training_feasibility_benchmark",
+                    {},
+                ),
+            }
+            for stage_name, section in benchmark_sections.items():
+                section["wandb_group"] = name
+                section["wandb_run"] = (
+                    f"{name}--{run_id}--{stage_name}"
+                )
+                stage_tags = [
+                    str(tag) for tag in section.get("wandb_tags") or []
+                ]
+                section["wandb_tags"] = list(
+                    dict.fromkeys(
+                        [
+                            *stage_tags,
+                            "native-student-sweep",
+                            f"stage:{stage_name}",
+                            f"variant:{variant_id}",
+                            f"replicate:{replicate_id}",
+                        ]
+                    )
+                )
+            _atomic_write_yaml(blueprint_path, blueprint)
+            _atomic_write_yaml(experiment_path, experiment)
+
+            plan = build_experiment_plan(experiment_path, repo_root=repo, python=python)
+            canonical_experiment = copy.deepcopy(experiment)
+            canonical_experiment["blueprint"] = str(stable_blueprint_path)
+            variant_fingerprint = _fingerprint(
+                {
+                    "sweep": name,
+                    "variant": variant_id,
+                    "replicate": replicate_id,
+                    "experiment": canonical_experiment,
+                    "blueprint": blueprint,
+                    "decision_metrics": decision_metrics,
+                    "input_fingerprints": plan.input_fingerprints,
+                }
+            )
+            plan = replace(
+                plan,
+                raw_spec=canonical_experiment,
+                fingerprint=variant_fingerprint,
+            )
+            documents = {
+                "experiment": _without_wandb_metadata(
+                    canonical_experiment
+                ),
+                "blueprint": blueprint,
+            }
+            values = {
+                control.key: copy.deepcopy(
+                    _pointer_get(documents[control.document], control.path)
+                )
+                for control in controls
+            }
+            if replicate_control_values is None:
+                replicate_control_values = values
+            elif values != replicate_control_values:
+                mismatches = [
+                    key
+                    for key in sorted(values)
+                    if values[key] != replicate_control_values.get(key)
+                ]
+                raise ValueError(
+                    f"variant {variant_id!r} violates matched controls in "
+                    f"replicate {replicate_id!r}: {mismatches}"
+                )
+            compiled.append(
+                CompiledVariant(
+                    id=run_id,
+                    arm_id=variant_id,
+                    replicate_id=replicate_id,
+                    hypothesis=str(item.get("hypothesis") or ""),
+                    replicate_experiment_patches=tuple(
+                        copy.deepcopy(replicate_experiment_patches)
+                    ),
+                    replicate_blueprint_patches=tuple(
+                        copy.deepcopy(replicate_blueprint_patches)
+                    ),
+                    experiment_patches=tuple(copy.deepcopy(experiment_patches)),
+                    blueprint_patches=tuple(copy.deepcopy(blueprint_patches)),
+                    experiment_path=str(experiment_path),
+                    blueprint_path=str(blueprint_path),
+                    plan=plan,
+                    parameters=estimate_parameters(plan.resolved_blueprint),
+                    decision_metrics=copy.deepcopy(decision_metrics),
+                    fingerprint=variant_fingerprint,
+                )
+            )
+        control_values_by_replicate[replicate_id] = replicate_control_values or {}
+    sweep_fingerprint = _fingerprint(
+        {
+            "spec": raw,
+            "promotion": (
+                None if promotion is None else promotion.to_dict()
+            ),
+            "base_experiment": base_experiment,
+            "base_blueprint": base_blueprint,
+            "variants": [variant.fingerprint for variant in compiled],
+        }
+    )
+    return SweepPlan(
+        name=name,
+        root=str(root),
+        baseline=baseline,
+        base_experiment=str(base_experiment_path),
+        controls=controls,
+        replicate_controls=replicate_controls,
+        control_values_by_replicate=control_values_by_replicate,
+        replicates=tuple(str(replicate["id"]) for replicate in replicates),
+        variants=tuple(compiled),
+        contrasts=contrasts,
+        promotion=promotion,
+        fingerprint=sweep_fingerprint,
+        raw_spec=raw,
+    )
+
+
+def _summary_metrics(comparison: dict[str, Any]) -> dict[str, float]:
+    splits = comparison["splits"]
+    train = splits["train"]
+    heldout = splits["heldout"]
+    gap = comparison["train_minus_heldout"]["headline"]
+    return {
+        "train_score": float(train["score"]),
+        "heldout_score": float(heldout["score"]),
+        "heldout_reward": float(heldout["reward"]),
+        "heldout_valid_structure": float(heldout["valid_structure_fraction"]),
+        "heldout_answer_rate": float(heldout["answer_rate"]),
+        "train_minus_heldout_score": float(gap["score"]),
+        "heldout_milliseconds_per_sample": float(heldout["milliseconds_per_sample"]),
+    }
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _evaluation_set_fingerprint(run_root: Path, split: str) -> str:
+    path = run_root / "artifacts" / "samples" / f"{split}.jsonl"
+    if not path.is_file():
+        raise FileNotFoundError(f"missing {split} evaluation samples: {path}")
+    rows = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        image_path = Path(str(row.pop("image_path", "")))
+        if not image_path.is_file():
+            raise FileNotFoundError(
+                f"{path}:{line_number} references missing image {image_path}"
+            )
+        row["image_sha256"] = _file_sha256(image_path)
+        rows.append(row)
+    if not rows:
+        raise ValueError(f"evaluation sample file is empty: {path}")
+    rows.sort(key=lambda row: str(row.get("sample_id") or ""))
+    return _fingerprint(rows)
+
+
+def _pretraining_efficiency(run_root: Path) -> dict[str, float]:
+    pointer = run_root / "artifacts" / "pretrain" / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        return {}
+    checkpoint = Path(pointer.read_text(encoding="utf-8").strip())
+    state_path = checkpoint / "trainer_state.json"
+    if not state_path.is_file():
+        return {}
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    dense = int(state.get("dense_visual_tokens_seen", 0))
+    executed = int(state.get("executed_visual_tokens_seen", dense))
+    valid = int(state.get("valid_visual_tokens_seen", 0))
+    samples = int(state.get("visual_samples_seen", 0))
+    if (
+        dense < 0
+        or executed < 0
+        or valid < 0
+        or samples < 0
+        or valid > executed
+    ):
+        raise ValueError(f"invalid visual efficiency counters in {state_path}")
+    return {
+        "student_flops": float(state.get("student_flops_seen", 0)),
+        "dense_visual_tokens_per_sample": (
+            dense / samples if samples else 0.0
+        ),
+        "executed_visual_tokens_per_sample": (
+            executed / samples if samples else 0.0
+        ),
+        "valid_visual_token_fraction": (
+            valid / executed if executed else 0.0
+        ),
+    }
+
+
+def _pretraining_attention_backend(run_root: Path) -> str:
+    pointer = run_root / "artifacts" / "pretrain" / "latest_checkpoint.txt"
+    if not pointer.is_file():
+        return "missing"
+    checkpoint = Path(pointer.read_text(encoding="utf-8").strip())
+    state_path = checkpoint / "trainer_state.json"
+    if not state_path.is_file():
+        return "missing"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    return str(state.get("visual_attention_backend") or "legacy")
+
+
+def _axis_scores(comparison: dict[str, Any], split: str) -> dict[str, float]:
+    axes = comparison["splits"][split].get("by_answer_type", {})
+    return {name: float(values["score"]) for name, values in sorted(axes.items())}
+
+
+def _robustness_scores(
+    comparison: dict[str, Any],
+    split: str,
+) -> dict[str, float]:
+    axes = comparison["splits"][split].get("by_robustness_axis", {})
+    return {
+        f"{axis}/{value}": float(summary["score"])
+        for axis, slices in sorted(axes.items())
+        for value, summary in sorted(slices.items())
+    }
+
+
+def _nested_slice_values(values: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    nested: dict[str, dict[str, Any]] = {}
+    for key, value in sorted(values.items()):
+        axis, slice_value = key.split("/", 1)
+        nested.setdefault(axis, {})[slice_value] = value
+    return nested
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values)
+
+
+def _distribution(values: list[float], *, key: str) -> dict[str, Any]:
+    if not values:
+        raise ValueError("cannot summarize an empty distribution")
+    mean = _mean(values)
+    if len(values) == 1:
+        standard_deviation = 0.0
+        ci95 = None
+    else:
+        standard_deviation = math.sqrt(
+            sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+        )
+        seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
+        rng = random.Random(seed)
+        bootstrap_means = sorted(
+            _mean([values[rng.randrange(len(values))] for _ in values])
+            for _ in range(10_000)
+        )
+        lower = bootstrap_means[math.floor(0.025 * (len(bootstrap_means) - 1))]
+        upper = bootstrap_means[math.ceil(0.975 * (len(bootstrap_means) - 1))]
+        ci95 = [round(lower, 8), round(upper, 8)]
+    return {
+        "n": len(values),
+        "mean": round(mean, 8),
+        "standard_deviation": round(standard_deviation, 8),
+        "minimum": round(min(values), 8),
+        "maximum": round(max(values), 8),
+        "ci95": ci95,
+    }
+
+
+def _one_sided_lower_bound(
+    values: list[float],
+    *,
+    alpha: float,
+    key: str,
+) -> float | None:
+    if len(values) < 2:
+        return None
+    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
+    rng = random.Random(seed)
+    bootstrap_means = sorted(
+        _mean([values[rng.randrange(len(values))] for _ in values])
+        for _ in range(10_000)
+    )
+    index = math.floor(alpha * (len(bootstrap_means) - 1))
+    return round(bootstrap_means[index], 8)
+
+
+def _promotion_delta(
+    record: dict[str, Any],
+    primary_metric: str,
+) -> float | None:
+    if primary_metric.startswith("axis."):
+        axis = primary_metric.removeprefix("axis.")
+        value = record.get("heldout_axis_delta_vs_baseline", {}).get(axis)
+    else:
+        value = record.get("delta_vs_baseline", {}).get(primary_metric)
+    return None if value is None else float(value)
+
+
+def _promotion_metric_delta(
+    record: dict[str, Any],
+    metric: str,
+) -> float | None:
+    if metric.startswith("axis."):
+        value = record.get("heldout_axis_delta_vs_baseline", {}).get(
+            metric.removeprefix("axis.")
+        )
+    elif metric.startswith("parameters."):
+        value = record.get("parameter_delta_vs_baseline", {}).get(
+            metric.removeprefix("parameters.")
+        )
+    elif metric.startswith("efficiency."):
+        value = record.get(
+            "pretraining_efficiency_delta_vs_baseline",
+            {},
+        ).get(metric.removeprefix("efficiency."))
+    elif metric.startswith("decision."):
+        value = record.get("decision_metric_delta_vs_baseline", {}).get(
+            metric.removeprefix("decision.")
+        )
+    else:
+        value = record.get("delta_vs_baseline", {}).get(metric)
+    return None if value is None else float(value)
+
+
+def _promotion_candidate_ids(
+    plan: SweepPlan,
+    rule: PromotionRule | ParetoPromotionRule,
+    arm_records: dict[str, dict[str, Any]],
+) -> list[str]:
+    available = set(arm_records) - {plan.baseline}
+    if not rule.eligible_variants:
+        return sorted(available)
+    missing = set(rule.eligible_variants) - available
+    if missing:
+        raise ValueError(
+            "promotion eligible variants are missing from results: "
+            f"{sorted(missing)}"
+        )
+    return sorted(rule.eligible_variants)
+
+
+def _pareto_promotion_decision(
+    plan: SweepPlan,
+    rule: ParetoPromotionRule,
+    arm_records: dict[str, dict[str, Any]],
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    candidate_ids = _promotion_candidate_ids(plan, rule, arm_records)
+    if not candidate_ids:
+        raise ValueError("promotion requires at least one non-baseline arm")
+    comparisons_per_candidate = (
+        len(rule.objectives) + len(rule.required_axis_deltas)
+    )
+    comparison_count = len(candidate_ids) * comparisons_per_candidate
+    corrected_alpha = rule.familywise_alpha / comparison_count
+    candidates: dict[str, dict[str, Any]] = {}
+    eligible: list[str] = []
+    for arm_id in candidate_ids:
+        ordered = [
+            records_by_arm[arm_id][replicate_id]
+            for replicate_id in plan.replicates
+        ]
+        objective_evidence: dict[str, dict[str, Any]] = {}
+        missing_objectives: list[str] = []
+        regressed_objectives: list[str] = []
+        strict_improvements: list[str] = []
+        for objective in rule.objectives:
+            missing_replicates = [
+                record["replicate_id"]
+                for record in ordered
+                if _promotion_metric_delta(record, objective.metric) is None
+            ]
+            if missing_replicates:
+                missing_objectives.append(objective.metric)
+                benefits: list[float] = []
+                lower_bound = None
+            else:
+                direction_sign = (
+                    1.0 if objective.direction == "maximize" else -1.0
+                )
+                benefits = [
+                    direction_sign
+                    * float(
+                        _promotion_metric_delta(
+                            record,
+                            objective.metric,
+                        )
+                    )
+                    for record in ordered
+                ]
+                lower_bound = _one_sided_lower_bound(
+                    benefits,
+                    alpha=corrected_alpha,
+                    key=(
+                        f"{plan.fingerprint}:{arm_id}:"
+                        f"{objective.metric}:pareto-promotion"
+                    ),
+                )
+                if (
+                    lower_bound is not None
+                    and lower_bound < objective.minimum_effect
+                ):
+                    regressed_objectives.append(objective.metric)
+                if (
+                    objective.required_improvement
+                    and lower_bound is not None
+                    and lower_bound > 0.0
+                ):
+                    strict_improvements.append(objective.metric)
+            objective_evidence[objective.metric] = {
+                "direction": objective.direction,
+                "mean_benefit": (
+                    None if not benefits else round(_mean(benefits), 8)
+                ),
+                "simultaneous_lower_bound": lower_bound,
+                "minimum_effect": objective.minimum_effect,
+                "required_improvement": objective.required_improvement,
+                "missing_replicates": missing_replicates,
+            }
+        gate_statuses = arm_records[arm_id]["gate_statuses"]
+        failed_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) == "fail"
+        )
+        incomplete_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) not in {"pass", "fail"}
+        )
+        axis_evidence: dict[str, dict[str, Any]] = {}
+        missing_axes: list[str] = []
+        regressed_axes: list[str] = []
+        for axis, minimum_delta in sorted(
+            rule.required_axis_deltas.items()
+        ):
+            if any(
+                axis not in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            ):
+                missing_axes.append(axis)
+                continue
+            values = [
+                float(record["heldout_axis_delta_vs_baseline"][axis])
+                for record in ordered
+            ]
+            axis_lower_bound = _one_sided_lower_bound(
+                values,
+                alpha=corrected_alpha,
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{axis}:"
+                    "pareto-promotion-axis"
+                ),
+            )
+            axis_evidence[axis] = {
+                "mean_delta": round(_mean(values), 8),
+                "simultaneous_lower_bound": axis_lower_bound,
+                "minimum_delta": minimum_delta,
+            }
+            if (
+                axis_lower_bound is not None
+                and axis_lower_bound < minimum_delta
+            ):
+                regressed_axes.append(axis)
+        evidence = {
+            "replicate_count": len(ordered),
+            "objectives": objective_evidence,
+            "strict_improvements": strict_improvements,
+            "failed_gates": failed_gates,
+            "incomplete_gates": incomplete_gates,
+            "missing_objectives": missing_objectives,
+            "regressed_objectives": regressed_objectives,
+            "missing_axes": missing_axes,
+            "regressed_axes": regressed_axes,
+            "axis_guardrails": axis_evidence,
+            "parameters": arm_records[arm_id]["parameters"],
+            "decision_metrics": arm_records[arm_id]["decision_metrics"],
+        }
+        if failed_gates or regressed_axes or regressed_objectives:
+            decision = "reject"
+        elif (
+            len(ordered) < rule.minimum_replicates
+            or missing_objectives
+            or incomplete_gates
+            or missing_axes
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in objective_evidence.values()
+            )
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in axis_evidence.values()
+            )
+        ):
+            decision = "insufficient_evidence"
+        elif not strict_improvements:
+            decision = "retain_baseline"
+        else:
+            decision = "eligible"
+            eligible.append(arm_id)
+        candidates[arm_id] = {
+            "decision": decision,
+            "evidence": evidence,
+        }
+    for arm_id in eligible:
+        dominated_by = []
+        current = candidates[arm_id]["evidence"]["objectives"]
+        for other_id in eligible:
+            if other_id == arm_id:
+                continue
+            other = candidates[other_id]["evidence"]["objectives"]
+            weakly_better = all(
+                float(other[objective.metric]["mean_benefit"])
+                >= float(current[objective.metric]["mean_benefit"])
+                for objective in rule.objectives
+            )
+            strictly_better = any(
+                float(other[objective.metric]["mean_benefit"])
+                > float(current[objective.metric]["mean_benefit"])
+                for objective in rule.objectives
+            )
+            if weakly_better and strictly_better:
+                dominated_by.append(other_id)
+        candidates[arm_id]["evidence"]["dominated_by"] = sorted(
+            dominated_by
+        )
+    frontier = sorted(
+        arm_id
+        for arm_id in eligible
+        if not candidates[arm_id]["evidence"]["dominated_by"]
+    )
+    frontier.sort(
+        key=lambda arm_id: (
+            *[
+                -float(
+                    candidates[arm_id]["evidence"]["objectives"][metric][
+                        "simultaneous_lower_bound"
+                    ]
+                )
+                for metric in rule.selection_order
+            ],
+            int(candidates[arm_id]["evidence"]["parameters"]["total"]),
+            arm_id,
+        )
+    )
+    selected = frontier[: rule.max_promotions]
+    for arm_id in eligible:
+        if arm_id in selected:
+            candidates[arm_id]["decision"] = "promote"
+        elif arm_id in frontier:
+            candidates[arm_id]["decision"] = "eligible_not_selected"
+        else:
+            candidates[arm_id]["decision"] = "pareto_dominated"
+    if selected:
+        status = "promote"
+    elif any(
+        candidate["decision"] == "insufficient_evidence"
+        for candidate in candidates.values()
+    ):
+        status = "insufficient_evidence"
+    else:
+        status = "retain_baseline"
+    return {
+        "status": status,
+        "selected_variants": selected,
+        "baseline_retained": not bool(selected),
+        "contract": rule.to_dict(),
+        "pareto_frontier": frontier,
+        "multiple_comparisons": {
+            "method": "bonferroni_one_sided_percentile_bootstrap",
+            "candidate_count": len(candidate_ids),
+            "objectives_per_candidate": len(rule.objectives),
+            "guardrails_per_candidate": len(rule.required_axis_deltas),
+            "comparison_count": comparison_count,
+            "familywise_alpha": rule.familywise_alpha,
+            "per_comparison_alpha": corrected_alpha,
+            "simultaneous_confidence_level": 1.0 - corrected_alpha,
+            "resamples": 10_000,
+        },
+        "candidates": candidates,
+    }
+
+
+def _promotion_decision(
+    plan: SweepPlan,
+    arm_records: dict[str, dict[str, Any]],
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    rule = plan.promotion
+    if rule is None:
+        return {
+            "status": "not_configured",
+            "selected_variants": [],
+            "baseline_retained": True,
+            "candidates": {},
+        }
+    if isinstance(rule, ParetoPromotionRule):
+        return _pareto_promotion_decision(
+            plan,
+            rule,
+            arm_records,
+            records_by_arm,
+        )
+    candidate_ids = _promotion_candidate_ids(plan, rule, arm_records)
+    if not candidate_ids:
+        raise ValueError("promotion requires at least one non-baseline arm")
+    comparisons_per_candidate = 1 + len(rule.required_axis_deltas)
+    comparison_count = len(candidate_ids) * comparisons_per_candidate
+    corrected_alpha = rule.familywise_alpha / comparison_count
+    direction_sign = 1.0 if rule.direction == "maximize" else -1.0
+    candidates: dict[str, dict[str, Any]] = {}
+    eligible: list[str] = []
+    for arm_id in candidate_ids:
+        ordered = [
+            records_by_arm[arm_id][replicate_id]
+            for replicate_id in plan.replicates
+        ]
+        missing_metric = [
+            record["replicate_id"]
+            for record in ordered
+            if _promotion_delta(record, rule.primary_metric) is None
+        ]
+        benefits = (
+            []
+            if missing_metric
+            else [
+                direction_sign
+                * float(_promotion_delta(record, rule.primary_metric))
+                for record in ordered
+            ]
+        )
+        lower_bound = (
+            _one_sided_lower_bound(
+                benefits,
+                alpha=corrected_alpha,
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{rule.primary_metric}:"
+                    "promotion"
+                ),
+            )
+            if benefits
+            else None
+        )
+        gate_statuses = arm_records[arm_id]["gate_statuses"]
+        failed_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) == "fail"
+        )
+        incomplete_gates = sorted(
+            gate
+            for gate in rule.required_gates
+            if gate_statuses.get(gate) not in {"pass", "fail"}
+        )
+        axis_evidence: dict[str, dict[str, Any]] = {}
+        missing_axes = []
+        regressed_axes = []
+        for axis, minimum_delta in sorted(
+            rule.required_axis_deltas.items()
+        ):
+            if any(
+                axis not in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            ):
+                missing_axes.append(axis)
+                continue
+            values = [
+                float(record["heldout_axis_delta_vs_baseline"][axis])
+                for record in ordered
+            ]
+            axis_lower_bound = _one_sided_lower_bound(
+                values,
+                alpha=corrected_alpha,
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:promotion-axis",
+            )
+            axis_evidence[axis] = {
+                "mean_delta": round(_mean(values), 8),
+                "simultaneous_lower_bound": axis_lower_bound,
+                "minimum_delta": minimum_delta,
+            }
+            if (
+                axis_lower_bound is not None
+                and axis_lower_bound < minimum_delta
+            ):
+                regressed_axes.append(axis)
+        evidence = {
+            "replicate_count": len(ordered),
+            "primary_metric": rule.primary_metric,
+            "direction": rule.direction,
+            "mean_benefit": (
+                None if not benefits else round(_mean(benefits), 8)
+            ),
+            "simultaneous_lower_bound": lower_bound,
+            "minimum_effect": rule.minimum_effect,
+            "failed_gates": failed_gates,
+            "incomplete_gates": incomplete_gates,
+            "missing_metric_replicates": missing_metric,
+            "missing_axes": missing_axes,
+            "regressed_axes": regressed_axes,
+            "axis_guardrails": axis_evidence,
+            "parameters": arm_records[arm_id]["parameters"],
+        }
+        if failed_gates or regressed_axes:
+            decision = "reject"
+        elif (
+            len(ordered) < rule.minimum_replicates
+            or lower_bound is None
+            or missing_metric
+            or incomplete_gates
+            or missing_axes
+            or any(
+                item["simultaneous_lower_bound"] is None
+                for item in axis_evidence.values()
+            )
+        ):
+            decision = "insufficient_evidence"
+        elif lower_bound <= rule.minimum_effect:
+            decision = "retain_baseline"
+        else:
+            decision = "eligible"
+            eligible.append(arm_id)
+        candidates[arm_id] = {
+            "decision": decision,
+            "evidence": evidence,
+        }
+    eligible.sort(
+        key=lambda arm_id: (
+            -float(
+                candidates[arm_id]["evidence"]["simultaneous_lower_bound"]
+            ),
+            -float(candidates[arm_id]["evidence"]["mean_benefit"]),
+            int(candidates[arm_id]["evidence"]["parameters"]["total"]),
+            arm_id,
+        )
+    )
+    selected = eligible[: rule.max_promotions]
+    for arm_id in eligible:
+        candidates[arm_id]["decision"] = (
+            "promote" if arm_id in selected else "eligible_not_selected"
+        )
+    if selected:
+        status = "promote"
+    elif any(
+        record["decision"] == "insufficient_evidence"
+        for record in candidates.values()
+    ):
+        status = "insufficient_evidence"
+    else:
+        status = "retain_baseline"
+    return {
+        "status": status,
+        "selected_variants": selected,
+        "baseline_retained": not bool(selected),
+        "contract": rule.to_dict(),
+        "multiple_comparisons": {
+            "method": "bonferroni_one_sided_percentile_bootstrap",
+            "candidate_count": len(candidate_ids),
+            "guardrails_per_candidate": len(rule.required_axis_deltas),
+            "comparison_count": comparison_count,
+            "familywise_alpha": rule.familywise_alpha,
+            "per_comparison_alpha": corrected_alpha,
+            "simultaneous_confidence_level": 1.0 - corrected_alpha,
+            "resamples": 10_000,
+        },
+        "candidates": candidates,
+    }
+
+
+def _paired_conclusion(statistics: dict[str, Any]) -> str:
+    ci95 = statistics["ci95"]
+    if ci95 is None:
+        return "insufficient_replicates"
+    if ci95[0] > 0.0:
+        return "improved"
+    if ci95[1] < 0.0:
+        return "degraded"
+    return "inconclusive"
+
+
+def _evaluation_parameter_counts(
+    evaluation_root: Path,
+    fallback: dict[str, int],
+) -> tuple[dict[str, int], str]:
+    gate_path = evaluation_root / "gates.json"
+    if gate_path.is_file():
+        report = json.loads(gate_path.read_text(encoding="utf-8"))
+        for gate in report.get("gates", ()):
+            if gate.get("id") != "parameter_budget":
+                continue
+            evidence = gate.get("evidence", {})
+            if "actual_parameters" not in evidence:
+                break
+            counts = {
+                str(key): int(value)
+                for key, value in evidence.get("components", {}).items()
+            }
+            counts["total"] = int(evidence["actual_parameters"])
+            return counts, "evaluation_actual"
+    return {key: int(value) for key, value in fallback.items()}, "blueprint_estimate"
+
+
+def _monolingual_control_comparison(
+    evaluation_root: Path,
+) -> dict[str, Any] | None:
+    manifest_path = evaluation_root / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    configured = manifest.get("monolingual_control_evaluation")
+    if not configured:
+        return None
+    comparison, _ = load_evaluation_artifacts(configured)
+    return comparison
+
+
+def _aggregate_gate_reports(
+    reports: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    if not reports:
+        raise ValueError("cannot aggregate an empty gate-report block")
+    ordered_replicates = sorted(reports)
+    first = reports[ordered_replicates[0]]
+    gate_ids = [gate["id"] for gate in first["gates"]]
+    gates = []
+    for gate_id in gate_ids:
+        replicate_gates = {
+            replicate: next(
+                gate
+                for gate in reports[replicate]["gates"]
+                if gate["id"] == gate_id
+            )
+            for replicate in ordered_replicates
+        }
+        statuses = {
+            replicate: gate["status"]
+            for replicate, gate in replicate_gates.items()
+        }
+        if "fail" in statuses.values():
+            status = "fail"
+        elif all(value == "pass" for value in statuses.values()):
+            status = "pass"
+        else:
+            status = "insufficient_evidence"
+        gates.append(
+            {
+                "id": gate_id,
+                "requirement": next(iter(replicate_gates.values()))[
+                    "requirement"
+                ],
+                "status": status,
+                "replicate_statuses": statuses,
+            }
+        )
+    statuses = [gate["status"] for gate in gates]
+    overall = (
+        "fail"
+        if "fail" in statuses
+        else "insufficient_evidence"
+        if "insufficient_evidence" in statuses
+        else "pass"
+    )
+    return {
+        "schema_version": 1,
+        "overall_status": overall,
+        "counts": {
+            status: statuses.count(status)
+            for status in ("pass", "fail", "insufficient_evidence")
+        },
+        "replicates": ordered_replicates,
+        "gates": gates,
+    }
+
+
+def _contrast_distributions(
+    plan: SweepPlan,
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+    *,
+    field: str,
+    key_suffix: str,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    results: dict[str, dict[str, dict[str, Any]]] = {}
+    for contrast in plan.contrasts:
+        arms = [
+            records_by_arm[arm_id]
+            for arm_id in contrast.coefficients
+        ]
+        common_names = sorted(
+            set.intersection(
+                *[
+                    set(next(iter(arm.values()))[field])
+                    for arm in arms
+                ]
+            )
+        )
+        results[contrast.id] = {
+            name: _distribution(
+                [
+                    sum(
+                        coefficient
+                        * float(
+                            records_by_arm[arm_id][replicate_id][field][
+                                name
+                            ]
+                        )
+                        for arm_id, coefficient
+                        in contrast.coefficients.items()
+                    )
+                    for replicate_id in plan.replicates
+                ],
+                key=(
+                    f"{plan.fingerprint}:{contrast.id}:{name}:"
+                    f"{key_suffix}"
+                ),
+            )
+            for name in common_names
+            if all(
+                name
+                in records_by_arm[arm_id][replicate_id][field]
+                for arm_id in contrast.coefficients
+                for replicate_id in plan.replicates
+            )
+        }
+    return results
+
+
+def _aggregate_linear_contrasts(
+    plan: SweepPlan,
+    records_by_arm: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    if not plan.contrasts:
+        return {}
+    metric_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="metrics",
+        key_suffix="contrast-metric",
+    )
+    axis_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="heldout_by_answer_type",
+        key_suffix="contrast-axis",
+    )
+    robustness_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="heldout_slice_scores",
+        key_suffix="contrast-robustness",
+    )
+    efficiency_statistics = _contrast_distributions(
+        plan,
+        records_by_arm,
+        field="pretraining_efficiency",
+        key_suffix="contrast-efficiency",
+    )
+    results = {}
+    for contrast in plan.contrasts:
+        parameter_names = set.intersection(
+            *[
+                set(
+                    next(iter(records_by_arm[arm_id].values()))[
+                        "parameters"
+                    ]
+                )
+                for arm_id in contrast.coefficients
+            ]
+        )
+        parameters = {
+            name: round(
+                sum(
+                    coefficient
+                    * float(
+                        next(iter(records_by_arm[arm_id].values()))[
+                            "parameters"
+                        ][name]
+                    )
+                    for arm_id, coefficient
+                    in contrast.coefficients.items()
+                ),
+                8,
+            )
+            for name in sorted(parameter_names)
+        }
+        metrics = metric_statistics[contrast.id]
+        results[contrast.id] = {
+            "hypothesis": contrast.hypothesis,
+            "coefficients": contrast.coefficients,
+            "replicate_count": len(plan.replicates),
+            "metrics": {
+                name: statistics["mean"]
+                for name, statistics in metrics.items()
+            },
+            "metric_statistics": metrics,
+            "heldout_by_answer_type": {
+                name: statistics["mean"]
+                for name, statistics in axis_statistics[
+                    contrast.id
+                ].items()
+            },
+            "heldout_axis_statistics": axis_statistics[contrast.id],
+            "heldout_by_robustness_axis": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics in robustness_statistics[
+                        contrast.id
+                    ].items()
+                }
+            ),
+            "heldout_robustness_statistics": _nested_slice_values(
+                robustness_statistics[contrast.id]
+            ),
+            "pretraining_efficiency": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_statistics[
+                    contrast.id
+                ].items()
+            },
+            "pretraining_efficiency_statistics": efficiency_statistics[
+                contrast.id
+            ],
+            "parameter_contrast": parameters,
+            "heldout_score_conclusion": _paired_conclusion(
+                metrics["heldout_score"]
+            ),
+        }
+    return results
+
+
+def aggregate_sweep_results(
+    plan: SweepPlan,
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Aggregate run metrics and paired replicate deltas against the baseline arm."""
+
+    repository = (
+        Path.cwd().resolve()
+        if repo_root is None
+        else Path(repo_root).resolve()
+    )
+    run_records: dict[str, dict[str, Any]] = {}
+    blueprints_by_run = {
+        variant.id: variant.plan.resolved_blueprint
+        for variant in plan.variants
+    }
+    artifact_controls: dict[str, dict[str, str]] = {}
+    for variant in plan.variants:
+        run_root = Path(variant.plan.root)
+        fingerprints = {
+            split: _evaluation_set_fingerprint(run_root, split)
+            for split in ("train", "heldout")
+        }
+        expected_artifacts = artifact_controls.get(variant.replicate_id)
+        if expected_artifacts is None:
+            artifact_controls[variant.replicate_id] = fingerprints
+        elif fingerprints != expected_artifacts:
+            mismatches = [
+                split
+                for split in sorted(fingerprints)
+                if fingerprints[split] != expected_artifacts.get(split)
+            ]
+            raise ValueError(
+                f"variant {variant.arm_id!r} has mismatched evaluation artifacts "
+                f"in replicate {variant.replicate_id!r}: {mismatches}"
+            )
+        comparison_path = (
+            run_root / "artifacts" / "evaluation" / "comparison.json"
+        )
+        if not comparison_path.is_file():
+            raise FileNotFoundError(
+                f"variant {variant.id!r} has no evaluation comparison: {comparison_path}"
+            )
+        comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+        evaluation_root = comparison_path.parent
+        run_records[variant.id] = {
+            "arm_id": variant.arm_id,
+            "replicate_id": variant.replicate_id,
+            "hypothesis": variant.hypothesis,
+            "fingerprint": variant.fingerprint,
+            "parameters": variant.parameters,
+            "decision_metrics": variant.decision_metrics,
+            "metrics": _summary_metrics(comparison),
+            "heldout_by_answer_type": _axis_scores(comparison, "heldout"),
+            "train_by_answer_type": _axis_scores(comparison, "train"),
+            "heldout_slice_scores": _robustness_scores(
+                comparison,
+                "heldout",
+            ),
+            "train_slice_scores": _robustness_scores(comparison, "train"),
+            "pretraining_efficiency": _pretraining_efficiency(run_root),
+            "pretraining_visual_attention_backend": (
+                _pretraining_attention_backend(run_root)
+            ),
+            "comparison": str(comparison_path),
+            "evaluation_root": str(evaluation_root),
+        }
+
+    for variant in plan.variants:
+        run_records[variant.id]["execution_attestation"] = (
+            _verify_run_attestation(
+                variant.plan,
+                repo_root=repository,
+            )
+        )
+
+    records_by_arm: dict[str, dict[str, dict[str, Any]]] = {}
+    for run_id, record in run_records.items():
+        arm_runs = records_by_arm.setdefault(record["arm_id"], {})
+        replicate_id = record["replicate_id"]
+        if replicate_id in arm_runs:
+            raise ValueError(
+                f"arm {record['arm_id']!r} has duplicate replicate {replicate_id!r}"
+            )
+        record["run_id"] = run_id
+        arm_runs[replicate_id] = record
+    expected_replicates = set(plan.replicates)
+    for arm_id, arm_runs in records_by_arm.items():
+        observed = set(arm_runs)
+        if observed != expected_replicates:
+            raise ValueError(
+                f"arm {arm_id!r} has incomplete replicate block: "
+                f"expected {sorted(expected_replicates)}, observed {sorted(observed)}"
+            )
+    if plan.baseline not in records_by_arm:
+        raise ValueError(f"baseline arm {plan.baseline!r} has no completed runs")
+
+    baseline_runs = records_by_arm[plan.baseline]
+    run_gate_reports: dict[str, dict[str, Any]] = {}
+    for record in run_records.values():
+        baseline = baseline_runs[record["replicate_id"]]
+        baseline_metrics = baseline["metrics"]
+        baseline_axes = baseline["heldout_by_answer_type"]
+        baseline_slices = baseline["heldout_slice_scores"]
+        baseline_efficiency = baseline["pretraining_efficiency"]
+        record["delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_metrics[name]), 8)
+            for name, value in record["metrics"].items()
+        }
+        record["heldout_axis_delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_axes[name]), 8)
+            for name, value in record["heldout_by_answer_type"].items()
+            if name in baseline_axes
+        }
+        record["heldout_slice_delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_slices[name]), 8)
+            for name, value in record["heldout_slice_scores"].items()
+            if name in baseline_slices
+        }
+        record["pretraining_efficiency_delta_vs_baseline"] = {
+            name: round(float(value) - float(baseline_efficiency[name]), 8)
+            for name, value in record["pretraining_efficiency"].items()
+            if name in baseline_efficiency
+        }
+        record["parameter_delta_vs_baseline"] = {
+            name: float(value) - float(baseline["parameters"][name])
+            for name, value in record["parameters"].items()
+            if name in baseline["parameters"]
+        }
+        record["decision_metric_delta_vs_baseline"] = {
+            name: float(value) - float(baseline["decision_metrics"][name])
+            for name, value in record["decision_metrics"].items()
+            if name in baseline["decision_metrics"]
+        }
+        evaluation_root = Path(record["evaluation_root"])
+        current_comparison, current_rows = load_evaluation_artifacts(
+            evaluation_root
+        )
+        parameter_counts, parameter_count_source = (
+            _evaluation_parameter_counts(
+                evaluation_root,
+                record["parameters"],
+            )
+        )
+        if record["arm_id"] == plan.baseline:
+            baseline_comparison = None
+            baseline_rows = None
+        else:
+            baseline_root = Path(baseline["evaluation_root"])
+            baseline_comparison, baseline_rows = load_evaluation_artifacts(
+                baseline_root
+            )
+        gate_report = evaluate_deployment_gates(
+            blueprints_by_run[record["run_id"]],
+            parameter_counts,
+            current_comparison,
+            current_rows,
+            baseline_comparison=baseline_comparison,
+            baseline_rows=baseline_rows,
+            monolingual_control_comparison=_monolingual_control_comparison(
+                evaluation_root
+            ),
+        )
+        gate_report["parameter_count_source"] = parameter_count_source
+        gate_path = (
+            Path(plan.root) / "gates" / f"{record['run_id']}.json"
+        )
+        write_gate_report(gate_path, gate_report)
+        record["gate_report"] = str(gate_path)
+        record["gate_status"] = gate_report["overall_status"]
+        record["gate_statuses"] = {
+            gate["id"]: gate["status"]
+            for gate in gate_report["gates"]
+        }
+        run_gate_reports[record["run_id"]] = gate_report
+
+    arm_records: dict[str, dict[str, Any]] = {}
+    for arm_id, arm_runs in records_by_arm.items():
+        ordered = [arm_runs[replicate_id] for replicate_id in plan.replicates]
+        parameters = [record["parameters"] for record in ordered]
+        if any(value != parameters[0] for value in parameters[1:]):
+            raise ValueError(f"arm {arm_id!r} changes architecture across replicates")
+        decision_metrics = [
+            record["decision_metrics"] for record in ordered
+        ]
+        if any(
+            value != decision_metrics[0]
+            for value in decision_metrics[1:]
+        ):
+            raise ValueError(
+                f"arm {arm_id!r} changes decision metrics across replicates"
+            )
+        metric_names = sorted(ordered[0]["metrics"])
+        metric_statistics = {
+            name: _distribution(
+                [float(record["metrics"][name]) for record in ordered],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:metric",
+            )
+            for name in metric_names
+        }
+        paired_statistics = {
+            name: _distribution(
+                [float(record["delta_vs_baseline"][name]) for record in ordered],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:paired",
+            )
+            for name in metric_names
+        }
+        heldout_axes = sorted(
+            set.intersection(
+                *[
+                    set(record["heldout_by_answer_type"])
+                    for record in ordered
+                ]
+            )
+        )
+        train_axes = sorted(
+            set.intersection(
+                *[
+                    set(record["train_by_answer_type"])
+                    for record in ordered
+                ]
+            )
+        )
+        heldout_axis_statistics = {
+            axis: _distribution(
+                [
+                    float(record["heldout_by_answer_type"][axis])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:heldout-axis",
+            )
+            for axis in heldout_axes
+        }
+        heldout_axis_delta_statistics = {
+            axis: _distribution(
+                [
+                    float(record["heldout_axis_delta_vs_baseline"][axis])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{axis}:paired-axis",
+            )
+            for axis in heldout_axes
+            if all(
+                axis in record["heldout_axis_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
+        heldout_slices = sorted(
+            set.intersection(
+                *[
+                    set(record["heldout_slice_scores"])
+                    for record in ordered
+                ]
+            )
+        )
+        train_slices = sorted(
+            set.intersection(
+                *[
+                    set(record["train_slice_scores"])
+                    for record in ordered
+                ]
+            )
+        )
+        heldout_slice_statistics = {
+            slice_name: _distribution(
+                [
+                    float(record["heldout_slice_scores"][slice_name])
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{slice_name}:"
+                    "heldout-robustness-slice"
+                ),
+            )
+            for slice_name in heldout_slices
+        }
+        heldout_slice_delta_statistics = {
+            slice_name: _distribution(
+                [
+                    float(record["heldout_slice_delta_vs_baseline"][slice_name])
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{slice_name}:"
+                    "paired-robustness-slice"
+                ),
+            )
+            for slice_name in heldout_slices
+            if all(
+                slice_name in record["heldout_slice_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
+        efficiency_names = sorted(
+            set.intersection(
+                *[
+                    set(record["pretraining_efficiency"])
+                    for record in ordered
+                ]
+            )
+        )
+        efficiency_statistics = {
+            name: _distribution(
+                [
+                    float(record["pretraining_efficiency"][name])
+                    for record in ordered
+                ],
+                key=f"{plan.fingerprint}:{arm_id}:{name}:pretraining-efficiency",
+            )
+            for name in efficiency_names
+        }
+        efficiency_delta_statistics = {
+            name: _distribution(
+                [
+                    float(
+                        record["pretraining_efficiency_delta_vs_baseline"][name]
+                    )
+                    for record in ordered
+                ],
+                key=(
+                    f"{plan.fingerprint}:{arm_id}:{name}:"
+                    "paired-pretraining-efficiency"
+                ),
+            )
+            for name in efficiency_names
+            if all(
+                name in record["pretraining_efficiency_delta_vs_baseline"]
+                for record in ordered
+            )
+        }
+        arm_gate_report = _aggregate_gate_reports(
+            {
+                record["replicate_id"]: run_gate_reports[record["run_id"]]
+                for record in ordered
+            }
+        )
+        arm_gate_path = Path(plan.root) / "gates" / f"{arm_id}.json"
+        write_gate_report(arm_gate_path, arm_gate_report)
+        arm_records[arm_id] = {
+            "hypothesis": ordered[0]["hypothesis"],
+            "parameters": parameters[0],
+            "decision_metrics": decision_metrics[0],
+            "replicate_count": len(ordered),
+            "runs": {
+                record["replicate_id"]: record["run_id"]
+                for record in ordered
+            },
+            "metrics": {
+                name: statistics["mean"]
+                for name, statistics in metric_statistics.items()
+            },
+            "metric_statistics": metric_statistics,
+            "delta_vs_baseline": {
+                name: statistics["mean"]
+                for name, statistics in paired_statistics.items()
+            },
+            "paired_delta_statistics": paired_statistics,
+            "heldout_by_answer_type": {
+                axis: statistics["mean"]
+                for axis, statistics in heldout_axis_statistics.items()
+            },
+            "train_by_answer_type": {
+                axis: round(
+                    _mean(
+                        [
+                            float(record["train_by_answer_type"][axis])
+                            for record in ordered
+                        ]
+                    ),
+                    8,
+                )
+                for axis in train_axes
+            },
+            "heldout_axis_delta_vs_baseline": {
+                axis: statistics["mean"]
+                for axis, statistics in heldout_axis_delta_statistics.items()
+            },
+            "heldout_axis_delta_statistics": heldout_axis_delta_statistics,
+            "heldout_by_robustness_axis": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics in heldout_slice_statistics.items()
+                }
+            ),
+            "train_by_robustness_axis": _nested_slice_values(
+                {
+                    name: round(
+                        _mean(
+                            [
+                                float(record["train_slice_scores"][name])
+                                for record in ordered
+                            ]
+                        ),
+                        8,
+                    )
+                    for name in train_slices
+                }
+            ),
+            "heldout_robustness_statistics": _nested_slice_values(
+                heldout_slice_statistics
+            ),
+            "heldout_robustness_delta_vs_baseline": _nested_slice_values(
+                {
+                    name: statistics["mean"]
+                    for name, statistics
+                    in heldout_slice_delta_statistics.items()
+                }
+            ),
+            "heldout_robustness_delta_statistics": _nested_slice_values(
+                heldout_slice_delta_statistics
+            ),
+            "pretraining_efficiency": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_statistics.items()
+            },
+            "pretraining_efficiency_statistics": efficiency_statistics,
+            "pretraining_efficiency_delta_vs_baseline": {
+                name: statistics["mean"]
+                for name, statistics in efficiency_delta_statistics.items()
+            },
+            "pretraining_efficiency_delta_statistics": (
+                efficiency_delta_statistics
+            ),
+            "heldout_score_conclusion": (
+                "reference"
+                if arm_id == plan.baseline
+                else _paired_conclusion(paired_statistics["heldout_score"])
+            ),
+            "gate_report": str(arm_gate_path),
+            "gate_status": arm_gate_report["overall_status"],
+            "gate_statuses": {
+                gate["id"]: gate["status"]
+                for gate in arm_gate_report["gates"]
+            },
+        }
+    ranking = sorted(
+        arm_records,
+        key=lambda variant_id: (
+            -arm_records[variant_id]["metrics"]["heldout_score"],
+            arm_records[variant_id]["metrics"]["train_minus_heldout_score"],
+            variant_id,
+        ),
+    )
+    matched_artifacts: dict[str, Any]
+    if len(artifact_controls) == 1:
+        matched_artifacts = next(iter(artifact_controls.values()))
+    else:
+        matched_artifacts = artifact_controls
+    promotion = _promotion_decision(
+        plan,
+        arm_records,
+        records_by_arm,
+    )
+    contrasts = _aggregate_linear_contrasts(
+        plan,
+        records_by_arm,
+    )
+    result = {
+        "schema_version": 6,
+        "sweep": plan.name,
+        "sweep_fingerprint": plan.fingerprint,
+        "baseline": plan.baseline,
+        "replicates": list(plan.replicates),
+        "replicate_count": len(plan.replicates),
+        "confidence_interval": {
+            "method": "paired_percentile_bootstrap",
+            "level": 0.95,
+            "resamples": 10_000,
+            "deterministic_seed_source": "sweep_fingerprint_arm_metric",
+        },
+        "matched_controls": plan.control_values,
+        "matched_controls_by_replicate": plan.control_values_by_replicate,
+        "matched_evaluation_artifacts": matched_artifacts,
+        "matched_evaluation_artifacts_by_replicate": artifact_controls,
+        "execution_attestations": {
+            run_id: record["execution_attestation"]
+            for run_id, record in run_records.items()
+        },
+        "ranking": ranking,
+        "promotion": promotion,
+        "contrasts": contrasts,
+        "variants": arm_records,
+        "runs": run_records,
+    }
+    root = Path(plan.root)
+    _atomic_write_json(root / "comparison.json", result)
+    _write_comparison_markdown(root / "comparison.md", result)
+    return result
+
+
+def _write_comparison_markdown(path: Path, result: dict[str, Any]) -> None:
+    lines = [
+        f"# {result['sweep']} matched sweep",
+        "",
+        f"Baseline: `{result['baseline']}`",
+        "",
+        f"Paired replicates: **{result['replicate_count']}**",
+        "",
+        "| Rank | Variant | Parameters | Heldout mean ± SD | Paired delta [95% CI] | "
+        "Train-heldout gap | Conclusion | Gates |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    for rank, variant_id in enumerate(result["ranking"], start=1):
+        record = result["variants"][variant_id]
+        metrics = record["metrics"]
+        heldout = record["metric_statistics"]["heldout_score"]
+        delta = record["paired_delta_statistics"]["heldout_score"]
+        ci95 = (
+            "unavailable"
+            if delta["ci95"] is None
+            else f"{delta['ci95'][0]:+.6f}, {delta['ci95'][1]:+.6f}"
+        )
+        lines.append(
+            f"| {rank} | `{variant_id}` | {record['parameters']['total']:,} | "
+            f"{heldout['mean']:.6f} ± {heldout['standard_deviation']:.6f} | "
+            f"{delta['mean']:+.6f} [{ci95}] | "
+            f"{metrics['train_minus_heldout_score']:+.6f} | "
+            f"`{record['heldout_score_conclusion']}` | "
+            f"`{record['gate_status']}` |"
+        )
+    promotion = result["promotion"]
+    lines.extend(
+        [
+            "",
+            "## Promotion decision",
+            "",
+            f"- Status: `{promotion['status']}`",
+            "- Selected variants: "
+            + (
+                ", ".join(
+                    f"`{variant}`"
+                    for variant in promotion["selected_variants"]
+                )
+                if promotion["selected_variants"]
+                else "none"
+            ),
+        ]
+    )
+    for gate, status in sorted(
+        promotion.get("external_gates", {}).items()
+    ):
+        lines.append(f"- External gate `{gate}`: `{status}`")
+    if result["contrasts"]:
+        lines.extend(
+            [
+                "",
+                "## Paired linear contrasts",
+                "",
+                "| Contrast | Heldout mean | 95% CI | Conclusion | "
+                "Parameter contrast |",
+                "| --- | ---: | ---: | --- | ---: |",
+            ]
+        )
+        for contrast_id, contrast in result["contrasts"].items():
+            statistics = contrast["metric_statistics"][
+                "heldout_score"
+            ]
+            ci95 = statistics["ci95"]
+            ci_text = (
+                "unavailable"
+                if ci95 is None
+                else f"{ci95[0]:+.6f}, {ci95[1]:+.6f}"
+            )
+            lines.append(
+                f"| `{contrast_id}` | {statistics['mean']:+.6f} | "
+                f"{ci_text} | "
+                f"`{contrast['heldout_score_conclusion']}` | "
+                f"{contrast['parameter_contrast'].get('total', 0):+,.0f} |"
+            )
+    if promotion["status"] != "not_configured":
+        multiplicity = promotion["multiple_comparisons"]
+        lines.extend(
+            [
+                "- Multiplicity control: "
+                f"`{multiplicity['method']}` over "
+                f"{multiplicity['comparison_count']} comparisons",
+                "",
+            ]
+        )
+        if promotion["contract"].get("mode") == "pareto":
+            lines.extend(
+                [
+                    "- Pareto frontier: "
+                    + (
+                        ", ".join(
+                            f"`{variant}`"
+                            for variant in promotion["pareto_frontier"]
+                        )
+                        if promotion["pareto_frontier"]
+                        else "none"
+                    ),
+                    "",
+                    "| Candidate | Decision | Objective | Mean benefit | "
+                    "Simultaneous lower bound | Minimum effect |",
+                    "| --- | --- | --- | ---: | ---: | ---: |",
+                ]
+            )
+            for variant_id, candidate in sorted(
+                promotion["candidates"].items()
+            ):
+                objectives = candidate["evidence"]["objectives"]
+                for metric, evidence in objectives.items():
+                    mean_benefit = evidence["mean_benefit"]
+                    lower_bound = evidence["simultaneous_lower_bound"]
+                    mean_text = (
+                        "unavailable"
+                        if mean_benefit is None
+                        else f"{mean_benefit:+.6f}"
+                    )
+                    lower_text = (
+                        "unavailable"
+                        if lower_bound is None
+                        else f"{lower_bound:+.6f}"
+                    )
+                    lines.append(
+                        f"| `{variant_id}` | `{candidate['decision']}` | "
+                        f"`{metric}` | {mean_text} | {lower_text} | "
+                        f"{evidence['minimum_effect']:+.6f} |"
+                    )
+        else:
+            lines.extend(
+                [
+                    "| Candidate | Decision | Mean benefit | "
+                    "Simultaneous lower bound |",
+                    "| --- | --- | ---: | ---: |",
+                ]
+            )
+            for variant_id, candidate in sorted(
+                promotion["candidates"].items()
+            ):
+                evidence = candidate["evidence"]
+                mean_benefit = evidence["mean_benefit"]
+                lower_bound = evidence["simultaneous_lower_bound"]
+                mean_text = (
+                    "unavailable"
+                    if mean_benefit is None
+                    else f"{mean_benefit:+.6f}"
+                )
+                lower_text = (
+                    "unavailable"
+                    if lower_bound is None
+                    else f"{lower_bound:+.6f}"
+                )
+                lines.append(
+                    f"| `{variant_id}` | `{candidate['decision']}` | "
+                    f"{mean_text} | {lower_text} |"
+                )
+    lines.extend(["", "## Matched controls by replicate", ""])
+    for replicate_id, controls in sorted(
+        result["matched_controls_by_replicate"].items()
+    ):
+        lines.append(f"### {replicate_id}")
+        lines.append("")
+        for key, value in sorted(controls.items()):
+            lines.append(f"- `{key}`: `{_stable_json(value)}`")
+        lines.append("")
+    _atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+class SweepRunner:
+    """Run matched variants sequentially and publish a single comparison."""
+
+    def __init__(self, plan: SweepPlan, *, repo_root: str | Path):
+        self.plan = plan
+        self.repo_root = Path(repo_root).resolve()
+
+    def _write_plan(self) -> None:
+        root = Path(self.plan.root)
+        root.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(root / "sweep_plan.json", self.plan.to_dict())
+        _atomic_write_json(root / "sweep_spec.json", self.plan.raw_spec)
+
+    def _compact_dry_run(
+        self,
+        variants: list[CompiledVariant],
+        results: list[dict[str, Any]],
+        *,
+        resume: bool,
+        start: str | None,
+        stop: str | None,
+    ) -> dict[str, Any]:
+        raw_arms = {
+            str(item["id"]): item
+            for item in self.plan.raw_spec.get("variants") or []
+        }
+        raw_replicates = {
+            str(item["id"]): item
+            for item in self.plan.raw_spec.get("replicates") or []
+        }
+        topologies: dict[tuple[str, ...], dict[str, Any]] = {}
+        runs: list[dict[str, Any]] = []
+        arms: dict[str, dict[str, Any]] = {}
+        replicates: dict[str, dict[str, Any]] = {}
+        for variant, result in zip(variants, results, strict=True):
+            stages = result.get("stages") or []
+            stage_names = tuple(str(stage["name"]) for stage in stages)
+            topology_id = _fingerprint({"stage_names": stage_names})
+            topology = topologies.setdefault(
+                stage_names,
+                {
+                    "id": topology_id,
+                    "stage_count": len(stage_names),
+                    "stage_names": list(stage_names),
+                    "runs": [],
+                },
+            )
+            topology["runs"].append(variant.id)
+            skipped = [
+                str(stage["name"])
+                for stage in stages
+                if bool(stage.get("would_skip"))
+            ]
+            runs.append(
+                {
+                    "run": variant.id,
+                    "variant": variant.arm_id,
+                    "replicate": variant.replicate_id,
+                    "experiment_fingerprint": result.get("fingerprint"),
+                    "stage_topology": topology_id,
+                    "would_run_count": len(stages) - len(skipped),
+                    "would_skip": skipped,
+                }
+            )
+            arms.setdefault(
+                variant.arm_id,
+                {
+                    "id": variant.arm_id,
+                    "hypothesis": variant.hypothesis,
+                    "experiment_patches": copy.deepcopy(
+                        raw_arms.get(variant.arm_id, {}).get(
+                            "experiment_patches",
+                            [],
+                        )
+                    ),
+                    "blueprint_patches": copy.deepcopy(
+                        raw_arms.get(variant.arm_id, {}).get(
+                            "blueprint_patches",
+                            [],
+                        )
+                    ),
+                    "decision_metrics": variant.decision_metrics,
+                    "parameters": variant.parameters,
+                },
+            )
+            raw_replicate = raw_replicates.get(variant.replicate_id, {})
+            replicates.setdefault(
+                variant.replicate_id,
+                {
+                    "id": variant.replicate_id,
+                    "experiment_patches": copy.deepcopy(
+                        raw_replicate.get("experiment_patches", [])
+                    ),
+                    "blueprint_patches": copy.deepcopy(
+                        raw_replicate.get("blueprint_patches", [])
+                    ),
+                },
+            )
+        return {
+            "detail": "compact",
+            "selection": {
+                "run_count": len(runs),
+                "variant_count": len(arms),
+                "replicate_count": len(replicates),
+                "resume": resume,
+                "from_stage": start,
+                "to_stage": stop,
+            },
+            "shared_patches": {
+                "experiment": copy.deepcopy(
+                    self.plan.raw_spec.get("shared_experiment_patches") or []
+                ),
+                "blueprint": copy.deepcopy(
+                    self.plan.raw_spec.get("shared_blueprint_patches") or []
+                ),
+            },
+            "stage_topologies": list(topologies.values()),
+            "variant_definitions": list(arms.values()),
+            "replicate_definitions": list(replicates.values()),
+            "variants": runs,
+            "commands_omitted": True,
+        }
+
+    def run(
+        self,
+        *,
+        dry_run: bool = False,
+        dry_run_detail: str = "compact",
+        resume: bool = True,
+        variant_ids: set[str] | None = None,
+        replicate_ids: set[str] | None = None,
+        start: str | None = None,
+        stop: str | None = None,
+    ) -> dict[str, Any]:
+        if dry_run_detail not in {"compact", "full"}:
+            raise ValueError("dry_run_detail must be 'compact' or 'full'")
+        known = {variant.id for variant in self.plan.variants}
+        known_arms = {variant.arm_id for variant in self.plan.variants}
+        selected_arms = known_arms if variant_ids is None else set(variant_ids)
+        unknown_arms = selected_arms - known_arms
+        if unknown_arms:
+            raise ValueError(f"unknown sweep variants: {sorted(unknown_arms)}")
+        known_replicates = set(self.plan.replicates)
+        selected_replicates = (
+            known_replicates if replicate_ids is None else set(replicate_ids)
+        )
+        unknown_replicates = selected_replicates - known_replicates
+        if unknown_replicates:
+            raise ValueError(
+                f"unknown sweep replicates: {sorted(unknown_replicates)}"
+            )
+        selected = {
+            variant.id
+            for variant in self.plan.variants
+            if variant.arm_id in selected_arms
+            and variant.replicate_id in selected_replicates
+        }
+        outcomes = []
+        if dry_run:
+            selected_variants = []
+            dry_run_results = []
+            for variant in self.plan.variants:
+                if variant.id not in selected:
+                    continue
+                result = ExperimentRunner(
+                    variant.plan,
+                    repo_root=self.repo_root,
+                ).run(
+                    dry_run=True,
+                    resume=resume,
+                    start=start,
+                    stop=stop,
+                )
+                selected_variants.append(variant)
+                dry_run_results.append(result)
+                if dry_run_detail == "full":
+                    outcomes.append(
+                        {
+                            "run": variant.id,
+                            "variant": variant.arm_id,
+                            "replicate": variant.replicate_id,
+                            "result": result,
+                        }
+                    )
+        response: dict[str, Any] = {
+            "dry_run": dry_run,
+            "sweep": self.plan.name,
+            "fingerprint": self.plan.fingerprint,
+            "variants": outcomes,
+        }
+        if dry_run:
+            if dry_run_detail == "compact":
+                response.update(
+                    self._compact_dry_run(
+                        selected_variants,
+                        dry_run_results,
+                        resume=resume,
+                        start=start,
+                        stop=stop,
+                    )
+                )
+            else:
+                response["detail"] = "full"
+            return response
+        self._write_plan()
+        summary_path = Path(self.plan.root) / "sweep_run_summary.json"
+        response["status"] = "running"
+        _atomic_write_json(summary_path, response)
+        for variant in self.plan.variants:
+            if variant.id not in selected:
+                continue
+            try:
+                result = ExperimentRunner(
+                    variant.plan,
+                    repo_root=self.repo_root,
+                ).run(
+                    resume=resume,
+                    start=start,
+                    stop=stop,
+                )
+                execution_attestation = (
+                    _write_run_attestation(
+                        variant.plan,
+                        repo_root=self.repo_root,
+                        stop=stop,
+                    )
+                    if stop in {None, "evaluate"}
+                    else None
+                )
+            except Exception as error:
+                outcomes.append(
+                    {
+                        "run": variant.id,
+                        "variant": variant.arm_id,
+                        "replicate": variant.replicate_id,
+                        "status": "failed",
+                        "error": f"{type(error).__name__}: {error}",
+                    }
+                )
+                response["variants"] = outcomes
+                response["status"] = "failed"
+                _atomic_write_json(summary_path, response)
+                raise
+            outcomes.append(
+                {
+                    "run": variant.id,
+                    "variant": variant.arm_id,
+                    "replicate": variant.replicate_id,
+                    "status": "completed",
+                    "result": result,
+                    **(
+                        {"execution_attestation": execution_attestation}
+                        if execution_attestation is not None
+                        else {}
+                    ),
+                }
+            )
+            response["variants"] = outcomes
+            _atomic_write_json(summary_path, response)
+        complete_suite = selected == known and stop in {None, "evaluate"}
+        if complete_suite:
+            comparison = aggregate_sweep_results(
+                self.plan,
+                repo_root=self.repo_root,
+            )
+            response["comparison"] = str(Path(self.plan.root) / "comparison.json")
+            response["ranking"] = comparison["ranking"]
+            response["promotion"] = {
+                "status": comparison["promotion"]["status"],
+                "selected_variants": comparison["promotion"][
+                    "selected_variants"
+                ],
+                "baseline_retained": comparison["promotion"][
+                    "baseline_retained"
+                ],
+            }
+        response["status"] = "completed"
+        _atomic_write_json(summary_path, response)
+        return response

@@ -1,10 +1,9 @@
 # W&B metrics — what is logged during fine-tuning, and how to read it
 
-When `--wandb-project` is set (or the notebooks' W&B cell runs), every fine-tuning run started by
-`scripts/run_ablation.py` → `docvlm_eval.finetune.lora_vlm.train_lora_vlm` streams a small, fixed set
-of metrics to Weights & Biases. This page is the decoder ring: **what each logged key means, on which
-x-axis, and how to interpret the curves.** All scores are in **[0, 1]** (higher = better); loss is
-unbounded (lower = better).
+When `--wandb-project` is set, both the LFM LoRA ablations and the native sub-1B training stages
+stream metrics to Weights & Biases. This page is the decoder ring: **what each logged key means, on
+which x-axis, and how to interpret the curves.** All scores are in **[0, 1]** (higher = better);
+loss is unbounded (lower = better).
 
 ## 1. The logged keys
 
@@ -82,10 +81,9 @@ table tree-edit similarity.
   training and written to `docs/results/ablation_results.json`, then visualized by the notebooks'
   before/after bars and the staircase — **not** streamed per-epoch to W&B. W&B carries the
   *in-training* `train`/`heldout` curves; the JSON carries the *final* cross-probe scores.
-- **ECE (calibration)**, **answer-rate**, and **per-sample** detail are computed by
-  `docvlm_eval.metrics.aggregate` and saved in each run's `summary.json` / `per_sample` — they are
-  not currently pushed per-epoch to W&B (the W&B stream is intentionally minimal: loss + score +
-  per-axis score).
+- **Per-sample** reliability detail remains in each run's `per_sample.jsonl`. Native-student final
+  evaluation now fits a disjoint calibration subset and pushes raw/calibrated ECE to W&B; the
+  generic Part-1 comparison adapters still save ECE only in their local summaries.
 
 ## 6. Quick reference — namespaces
 
@@ -96,12 +94,194 @@ eval/train_score      ← overall score on the train set   (x = epoch)   [memori
 eval/heldout_score    ← overall score on the held-out set(x = epoch)   [generalization]
 eval/<split>_<axis>   ← that split, sliced by capability (x = epoch)   [which ability moved]
 eval_by_axis/<axis>/<split>  ← same numbers regrouped by axis (x = epoch) [train-vs-heldout per capability on one chart]
+eval_by_axis/ece_raw/<split> ← raw confidence ECE from native final evaluation
+eval_by_axis/ece_calibrated/<split> ← temperature-scaled ECE on the same split
+eval_by_axis/max_token_rate/<split> ← fraction ending at the resolved token limit
+eval_by_axis/degenerate_repetition_rate/<split> ← exact suffix-cycle diagnostic
+eval_by_axis/mean_generation_token_budget/<split> ← mean resolved horizon
+eval_by_axis/budget_escalation_rate/<split> ← fraction using a task-specific override
 ```
 
 > **Two groupings, same data.** `eval/<split>_<axis>` is keyed *split-first* (good for "how does the
 > heldout set look across all axes?"); `eval_by_axis/<axis>/<split>` is keyed *axis-first* (good for
 > "for grounding specifically, how do train and heldout compare?"). Pick whichever W&B panel grouping
 > you want — the values are identical.
+
+### Pair historical train and heldout metrics in one workspace
+
+Existing runs that predate `eval_by_axis` do not need to be rerun. After authenticating with W&B,
+create a saved workspace view that pairs every common `eval/train_<axis>` and
+`eval/heldout_<axis>` key in one line plot:
+
+```bash
+pip install wandb wandb-workspaces
+python scripts/configure_wandb_eval_workspace.py \
+  --entity sbdc \
+  --project docvlm-ablation
+```
+
+The script discovers both canonical `eval_by_axis/<axis>/<split>` and legacy
+`eval/<split>_<axis>` keys, creates panels only when both splits exist, fixes the score range to
+0–1, and prints the saved workspace URL. Canonical axis-first keys win when both representations
+exist. It accepts the legacy `held` split alias while preferring `heldout`. The default x-axis is
+`epoch` for historical ablation projects, `evaluation/checkpoint_step` for native evaluation-only
+projects, and W&B `_step` as a final fallback; use `--x-axis` to override mixed projects.
+
+### Native student checkpoint evaluation
+
+[`scripts/eval_student.py`](../../scripts/eval_student.py) uses the same paired naming contract for
+the native pretraining/SFT/RLVR checkpoints. Pass both splits and one W&B project:
+
+```bash
+python scripts/eval_student.py \
+  --split train=examples/posttraining/train.jsonl \
+  --split heldout=examples/posttraining/heldout.jsonl \
+  --tokenizer artifacts/student_tokenizer \
+  --checkpoint /path/to/checkpoint/student \
+  --output outputs/student_eval/run \
+  --visual-backend-benchmark outputs/visual_backend.json \
+  --training-feasibility-benchmark outputs/training_feasibility.json \
+  --wandb-project docvlm-ablation
+```
+
+The command logs all train and heldout values in one W&B call at the same checkpoint step. Use
+`eval_by_axis/<axis>/train` and `eval_by_axis/<axis>/heldout` in one panel. The real key is
+`heldout`, not `held`. Structured reward components are kept separate under
+`eval_reward/<component>/<split>` so reward gains cannot be mistaken for benchmark-score gains.
+The final `gate/visual_efficiency` value is logged only when target-device evidence is sufficient;
+`1` means parity, resolved FlexAttention, speed, and memory all passed, while `0` means a measured
+threshold failed. An absent key means the gate remained `insufficient_evidence`.
+The same convention applies to `gate/training_feasibility`.
+The run config records `use_kv_cache`; split summaries record `generation_backend`. Do not compare
+latency between cached and `--no-kv-cache` runs without treating the backend as the experimental
+factor.
+
+### Native student live training
+
+`scripts/pretrain_student.py` and `scripts/posttrain_student.py` accept the same
+`--wandb-project`, `--wandb-entity`, `--wandb-run`, `--wandb-group`, `--wandb-tags`, and
+`--wandb-id` options. Only rank zero initializes W&B. Local `metrics.jsonl` remains authoritative;
+the callback streams the same numeric payload without sending sample IDs or other high-cardinality
+strings.
+
+| Stage | Step metric | Live namespaces |
+| --- | --- | --- |
+| pretraining | `train/global_step` | `train/*`, `eval/*`, `adaptive/*`, `gradient_probe/*` |
+| SFT | `train/global_step` | `train/*` |
+| preference | `preference/preference_step` | `preference/*`, `reward/*`, `reward_diagnostic/*` |
+| RLVR | `rlvr/rollout_step` | `rlvr/*`, `reward/*`, `reward_diagnostic/*` |
+
+Preference runs log `preference/gold_anchor_applied`, accepted and skipped pair counts, verifier
+margin, optimizer steps, and student FLOPs. The `preference/sampled_reward_*` and
+`preference/sampled_valid_structure_fraction` metrics exclude the authored anchor. Candidate-source
+comparisons must show these beside heldout quality so anchor validity or extra updates are not
+mistaken for better generalization.
+
+The end-to-end experiment reads stage-specific W&B fields from `pretraining`,
+`posttraining.sft`, `posttraining.preference`, and `posttraining.rlvr`. For example:
+
+```yaml
+pretraining:
+  wandb_project: docvlm-native
+  wandb_entity: sbdc
+  wandb_group: docvlm-800m-hard
+  wandb_tags: [native-student, pretraining]
+posttraining:
+  sft:
+    wandb_project: docvlm-native
+  rlvr:
+    wandb_project: docvlm-native
+```
+
+Each stage is a separate W&B run because its step axis and process lifetime differ. The compiler
+derives a stable W&B ID from the exact experiment fingerprint and stage, so an exact resumed plan
+continues the same run. A changed config or source fingerprint receives a different ID. Sweep
+compilation assigns one common suite group plus `stage`, `variant`, and `replicate` tags.
+
+When `evaluation.baseline_checkpoint_stage` is configured, the experiment creates a separate
+`evaluate_baseline` run before final gate evaluation. It shares the final evaluation's W&B group
+and paired axis keys, adds `baseline` and `checkpoint-stage:<stage>` tags, and uses its own
+fingerprint-derived run ID. This keeps baseline and final histories distinct while allowing both
+to be selected in the same train-versus-heldout workspace panels.
+
+### Packed visual backend benchmark
+
+The target-GPU runner described in
+[`student_visual_canvas_sweep.md`](student_visual_canvas_sweep.md) logs one W&B run with:
+
+```text
+visual_benchmark/visual_tokens
+visual_benchmark/batch_size
+visual_benchmark/rounds
+visual_benchmark/deployment_gate_pass
+visual_benchmark/<requested_backend>/success
+visual_benchmark/<requested_backend>/resolved_flex
+visual_benchmark/<requested_backend>/median_ms
+visual_benchmark/<requested_backend>/p95_ms
+visual_benchmark/<requested_backend>/tokens_per_second
+visual_benchmark/<requested_backend>/median_speedup_vs_loop
+visual_benchmark/<requested_backend>/min_speedup_vs_loop
+visual_benchmark/<requested_backend>/median_speedup_vs_dense_adaptive
+visual_benchmark/<requested_backend>/min_speedup_vs_dense_adaptive
+visual_benchmark/<requested_backend>/peak_memory_allocated_bytes
+visual_benchmark/<requested_backend>/peak_memory_reserved_bytes
+visual_benchmark/<requested_backend>/peak_memory_reduction_fraction_vs_loop
+visual_benchmark/<requested_backend>/peak_memory_reduction_fraction_vs_dense_adaptive
+visual_benchmark/<requested_backend>/max_abs_delta_vs_loop
+visual_benchmark/<requested_backend>/executed_visual_tokens
+visual_benchmark/<requested_backend>/valid_visual_token_fraction
+```
+
+Here `<requested_backend>` is `loop`, `auto`, `flex`, `dense_adaptive`, or
+`dense_fixed_square`. Filter or group by the W&B config fields `mode`, `precision`, `patch_grids`,
+`student_config_fingerprint`, and device metadata before comparing latency. `resolved_flex=0` on
+an `auto` run means the portable fallback executed; it must not be presented as a FlexAttention
+measurement. Median speedups aggregate same-round paired ratios; `min_speedup_*` is the worst of
+the three order-rotated rounds. Peak-memory ratios are likewise the worst paired round.
+
+### Full-student training feasibility benchmark
+
+[`scripts/benchmark_student_training_step.py`](../../scripts/benchmark_student_training_step.py)
+logs the full-model preflight under:
+
+```text
+training_feasibility/success
+training_feasibility/oom
+training_feasibility/gate_pass
+training_feasibility/parameter_count
+training_feasibility/median_step_ms
+training_feasibility/p95_step_ms
+training_feasibility/steps_per_second
+training_feasibility/peak_allocated_bytes
+training_feasibility/peak_reserved_bytes
+training_feasibility/peak_reserved_fraction
+training_feasibility/free_bytes
+training_feasibility/total_bytes
+training_feasibility/optimizer_parameter_states
+training_feasibility/optimizer_tensor_bytes
+training_feasibility/optimizer_max_step
+training_feasibility/algorithmic_flops_per_microbatch
+training_feasibility/checkpoint_recompute_flops_per_microbatch
+training_feasibility/executed_flops_per_microbatch
+training_feasibility/contrastive_memory_size
+training_feasibility/contrastive_negative_pairs
+training_feasibility/contrastive_additional_flops
+```
+
+Compare these runs only when `student_config_fingerprint`, patch grid, text-token dose,
+micro-batch, precision, activation-checkpointing contract, and device match. `success=1` proves
+that the benchmark returned, while `gate_pass=1` additionally proves the configured CUDA/Flex,
+numerical, optimizer-step, and memory-headroom contract.
+The algorithmic count remains the compute-matching estimand; the executed count adds the estimated
+forward-block recomputation caused by the reported activation-checkpointing placement.
+The production benchmark pre-fills the configured contrastive FIFO to capacity before measured
+steps, so its negative-pair, latency, and peak-memory evidence represents steady state rather than
+an empty-queue first step.
+The W&B run config includes the complete optimizer spec. The embedded
+`training_feasibility_report.optimizer_runtime` records the realized implementation and
+bitsandbytes version; `optimizer_tensor_bytes` is the measured tensor storage after state
+materialization. The deployment gate rejects a report whose requested or realized optimizer
+contract differs from the production blueprint.
 
 ## 7. Glossary — every term you'll see
 

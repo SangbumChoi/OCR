@@ -33,7 +33,7 @@ RESULTS = ROOT / "docs" / "results" / "task_value_results.json"
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--tasksets-dir", default=str(ROOT / "data" / "udd_tasks"),
+    p.add_argument("--tasksets-dir", default=str(ROOT / "examples" / "udd_tasks"),
                    help="dir of task_<task>.jsonl from build_task_trainsets.py")
     p.add_argument("--models", nargs="+", default=["lfm2_5-vl-1.6b"],
                    help="Part-2 base(s); default LFM2.5-VL (fast on a T4)")

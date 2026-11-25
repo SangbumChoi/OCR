@@ -149,7 +149,7 @@ def preds_mode(args) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--src", default=str(ROOT / "data" / "udd" / "hf" / "_all"))
+    p.add_argument("--src", default=str(ROOT / "examples" / "udd" / "hf" / "_all"))
     p.add_argument("--preds", default=None, help="predictions jsonl -> correlation/disagreement mode")
     p.add_argument("--n", type=int, default=300, help="answers sampled for characterization")
     p.add_argument("--seed", type=int, default=7)

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "executed_on": "2026-07-25",
+  "sweep": "configs/sub1b_selective_transfer_fixture_sweep.yaml",
+  "sweep_fingerprint": "sha256:c0d581185e85c0bdfd0e916293f94750e51bfa8fe6e5f1b104aaed2b03247aa2",
+  "comparison_schema_version": 6,
+  "comparison_file_sha256": "sha256:dc7c235d4bcdb2aad1387d57b187691822e4e8e6bcd0fdaa388b1fdb31427ad4",
+  "attestation_set_fingerprint": "sha256:d0934bdbd17fdeb3f05826ed99864ac0225e5e412ca900d09f84681ad46a7bde",
+  "matched_artifact_set_fingerprint": "sha256:c7e2fa4e62ee5c5f197a8f43ee3a5ed9f2879e937bac429e13a3f3dd0efdd43c",
+  "design": {
+    "baseline": "random",
+    "treatment": "structured_fixture",
+    "replicates": 3,
+    "target_parameters": 587019,
+    "optimizer_steps_per_phase": 1,
+    "fixture_weights": "deterministic_random"
+  },
+  "execution_evidence": {
+    "run_count": 6,
+    "attestation_count": 6,
+    "contract_statuses": [
+      "pass"
+    ],
+    "capability_statuses": [
+      "fail"
+    ],
+    "claim_scopes": [
+      "execution_contract_only"
+    ]
+  },
+  "paired_result": {
+    "random_heldout_score_mean": 0.0,
+    "structured_fixture_heldout_score_mean": 0.0,
+    "fixture_transfer_effect_mean": 0.0,
+    "fixture_transfer_effect_ci95": [
+      0.0,
+      0.0
+    ],
+    "conclusion": "inconclusive",
+    "promotion_status": "not_configured"
+  },
+  "interpretation": [
+    "The paired sweep, artifact matching, full-hash run sealing, and aggregation paths executed successfully.",
+    "Random fixture transfer did not improve the one-step tiny model.",
+    "The result does not estimate the benefit of pretrained selective transfer.",
+    "A quality conclusion still requires the pinned-source multi-seed GPU sweep and passing deployment gates."
+  ]
+}

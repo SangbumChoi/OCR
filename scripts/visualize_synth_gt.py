@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from PIL import Image  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CASES = ROOT / "data" / "probes" / "realistic_cases"
+CASES = ROOT / "examples" / "probes" / "realistic_cases"
 FIG = ROOT / "docs" / "report" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 

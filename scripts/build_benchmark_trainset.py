@@ -170,7 +170,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--catalog", default=None, help="benchmark_catalog.yaml (default: auto-locate)")
-    p.add_argument("--out", default=str(ROOT / "data" / "benchmark_trainset"))
+    p.add_argument("--out", default=str(ROOT / "examples" / "benchmark_trainset"))
     p.add_argument("--per-bench", type=int, default=50,
                    help=f"images per benchmark (hard-capped at {HARD_CAP - 1})")
     p.add_argument("--only", default=None, help="comma-separated benchmark keys to include")

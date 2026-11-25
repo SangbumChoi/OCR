@@ -20,18 +20,18 @@ for b in "${BENCHMARKS[@]}"; do
 done
 
 echo "==> Building robustness probe from DocVQA"
-python scripts/build_robustness_set.py --base data/benchmarks/docvqa.jsonl \
-  --out-dir data/robustness/docvqa --limit 100
+python scripts/build_robustness_set.py --base examples/benchmarks/docvqa.jsonl \
+  --out-dir examples/robustness/docvqa --limit 100
 
 echo "==> Evaluating models"
 for m in "${MODELS[@]}"; do
   for b in "${BENCHMARKS[@]}"; do
-    python scripts/evaluate.py --model "$m" --benchmark "data/benchmarks/${b}.jsonl" \
+    python scripts/evaluate.py --model "$m" --benchmark "examples/benchmarks/${b}.jsonl" \
       --benchmark-name "$b" --out "${RESULTS}/${m}/${b}" \
       --device "$DEVICE" --dtype "$DTYPE" --limit "$LIMIT" || echo "[skip] $m/$b failed"
   done
   # robustness only needs to run for the leading candidate(s); run for all that succeed
-  python scripts/evaluate.py --model "$m" --benchmark data/robustness/docvqa/robustness.jsonl \
+  python scripts/evaluate.py --model "$m" --benchmark examples/robustness/docvqa/robustness.jsonl \
     --benchmark-name robustness --out "${RESULTS}/${m}/robustness" \
     --device "$DEVICE" --dtype "$DTYPE" || echo "[skip] $m/robustness failed"
 done

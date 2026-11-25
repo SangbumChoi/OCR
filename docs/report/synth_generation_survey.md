@@ -38,7 +38,7 @@ quality curation) as a future-optional layer.
 | Technique | DoGe | Our generator |
 | --- | --- | --- |
 | **Per-doc layout params** (font-size, alignment, line-spacing, columns) | `docx_config.json` | **adopted/expanded** — `_theme_css` now jitters `font-size`, **`line-height`**, **`letter-spacing`**, page-margin, heading alignment per doc (spatial spread) |
-| **Color-coded word → OpenCV bbox** (model-free spotting GT) | core trick | documented as a **fallback box resolver** for cases where PDF text-search fails (CJK/Arabic/wrapped MRZ); see §3 |
+| **Color-coded word → raster-mask bbox** (model-free spotting GT) | core trick | **implemented as a fallback resolver** for PDF text-search misses or fragmented spans; see §3 |
 | Real-corpus text (Wikipedia) for textual variety | crawl | analog: locale-aware Faker + curated content pools (offline, deterministic); real-corpus is a future-optional `TextSource` (§4) |
 | Augraphy final augmentation | yes | yes |
 | Multi-stage render (docx→pdf→png) | yes | we render HTML→pdf→png directly (one fewer lossy hop, keeps exact boxes) |
@@ -59,10 +59,16 @@ text-search-free, so it is robust where `search_for` fails:
 - complex scripts where the PDF text layer is reordered (Arabic RTL, CJK vertical),
 - decorative fonts whose glyphs don't round-trip to searchable text.
 
-**Plan (documented; not yet wired):** add an optional `color_probe` render pass — wrap the target
-span in `<span style="color:#RRGGBB">`, render a second copy, and recover the box via OpenCV mask.
-Keep the text-search resolver as the default (faster, no second render); fall back to color-probe
-only when search returns nothing. This removes the last class of "region found nothing" warnings.
+**Implemented fallback:** `DocBuilder.build()` first queries the PDF text layer. When it returns
+fewer occurrences than a spotting or spatial-derivation request requires, the builder wraps the
+visible target text nodes in layout-neutral, uniquely colored spans and renders one probe copy.
+The exact raster-color mask recovers one occurrence-aware union box per span. Overlapping target
+strings that cannot share a batch receive an isolated probe pass.
+
+The fallback is simulation-only and model-free. It is controlled by
+`GenConfig.color_probe_fallback`, shared by spotting plus locate/count/region derivations, and only
+runs for native lookup misses. `RenderSpec.box_resolver` and
+`color_probe_fallback_count` make the resolver contract and actual use auditable per sample.
 
 ## 4. LLM-first projects → future-optional architecture (NOT a runtime dependency)
 
@@ -91,12 +97,13 @@ LLM-free (default `text_source="offline"`, no network at generation time).
 1. `_BODY_FONTS` broadened (genalog font-variety lever): 4 → 8 sans/serif/mono families.
 2. `_theme_css` structural jitter expanded (DoGe per-doc layout params): `line-height`,
    `letter-spacing`, wider `font-size` and page-`margin` ranges → larger spatial spread.
-3. This survey + the future-optional `TextSource`/judge seams documented (no LLM wired).
+3. Occurrence-aware color-probe box recovery for PDF text-layer misses, with an explicit control
+   arm and per-sample provenance.
+4. This survey + the future-optional `TextSource`/judge seams documented (no LLM wired).
 
 Measured effect and acceptance: see [`../results/synthetic_diversity_report.md`](../results/synthetic_diversity_report.md).
 
 ## 6. Backlog (still simulation-based, future passes)
-- Color-coded-word box resolver (§3) as a fallback for non-Latin / wrapped text.
 - Local real-text corpus `TextSource="corpus"` (offline Wikipedia/Gutenberg dump) for richer prose.
 - Per-case layout **templates** (2–3 skeletons each) — the PRD v2 lever for the residual
   same-template similarity that photometric/typographic jitter alone cannot move.

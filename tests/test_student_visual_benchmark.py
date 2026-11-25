@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+import torch
+
+from docvlm_eval.student.config import StudentConfig
+from docvlm_eval.student.visual_benchmark import (
+    VisualBenchmarkConfig,
+    run_visual_backend_benchmark,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run(**overrides):
+    student = overrides.pop("student", StudentConfig.tiny())
+    values = {
+        "sequence_lengths": (3, 5),
+        "backends": ("loop", "auto", "flex"),
+        "warmup_iterations": 0,
+        "measured_iterations": 1,
+        "rounds": 1,
+        "mode": "forward",
+        "precision": "float32",
+        "device": "cpu",
+        "seed": 11,
+    }
+    values.update(overrides)
+    return run_visual_backend_benchmark(
+        student,
+        VisualBenchmarkConfig(**values),
+    )
+
+
+def test_cpu_benchmark_records_fallback_and_explicit_flex_error():
+    report = _run()
+
+    assert report["scope"] == "student_vision_tower_and_connector"
+    assert report["connector_family"] == "gated_resampler"
+    assert report["schema_version"] == 2
+    assert report["language_decoder_included"] is False
+    assert report["visual_tokens"] == 8
+    assert report["batch_size"] == 2
+    records = {record["requested_backend"]: record for record in report["results"]}
+    assert records["loop"]["status"] == "ok"
+    assert records["loop"]["resolved_backend"] == "loop"
+    assert records["loop"]["max_abs_delta_vs_loop"] == pytest.approx(0.0)
+    assert records["loop"]["median_speedup_vs_loop"] == pytest.approx(1.0)
+    assert records["auto"]["status"] == "ok"
+    assert records["auto"]["resolved_backend"] == "loop"
+    assert records["auto"]["max_abs_delta_vs_loop"] == pytest.approx(0.0)
+    assert records["flex"]["status"] == "error"
+    assert records["flex"]["error_type"] == "BenchmarkRoundError"
+    assert records["flex"]["trial_errors"][0]["error_type"] == "RuntimeError"
+    assert len(report["execution_orders"]) == 1
+    assert len(report["trials"]) == 3
+    assert report["gates"] == {
+        "require_flex": False,
+        "flex_resolved": False,
+        "passed": True,
+    }
+    json.dumps(report)
+
+
+def test_require_flex_gate_preserves_report_on_cpu():
+    report = _run(backends=("auto",), require_flex=True)
+
+    assert report["results"][0]["status"] == "ok"
+    assert report["results"][0]["resolved_backend"] == "loop"
+    assert report["gates"] == {
+        "require_flex": True,
+        "flex_resolved": False,
+        "passed": False,
+    }
+
+
+def test_average_pool_connector_benchmark_uses_vision_backend_resolution():
+    base = StudentConfig.tiny()
+    student = replace(
+        base,
+        connector=replace(
+            base.connector,
+            family="average_pool_projector",
+        ),
+    )
+
+    report = _run(
+        student=student,
+        backends=("loop", "auto"),
+    )
+
+    assert report["connector_family"] == "average_pool_projector"
+    assert all(record["status"] == "ok" for record in report["results"])
+    assert report["student_config"]["connector"]["family"] == (
+        "average_pool_projector"
+    )
+
+
+def test_training_mode_measures_forward_and_backward():
+    report = _run(
+        backends=("loop",),
+        mode="training",
+        warmup_iterations=1,
+    )
+
+    record = report["results"][0]
+    assert record["status"] == "ok"
+    assert record["median_ms"] > 0
+    assert record["tokens_per_second"] > 0
+
+
+def test_rounds_randomize_order_and_aggregate_paired_measurements():
+    report = _run(
+        backends=("loop", "auto"),
+        rounds=3,
+    )
+
+    assert len(report["execution_orders"]) == 3
+    assert all(
+        sorted(order) == ["auto", "loop"]
+        for order in report["execution_orders"]
+    )
+    assert len({tuple(order) for order in report["execution_orders"]}) > 1
+    assert len(report["trials"]) == 6
+    records = {
+        record["requested_backend"]: record for record in report["results"]
+    }
+    assert records["auto"]["rounds"] == 3
+    assert records["auto"]["paired_rounds_vs_loop"] == 3
+    assert len(records["auto"]["speedup_samples_vs_loop"]) == 3
+    assert records["auto"]["min_speedup_vs_loop"] > 0
+
+
+def test_dense_policies_share_patch_content_and_match_packed_output():
+    report = _run(
+        sequence_lengths=None,
+        patch_grids=((1, 3), (3, 1)),
+        backends=("loop", "dense_adaptive", "dense_fixed_square"),
+    )
+
+    records = {
+        record["requested_backend"]: record for record in report["results"]
+    }
+    assert report["patch_grids"] == [[1, 3], [3, 1]]
+    assert records["dense_adaptive"]["status"] == "ok"
+    assert records["dense_fixed_square"]["status"] == "ok"
+    assert records["dense_adaptive"]["resolved_backend"] == "dense"
+    assert records["dense_adaptive"]["max_abs_delta_vs_loop"] < 1e-5
+    assert records["dense_fixed_square"]["max_abs_delta_vs_loop"] < 1e-5
+    assert records["loop"]["executed_visual_tokens"] == 6
+    assert records["dense_adaptive"]["executed_visual_tokens"] == 18
+    assert records["dense_fixed_square"]["executed_visual_tokens"] == 128
+    assert records["loop"]["median_speedup_vs_dense_adaptive"] > 0
+
+
+def test_rejects_visual_sequence_above_position_grid():
+    with pytest.raises(ValueError, match="max_position_tokens"):
+        _run(sequence_lengths=(65,), backends=("loop",))
+
+
+def test_rejects_dense_policy_without_patch_grids():
+    with pytest.raises(ValueError, match="require patch_grids"):
+        _run(backends=("loop", "dense_adaptive"))
+
+
+def test_rejects_both_sequence_lengths_and_patch_grids():
+    with pytest.raises(ValueError, match="only one"):
+        _run(patch_grids=((1, 3), (1, 5)))
+
+
+def test_blocking_deployment_preflight_rejects_cpu_before_benchmark():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "benchmark_student_visual_backend.py"),
+            "--require-deployment-gate",
+            "--device",
+            "cpu",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "requires an available CUDA device" in completed.stderr
+
+
+@pytest.mark.skipif(
+    os.environ.get("DOCVLM_RUN_FLEX_INTEGRATION") != "1" or not torch.cuda.is_available(),
+    reason="set DOCVLM_RUN_FLEX_INTEGRATION=1 on a supported CUDA host",
+)
+def test_require_flex_cuda_smoke():
+    report = _run(
+        device="cuda",
+        precision="float16",
+        backends=("auto", "flex"),
+        require_flex=True,
+        warmup_iterations=1,
+    )
+
+    assert report["gates"]["passed"] is True

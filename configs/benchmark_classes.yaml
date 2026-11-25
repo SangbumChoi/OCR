@@ -5,7 +5,7 @@
 # Each key must exist in benchmark_catalog.yaml; values are drawn from the controlled vocabulary in
 # plot_benchmark_map.CLASSES. "Printed text" is listed only when printed document text is a primary
 # surface (not for pure scene/figure sets). Grounded by the fetched 10-sample previews
-# (data/benchmarks/<key>/samples/) where available.
+# (examples/benchmarks/<key>/download/) where available.
 
 classes:
   # A. Recognition / transcription
