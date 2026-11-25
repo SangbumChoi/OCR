@@ -795,19 +795,23 @@ def canon_key(a: str) -> str:
 
 
 def canon_answers(answers: list[str]) -> list[str]:
-    """Drop answers that differ only by case/punctuation/whitespace, keeping the FIRST occurrence
-    (the source's primary gold). DocVQA-style human-answer lists ship near-identical variants
-    ("ITC Limited" / "itc limited") — surface noise for a training corpus, not real alternatives.
-    Genuinely different answers (e.g. "5 days" vs "five days") are kept."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for a in answers:
-        k = canon_key(a)
-        if k and k in seen:
-            continue
-        seen.add(k)
-        out.append(a)
-    return out
+    """Drop answers that differ only by case/punctuation/whitespace and order the rest by how many
+    annotators gave them (ties keep source order); each kept surface form is its FIRST occurrence.
+    DocVQA-style human-answer lists ship near-identical variants ("ITC Limited" / "itc limited") —
+    surface noise for a training corpus, not real alternatives. TextVQA ships 10 annotator answers
+    whose FIRST entry is not the consensus ("nous les gosses" vs 6x "dakota"), so the primary gold
+    must be the majority. Genuinely different answers (e.g. "5 days" vs "five days") are kept."""
+    first: dict[str, str] = {}
+    count: dict[str, int] = {}
+    order: list[str] = []
+    for i, a in enumerate(answers):
+        k = canon_key(a) or f"\x00{i}"                     # symbol-only answers ("-") stay as-is
+        if k not in first:
+            first[k] = a
+            order.append(k)
+        count[k] = count.get(k, 0) + 1
+    ranked = sorted(order, key=lambda k: -count[k])          # stable: ties keep source order
+    return [first[k] for k in ranked]
 
 
 def extract_unified(key: str, ex: dict, entry: dict | None = None) -> list[UnifiedSample]:
@@ -910,6 +914,9 @@ class UnifiedLoader:
                 continue
             small = img.convert("RGB")
             if max(small.size) > max_px:
+                # pixel boxes are in the ORIGINAL frame: normalize them before the image shrinks,
+                # or they silently point outside / at the wrong place on the stored image
+                normalize_pixel_boxes(recs, *small.size)
                 s = max_px / max(small.size)
                 small = small.resize((max(1, round(small.width * s)), max(1, round(small.height * s))))
             h = hashlib.md5(small.tobytes()).hexdigest()
@@ -946,6 +953,22 @@ class UnifiedLoader:
                 out[k] = rows
                 print(f"[unified][ok] {k}: {len(rows)} records ({rows[0].task})")
         return out
+
+
+def normalize_pixel_boxes(recs: list[UnifiedSample], width: int, height: int) -> int:
+    """Convert every pixel ``Box`` on ``recs`` (fields + regions) to [0,1] coordinates of a
+    ``width`` x ``height`` image, in place. Returns the number converted. Called before an image is
+    resized so stored boxes stay valid for the stored image (CORD / ScreenQA ship pixel boxes)."""
+    n = 0
+    if not (width and height):
+        return 0
+    for r in recs:
+        for obj in list(r.fields) + list(r.regions):
+            b = obj.bbox
+            if b is not None and not b.normalized:
+                obj.bbox = Box(b.x1 / width, b.y1 / height, b.x2 / width, b.y2 / height, normalized=True)
+                n += 1
+    return n
 
 
 # --------------------------------------------------------------------------- derived reasoning

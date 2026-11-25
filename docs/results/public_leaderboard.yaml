@@ -1,0 +1,252 @@
+# Public OCR / document-parsing benchmark leaderboard: source data.
+#
+# docs/report/public_leaderboard.md and docs/report/figures/public_leaderboard/*.png are GENERATED
+# from this file by `python scripts/build_public_leaderboard.py`. Edit numbers here, never in the
+# generated page.
+#
+# Scope: publicly released models only, measured on public benchmarks with each benchmark's
+# official scorer, run 2026-11-01. Per row: `scores` follow the benchmark's `columns`; null = the
+# official scorer halted on that model's predictions. `reported` is the number the model's authors
+# published, for reference.
+
+as_of: "2026-11-01"
+
+models:
+  OXR-1.0:             {size_b: 1.5, license: "OXR (Apache-2.0 + USD 2M commercial threshold)", permissive: false}
+  OvisOCR3:            {size_b: 0.8, license: "Apache-2.0", permissive: true}
+  PaddleOCR-VL-1.6:    {size_b: 1.0, license: "Apache-2.0", permissive: true}
+  PaddleOCR-VL-1.5:    {size_b: 1.0, license: "Apache-2.0", permissive: true}
+  MinerU2.5-Pro-2605:  {size_b: 1.2, license: "Apache-2.0", permissive: true}
+  MinerU2.5-2509:      {size_b: 1.2, license: "AGPL-3.0", permissive: false}
+  GLM-OCR:             {size_b: 1.3, license: "MIT", permissive: true}
+  Logics-Parsing-V3:   {size_b: 0.8, license: "unspecified", permissive: false}
+  HunyuanOCR-1.5:      {size_b: 1.1, license: "Tencent Hunyuan Community (excludes KR)", permissive: false}
+  dots.mocr:           {size_b: 3.0, license: "MIT + dots.ocr usage terms", permissive: false}
+  dots.ocr:            {size_b: 3.0, license: "MIT + dots.ocr usage terms", permissive: false}
+  Chandra OCR 2:       {size_b: 5.3, license: "OpenRAIL-M (USD 2M threshold)", permissive: false}
+  LightOnOCR-3-4B:     {size_b: 4.5, license: "Apache-2.0", permissive: true}
+  LightOnOCR-3-0.8B:   {size_b: 0.8, license: "Apache-2.0", permissive: true}
+  LightOnOCR-2-1B:     {size_b: 1.0, license: "Apache-2.0", permissive: true}
+  DeepSeek-OCR-2:      {size_b: 3.4, license: "Apache-2.0", permissive: true}
+  schift-ocr-1-beta:   {size_b: 3.6, license: "MIT", permissive: true}
+  Qwen3-VL-8B-Instruct: {size_b: 8.8, license: "Apache-2.0", permissive: true}
+  olmOCR-2-7B (FP8):   {size_b: 8.3, license: "Apache-2.0", permissive: true}
+
+benchmarks:
+  - id: omnidocbench_v16
+    title: "OmniDocBench v1.6"
+    pages: "1,647 pages"
+    scorer: "official scorer, including CDM"
+    description: >-
+      Overall = ((1 − text Edit) × 100 + formula CDM + table TEDS) / 3. Four pages that could not
+      be fetched were removed for every model; published numbers (`reported`) use all 1,651 pages.
+    columns:
+      - {key: text_edit, label: "Text Edit", better: low}
+      - {key: formula_cdm, label: "Formula CDM", better: high}
+      - {key: table_teds, label: "Table TEDS", better: high}
+      - {key: table_teds_s, label: "Table TEDS-S", better: high}
+      - {key: order_edit, label: "Reading-order Edit", better: low}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: OXR-1.0,            scores: [0.025, 96.8, 96.6, 98.4, 0.122, 97.0], reported: "97.03"}
+      - {model: OvisOCR3,           scores: [0.026, 97.2, 95.0, 97.4, 0.114, 96.5], reported: "96.74 (self-reported)"}
+      - {model: PaddleOCR-VL-1.6,   scores: [0.032, 97.5, 94.7, 97.0, 0.136, 96.3], reported: "96.34"}
+      - {model: MinerU2.5-Pro-2605, scores: [0.037, 96.8, 93.4, 96.0, 0.124, 95.5], reported: "95.72 (model card)"}
+      - {model: GLM-OCR,            scores: [0.038, 96.4, 93.5, 96.0, 0.140, 95.3], reported: "95.22 (cloud API)"}
+      - {model: Logics-Parsing-V3,  scores: [0.037, 96.1, 93.3, 95.9, 0.125, 95.2], reported: "95.58 (self-reported)"}
+      - {model: PaddleOCR-VL-1.5,   scores: [0.033, 96.6, 91.8, 94.4, 0.137, 95.0], reported: "94.93"}
+      - {model: HunyuanOCR-1.5,     scores: [0.040, 93.0, 92.7, 94.1, 0.129, 93.9], reported: "94.74 (paper)"}
+      - {model: MinerU2.5-2509,     scores: [0.044, 95.7, 88.0, 91.7, 0.129, 93.1], reported: "93.04"}
+      - {model: dots.mocr,          scores: [0.039, 92.7, 89.9, 93.0, 0.129, 92.9]}
+      - {model: Chandra OCR 2,      scores: [0.061, 94.4, 87.8, 92.3, 0.152, 92.0]}
+      - {model: LightOnOCR-3-4B,    scores: [0.066, 94.1, 87.9, 91.2, 0.167, 91.8]}
+      - {model: DeepSeek-OCR-2,     scores: [0.050, 93.6, 86.0, 89.4, 0.145, 91.5], reported: "90.25"}
+      - {model: schift-ocr-1-beta,  scores: [0.067, 92.5, 86.8, 89.8, 0.150, 90.9]}
+      - {model: dots.ocr,           scores: [0.052, 90.4, 86.8, 90.2, 0.143, 90.7], reported: "90.77", note: "4 pages failed to predict (scored as empty)"}
+      - {model: LightOnOCR-3-0.8B,  scores: [0.082, 93.2, 86.5, 90.2, 0.173, 90.5]}
+      - {model: LightOnOCR-2-1B,    scores: [0.128, 93.1, 84.3, 89.5, 0.191, 88.2]}
+      - {model: Qwen3-VL-8B-Instruct, scores: [0.051, 86.4, 83.2, 87.5, 0.175, 88.2]}
+      - {model: olmOCR-2-7B (FP8),  scores: [0.106, 89.4, 77.8, 82.3, 0.203, 85.5]}
+
+  - id: real5_omnidocbench
+    title: "Real5-OmniDocBench"
+    pages: "1,351 pages per condition"
+    scorer: "OmniDocBench v1.5 scorer"
+    description: >-
+      OmniDocBench v1.5 Overall per capture condition; Overall = mean of the five conditions. A
+      model with a missing condition (the official scorer halted on its predictions) has no Overall.
+    columns:
+      - {key: scanning, label: "Scanning", better: high}
+      - {key: warping, label: "Warping", better: high}
+      - {key: screen_photo, label: "Screen-Photo", better: high}
+      - {key: illumination, label: "Illumination", better: high}
+      - {key: skew, label: "Skew", better: high}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: OvisOCR3,           scores: [94.0, 92.8, 93.5, 93.9, 93.2, 93.5], reported: "93.63 (self-reported)"}
+      - {model: PaddleOCR-VL-1.6,   scores: [94.5, 92.6, 92.6, 93.2, 92.5, 93.1], reported: "93.19"}
+      - {model: PaddleOCR-VL-1.5,   scores: [93.4, 91.0, 91.8, 92.2, 91.0, 91.9], reported: "92.05"}
+      - {model: Logics-Parsing-V3,  scores: [92.6, 91.1, 92.0, 92.4, 91.2, 91.9]}
+      - {model: GLM-OCR,            scores: [92.6, 91.5, 92.4, 92.6, 89.2, 91.7], reported: "90.32"}
+      - {model: Chandra OCR 2,      scores: [89.2, 89.0, 88.7, 89.3, 88.0, 88.8]}
+      - {model: MinerU2.5-Pro-2605, scores: [92.2, 88.3, 91.5, 91.3, 80.8, 88.8]}
+      - {model: HunyuanOCR-1.5,     scores: [90.7, 87.9, 87.9, 88.5, 87.4, 88.5], reported: "88.53"}
+      - {model: LightOnOCR-3-4B,    scores: [88.9, 87.5, 86.9, 87.9, 88.1, 87.9]}
+      - {model: dots.mocr,          scores: [89.0, 86.2, 87.3, 89.7, 83.3, 87.1], note: "3 pages failed to predict (scored as empty)"}
+      - {model: LightOnOCR-3-0.8B,  scores: [87.3, 87.0, 86.0, 87.2, 87.2, 86.9]}
+      - {model: OXR-1.0,            scores: [93.4, 85.5, 86.7, 90.5, 76.6, 86.5]}
+      - {model: dots.ocr,           scores: [86.8, 85.6, 87.4, 87.5, 83.9, 86.3], reported: "86.38"}
+      - {model: MinerU2.5-2509,     scores: [89.9, 84.0, 89.4, 89.5, 75.7, 85.7], reported: "85.61"}
+      - {model: LightOnOCR-2-1B,    scores: [85.1, 77.5, 79.5, 80.6, 80.2, 80.6]}
+      - {model: olmOCR-2-7B (FP8),  scores: [83.7, 77.1, 77.9, 81.3, 79.7, 79.9]}
+      - {model: DeepSeek-OCR-2,     scores: [89.4, 65.6, 71.3, 76.2, 62.0, 72.9], reported: "73.01"}
+      - {model: schift-ocr-1-beta,  scores: [85.8, 45.3, 51.2, 55.6, 38.8, 55.3]}
+      - {model: Qwen3-VL-8B-Instruct, scores: [87.0, 87.8, 85.9, null, 86.3, null], note: "official scorer halted on the Illumination predictions"}
+
+  - id: omnidocbench_v15
+    title: "OmniDocBench v1.5"
+    pages: "1,351 pages (the digital baseline of Real5)"
+    scorer: "OmniDocBench v1.5 scorer"
+    description: >-
+      The same pages scored with the v1.5 ground truth and scorer; Overall is defined as for v1.6.
+      HunyuanOCR-1.5 is absent: the official scorer halted on its predictions.
+    columns:
+      - {key: text_edit, label: "Text Edit", better: low}
+      - {key: formula_cdm, label: "Formula CDM", better: high}
+      - {key: table_teds, label: "Table TEDS", better: high}
+      - {key: table_teds_s, label: "Table TEDS-S", better: high}
+      - {key: order_edit, label: "Reading-order Edit", better: low}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: OXR-1.0,            scores: [0.025, 93.3, 95.8, 98.3, 0.033, 95.6]}
+      - {model: PaddleOCR-VL-1.6,   scores: [0.034, 93.4, 94.4, 97.3, 0.051, 94.8]}
+      - {model: PaddleOCR-VL-1.5,   scores: [0.034, 93.5, 92.7, 95.7, 0.052, 94.2], reported: "94.50"}
+      - {model: OvisOCR3,           scores: [0.028, 90.7, 94.5, 97.3, 0.025, 94.1]}
+      - {model: GLM-OCR,            scores: [0.043, 91.0, 94.1, 96.7, 0.058, 93.6], reported: "94.35"}
+      - {model: Logics-Parsing-V3,  scores: [0.040, 90.7, 93.2, 96.0, 0.041, 93.3]}
+      - {model: MinerU2.5-Pro-2605, scores: [0.039, 88.9, 93.4, 96.3, 0.038, 92.8]}
+      - {model: dots.mocr,          scores: [0.035, 87.1, 89.9, 93.4, 0.038, 91.2]}
+      - {model: MinerU2.5-2509,     scores: [0.045, 89.0, 88.5, 92.7, 0.043, 91.0], reported: "90.67"}
+      - {model: DeepSeek-OCR-2,     scores: [0.049, 89.7, 87.4, 91.7, 0.059, 90.7], reported: "89.17"}
+      - {model: schift-ocr-1-beta,  scores: [0.065, 88.7, 88.1, 91.3, 0.065, 90.1]}
+      - {model: Chandra OCR 2,      scores: [0.065, 87.5, 87.8, 93.1, 0.067, 89.6]}
+      - {model: LightOnOCR-3-4B,    scores: [0.075, 88.4, 87.4, 91.7, 0.079, 89.4]}
+      - {model: dots.ocr,           scores: [0.050, 84.1, 86.5, 90.3, 0.055, 88.5], reported: "88.41", note: "4 pages failed to predict (scored as empty)"}
+      - {model: Qwen3-VL-8B-Instruct, scores: [0.048, 86.0, 83.4, 88.4, 0.069, 88.2]}
+      - {model: LightOnOCR-3-0.8B,  scores: [0.093, 87.3, 86.3, 90.7, 0.087, 88.1]}
+      - {model: LightOnOCR-2-1B,    scores: [0.152, 87.3, 84.0, 90.3, 0.105, 85.4]}
+      - {model: olmOCR-2-7B (FP8),  scores: [0.111, 87.2, 77.8, 82.2, 0.111, 84.6]}
+
+  - id: koocr_bench
+    title: "KoOCR-Bench v1.2 (Korean)"
+    pages: "604 pages, handwriting excluded"
+    scorer: "official weighted sum"
+    description: >-
+      Official weighted sum. The Boxes item only checks whether boxes are emitted, so any
+      box-less markdown output scores 0 there; "Excl. boxes" is shown alongside for that reason.
+    columns:
+      - {key: excl_boxes, label: "Excl. boxes", better: high}
+      - {key: excl_user_real, label: "Excl. user_real", better: high}
+      - {key: gazette, label: "Gazette", better: high}
+      - {key: stat_tables, label: "Statistical tables", better: high}
+      - {key: kdi, label: "KDI", better: high}
+      - {key: policy_tables, label: "Policy tables", better: high}
+      - {key: user_real, label: "user_real", better: high}
+      - {key: csat, label: "CSAT", better: high}
+      - {key: titles, label: "Titles", better: high}
+      - {key: order, label: "Order", better: high}
+      - {key: grid, label: "Grid", better: high}
+      - {key: boxes, label: "Boxes", better: high}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: schift-ocr-1-beta,  scores: [0.726, 0.782, 0.888, 0.737, 0.900, 0.643, 0.448, 0.673, 0.693, 0.875, 0.095, 0.938, 0.745], reported: "0.7551 (private checkpoint)"}
+      - {model: Chandra OCR 2,      scores: [0.757, 0.720, 0.915, 0.751, 0.939, 0.621, 0.457, 0.744, 0.911, 0.938, 0.120, 0.000, 0.690]}
+      - {model: OvisOCR3,           scores: [0.755, 0.710, 0.932, 0.764, 0.903, 0.610, 0.519, 0.736, 0.837, 0.868, 0.130, 0.000, 0.689]}
+      - {model: Logics-Parsing-V3,  scores: [0.746, 0.705, 0.911, 0.745, 0.922, 0.642, 0.484, 0.754, 0.639, 0.922, 0.150, 0.000, 0.680]}
+      - {model: LightOnOCR-3-4B,    scores: [0.744, 0.700, 0.918, 0.747, 0.903, 0.592, 0.507, 0.698, 0.881, 0.865, 0.085, 0.000, 0.678]}
+      - {model: DeepSeek-OCR-2,     scores: [0.692, 0.701, 0.837, 0.703, 0.863, 0.534, 0.478, 0.722, 0.579, 0.920, 0.070, 0.512, 0.676]}
+      - {model: PaddleOCR-VL-1.6,   scores: [0.738, 0.696, 0.885, 0.740, 0.903, 0.623, 0.486, 0.668, 0.881, 0.860, 0.145, 0.000, 0.673], reported: "0.7483 (bbox override)"}
+      - {model: HunyuanOCR-1.5,     scores: [0.726, 0.683, 0.898, 0.695, 0.913, 0.545, 0.492, 0.692, 0.911, 0.922, 0.060, 0.000, 0.662]}
+      - {model: PaddleOCR-VL-1.5,   scores: [0.726, 0.685, 0.877, 0.707, 0.903, 0.614, 0.479, 0.653, 0.881, 0.864, 0.135, 0.000, 0.662]}
+      - {model: LightOnOCR-3-0.8B,  scores: [0.720, 0.673, 0.891, 0.743, 0.898, 0.522, 0.528, 0.681, 0.728, 0.862, 0.050, 0.000, 0.657]}
+      - {model: MinerU2.5-Pro-2605, scores: [0.714, 0.671, 0.914, 0.768, 0.903, 0.640, 0.496, 0.726, 0.000, 0.868, 0.155, 0.000, 0.651]}
+      - {model: dots.mocr,          scores: [0.714, 0.670, 0.899, 0.740, 0.936, 0.582, 0.499, 0.773, 0.134, 0.941, 0.075, 0.000, 0.651]}
+      - {model: LightOnOCR-2-1B,    scores: [0.709, 0.664, 0.885, 0.743, 0.898, 0.577, 0.500, 0.647, 0.460, 0.855, 0.070, 0.000, 0.646]}
+      - {model: dots.ocr,           scores: [0.697, 0.651, 0.856, 0.732, 0.910, 0.549, 0.509, 0.659, 0.282, 0.932, 0.055, 0.000, 0.635]}
+      - {model: Qwen3-VL-8B-Instruct, scores: [0.680, 0.633, 0.899, 0.692, 0.911, 0.528, 0.515, 0.712, 0.010, 0.875, 0.065, 0.000, 0.620]}
+      - {model: olmOCR-2-7B (FP8),  scores: [0.661, 0.614, 0.807, 0.677, 0.945, 0.497, 0.514, 0.678, 0.000, 0.928, 0.040, 0.000, 0.603]}
+      - {model: GLM-OCR,            scores: [0.647, 0.618, 0.790, 0.738, 0.788, 0.608, 0.372, 0.570, 0.104, 0.911, 0.135, 0.000, 0.590]}
+      - {model: OXR-1.0,            scores: [0.531, 0.514, 0.574, 0.714, 0.573, 0.525, 0.241, 0.325, 0.144, 0.915, 0.115, 0.000, 0.484]}
+      - {model: MinerU2.5-2509,     scores: [0.227, 0.233, 0.228, 0.404, 0.008, 0.251, 0.006, 0.098, 0.000, 0.855, 0.115, 0.000, 0.207]}
+
+  - id: mdpbench_ko
+    title: "MDPBench public, Korean"
+    pages: "160 pages = 40 digital + 120 photographed"
+    scorer: "official calculate_scores"
+    description: >-
+      Per page, the mean of the text, formula and table scores; then the page mean × 100. The
+      published Korean numbers (`reported`) are the authors' runs; our PaddleOCR-VL run with the
+      same scoring code is about 3 points higher, so compare models within this table.
+    columns:
+      - {key: digital, label: "Digital", better: high}
+      - {key: photo, label: "Photographed", better: high}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: OvisOCR3,           scores: [97.4, 91.6, 93.0]}
+      - {model: PaddleOCR-VL-1.6,   scores: [94.7, 87.7, 89.5], reported: "86.3"}
+      - {model: PaddleOCR-VL-1.5,   scores: [93.8, 87.1, 88.8], reported: "86.0"}
+      - {model: LightOnOCR-3-4B,    scores: [93.4, 78.2, 82.0]}
+      - {model: Chandra OCR 2,      scores: [94.6, 77.7, 81.9], reported: "80.3"}
+      - {model: dots.mocr,          scores: [91.9, 73.4, 78.1], reported: "78.7"}
+      - {model: HunyuanOCR-1.5,     scores: [94.8, 70.7, 76.8], reported: "75.7"}
+      - {model: LightOnOCR-3-0.8B,  scores: [90.4, 71.2, 76.0]}
+      - {model: dots.ocr,           scores: [91.0, 61.6, 69.1], reported: "68.5"}
+      - {model: Logics-Parsing-V3,  scores: [92.2, 58.0, 66.7]}
+      - {model: MinerU2.5-Pro-2605, scores: [96.3, 53.6, 64.5], reported: "77.6"}
+      - {model: Qwen3-VL-8B-Instruct, scores: [94.5, 54.5, 64.5], reported: "61.9"}
+      - {model: GLM-OCR,            scores: [84.2, 56.7, 63.6], reported: "61.2"}
+      - {model: olmOCR-2-7B (FP8),  scores: [80.8, 41.7, 51.5], reported: "70.6"}
+      - {model: OXR-1.0,            scores: [57.9, 41.2, 45.4]}
+      - {model: LightOnOCR-2-1B,    scores: [80.8, 30.0, 42.9], reported: "41.9"}
+      - {model: schift-ocr-1-beta,  scores: [86.0, 12.2, 30.6]}
+      - {model: DeepSeek-OCR-2,     scores: [82.6, 10.8, 28.7]}
+      - {model: MinerU2.5-2509,     scores: [22.7, 13.2, 15.6], reported: "14.7"}
+
+  - id: kdoc_ocrbench_v2
+    title: "KDoc-OCRBench-V2 (Korean)"
+    pages: "849 public-agency PDF pages, 56,197 reviewed unit tests"
+    scorer: "official olmOCR-bench Average Score"
+    description: >-
+      Mean over test files of the per-file pass rate. Baseline is the test the scorer adds per page
+      (empty output, trailing repetition, or any Han/kana/emoji fails it, so transcribing Hanja
+      faithfully also fails). Every model got the same 200-DPI rendering of each PDF. The official
+      scorer drops a model's whole score if one test raises; the table parser raises on overlapping
+      rowspans, so those tests were counted as failed instead (row notes). Published card numbers
+      (rendering and settings not disclosed): PaddleOCR-VL 77.7 · DeepSeek-OCR 76.7 · olmOCR v0.2.0
+      76.3 · GLM-OCR 61.7.
+    columns:
+      - {key: baseline, label: "Baseline", better: high}
+      - {key: no_header_footer, label: "No header/footer", better: high}
+      - {key: body, label: "Body text", better: high}
+      - {key: tables, label: "Tables", better: high}
+      - {key: overall, label: "Overall", better: high}
+    rows:
+      - {model: Chandra OCR 2,      scores: [95.1, 95.5, 80.4, 51.4, 80.6]}
+      - {model: dots.mocr,          scores: [85.4, 95.2, 79.0, 48.9, 77.1], note: "101 tests where the scorer raised counted as failed"}
+      - {model: HunyuanOCR-1.5,     scores: [94.9, 91.2, 78.3, 38.8, 75.8]}
+      - {model: olmOCR-2-7B (FP8),  scores: [95.8, 94.9, 68.1, 38.3, 74.3]}
+      - {model: DeepSeek-OCR-2,     scores: [94.6, 96.1, 65.7, 33.6, 72.5]}
+      - {model: dots.ocr,           scores: [77.6, 94.9, 65.8, 39.9, 69.6]}
+      - {model: Logics-Parsing-V3,  scores: [86.9, 95.3, 55.1, 40.5, 69.5], note: "3 tests where the scorer raised counted as failed"}
+      - {model: Qwen3-VL-8B-Instruct, scores: [93.1, 44.8, 81.1, 50.9, 67.5]}
+      - {model: PaddleOCR-VL-1.6,   scores: [94.7, 38.0, 70.4, 43.8, 61.7]}
+      - {model: PaddleOCR-VL-1.5,   scores: [94.1, 37.9, 69.1, 39.2, 60.1]}
+      - {model: OvisOCR3,           scores: [91.9, 5.7, 85.0, 51.7, 58.5]}
+      - {model: LightOnOCR-3-4B,    scores: [94.1, 7.1, 77.3, 48.4, 56.7]}
+      - {model: MinerU2.5-Pro-2605, scores: [87.4, 8.1, 75.1, 44.4, 53.8]}
+      - {model: LightOnOCR-3-0.8B,  scores: [94.6, 8.0, 67.9, 43.2, 53.4]}
+      - {model: GLM-OCR,            scores: [63.4, 96.8, 24.7, 25.8, 52.7], reported: "61.7 (settings not disclosed)", note: "246 tests where the scorer raised counted as failed"}
+      - {model: schift-ocr-1-beta,  scores: [87.6, 15.2, 66.6, 34.2, 50.9]}
+      - {model: LightOnOCR-2-1B,    scores: [94.9, 9.5, 62.0, 36.3, 50.7]}
+      - {model: OXR-1.0,            scores: [4.2, 97.3, 22.4, 23.0, 36.7], note: "45 tests where the scorer raised counted as failed"}
+      - {model: MinerU2.5-2509,     scores: [0.5, 73.1, 3.7, 7.1, 21.1]}

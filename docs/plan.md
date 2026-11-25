@@ -104,6 +104,10 @@ properties (parameters, pretraining data, architecture) so the numbers have a *w
   into a benchmark) → matrices under [`results/`](results/).
 - **Read:** [`report/results_analysis.md`](report/results_analysis.md) — measured GPU sweep (19
   models on a T4), inference bugs fixed, scoring flaws, per-model capability vectors.
+- **Read:** [`report/public_leaderboard.md`](report/public_leaderboard.md) — publicly released
+  OCR / document-parsing models on six public benchmarks (OmniDocBench v1.6 / v1.5 / Real5,
+  KoOCR-Bench, MDPBench Korean, KDoc-OCRBench-V2), generated from
+  `results/public_leaderboard.yaml` by `scripts/build_public_leaderboard.py`.
 - **Read:** [`report/insights.md`](report/insights.md) — auto cross-model insights (capability
   leaders, reasoning-emergence, grounding gap, efficiency frontier, OOV fallback).
 - **Read:** [`report/technical_report.md`](report/technical_report.md) — the synthesis + Appendix

@@ -70,6 +70,8 @@ Teacher-generated answers do not inherit a source rationale unless their provena
 supports that pairing. Reasoning quality should be evaluated separately from answer correctness.
 `build_task_trainsets.py --include-reasoning` enables this target format for training pools;
 held-out evaluation answers remain answer-only.
+How rationales are derived per benchmark (with provenance tiers and a quality gate) is described
+in [`benchmark_reasoning_extraction.md`](benchmark_reasoning_extraction.md).
 
 The `fine-grained-v2` migration folds legacy HallusionBench entries ending in "Explain your
 answer" into the preceding question's rationale. It preserves the original yes/no gold answer and
