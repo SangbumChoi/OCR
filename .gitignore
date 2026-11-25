@@ -49,4 +49,7 @@ examples/udd_langs/
 examples/udd_synthetic/
 
 # Reading-order probe renders (regenerable via make_reading_order_probe.py)
-examples/probes/reading_order/
+data/probes/reading_order/
+
+# DAR layer-ablation exports (regenerable from data/annotations/ via scripts/annotate_dar.py export)
+data/dar_arms/

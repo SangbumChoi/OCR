@@ -1,0 +1,1091 @@
+{
+ "doc_id": "example/invoice_0001",
+ "image": "invoice_0001.png",
+ "page": {
+  "width": 800,
+  "height": 1000,
+  "orientation": 0,
+  "skew_deg": 0.0,
+  "doc_type": "invoice",
+  "domain": "finance",
+  "acquisition": "digital",
+  "languages": [
+   "en"
+  ],
+  "quality": [],
+  "notes": "Rendered example; boxes are exact (read from the renderer)."
+ },
+ "layout": [
+  {
+   "id": "r1",
+   "cls": "title",
+   "bbox": [
+    55,
+    45,
+    260,
+    100
+   ],
+   "order": 0,
+   "label": "document title"
+  },
+  {
+   "id": "r2",
+   "cls": "text",
+   "bbox": [
+    55,
+    115,
+    420,
+    175
+   ],
+   "order": 1,
+   "label": "vendor block"
+  },
+  {
+   "id": "r3",
+   "cls": "kv_block",
+   "bbox": [
+    465,
+    115,
+    750,
+    205
+   ],
+   "order": 2,
+   "label": "invoice metadata"
+  },
+  {
+   "id": "r4",
+   "cls": "table",
+   "bbox": [
+    50,
+    250,
+    750,
+    415
+   ],
+   "order": 3,
+   "label": "line-item table"
+  },
+  {
+   "id": "r6",
+   "cls": "stamp",
+   "bbox": [
+    90,
+    470,
+    260,
+    540
+   ],
+   "order": 5,
+   "label": "payment status stamp"
+  },
+  {
+   "id": "r5",
+   "cls": "kv_block",
+   "bbox": [
+    465,
+    445,
+    750,
+    545
+   ],
+   "order": 4,
+   "label": "totals"
+  },
+  {
+   "id": "r7",
+   "cls": "footer",
+   "bbox": [
+    55,
+    895,
+    750,
+    925
+   ],
+   "order": 6,
+   "label": "payment terms note"
+  }
+ ],
+ "ocr": [
+  {
+   "id": "t1",
+   "text": "INVOICE",
+   "bbox": [
+    60,
+    58,
+    244,
+    88
+   ],
+   "region": "r1",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t2",
+   "text": "Hanbit Office Supply Co.",
+   "bbox": [
+    60,
+    124,
+    334,
+    143
+   ],
+   "region": "r2",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t3",
+   "text": "12 Teheran-ro, Gangnam-gu, Seoul",
+   "bbox": [
+    60,
+    153,
+    340,
+    168
+   ],
+   "region": "r2",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t4",
+   "text": "Invoice No: HB-24-0317",
+   "bbox": [
+    470,
+    123,
+    684,
+    137
+   ],
+   "region": "r3",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t5",
+   "text": "Date: 03/04/2024",
+   "bbox": [
+    470,
+    154,
+    629,
+    169
+   ],
+   "region": "r3",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t6",
+   "text": "Terms: Net 30",
+   "bbox": [
+    469,
+    184,
+    595,
+    197
+   ],
+   "region": "r3",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t8",
+   "text": "Item",
+   "bbox": [
+    60,
+    264,
+    104,
+    276
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t9",
+   "text": "Qty",
+   "bbox": [
+    380,
+    264,
+    414,
+    280
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t10",
+   "text": "Unit Price",
+   "bbox": [
+    470,
+    263,
+    564,
+    276
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t11",
+   "text": "Amount",
+   "bbox": [
+    610,
+    264,
+    685,
+    276
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t12",
+   "text": "A4 Copy Paper (box)",
+   "bbox": [
+    60,
+    303,
+    234,
+    320
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t13",
+   "text": "10",
+   "bbox": [
+    380,
+    304,
+    402,
+    316
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t14",
+   "text": "45.00",
+   "bbox": [
+    470,
+    304,
+    519,
+    316
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t15",
+   "text": "450.00",
+   "bbox": [
+    610,
+    304,
+    669,
+    316
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t16",
+   "text": "Toner Cartridge TN-760",
+   "bbox": [
+    59,
+    343,
+    258,
+    360
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t17",
+   "text": "4",
+   "bbox": [
+    380,
+    344,
+    391,
+    356
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t18",
+   "text": "120.00",
+   "bbox": [
+    470,
+    344,
+    529,
+    356
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t19",
+   "text": "480.00",
+   "bbox": [
+    610,
+    344,
+    669,
+    356
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t20",
+   "text": "Desk Organizer",
+   "bbox": [
+    60,
+    383,
+    191,
+    400
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t21",
+   "text": "5",
+   "bbox": [
+    380,
+    384,
+    391,
+    396
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t22",
+   "text": "50.00",
+   "bbox": [
+    470,
+    384,
+    519,
+    396
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t23",
+   "text": "250.00",
+   "bbox": [
+    610,
+    384,
+    669,
+    396
+   ],
+   "region": "r4",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t24",
+   "text": "Subtotal",
+   "bbox": [
+    470,
+    453,
+    545,
+    467
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t25",
+   "text": "1,180.00",
+   "bbox": [
+    640,
+    454,
+    720,
+    469
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t26",
+   "text": "VAT (10%)",
+   "bbox": [
+    470,
+    483,
+    563,
+    499
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t27",
+   "text": "118.00",
+   "bbox": [
+    640,
+    484,
+    703,
+    497
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t28",
+   "text": "TOTAL DUE",
+   "bbox": [
+    470,
+    519,
+    594,
+    534
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t29",
+   "text": "1,298.00",
+   "bbox": [
+    640,
+    519,
+    739,
+    537
+   ],
+   "region": "r5",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t30",
+   "text": "PAID",
+   "bbox": [
+    115,
+    491,
+    220,
+    520
+   ],
+   "region": "r6",
+   "handwritten": false,
+   "legibility": "clear"
+  },
+  {
+   "id": "t31",
+   "text": "All prices in USD. Payment due within 30 days of the invoice date.",
+   "bbox": [
+    60,
+    903,
+    556,
+    917
+   ],
+   "region": "r7",
+   "handwritten": false,
+   "legibility": "clear"
+  }
+ ],
+ "tables": [
+  {
+   "id": "tb1",
+   "n_rows": 4,
+   "n_cols": 4,
+   "cells": [
+    {
+     "row": 0,
+     "col": 0,
+     "text": "Item",
+     "row_span": 1,
+     "col_span": 1,
+     "header": true,
+     "lines": [
+      "t8"
+     ]
+    },
+    {
+     "row": 0,
+     "col": 1,
+     "text": "Qty",
+     "row_span": 1,
+     "col_span": 1,
+     "header": true,
+     "lines": [
+      "t9"
+     ]
+    },
+    {
+     "row": 0,
+     "col": 2,
+     "text": "Unit Price",
+     "row_span": 1,
+     "col_span": 1,
+     "header": true,
+     "lines": [
+      "t10"
+     ]
+    },
+    {
+     "row": 0,
+     "col": 3,
+     "text": "Amount",
+     "row_span": 1,
+     "col_span": 1,
+     "header": true,
+     "lines": [
+      "t11"
+     ]
+    },
+    {
+     "row": 1,
+     "col": 0,
+     "text": "A4 Copy Paper (box)",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t12"
+     ]
+    },
+    {
+     "row": 1,
+     "col": 1,
+     "text": "10",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t13"
+     ]
+    },
+    {
+     "row": 1,
+     "col": 2,
+     "text": "45.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t14"
+     ]
+    },
+    {
+     "row": 1,
+     "col": 3,
+     "text": "450.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t15"
+     ]
+    },
+    {
+     "row": 2,
+     "col": 0,
+     "text": "Toner Cartridge TN-760",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t16"
+     ]
+    },
+    {
+     "row": 2,
+     "col": 1,
+     "text": "4",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t17"
+     ]
+    },
+    {
+     "row": 2,
+     "col": 2,
+     "text": "120.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t18"
+     ]
+    },
+    {
+     "row": 2,
+     "col": 3,
+     "text": "480.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t19"
+     ]
+    },
+    {
+     "row": 3,
+     "col": 0,
+     "text": "Desk Organizer",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t20"
+     ]
+    },
+    {
+     "row": 3,
+     "col": 1,
+     "text": "5",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t21"
+     ]
+    },
+    {
+     "row": 3,
+     "col": 2,
+     "text": "50.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t22"
+     ]
+    },
+    {
+     "row": 3,
+     "col": 3,
+     "text": "250.00",
+     "row_span": 1,
+     "col_span": 1,
+     "header": false,
+     "lines": [
+      "t23"
+     ]
+    }
+   ],
+   "region": "r4"
+  }
+ ],
+ "kie": [
+  {
+   "id": "f1",
+   "key": "invoice.number",
+   "value": "HB-24-0317",
+   "normalized": null,
+   "value_type": "id",
+   "value_lines": [
+    "t4"
+   ],
+   "key_lines": [
+    "t4"
+   ],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f2",
+   "key": "invoice.date",
+   "value": "03/04/2024",
+   "normalized": "2024-04-03",
+   "value_type": "date",
+   "value_lines": [
+    "t5"
+   ],
+   "key_lines": [
+    "t5"
+   ],
+   "present": true,
+   "notes": "DD/MM/YYYY — see guide g2"
+  },
+  {
+   "id": "f3",
+   "key": "vendor.name",
+   "value": "Hanbit Office Supply Co.",
+   "normalized": null,
+   "value_type": "string",
+   "value_lines": [
+    "t2"
+   ],
+   "key_lines": [],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f4",
+   "key": "vendor.address",
+   "value": "12 Teheran-ro, Gangnam-gu, Seoul",
+   "normalized": null,
+   "value_type": "address",
+   "value_lines": [
+    "t3"
+   ],
+   "key_lines": [],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f5",
+   "key": "invoice.subtotal",
+   "value": "1,180.00",
+   "normalized": "1180.00",
+   "value_type": "amount",
+   "value_lines": [
+    "t25"
+   ],
+   "key_lines": [
+    "t24"
+   ],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f6",
+   "key": "invoice.tax",
+   "value": "118.00",
+   "normalized": "118.00",
+   "value_type": "amount",
+   "value_lines": [
+    "t27"
+   ],
+   "key_lines": [
+    "t26"
+   ],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f7",
+   "key": "invoice.total",
+   "value": "1,298.00",
+   "normalized": "1298.00",
+   "value_type": "amount",
+   "value_lines": [
+    "t29"
+   ],
+   "key_lines": [
+    "t28"
+   ],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f8",
+   "key": "invoice.currency",
+   "value": "USD",
+   "normalized": null,
+   "value_type": "enum",
+   "value_lines": [
+    "t31"
+   ],
+   "key_lines": [],
+   "present": true,
+   "notes": ""
+  },
+  {
+   "id": "f9",
+   "key": "invoice.po_number",
+   "value": "",
+   "normalized": null,
+   "value_type": "string",
+   "value_lines": [],
+   "key_lines": [],
+   "present": false,
+   "notes": "no purchase-order number on this invoice"
+  }
+ ],
+ "understanding": {
+  "caption": "A one-page supplier invoice from Hanbit Office Supply Co. listing three office-supply line items, with subtotal, 10% VAT and the total due; the invoice is stamped PAID.",
+  "guide": [
+   {
+    "id": "g1",
+    "text": "Each line item's Amount equals Qty x Unit Price; the Subtotal is the sum of the Amount column.",
+    "kind": "structure",
+    "scope": [
+     "tb1",
+     "t25"
+    ]
+   },
+   {
+    "id": "g2",
+    "text": "The date is written DD/MM/YYYY (Korean vendor), so 03/04/2024 is 3 April 2024, not 4 March.",
+    "kind": "convention",
+    "scope": [
+     "t5"
+    ]
+   },
+   {
+    "id": "g3",
+    "text": "TOTAL DUE already includes VAT (Subtotal + VAT); do not add tax again.",
+    "kind": "disambiguation",
+    "scope": [
+     "t29",
+     "t27"
+    ]
+   },
+   {
+    "id": "g4",
+    "text": "The red PAID stamp is a payment-status mark; it is not part of the vendor block or any field value.",
+    "kind": "pitfall",
+    "scope": [
+     "r6"
+    ]
+   },
+   {
+    "id": "g5",
+    "text": "'Net 30' means payment is due 30 days after the invoice date.",
+    "kind": "domain",
+    "scope": [
+     "t6",
+     "t31"
+    ]
+   }
+  ],
+  "qa": [
+   {
+    "id": "q1",
+    "question": "What is the invoice number?",
+    "answers": [
+     "HB-24-0317"
+    ],
+    "qa_type": "lookup",
+    "metric": "anls",
+    "evidence": [
+     "t4"
+    ],
+    "steps": [
+     {
+      "op": "read",
+      "text": "The metadata block reads 'Invoice No: HB-24-0317'.",
+      "evidence": [
+       "t4"
+      ],
+      "result": "HB-24-0317"
+     }
+    ],
+    "difficulty": 1
+   },
+   {
+    "id": "q2",
+    "question": "On what date is payment due? Answer as YYYY-MM-DD.",
+    "answers": [
+     "2024-05-03"
+    ],
+    "qa_type": "temporal",
+    "metric": "exact",
+    "evidence": [
+     "t5",
+     "t6"
+    ],
+    "steps": [
+     {
+      "op": "read",
+      "text": "The invoice date is printed as 03/04/2024.",
+      "evidence": [
+       "t5"
+      ],
+      "result": "03/04/2024"
+     },
+     {
+      "op": "parse",
+      "text": "Dates on this invoice are DD/MM/YYYY, so it is 3 April 2024.",
+      "evidence": [],
+      "result": "2024-04-03"
+     },
+     {
+      "op": "read",
+      "text": "The terms are 'Net 30': due 30 days after the invoice date.",
+      "evidence": [
+       "t6"
+      ],
+      "result": "30 days"
+     },
+     {
+      "op": "compute",
+      "text": "3 April 2024 + 30 days = 3 May 2024.",
+      "evidence": [],
+      "result": "2024-05-03"
+     }
+    ],
+    "difficulty": 3
+   },
+   {
+    "id": "q3",
+    "question": "Which line item has the largest amount?",
+    "answers": [
+     "Toner Cartridge TN-760"
+    ],
+    "qa_type": "comparison",
+    "metric": "anls",
+    "evidence": [
+     "tb1:2,0"
+    ],
+    "steps": [
+     {
+      "op": "read",
+      "text": "The Amount column lists 450.00, 480.00 and 250.00.",
+      "evidence": [
+       "tb1:1,3",
+       "tb1:2,3",
+       "tb1:3,3"
+      ],
+      "result": null
+     },
+     {
+      "op": "compare",
+      "text": "480.00 is the largest, in the Toner Cartridge TN-760 row.",
+      "evidence": [
+       "tb1:2,0"
+      ],
+      "result": "Toner Cartridge TN-760"
+     }
+    ],
+    "difficulty": 2
+   },
+   {
+    "id": "q4",
+    "question": "Does the subtotal match the sum of the line-item amounts? Answer yes or no.",
+    "answers": [
+     "yes"
+    ],
+    "qa_type": "aggregation",
+    "metric": "exact",
+    "evidence": [
+     "t25",
+     "tb1:1,3",
+     "tb1:2,3",
+     "tb1:3,3"
+    ],
+    "steps": [
+     {
+      "op": "aggregate",
+      "text": "450.00 + 480.00 + 250.00 = 1,180.00.",
+      "evidence": [
+       "tb1:1,3",
+       "tb1:2,3",
+       "tb1:3,3"
+      ],
+      "result": "1180.00"
+     },
+     {
+      "op": "compare",
+      "text": "The printed Subtotal is 1,180.00, which matches.",
+      "evidence": [
+       "t25"
+      ],
+      "result": "yes"
+     }
+    ],
+    "difficulty": 2
+   },
+   {
+    "id": "q5",
+    "question": "How much VAT would be charged if the rate were 5% instead of 10%?",
+    "answers": [
+     "59.00",
+     "59"
+    ],
+    "qa_type": "arithmetic",
+    "metric": "relaxed_acc",
+    "evidence": [
+     "t25"
+    ],
+    "steps": [
+     {
+      "op": "read",
+      "text": "VAT is charged on the Subtotal, 1,180.00.",
+      "evidence": [
+       "t25",
+       "t26"
+      ],
+      "result": "1180.00"
+     },
+     {
+      "op": "compute",
+      "text": "1,180.00 x 0.05 = 59.00.",
+      "evidence": [],
+      "result": "59.00"
+     }
+    ],
+    "difficulty": 2
+   },
+   {
+    "id": "q6",
+    "question": "What is the purchase order number?",
+    "answers": [
+     "not stated"
+    ],
+    "qa_type": "abstain",
+    "metric": "anls",
+    "evidence": [],
+    "steps": [
+     {
+      "op": "conclude",
+      "text": "No PO number appears anywhere on the invoice.",
+      "evidence": [],
+      "result": "not stated"
+     }
+    ],
+    "difficulty": 1
+   }
+  ]
+ },
+ "provenance": {
+  "layers": {
+   "page": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 15,
+    "tool": ""
+   },
+   "layout": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 90,
+    "tool": ""
+   },
+   "ocr": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 240,
+    "tool": ""
+   },
+   "table": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 120,
+    "tool": ""
+   },
+   "kie": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 150,
+    "tool": ""
+   },
+   "understanding": {
+    "status": "human",
+    "annotator": "example",
+    "seconds": 420,
+    "tool": ""
+   }
+  },
+  "created": "",
+  "updated": "",
+  "license": "CC0-1.0",
+  "source": "rendered example (docs/report/annotation_format.md)"
+ },
+ "split": "train",
+ "schema_version": "dar-1.0"
+}

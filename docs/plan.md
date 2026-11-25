@@ -118,6 +118,9 @@ hand-offs, error compounding, no joint reasoning). The conclusion: **bake these 
 the model** via targeted fine-tuning, rather than bolting on stages.
 
 - **Decision:** prefer in-model capability injection over a model pipeline.
+- **TODO (open):** an **orientation** signal probably *should* be added (cheap, high-leverage).
+  It now has an annotation layer and a test arm (`L1_+orientation` in
+  [`report/annotation_format.md`](report/annotation_format.md)), but no result has been run yet.
 - **Implemented in the native student:** an explicit four-way **orientation head**; the UDD
   collator supplies controlled rotation labels and transforms evidence boxes with the image.
 - **Read:** [`report/research_novelty.md`](report/research_novelty.md) — module-placement ×
@@ -315,6 +318,12 @@ added factor lifting the score a step, ending well above the baseline.
   diversity is driven by [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md)
   and the open-source technique survey [`report/synth_generation_survey.md`](report/synth_generation_survey.md)
   (simulation-only; LLM generators kept as future-optional seams).
+- **Hand-annotate hard real documents (every layer, one record):**
+  [`report/annotation_format.md`](report/annotation_format.md) defines the layered annotation
+  record (DAR): page/orientation → layout → OCR → table → KIE → understanding (caption, reading
+  guide, grounded reasoning chains), linked by id. It also defines the **layer-value ablation**
+  (which layer actually helps value extraction, and Δ per annotation-hour) and the per-layer
+  error attribution. CLI: [`../scripts/annotate_dar.py`](../scripts/annotate_dar.py).
 - **Generate hard reasoning:** [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md)
   documents the executable latent graph, five-level curriculum, hard table/chart/investment/science
   families, exact five-language locale projection, multi-box structured SFT/RLVR targets, and
@@ -365,7 +374,8 @@ added factor lifting the score a step, ending well above the baseline.
 | "Document" includes screens / UX surfaces (not just OCR) | this plan §0; realistic_cases `website`/`mobile_app` |
 | Data/evaluation survey before model survey | §1–3 before §4 |
 | Integrate capabilities into the model, **not** a specialist pipeline | §5; ablation_plan A1/A5/A7 |
-| Orientation as an explicit four-way auxiliary signal | §5; native student model |
+| **Orientation as an explicit signal — TODO** (annotation layer + `L1_+orientation` arm exist; not yet run) | §5; report/annotation_format.md |
+| Hand-annotated data carries **all layers in one record**; which layer matters is measured, not assumed | §6; report/annotation_format.md §6 |
 | Report's headline = **spotting/grounding for human-in-the-loop verification** (cumulative staircase **deprecated**) | §6; technical_report §Part 2.1b/1c |
 
 ## Reading order (index)
@@ -410,6 +420,7 @@ added factor lifting the score a step, ending well above the baseline.
    [`report/frontier_method_survey.md`](report/frontier_method_survey.md) ·
    [`report/student_method_evidence.md`](report/student_method_evidence.md)
 6. [`report/ablation_plan.md`](report/ablation_plan.md) ·
+   [`report/annotation_format.md`](report/annotation_format.md) ·
    [`report/prd_synthetic_diversity.md`](report/prd_synthetic_diversity.md) ·
    [`report/hard_synthetic_pipeline.md`](report/hard_synthetic_pipeline.md) ·
    [`report/synth_generation_survey.md`](report/synth_generation_survey.md) →

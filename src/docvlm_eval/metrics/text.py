@@ -154,6 +154,14 @@ def _teds(pred: str, golds: list[str]) -> float:
     return teds_score(pred, golds)
 
 
+def _structured(name: str):
+    """Late-bound dispatch into metrics.structured (KIE JSON / chain-of-thought final answer)."""
+    def scorer(pred: str, golds: list[str]) -> float:
+        from . import structured
+        return getattr(structured, name)(pred, golds)
+    return scorer
+
+
 def _bank(name: str):
     """Late-bound dispatch into metrics.bank (module imports text, so avoid a cycle)."""
     def scorer(pred: str, golds: list[str]) -> float:
@@ -170,6 +178,9 @@ _SCORERS = {
     "grounding": _grounding,
     "ned": ned_similarity,
     "teds": _teds,
+    # structured targets from the layered annotation exporters (metrics/structured.py)
+    "kie_f1": _structured("kie_f1"),
+    "final_answer": _structured("final_answer"),
     # metric-bank additions (metrics/bank.py): usable as a Sample.metric directly
     "token_f1": _bank("token_f1"),
     "drop_em": _bank("drop_em"),
